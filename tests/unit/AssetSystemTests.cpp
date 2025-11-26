@@ -541,7 +541,14 @@ TEST_F(AssetSystemTest, UpdateProcessesPendingLoads) {
     });
 
     EXPECT_FALSE(processed);
-    assetSystem_->update();
+
+    // Poll update() until callback is invoked (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (processed) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
     EXPECT_TRUE(processed);
 }
 
@@ -550,9 +557,12 @@ TEST_F(AssetSystemTest, UpdateMultipleTimes) {
     AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     assetSystem_->loadAssetAsync(handle);
 
-    assetSystem_->update();
-    assetSystem_->update();
-    assetSystem_->update();
+    // Poll update() until async load completes (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (assetSystem_->isLoaded(handle)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 }
@@ -875,6 +885,323 @@ TEST_F(AssetSystemTest, LoadSoundDataIntegrity) {
     EXPECT_EQ(soundData.fileData[1], 'I');
     EXPECT_EQ(soundData.fileData[2], 'F');
     EXPECT_EQ(soundData.fileData[3], 'F');
+}
+
+//==========================================================================
+// Font Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadFontAssetFromFile) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Font, "../../../tests/testdata/test_font.ttf");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    // Verify we can get raw data
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    // Cast to std::any and extract FontData
+    auto* anyData = static_cast<std::any*>(rawData);
+    EXPECT_TRUE(anyData->has_value());
+
+    const FontData& fontData = std::any_cast<const FontData&>(*anyData);
+    EXPECT_GT(fontData.fileSize, 0);
+    EXPECT_EQ(fontData.fileData.size(), fontData.fileSize);
+    EXPECT_EQ(fontData.path, "../../../tests/testdata/test_font.ttf");
+}
+
+TEST_F(AssetSystemTest, LoadFontDataIntegrity) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Font, "../../../tests/testdata/test_font.ttf");
+
+    assetSystem_->loadAsset(handle);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const FontData& fontData = std::any_cast<const FontData&>(*anyData);
+
+    // Verify TTF file header (sfnt version 0x00010000)
+    EXPECT_EQ(fontData.fileData[0], 0x00);
+    EXPECT_EQ(fontData.fileData[1], 0x01);
+    EXPECT_EQ(fontData.fileData[2], 0x00);
+    EXPECT_EQ(fontData.fileData[3], 0x00);
+}
+
+TEST_F(AssetSystemTest, LoadFontNonExistentFileFails) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Font, "nonexistent.ttf");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, LoadFontAndUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Font, "../../../tests/testdata/test_font.ttf");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+//==========================================================================
+// Shader Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadShaderAssetFromFile) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Shader, "../../../tests/testdata/test_shader.glsl");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    // Verify we can get raw data
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    // Cast to std::any and extract ShaderData
+    auto* anyData = static_cast<std::any*>(rawData);
+    EXPECT_TRUE(anyData->has_value());
+
+    const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
+    EXPECT_FALSE(shaderData.source.empty());
+    EXPECT_EQ(shaderData.path, "../../../tests/testdata/test_shader.glsl");
+}
+
+TEST_F(AssetSystemTest, LoadShaderSourceContent) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Shader, "../../../tests/testdata/test_shader.glsl");
+
+    assetSystem_->loadAsset(handle);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
+
+    // Verify shader contains expected content
+    EXPECT_TRUE(shaderData.source.find("#version") != std::string::npos);
+    EXPECT_TRUE(shaderData.source.find("void main()") != std::string::npos);
+    EXPECT_TRUE(shaderData.source.find("gl_Position") != std::string::npos);
+}
+
+TEST_F(AssetSystemTest, LoadShaderNonExistentFileFails) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Shader, "nonexistent.glsl");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, LoadShaderAndUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Shader, "../../../tests/testdata/test_shader.glsl");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, LoadShaderAndReload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Shader, "../../../tests/testdata/test_shader.glsl");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->reloadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Verify data is still accessible
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
+    EXPECT_FALSE(shaderData.source.empty());
+}
+
+//==========================================================================
+// NavMesh Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadNavMeshAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::NavMesh, "../../../tests/testdata/test_navmesh.nav");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    ASSERT_TRUE(anyData->has_value());
+    ASSERT_TRUE(anyData->type() == typeid(NavMeshData));
+
+    const NavMeshData& navMeshData = std::any_cast<const NavMeshData&>(*anyData);
+    EXPECT_GT(navMeshData.fileSize, 0);
+    EXPECT_EQ(navMeshData.fileData.size(), navMeshData.fileSize);
+    EXPECT_EQ(navMeshData.path, "../../../tests/testdata/test_navmesh.nav");
+}
+
+TEST_F(AssetSystemTest, LoadNavMeshNonExistentFileFails) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::NavMesh, "navmesh/nonexistent.nav");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, LoadNavMeshAndUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::NavMesh, "../../../tests/testdata/test_navmesh.nav");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, LoadNavMeshDataIntegrity) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::NavMesh, "../../../tests/testdata/test_navmesh.nav");
+
+    assetSystem_->loadAsset(handle);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const NavMeshData& navMeshData = std::any_cast<const NavMeshData&>(*anyData);
+
+    // Verify we can read the header
+    EXPECT_GE(navMeshData.fileData.size(), 20);
+
+    // Check for expected header text in test file
+    std::string header(navMeshData.fileData.begin(), navMeshData.fileData.begin() + 20);
+    EXPECT_TRUE(header.find("NAVMESH_TEST_DATA") != std::string::npos);
+}
+
+//==========================================================================
+// BehaviorTree Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadBehaviorTreeAssetJSON) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::BehaviorTree, "../../../tests/testdata/test_behaviortree.json");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    ASSERT_TRUE(anyData->has_value());
+    ASSERT_TRUE(anyData->type() == typeid(BehaviorTreeData));
+
+    const BehaviorTreeData& btData = std::any_cast<const BehaviorTreeData&>(*anyData);
+    EXPECT_TRUE(btData.isJson);
+    EXPECT_FALSE(btData.rawText.empty());
+    EXPECT_EQ(btData.path, "../../../tests/testdata/test_behaviortree.json");
+
+    // Verify JSON was parsed correctly
+    EXPECT_TRUE(btData.treeData.contains("name"));
+    EXPECT_EQ(btData.treeData["name"], "TestBehaviorTree");
+    EXPECT_TRUE(btData.treeData.contains("root"));
+    EXPECT_EQ(btData.treeData["root"]["type"], "Selector");
+}
+
+TEST_F(AssetSystemTest, LoadBehaviorTreeAssetNonJSON) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::BehaviorTree, "../../../tests/testdata/test_behaviortree.txt");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const BehaviorTreeData& btData = std::any_cast<const BehaviorTreeData&>(*anyData);
+
+    EXPECT_FALSE(btData.isJson);  // Not JSON
+    EXPECT_FALSE(btData.rawText.empty());
+    EXPECT_TRUE(btData.rawText.find("tree TestBehaviorTree") != std::string::npos);
+}
+
+TEST_F(AssetSystemTest, LoadBehaviorTreeNonExistentFileFails) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::BehaviorTree, "ai/nonexistent.bt");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, LoadBehaviorTreeAndUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::BehaviorTree, "../../../tests/testdata/test_behaviortree.json");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, ReloadBehaviorTreeAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::BehaviorTree, "../../../tests/testdata/test_behaviortree.json");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->reloadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Verify data is still accessible
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const BehaviorTreeData& btData = std::any_cast<const BehaviorTreeData&>(*anyData);
+    EXPECT_TRUE(btData.isJson);
+    EXPECT_EQ(btData.treeData["name"], "TestBehaviorTree");
 }
 
 }  // namespace jframe::tests

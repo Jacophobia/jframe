@@ -1,0 +1,6 @@
+NAVMESH_TEST_DATA_V1
+vertices: 100
+triangles: 50
+# This is a test navmesh file for JFrame Asset System tests
+# In a real implementation, this would be binary data
+# For testing, we just need valid data that can be loaded

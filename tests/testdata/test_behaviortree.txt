@@ -1,0 +1,11 @@
+tree TestBehaviorTree {
+  root {
+    Selector {
+      Sequence {
+        Condition("IsEnemyNearby")
+        Action("Attack")
+      }
+      Action("Patrol")
+    }
+  }
+}

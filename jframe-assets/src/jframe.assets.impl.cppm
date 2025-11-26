@@ -35,6 +35,36 @@ struct SoundData {
     size_t fileSize = 0;
 };
 
+// Font data structure - stores raw font file bytes for FreeType to process later
+struct FontData {
+    std::vector<unsigned char> fileData;  // Raw TTF/OTF bytes
+    std::string path;
+    size_t fileSize = 0;
+};
+
+// Shader data structure - stores shader source code
+struct ShaderData {
+    std::string vertexSource;    // Vertex shader source (if .vert file)
+    std::string fragmentSource;  // Fragment shader source (if .frag file)
+    std::string source;          // Combined source (if single file)
+    std::string path;
+};
+
+// NavMesh data structure - stores raw navmesh binary for AI system to process
+struct NavMeshData {
+    std::vector<unsigned char> fileData;  // Raw navmesh binary
+    std::string path;
+    size_t fileSize = 0;
+};
+
+// BehaviorTree data structure - stores tree definition for AI system
+struct BehaviorTreeData {
+    nlohmann::json treeData;  // Parsed JSON tree definition
+    std::string rawText;      // Original file content
+    std::string path;
+    bool isJson = false;
+};
+
 class AssetSystem : public IAssetSystem {
 public:
     AssetSystem() = default;

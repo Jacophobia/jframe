@@ -1,0 +1,26 @@
+{
+  "name": "TestBehaviorTree",
+  "version": "1.0",
+  "root": {
+    "type": "Selector",
+    "children": [
+      {
+        "type": "Sequence",
+        "children": [
+          {
+            "type": "Condition",
+            "name": "IsEnemyNearby"
+          },
+          {
+            "type": "Action",
+            "name": "Attack"
+          }
+        ]
+      },
+      {
+        "type": "Action",
+        "name": "Patrol"
+      }
+    ]
+  }
+}

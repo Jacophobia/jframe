@@ -211,6 +211,113 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 break;
             }
 
+            case AssetType::Font: {
+                // Load font file as raw bytes for FreeType to process later
+                std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
+                if (!file.is_open()) {
+                    throw std::runtime_error("Failed to open font file: " + sourcePath.string());
+                }
+
+                // Get file size
+                auto fileSize = file.tellg();
+                file.seekg(0, std::ios::beg);
+
+                // Read entire file into memory
+                FontData fontData;
+                fontData.path = sourcePath.string();
+                fontData.fileSize = static_cast<size_t>(fileSize);
+                fontData.fileData.resize(fontData.fileSize);
+
+                if (!file.read(reinterpret_cast<char*>(fontData.fileData.data()), fileSize)) {
+                    throw std::runtime_error("Failed to read font file: " + sourcePath.string());
+                }
+
+                // Store size before moving
+                loadedSize = fontData.fileSize;
+                loadedData = std::move(fontData);
+                break;
+            }
+
+            case AssetType::Shader: {
+                // Load shader source as text file
+                std::ifstream file(sourcePath);
+                if (!file.is_open()) {
+                    throw std::runtime_error("Failed to open shader file: " + sourcePath.string());
+                }
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                std::string shaderSource = buffer.str();
+
+                ShaderData shaderData;
+                shaderData.path = sourcePath.string();
+                shaderData.source = shaderSource;
+
+                // For now, just load into 'source' field
+                // The Graphics system can split vertex/fragment later if needed
+                // Could also check extension (.vert, .frag) here if desired
+
+                loadedData = std::move(shaderData);
+                loadedSize = shaderSource.size();
+                break;
+            }
+
+            case AssetType::NavMesh: {
+                // Load navmesh file as raw binary data for AI system to process
+                std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
+                if (!file.is_open()) {
+                    throw std::runtime_error("Failed to open navmesh file: " + sourcePath.string());
+                }
+
+                // Get file size
+                auto fileSize = file.tellg();
+                file.seekg(0, std::ios::beg);
+
+                // Read entire file into memory
+                NavMeshData navMeshData;
+                navMeshData.path = sourcePath.string();
+                navMeshData.fileSize = static_cast<size_t>(fileSize);
+                navMeshData.fileData.resize(navMeshData.fileSize);
+
+                if (!file.read(reinterpret_cast<char*>(navMeshData.fileData.data()), fileSize)) {
+                    throw std::runtime_error("Failed to read navmesh file: " + sourcePath.string());
+                }
+
+                // Store size before moving
+                loadedSize = navMeshData.fileSize;
+                loadedData = std::move(navMeshData);
+                break;
+            }
+
+            case AssetType::BehaviorTree: {
+                // Load behavior tree definition (try JSON, fallback to raw text)
+                std::ifstream file(sourcePath);
+                if (!file.is_open()) {
+                    throw std::runtime_error("Failed to open behavior tree file: " + sourcePath.string());
+                }
+
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                std::string fileContents = buffer.str();
+
+                BehaviorTreeData btData;
+                btData.path = sourcePath.string();
+                btData.rawText = fileContents;
+
+                // Try to parse as JSON
+                try {
+                    btData.treeData = nlohmann::json::parse(fileContents);
+                    btData.isJson = true;
+                } catch (const nlohmann::json::parse_error&) {
+                    // Not JSON, keep as raw text only
+                    btData.isJson = false;
+                }
+
+                loadedData = std::move(btData);
+                loadedSize = fileContents.size();
+                break;
+            }
+
             default:
                 // Other asset types not yet implemented
                 throw std::runtime_error("Asset type not yet implemented");
