@@ -342,6 +342,13 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
             entry.data = std::move(loadedData);
             entry.dataSize = loadedSize;
             entry.metadata.state = AssetState::Loaded;
+
+            // Store file modification time for hot reload
+            std::error_code ec;
+            auto writeTime = std::filesystem::last_write_time(sourcePath, ec);
+            if (!ec) {
+                entry.lastWriteTime = writeTime;
+            }
         }
     }
 }
@@ -441,7 +448,62 @@ void AssetSystem::enableHotReload(bool enable) {
 
 void AssetSystem::checkForReloads() {
     if (!hotReloadEnabled_) return;
-    // Check file modification times and reload changed assets
+
+    std::lock_guard<std::mutex> lock(assetsMutex_);
+
+    for (auto& [uuid, entry] : assets_) {
+        // Skip assets that are not loaded
+        if (entry.metadata.state != AssetState::Loaded) {
+            continue;
+        }
+
+        // Skip assets that are currently being loaded asynchronously
+        bool isBeingLoaded = false;
+        for (const auto& pending : pendingLoads_) {
+            if (pending.handle.uuid == uuid) {
+                isBeingLoaded = true;
+                break;
+            }
+        }
+        if (isBeingLoaded) {
+            continue;
+        }
+
+        // Get current file modification time
+        std::error_code ec;
+        auto currentWriteTime = std::filesystem::last_write_time(entry.metadata.sourcePath, ec);
+
+        // Handle errors gracefully
+        if (ec) {
+            // File no longer exists or permission error - don't reload
+            continue;
+        }
+
+        // If we have a stored write time, compare it
+        if (entry.lastWriteTime.has_value()) {
+            if (currentWriteTime > entry.lastWriteTime.value()) {
+                // File has been modified, reload it
+                // We need to release the lock before calling reloadAsset
+                // Store the handle for reloading after the loop
+                AssetHandle handle = entry.metadata.handle;
+
+                // Temporarily release lock to avoid deadlock
+                assetsMutex_.unlock();
+                reloadAsset(handle);
+                assetsMutex_.lock();
+
+                // Update the stored write time
+                // Note: entry reference may be invalidated, so look it up again
+                auto it = assets_.find(uuid);
+                if (it != assets_.end()) {
+                    it->second.lastWriteTime = currentWriteTime;
+                }
+            }
+        } else {
+            // No stored write time, just store the current one
+            entry.lastWriteTime = currentWriteTime;
+        }
+    }
 }
 
 void AssetSystem::reloadAsset(AssetHandle handle) {

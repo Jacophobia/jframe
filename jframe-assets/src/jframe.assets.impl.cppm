@@ -105,6 +105,7 @@ private:
         AssetMetadata metadata;
         std::any data;  // Can hold DataAsset, or other asset types
         std::size_t dataSize = 0;
+        std::optional<std::filesystem::file_time_type> lastWriteTime;
     };
 
     struct PendingLoad {

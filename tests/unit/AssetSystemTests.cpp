@@ -523,6 +523,221 @@ TEST_F(AssetSystemTest, ReloadUnregisteredAssetDoesNotCrash) {
     EXPECT_NO_THROW(assetSystem_->reloadAsset(invalid));
 }
 
+TEST_F(AssetSystemTest, CheckForReloadsDetectsModifiedFile) {
+    // Create a temporary test file
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_hotreload.txt";
+
+    // Write initial content
+    {
+        std::ofstream file(tempFilePath);
+        file << "Initial content";
+    }
+
+    // Register and load the asset
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, tempFilePath);
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Get initial data
+    void* rawData1 = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData1, nullptr);
+    auto* anyData1 = static_cast<std::any*>(rawData1);
+    const DataAsset& dataAsset1 = std::any_cast<const DataAsset&>(*anyData1);
+    std::string initialContent = dataAsset1.rawText;
+    EXPECT_EQ(initialContent, "Initial content");
+
+    // Wait a bit to ensure file system timestamp resolution
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+    // Modify the file
+    {
+        std::ofstream file(tempFilePath);
+        file << "Modified content";
+    }
+
+    // Enable hot reload and check for changes
+    assetSystem_->enableHotReload(true);
+    assetSystem_->checkForReloads();
+
+    // Verify the asset was reloaded with new content
+    void* rawData2 = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData2, nullptr);
+    auto* anyData2 = static_cast<std::any*>(rawData2);
+    const DataAsset& dataAsset2 = std::any_cast<const DataAsset&>(*anyData2);
+    std::string modifiedContent = dataAsset2.rawText;
+    EXPECT_EQ(modifiedContent, "Modified content");
+
+    // Cleanup
+    std::filesystem::remove(tempFilePath);
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsIgnoresUnmodifiedFiles) {
+    // Create a temporary test file
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_unmodified.txt";
+
+    {
+        std::ofstream file(tempFilePath);
+        file << "Unmodified content";
+    }
+
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, tempFilePath);
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Get initial data to verify it wasn't changed
+    void* rawData1 = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData1, nullptr);
+    auto* anyData1 = static_cast<std::any*>(rawData1);
+    const DataAsset& dataAsset1 = std::any_cast<const DataAsset&>(*anyData1);
+    std::string initialContent = dataAsset1.rawText;
+
+    // Enable hot reload and check (file hasn't changed)
+    assetSystem_->enableHotReload(true);
+    assetSystem_->checkForReloads();
+
+    // Verify asset is still loaded with same content
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    void* rawData2 = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData2, nullptr);
+    auto* anyData2 = static_cast<std::any*>(rawData2);
+    const DataAsset& dataAsset2 = std::any_cast<const DataAsset&>(*anyData2);
+    EXPECT_EQ(dataAsset2.rawText, initialContent);
+
+    // Cleanup
+    std::filesystem::remove(tempFilePath);
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsIgnoresNonExistentFiles) {
+    // Create a temporary file, load it, then delete it
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_deleted.txt";
+
+    {
+        std::ofstream file(tempFilePath);
+        file << "Temporary content";
+    }
+
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, tempFilePath);
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Delete the file
+    std::filesystem::remove(tempFilePath);
+
+    // Enable hot reload and check - should not crash
+    assetSystem_->enableHotReload(true);
+    EXPECT_NO_THROW(assetSystem_->checkForReloads());
+
+    // Asset should still be loaded (not reloaded since file is gone)
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsIgnoresUnloadedAssets) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+
+    // Don't load the asset
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    // Enable hot reload and check
+    assetSystem_->enableHotReload(true);
+    EXPECT_NO_THROW(assetSystem_->checkForReloads());
+
+    // Asset should still be unloaded
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsIgnoresAssetsBeingLoaded) {
+    // Create a temporary test file
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_loading.txt";
+    {
+        std::ofstream file(tempFilePath);
+        file << "Loading test content";
+    }
+
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, tempFilePath);
+
+    // Start async load but don't wait for it
+    assetSystem_->loadAssetAsync(handle);
+
+    // Enable hot reload and check - should not interfere with pending load
+    assetSystem_->enableHotReload(true);
+    EXPECT_NO_THROW(assetSystem_->checkForReloads());
+
+    // Wait for async load to complete
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (assetSystem_->isLoaded(handle)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Cleanup
+    std::filesystem::remove(tempFilePath);
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsWithMultipleAssets) {
+    // Create multiple temporary test files
+    std::filesystem::path tempFile1 = std::filesystem::temp_directory_path() / "jframe_test_multi1.txt";
+    std::filesystem::path tempFile2 = std::filesystem::temp_directory_path() / "jframe_test_multi2.txt";
+    std::filesystem::path tempFile3 = std::filesystem::temp_directory_path() / "jframe_test_multi3.txt";
+
+    {
+        std::ofstream file1(tempFile1);
+        file1 << "File 1 initial";
+        std::ofstream file2(tempFile2);
+        file2 << "File 2 initial";
+        std::ofstream file3(tempFile3);
+        file3 << "File 3 initial";
+    }
+
+    // Register and load all assets
+    AssetHandle handle1 = assetSystem_->registerAsset(AssetType::Data, tempFile1);
+    AssetHandle handle2 = assetSystem_->registerAsset(AssetType::Data, tempFile2);
+    AssetHandle handle3 = assetSystem_->registerAsset(AssetType::Data, tempFile3);
+
+    assetSystem_->loadAsset(handle1);
+    assetSystem_->loadAsset(handle2);
+    assetSystem_->loadAsset(handle3);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle1));
+    EXPECT_TRUE(assetSystem_->isLoaded(handle2));
+    EXPECT_TRUE(assetSystem_->isLoaded(handle3));
+
+    // Wait for file system timestamp resolution
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+
+    // Modify only file2
+    {
+        std::ofstream file2(tempFile2);
+        file2 << "File 2 modified";
+    }
+
+    // Enable hot reload and check
+    assetSystem_->enableHotReload(true);
+    assetSystem_->checkForReloads();
+
+    // Verify file2 was reloaded, others weren't
+    void* rawData1 = assetSystem_->getRawAsset(handle1);
+    auto* anyData1 = static_cast<std::any*>(rawData1);
+    const DataAsset& dataAsset1 = std::any_cast<const DataAsset&>(*anyData1);
+    EXPECT_EQ(dataAsset1.rawText, "File 1 initial");
+
+    void* rawData2 = assetSystem_->getRawAsset(handle2);
+    auto* anyData2 = static_cast<std::any*>(rawData2);
+    const DataAsset& dataAsset2 = std::any_cast<const DataAsset&>(*anyData2);
+    EXPECT_EQ(dataAsset2.rawText, "File 2 modified");
+
+    void* rawData3 = assetSystem_->getRawAsset(handle3);
+    auto* anyData3 = static_cast<std::any*>(rawData3);
+    const DataAsset& dataAsset3 = std::any_cast<const DataAsset&>(*anyData3);
+    EXPECT_EQ(dataAsset3.rawText, "File 3 initial");
+
+    // Cleanup
+    std::filesystem::remove(tempFile1);
+    std::filesystem::remove(tempFile2);
+    std::filesystem::remove(tempFile3);
+}
+
 //==========================================================================
 // Update Loop Tests
 //==========================================================================
