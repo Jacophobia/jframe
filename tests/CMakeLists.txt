@@ -6,6 +6,7 @@ add_executable(jframe-tests
     unit/SaveSystemTests.cpp
     unit/EventSystemTests.cpp
     unit/InputSystemTests.cpp
+    unit/AssetSystemTests.cpp
     unit/AudioSystemTests.cpp
     unit/GraphicsSystemTests.cpp
     unit/PhysicsSystemTests.cpp
@@ -18,6 +19,7 @@ target_link_libraries(jframe-tests
         jframe-core
         jframe-entity
         jframe-events
+        jframe-assets
         jframe-save
         jframe-input
         jframe-audio

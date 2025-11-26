@@ -1,0 +1,605 @@
+// tests/unit/AssetSystemTests.cpp
+// Asset system unit tests
+
+#include <cstddef>
+#include <filesystem>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+import jframe.assets;
+import jframe.assets.impl;
+import jframe.types;
+
+namespace jframe::tests {
+
+class AssetSystemTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        assetSystem_ = createAssetSystem();
+    }
+
+    std::unique_ptr<IAssetSystem> assetSystem_;
+};
+
+//==========================================================================
+// Asset Registration Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, RegisterAssetReturnsValidHandle) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    EXPECT_TRUE(handle.isValid());
+    EXPECT_NE(handle.uuid, 0);
+    EXPECT_EQ(handle.type, AssetType::Texture);
+}
+
+TEST_F(AssetSystemTest, RegisterAssetInitialStateIsUnloaded) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/jump.wav");
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, RegisterMultipleAssetsDifferentTypes) {
+    AssetHandle texture = assetSystem_->registerAsset(AssetType::Texture, "textures/player.png");
+    AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "sounds/explosion.wav");
+    AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
+    AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "data/config.json");
+
+    EXPECT_TRUE(texture.isValid());
+    EXPECT_TRUE(sound.isValid());
+    EXPECT_TRUE(font.isValid());
+    EXPECT_TRUE(data.isValid());
+
+    EXPECT_EQ(texture.type, AssetType::Texture);
+    EXPECT_EQ(sound.type, AssetType::Sound);
+    EXPECT_EQ(font.type, AssetType::Font);
+    EXPECT_EQ(data.type, AssetType::Data);
+
+    // All handles should be unique
+    EXPECT_NE(texture.uuid, sound.uuid);
+    EXPECT_NE(texture.uuid, font.uuid);
+    EXPECT_NE(sound.uuid, font.uuid);
+}
+
+TEST_F(AssetSystemTest, RegisterSamePathMultipleTimes) {
+    AssetHandle handle1 = assetSystem_->registerAsset(AssetType::Texture, "textures/shared.png");
+    AssetHandle handle2 = assetSystem_->registerAsset(AssetType::Texture, "textures/shared.png");
+
+    // Should create different handles even for same path
+    EXPECT_NE(handle1.uuid, handle2.uuid);
+}
+
+TEST_F(AssetSystemTest, UnregisterAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/temp.png");
+    EXPECT_TRUE(handle.isValid());
+
+    assetSystem_->unregisterAsset(handle);
+
+    // After unregistering, state should be Unloaded (default for non-existent asset)
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+}
+
+TEST_F(AssetSystemTest, UnregisterUnregisteredAssetDoesNotCrash) {
+    AssetHandle invalid = AssetHandle::invalid();
+    EXPECT_NO_THROW(assetSystem_->unregisterAsset(invalid));
+}
+
+//==========================================================================
+// Asset Metadata Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, GetAssetMetadataReturnsCorrectPath) {
+    std::filesystem::path path = "textures/player.png";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, path);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+
+    EXPECT_EQ(metadata.handle.uuid, handle.uuid);
+    EXPECT_EQ(metadata.sourcePath, path);
+    EXPECT_EQ(metadata.state, AssetState::Unloaded);
+}
+
+TEST_F(AssetSystemTest, GetAssetMetadataForInvalidHandleReturnsDefault) {
+    AssetHandle invalid = AssetHandle::invalid();
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(invalid);
+
+    EXPECT_EQ(metadata.handle.uuid, 0);
+    EXPECT_TRUE(metadata.sourcePath.empty());
+}
+
+TEST_F(AssetSystemTest, GetAssetMetadataAfterLoad) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    assetSystem_->loadAsset(handle);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+
+    EXPECT_EQ(metadata.state, AssetState::Loaded);
+    EXPECT_FALSE(metadata.errorMessage.has_value());
+}
+
+//==========================================================================
+// Asset State Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, GetAssetStateForUnregisteredAsset) {
+    AssetHandle invalid{999, AssetType::Texture};
+    EXPECT_EQ(assetSystem_->getAssetState(invalid), AssetState::Unloaded);
+}
+
+TEST_F(AssetSystemTest, IsLoadedReturnsFalseForUnloadedAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/bgm.wav");
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, IsLoadedReturnsTrueAfterLoad) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, AssetStateTransitionsCorrectly) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "data/level.json");
+
+    // Initial state
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+
+    // After loading
+    assetSystem_->loadAsset(handle);
+    AssetState state = assetSystem_->getAssetState(handle);
+    EXPECT_TRUE(state == AssetState::Loaded || state == AssetState::Loading);
+
+    // After unloading
+    assetSystem_->unloadAsset(handle);
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+}
+
+//==========================================================================
+// Asset Loading Tests (Synchronous)
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadRegisteredAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, LoadUnregisteredAssetDoesNotCrash) {
+    AssetHandle invalid{999, AssetType::Texture};
+    EXPECT_NO_THROW(assetSystem_->loadAsset(invalid));
+}
+
+TEST_F(AssetSystemTest, LoadAssetMultipleTimes) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/coin.wav");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Loading again should be safe
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, LoadMultipleAssets) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/bg.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/jump.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/main.ttf");
+
+    assetSystem_->loadAsset(h1);
+    assetSystem_->loadAsset(h2);
+    assetSystem_->loadAsset(h3);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(h1));
+    EXPECT_TRUE(assetSystem_->isLoaded(h2));
+    EXPECT_TRUE(assetSystem_->isLoaded(h3));
+}
+
+//==========================================================================
+// Asset Loading Tests (Asynchronous)
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadAssetAsyncWithoutCallback) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/async.png");
+
+    assetSystem_->loadAssetAsync(handle, nullptr);
+    assetSystem_->update();
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, LoadAssetAsyncWithCallback) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/async.wav");
+
+    bool callbackInvoked = false;
+    AssetHandle receivedHandle = AssetHandle::invalid();
+    AssetState receivedState = AssetState::Unloaded;
+
+    assetSystem_->loadAssetAsync(handle, [&](AssetHandle h, AssetState s) {
+        callbackInvoked = true;
+        receivedHandle = h;
+        receivedState = s;
+    });
+
+    assetSystem_->update();
+
+    EXPECT_TRUE(callbackInvoked);
+    EXPECT_EQ(receivedHandle.uuid, handle.uuid);
+    EXPECT_EQ(receivedState, AssetState::Loaded);
+}
+
+TEST_F(AssetSystemTest, LoadAssetAsyncMultipleCallbacks) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/a.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Texture, "textures/b.png");
+
+    int callbackCount = 0;
+
+    assetSystem_->loadAssetAsync(h1, [&](AssetHandle, AssetState) { callbackCount++; });
+    assetSystem_->loadAssetAsync(h2, [&](AssetHandle, AssetState) { callbackCount++; });
+
+    assetSystem_->update();
+
+    EXPECT_EQ(callbackCount, 2);
+}
+
+TEST_F(AssetSystemTest, LoadAssetAsyncStateProgression) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "data/level.json");
+
+    assetSystem_->loadAssetAsync(handle);
+
+    // State should be Loading or Loaded
+    AssetState state = assetSystem_->getAssetState(handle);
+    EXPECT_TRUE(state == AssetState::Loading || state == AssetState::Loaded);
+
+    assetSystem_->update();
+
+    // After update, should be Loaded
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+}
+
+//==========================================================================
+// Asset Unloading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, UnloadLoadedAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/temp.png");
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+}
+
+TEST_F(AssetSystemTest, UnloadUnloadedAssetDoesNotCrash) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/test.wav");
+    EXPECT_NO_THROW(assetSystem_->unloadAsset(handle));
+}
+
+TEST_F(AssetSystemTest, UnloadUnregisteredAssetDoesNotCrash) {
+    AssetHandle invalid{999, AssetType::Texture};
+    EXPECT_NO_THROW(assetSystem_->unloadAsset(invalid));
+}
+
+TEST_F(AssetSystemTest, UnloadAndReload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/cycle.png");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+//==========================================================================
+// Bulk Operations Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadAllAssets) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/3.ttf");
+
+    assetSystem_->loadAll();
+
+    EXPECT_TRUE(assetSystem_->isLoaded(h1));
+    EXPECT_TRUE(assetSystem_->isLoaded(h2));
+    EXPECT_TRUE(assetSystem_->isLoaded(h3));
+}
+
+TEST_F(AssetSystemTest, LoadAllWithPartiallyLoadedAssets) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
+
+    assetSystem_->loadAsset(h1);
+    EXPECT_TRUE(assetSystem_->isLoaded(h1));
+    EXPECT_FALSE(assetSystem_->isLoaded(h2));
+
+    assetSystem_->loadAll();
+
+    EXPECT_TRUE(assetSystem_->isLoaded(h1));
+    EXPECT_TRUE(assetSystem_->isLoaded(h2));
+}
+
+TEST_F(AssetSystemTest, UnloadAllAssets) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/3.ttf");
+
+    assetSystem_->loadAll();
+    EXPECT_TRUE(assetSystem_->isLoaded(h1));
+    EXPECT_TRUE(assetSystem_->isLoaded(h2));
+    EXPECT_TRUE(assetSystem_->isLoaded(h3));
+
+    assetSystem_->unloadAll();
+
+    EXPECT_FALSE(assetSystem_->isLoaded(h1));
+    EXPECT_FALSE(assetSystem_->isLoaded(h2));
+    EXPECT_FALSE(assetSystem_->isLoaded(h3));
+}
+
+TEST_F(AssetSystemTest, UnloadAllOnEmptySystemDoesNotCrash) {
+    EXPECT_NO_THROW(assetSystem_->unloadAll());
+}
+
+//==========================================================================
+// Asset Query Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, GetAssetsOfTypeSingleType) {
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Texture, "textures/2.png");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Sound, "sounds/1.wav");
+
+    std::vector<AssetHandle> textures = assetSystem_->getAssetsOfType(AssetType::Texture);
+
+    EXPECT_EQ(textures.size(), 2);
+    EXPECT_TRUE(std::find_if(textures.begin(), textures.end(),
+                             [&](const AssetHandle& h) { return h.uuid == h1.uuid; }) != textures.end());
+    EXPECT_TRUE(std::find_if(textures.begin(), textures.end(),
+                             [&](const AssetHandle& h) { return h.uuid == h2.uuid; }) != textures.end());
+}
+
+TEST_F(AssetSystemTest, GetAssetsOfTypeNoMatches) {
+    assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    assetSystem_->registerAsset(AssetType::Texture, "textures/2.png");
+
+    std::vector<AssetHandle> sounds = assetSystem_->getAssetsOfType(AssetType::Sound);
+
+    EXPECT_TRUE(sounds.empty());
+}
+
+TEST_F(AssetSystemTest, GetAssetsOfTypeEmptySystem) {
+    std::vector<AssetHandle> assets = assetSystem_->getAssetsOfType(AssetType::Texture);
+    EXPECT_TRUE(assets.empty());
+}
+
+TEST_F(AssetSystemTest, GetAssetsOfTypeAllTypes) {
+    assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
+    assetSystem_->registerAsset(AssetType::Sound, "sounds/1.wav");
+    assetSystem_->registerAsset(AssetType::Music, "music/bgm.mp3");
+    assetSystem_->registerAsset(AssetType::Font, "fonts/main.ttf");
+    assetSystem_->registerAsset(AssetType::Data, "data/config.json");
+
+    EXPECT_EQ(assetSystem_->getAssetsOfType(AssetType::Texture).size(), 1);
+    EXPECT_EQ(assetSystem_->getAssetsOfType(AssetType::Sound).size(), 1);
+    EXPECT_EQ(assetSystem_->getAssetsOfType(AssetType::Music).size(), 1);
+    EXPECT_EQ(assetSystem_->getAssetsOfType(AssetType::Font).size(), 1);
+    EXPECT_EQ(assetSystem_->getAssetsOfType(AssetType::Data).size(), 1);
+}
+
+//==========================================================================
+// Raw Data Access Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, GetRawAssetUnloadedReturnsNull) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, GetRawAssetConstUnloadedReturnsNull) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/test.wav");
+
+    const IAssetSystem* constSystem = assetSystem_.get();
+    const void* rawData = constSystem->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, GetRawAssetInvalidHandleReturnsNull) {
+    AssetHandle invalid{999, AssetType::Texture};
+
+    void* rawData = assetSystem_->getRawAsset(invalid);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, GetRawAssetAfterUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    assetSystem_->loadAsset(handle);
+
+    assetSystem_->unloadAsset(handle);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+//==========================================================================
+// Hot Reload Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, EnableHotReload) {
+    EXPECT_NO_THROW(assetSystem_->enableHotReload(true));
+    EXPECT_NO_THROW(assetSystem_->enableHotReload(false));
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsDoesNotCrash) {
+    assetSystem_->enableHotReload(true);
+    EXPECT_NO_THROW(assetSystem_->checkForReloads());
+}
+
+TEST_F(AssetSystemTest, CheckForReloadsWhenDisabled) {
+    assetSystem_->enableHotReload(false);
+    EXPECT_NO_THROW(assetSystem_->checkForReloads());
+}
+
+TEST_F(AssetSystemTest, ReloadAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/reload.png");
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->reloadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, ReloadUnloadedAsset) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/reload.wav");
+
+    assetSystem_->reloadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+TEST_F(AssetSystemTest, ReloadUnregisteredAssetDoesNotCrash) {
+    AssetHandle invalid{999, AssetType::Texture};
+    EXPECT_NO_THROW(assetSystem_->reloadAsset(invalid));
+}
+
+//==========================================================================
+// Update Loop Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, UpdateWithNoPendingLoads) {
+    EXPECT_NO_THROW(assetSystem_->update());
+}
+
+TEST_F(AssetSystemTest, UpdateProcessesPendingLoads) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/pending.png");
+
+    bool processed = false;
+    assetSystem_->loadAssetAsync(handle, [&](AssetHandle, AssetState) {
+        processed = true;
+    });
+
+    EXPECT_FALSE(processed);
+    assetSystem_->update();
+    EXPECT_TRUE(processed);
+}
+
+TEST_F(AssetSystemTest, UpdateMultipleTimes) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    assetSystem_->loadAssetAsync(handle);
+
+    assetSystem_->update();
+    assetSystem_->update();
+    assetSystem_->update();
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+}
+
+//==========================================================================
+// Asset Type Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, RegisterAllAssetTypes) {
+    AssetHandle texture = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
+    AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "sounds/effect.wav");
+    AssetHandle music = assetSystem_->registerAsset(AssetType::Music, "music/bgm.mp3");
+    AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
+    AssetHandle level = assetSystem_->registerAsset(AssetType::Level, "levels/level1.lua");
+    AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "data/config.json");
+    AssetHandle shader = assetSystem_->registerAsset(AssetType::Shader, "shaders/basic.glsl");
+    AssetHandle navMesh = assetSystem_->registerAsset(AssetType::NavMesh, "navmesh/level1.nav");
+    AssetHandle behaviorTree = assetSystem_->registerAsset(AssetType::BehaviorTree, "ai/enemy.bt");
+
+    EXPECT_EQ(texture.type, AssetType::Texture);
+    EXPECT_EQ(sound.type, AssetType::Sound);
+    EXPECT_EQ(music.type, AssetType::Music);
+    EXPECT_EQ(font.type, AssetType::Font);
+    EXPECT_EQ(level.type, AssetType::Level);
+    EXPECT_EQ(data.type, AssetType::Data);
+    EXPECT_EQ(shader.type, AssetType::Shader);
+    EXPECT_EQ(navMesh.type, AssetType::NavMesh);
+    EXPECT_EQ(behaviorTree.type, AssetType::BehaviorTree);
+}
+
+TEST_F(AssetSystemTest, LoadAllAssetTypes) {
+    AssetHandle texture = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
+    AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "sounds/effect.wav");
+    AssetHandle music = assetSystem_->registerAsset(AssetType::Music, "music/bgm.mp3");
+    AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
+    AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "data/config.json");
+
+    assetSystem_->loadAsset(texture);
+    assetSystem_->loadAsset(sound);
+    assetSystem_->loadAsset(music);
+    assetSystem_->loadAsset(font);
+    assetSystem_->loadAsset(data);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(texture));
+    EXPECT_TRUE(assetSystem_->isLoaded(sound));
+    EXPECT_TRUE(assetSystem_->isLoaded(music));
+    EXPECT_TRUE(assetSystem_->isLoaded(font));
+    EXPECT_TRUE(assetSystem_->isLoaded(data));
+}
+
+//==========================================================================
+// Edge Cases and Error Handling
+//==========================================================================
+
+TEST_F(AssetSystemTest, InvalidHandleOperationsDoNotCrash) {
+    AssetHandle invalid = AssetHandle::invalid();
+
+    EXPECT_NO_THROW(assetSystem_->loadAsset(invalid));
+    EXPECT_NO_THROW(assetSystem_->loadAssetAsync(invalid));
+    EXPECT_NO_THROW(assetSystem_->unloadAsset(invalid));
+    EXPECT_NO_THROW(assetSystem_->unregisterAsset(invalid));
+    EXPECT_NO_THROW(assetSystem_->reloadAsset(invalid));
+    EXPECT_EQ(assetSystem_->getAssetState(invalid), AssetState::Unloaded);
+    EXPECT_EQ(assetSystem_->getRawAsset(invalid), nullptr);
+}
+
+TEST_F(AssetSystemTest, EmptyPathRegistration) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "");
+    EXPECT_TRUE(handle.isValid());
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.sourcePath.empty());
+}
+
+TEST_F(AssetSystemTest, LongPathRegistration) {
+    std::filesystem::path longPath = "assets/textures/characters/enemies/boss/phase1/attack/sprite_sheet_001.png";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, longPath);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_EQ(metadata.sourcePath, longPath);
+}
+
+TEST_F(AssetSystemTest, ManyAssetsRegistration) {
+    std::vector<AssetHandle> handles;
+    for (int i = 0; i < 1000; ++i) {
+        std::string filename = "textures/sprite_" + std::to_string(i) + ".png";
+        handles.push_back(assetSystem_->registerAsset(
+            AssetType::Texture,
+            filename
+        ));
+    }
+
+    EXPECT_EQ(handles.size(), 1000);
+
+    // Verify all handles are unique
+    for (size_t i = 0; i < handles.size(); ++i) {
+        for (size_t j = i + 1; j < handles.size(); ++j) {
+            EXPECT_NE(handles[i].uuid, handles[j].uuid);
+        }
+    }
+}
+
+}  // namespace jframe::tests
