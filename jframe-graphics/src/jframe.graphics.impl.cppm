@@ -16,6 +16,30 @@ import jframe.types;
 
 export namespace jframe {
 
+// Font glyph metrics
+struct GlyphInfo {
+    float advanceX;      // Horizontal advance
+    float bearingX;      // Horizontal bearing (offset from cursor)
+    float bearingY;      // Vertical bearing (offset from baseline)
+    float width;         // Glyph width
+    float height;        // Glyph height
+    float texCoordX;     // Texture coordinate X (normalized)
+    float texCoordY;     // Texture coordinate Y (normalized)
+    float texCoordW;     // Texture coordinate width (normalized)
+    float texCoordH;     // Texture coordinate height (normalized)
+};
+
+// Font atlas data
+struct FontAtlas {
+    GLuint textureID = 0;
+    int atlasWidth = 0;
+    int atlasHeight = 0;
+    float fontSize = 0.0f;
+    GlyphInfo glyphs[256] = {};  // ASCII characters
+    float lineHeight = 0.0f;
+    AssetHandle fontHandle;
+};
+
 class GraphicsSystem : public IGraphicsSystem {
 public:
     GraphicsSystem() = default;
@@ -103,11 +127,29 @@ private:
     GLuint spriteVBO_ = 0;
     GLuint whiteTexture_ = 0;
 
+    // Debug primitive rendering resources
+    GLuint primitiveShaderProgram_ = 0;
+    GLuint primitiveVAO_ = 0;
+    GLuint primitiveVBO_ = 0;
+
+    // Text rendering resources
+    GLuint textShaderProgram_ = 0;
+    GLuint textVAO_ = 0;
+    GLuint textVBO_ = 0;
+    std::unordered_map<AssetHandle, FontAtlas, AssetHandleHash> fontAtlases_;
+    FontAtlas defaultFontAtlas_;
+
     // Shader compilation helpers
     bool compileShader(GLuint shader, const char* source);
     bool linkProgram(GLuint program);
     GLuint createShaderProgram(const char* vertSource, const char* fragSource);
     void createWhiteTexture();
+    void createPrimitiveResources();
+
+    // Text rendering helpers
+    void createDefaultFont();
+    void createTextResources();
+    const FontAtlas& getFontAtlas(AssetHandle fontHandle, float size) const;
 };
 
 // Factory function (exported via namespace)
