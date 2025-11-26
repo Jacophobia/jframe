@@ -1,0 +1,54 @@
+# Build directories
+build/
+install/
+out/
+
+# IDE/Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!cmake/*.cmake
+
+# Compiled files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Module cache
+*.pcm
+*.ifc
+
+# vcpkg
+vcpkg_installed/
+
+# External dependencies (manually managed)
+external/fmod/
+external/tracy/
+
+# Test output
+Testing/
+
+# Saves and user data
+saves/
+*.log
+
+# Compiled shaders
+*.spv
+
+# Generated files
+compile_commands.json

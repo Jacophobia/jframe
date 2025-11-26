@@ -1,0 +1,31 @@
+{
+    "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+    "name": "jframe",
+    "version": "1.0.0",
+    "description": "JFrame Game Framework",
+    "license": "MIT",
+    "supports": "!(uwp | arm | android | ios)",
+    "dependencies": [
+        "glfw3",
+        "glad",
+        "sdl2",
+        "glm",
+        "spdlog",
+        "fmt",
+        "lua",
+        "sol2",
+        "nlohmann-json",
+        "cereal",
+        "entt",
+        "box2d",
+        "freetype",
+        "zstd",
+        "gtest",
+        "imgui",
+        "taskflow",
+        "recastnavigation",
+        "behaviortree-cpp",
+        "efsw"
+    ],
+    "builtin-baseline": "9aee6e968f51e15ee93606f064691d8f6d228190"
+}
