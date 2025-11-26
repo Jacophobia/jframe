@@ -497,6 +497,13 @@ void FMODAudioSystem::pauseAll() {
     if (masterGroup_) {
         FMOD_ChannelGroup_SetPaused(masterGroup_, true);
     }
+#else
+    // In stub mode, manually update each channel's pause state
+    for (auto& [channel, data] : channels_) {
+        if (data.state.isPlaying) {
+            data.state.isPaused = true;
+        }
+    }
 #endif
 }
 
@@ -506,6 +513,13 @@ void FMODAudioSystem::resumeAll() {
 #ifdef JFRAME_HAS_FMOD
     if (masterGroup_) {
         FMOD_ChannelGroup_SetPaused(masterGroup_, false);
+    }
+#else
+    // In stub mode, manually update each channel's pause state
+    for (auto& [channel, data] : channels_) {
+        if (data.state.isPlaying) {
+            data.state.isPaused = false;
+        }
     }
 #endif
 }

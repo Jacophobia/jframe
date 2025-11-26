@@ -46,6 +46,11 @@ public:
 class SaveSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Clean up any leftover saves directory from previous test runs
+        if (std::filesystem::exists("saves")) {
+            std::filesystem::remove_all("saves");
+        }
+
         saveSystem_ = createSaveSystem();
 
         // Create a temp directory for test saves
@@ -60,6 +65,11 @@ protected:
         // Clean up temp files
         if (std::filesystem::exists(tempDir_)) {
             std::filesystem::remove_all(tempDir_);
+        }
+
+        // Clean up the actual saves directory created by SaveSystem
+        if (std::filesystem::exists("saves")) {
+            std::filesystem::remove_all("saves");
         }
     }
 

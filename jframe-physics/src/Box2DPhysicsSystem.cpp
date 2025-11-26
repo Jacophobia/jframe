@@ -159,6 +159,9 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
     shapeDef.material.friction = def.friction;
     shapeDef.material.restitution = def.restitution;
 
+    // Enable contact events for collision callbacks
+    shapeDef.enableContactEvents = true;
+
     b2Polygon box = b2MakeBox(DEFAULT_SIZE / (2.0f * PIXELS_PER_METER), DEFAULT_SIZE / (2.0f * PIXELS_PER_METER));
     b2CreatePolygonShape(bodyId, &shapeDef, &box);
 

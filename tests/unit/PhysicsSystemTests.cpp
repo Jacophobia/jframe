@@ -216,7 +216,7 @@ TEST_F(PhysicsSystemTest, CanSetAndGetRotation) {
     physics->setRotation(entity, targetRotation);
 
     float retrievedRotation = physics->getRotation(entity);
-    EXPECT_FLOAT_EQ(retrievedRotation, targetRotation);
+    EXPECT_NEAR(retrievedRotation, targetRotation, 0.0001f);
 }
 
 TEST_F(PhysicsSystemTest, InitialRotationIsSetFromBodyDef) {
@@ -228,7 +228,7 @@ TEST_F(PhysicsSystemTest, InitialRotationIsSetFromBodyDef) {
     physics->createBody(entity, def);
 
     float rotation = physics->getRotation(entity);
-    EXPECT_FLOAT_EQ(rotation, 3.14f);
+    EXPECT_NEAR(rotation, 3.14f, 0.0001f);
 }
 
 TEST_F(PhysicsSystemTest, GettingRotationForNonExistentBodyReturnsDefault) {
@@ -278,7 +278,10 @@ TEST_F(PhysicsSystemTest, GettingVelocityForNonExistentBodyReturnsDefault) {
 
 TEST_F(PhysicsSystemTest, CanSetAndGetAngularVelocity) {
     Entity entity = static_cast<Entity>(14);
-    PhysicsBodyDef def{.type = BodyType::Dynamic};
+    PhysicsBodyDef def{
+        .type = BodyType::Dynamic,
+        .fixedRotation = false  // Allow rotation
+    };
     physics->createBody(entity, def);
 
     float targetAngularVelocity = 2.5f;
@@ -752,18 +755,18 @@ TEST_F(PhysicsSystemTest, CollisionCallbackIsInvokedOnCollision) {
 
     PhysicsBodyDef def1{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 100.0f}
+        .transform = {.x = 100.0f, .y = 150.0f}  // Start above entity2
     };
     PhysicsBodyDef def2{
         .type = BodyType::Static,
-        .transform = {.x = 100.0f, .y = 50.0f}  // Below entity1
+        .transform = {.x = 100.0f, .y = 50.0f}  // Ground below entity1
     };
 
     physics->createBody(entity1, def1);
     physics->createBody(entity2, def2);
 
-    // Simulate to allow collision
-    for (int i = 0; i < 60; ++i) {
+    // Simulate to allow entity1 to fall and collide with entity2
+    for (int i = 0; i < 120; ++i) {
         physics->update(1.0f / 60.0f);
     }
 

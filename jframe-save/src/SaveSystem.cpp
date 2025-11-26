@@ -282,6 +282,10 @@ bool SaveSystem::saveExists(SaveSlot slot) const {
 
 void SaveSystem::setActiveProfile(const std::string& profileId) {
     activeProfile_ = profileId;
+
+    // Create the profile directory if it doesn't exist
+    auto profilePath = savesDirectory_ / activeProfile_;
+    std::filesystem::create_directories(profilePath);
 }
 
 std::string SaveSystem::getActiveProfile() const {
