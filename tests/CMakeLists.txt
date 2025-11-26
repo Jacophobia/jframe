@@ -11,6 +11,7 @@ add_executable(jframe-tests
     unit/GraphicsSystemTests.cpp
     unit/PhysicsSystemTests.cpp
     unit/LevelSystemTests.cpp
+    unit/AISystemTests.cpp
 )
 target_use_std_module(jframe-tests)
 
@@ -27,6 +28,7 @@ target_link_libraries(jframe-tests
         jframe-graphics
         jframe-physics
         jframe-level
+        jframe-ai
         GTest::gtest
         GTest::gtest_main
 )
