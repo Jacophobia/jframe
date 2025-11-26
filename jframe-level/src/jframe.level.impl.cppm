@@ -3,11 +3,15 @@
 
 module;
 
+#include <sol/sol.hpp>
+
 export module jframe.level.impl;
 
 import std;
 import jframe.level;
 import jframe.types;
+import jframe.assets;
+import jframe.assets.impl;
 
 export namespace jframe {
 
@@ -16,7 +20,7 @@ public:
     LevelSystem() = default;
     ~LevelSystem() override = default;
 
-    bool initialize();
+    bool initialize(IAssetSystem* assetSystem = nullptr);
 
     void update(DeltaTime dt) override;
 
@@ -50,7 +54,10 @@ private:
     };
 
     UUID generateLevelId();
+    bool parseLevelLua(const std::string& luaCode, LoadedLevel& level);
 
+    IAssetSystem* assetSystem_ = nullptr;
+    sol::state lua_;
     std::unordered_map<LevelId, LoadedLevel> levels_;
     std::optional<LevelId> activeLevel_;
     std::optional<LevelTransition> pendingTransition_;

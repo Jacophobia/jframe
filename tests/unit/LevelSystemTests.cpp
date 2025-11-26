@@ -13,6 +13,8 @@
 import jframe.level;
 import jframe.level.impl;
 import jframe.types;
+import jframe.assets;
+import jframe.assets.impl;
 
 namespace jframe::tests {
 
@@ -646,6 +648,95 @@ TEST_F(LevelSystemTest, CompleteWorkflow) {
     // Verify only one level is loaded
     auto loadedLevels = levelSystem_->getLoadedLevels();
     EXPECT_EQ(loadedLevels.size(), 1);
+}
+
+//==============================================================================
+// Lua Integration Tests
+//==============================================================================
+
+class LevelSystemLuaTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        assetSystem_ = createAssetSystem();
+
+        // Create LevelSystem and initialize with AssetSystem
+        auto levelSystemImpl = std::make_unique<LevelSystem>();
+        levelSystemImpl->initialize(assetSystem_.get());
+        levelSystem_ = std::move(levelSystemImpl);
+    }
+
+    std::unique_ptr<IAssetSystem> assetSystem_;
+    std::unique_ptr<ILevelSystem> levelSystem_;
+};
+
+TEST_F(LevelSystemLuaTest, LoadLevelWithSpawnPoints) {
+    // Register and load the test level asset
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_spawns.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Load the level through the level system
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify metadata was parsed
+    LevelMetadata metadata = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata.levelName, "Test Level With Spawns");
+    EXPECT_EQ(metadata.width, 2000.0f);
+    EXPECT_EQ(metadata.height, 1200.0f);
+
+    // Verify spawn points were parsed
+    auto spawnNames = levelSystem_->getSpawnPointNames(levelId);
+    EXPECT_EQ(spawnNames.size(), 5);
+
+    // Check default spawn point
+    auto defaultSpawn = levelSystem_->getSpawnPoint(levelId, "default");
+    ASSERT_TRUE(defaultSpawn.has_value());
+    EXPECT_FLOAT_EQ(defaultSpawn->x, 100.0f);
+    EXPECT_FLOAT_EQ(defaultSpawn->y, 500.0f);
+    EXPECT_FLOAT_EQ(defaultSpawn->rotation, 0.0f);
+
+    // Check checkpoint1
+    auto checkpoint1 = levelSystem_->getSpawnPoint(levelId, "checkpoint1");
+    ASSERT_TRUE(checkpoint1.has_value());
+    EXPECT_FLOAT_EQ(checkpoint1->x, 500.0f);
+    EXPECT_FLOAT_EQ(checkpoint1->y, 400.0f);
+
+    // Check boss_room (with rotation)
+    auto bossRoom = levelSystem_->getSpawnPoint(levelId, "boss_room");
+    ASSERT_TRUE(bossRoom.has_value());
+    EXPECT_FLOAT_EQ(bossRoom->x, 1800.0f);
+    EXPECT_FLOAT_EQ(bossRoom->y, 600.0f);
+    EXPECT_FLOAT_EQ(bossRoom->rotation, 180.0f);
+}
+
+TEST_F(LevelSystemLuaTest, LoadBasicLevel) {
+    // Register and load the basic test level
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Load the level
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify metadata
+    LevelMetadata metadata = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata.levelName, "Test Level 1");
+    EXPECT_EQ(metadata.width, 1920.0f);
+    EXPECT_EQ(metadata.height, 1080.0f);
+
+    // Basic level has no spawn points
+    auto spawnNames = levelSystem_->getSpawnPointNames(levelId);
+    EXPECT_TRUE(spawnNames.empty());
 }
 
 }  // namespace jframe::tests

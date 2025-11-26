@@ -2,12 +2,16 @@
 
 module;
 
+#include <any>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <system_error>
 #include <unordered_map>
 #include <vector>
+
+#include <sol/sol.hpp>
+#include <sol/types.hpp>
 
 module jframe.level.impl;
 
@@ -17,8 +21,22 @@ UUID LevelSystem::generateLevelId() {
     return nextLevelId_++;
 }
 
-bool LevelSystem::initialize() {
+bool LevelSystem::initialize(IAssetSystem* assetSystem) {
+    assetSystem_ = assetSystem;
+
     // Initialize Lua state with sandboxing
+    lua_.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
+
+    // Apply sandboxing - remove dangerous functions
+    lua_["os"] = sol::lua_nil;
+    lua_["io"] = sol::lua_nil;
+    lua_["loadfile"] = sol::lua_nil;
+    lua_["dofile"] = sol::lua_nil;
+    lua_["load"] = sol::lua_nil;
+    lua_["loadstring"] = sol::lua_nil;
+    lua_["require"] = sol::lua_nil;
+    lua_["package"] = sol::lua_nil;
+
     return true;
 }
 
@@ -39,6 +57,28 @@ Result<LevelId, std::error_code> LevelSystem::loadLevel(AssetHandle levelAsset) 
     level.metadata.id = id;
     level.metadata.assetHandle = levelAsset;
     level.metadata.state = LevelState::Loaded;
+
+    // If we have access to the AssetSystem, load and parse the Lua level file
+    if (assetSystem_ != nullptr) {
+        // Get the level asset data (assumes it's already loaded)
+        const void* rawAsset = assetSystem_->getRawAsset(levelAsset);
+        if (rawAsset != nullptr) {
+            try {
+                // getRawAsset returns a pointer to std::any, so we need to dereference and cast
+                const std::any* assetAny = static_cast<const std::any*>(rawAsset);
+                const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*assetAny);
+                if (!dataAsset.rawText.empty()) {
+                    // Parse the Lua level file
+                    if (!parseLevelLua(dataAsset.rawText, level)) {
+                        // Parsing failed - return error
+                        return std::unexpected(std::make_error_code(std::errc::invalid_argument));
+                    }
+                }
+            } catch (const std::bad_any_cast&) {
+                // Asset is not a DataAsset, skip parsing
+            }
+        }
+    }
 
     levels_[id] = std::move(level);
     return id;

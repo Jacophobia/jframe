@@ -12,10 +12,9 @@ target_sources(jframe-level
 target_link_libraries(jframe-level
     PUBLIC
         jframe-contract
-        ${LUA_LIBRARIES}
+        jframe-assets
+        lua
         sol2::sol2
 )
-
-target_include_directories(jframe-level PRIVATE ${LUA_INCLUDE_DIR})
 
 target_compile_features(jframe-level PUBLIC cxx_std_23)
