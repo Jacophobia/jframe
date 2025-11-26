@@ -62,6 +62,7 @@ private:
     };
 
     std::unordered_map<std::uint32_t, AIComponent> aiComponents_;
+    AssetHandle navMeshAsset_;
     bool hasNavMesh_ = false;
 };
 
