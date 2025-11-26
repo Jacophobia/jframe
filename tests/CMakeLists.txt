@@ -10,6 +10,7 @@ add_executable(jframe-tests
     unit/AudioSystemTests.cpp
     unit/GraphicsSystemTests.cpp
     unit/PhysicsSystemTests.cpp
+    unit/LevelSystemTests.cpp
 )
 target_use_std_module(jframe-tests)
 
@@ -25,6 +26,7 @@ target_link_libraries(jframe-tests
         jframe-audio
         jframe-graphics
         jframe-physics
+        jframe-level
         GTest::gtest
         GTest::gtest_main
 )
