@@ -3,6 +3,8 @@
 
 module;
 
+#include <nlohmann/json.hpp>
+
 export module jframe.assets.impl;
 
 import std;
@@ -10,6 +12,28 @@ import jframe.assets;
 import jframe.types;
 
 export namespace jframe {
+
+// Texture data structure for loaded textures
+struct TextureData {
+    std::vector<unsigned char> pixels;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+};
+
+// Data asset structure for JSON and text files
+struct DataAsset {
+    nlohmann::json jsonData;  // Parsed JSON
+    std::string rawText;      // Original text (for non-JSON or Lua)
+    bool isJson = false;
+};
+
+// Sound/Music data structure - stores raw file bytes for FMOD to consume
+struct SoundData {
+    std::vector<unsigned char> fileData;  // Raw file bytes
+    std::string path;
+    size_t fileSize = 0;
+};
 
 class AssetSystem : public IAssetSystem {
 public:
@@ -49,7 +73,7 @@ public:
 private:
     struct AssetEntry {
         AssetMetadata metadata;
-        std::unique_ptr<std::byte[]> data;
+        std::any data;  // Can hold DataAsset, or other asset types
         std::size_t dataSize = 0;
     };
 

@@ -115,8 +115,9 @@ TEST_F(AssetSystemTest, GetAssetMetadataAfterLoad) {
 
     AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
 
-    EXPECT_EQ(metadata.state, AssetState::Loaded);
-    EXPECT_FALSE(metadata.errorMessage.has_value());
+    // Non-existent file should fail to load
+    EXPECT_EQ(metadata.state, AssetState::Failed);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
 }
 
 //==========================================================================
@@ -134,13 +135,15 @@ TEST_F(AssetSystemTest, IsLoadedReturnsFalseForUnloadedAsset) {
 }
 
 TEST_F(AssetSystemTest, IsLoadedReturnsTrueAfterLoad) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    // Use a real test file that exists
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 }
 
 TEST_F(AssetSystemTest, AssetStateTransitionsCorrectly) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "data/level.json");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
 
     // Initial state
     EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
@@ -160,7 +163,8 @@ TEST_F(AssetSystemTest, AssetStateTransitionsCorrectly) {
 //==========================================================================
 
 TEST_F(AssetSystemTest, LoadRegisteredAsset) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
 
     assetSystem_->loadAsset(handle);
 
@@ -173,7 +177,8 @@ TEST_F(AssetSystemTest, LoadUnregisteredAssetDoesNotCrash) {
 }
 
 TEST_F(AssetSystemTest, LoadAssetMultipleTimes) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/coin.wav");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
 
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -184,9 +189,10 @@ TEST_F(AssetSystemTest, LoadAssetMultipleTimes) {
 }
 
 TEST_F(AssetSystemTest, LoadMultipleAssets) {
-    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/bg.png");
-    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/jump.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/main.ttf");
+    // Use real test files
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAsset(h1);
     assetSystem_->loadAsset(h2);
@@ -202,7 +208,8 @@ TEST_F(AssetSystemTest, LoadMultipleAssets) {
 //==========================================================================
 
 TEST_F(AssetSystemTest, LoadAssetAsyncWithoutCallback) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/async.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
 
     assetSystem_->loadAssetAsync(handle, nullptr);
     assetSystem_->update();
@@ -211,7 +218,8 @@ TEST_F(AssetSystemTest, LoadAssetAsyncWithoutCallback) {
 }
 
 TEST_F(AssetSystemTest, LoadAssetAsyncWithCallback) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/async.wav");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
 
     bool callbackInvoked = false;
     AssetHandle receivedHandle = AssetHandle::invalid();
@@ -231,8 +239,9 @@ TEST_F(AssetSystemTest, LoadAssetAsyncWithCallback) {
 }
 
 TEST_F(AssetSystemTest, LoadAssetAsyncMultipleCallbacks) {
-    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/a.png");
-    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Texture, "textures/b.png");
+    // Use real test files
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
 
     int callbackCount = 0;
 
@@ -245,7 +254,8 @@ TEST_F(AssetSystemTest, LoadAssetAsyncMultipleCallbacks) {
 }
 
 TEST_F(AssetSystemTest, LoadAssetAsyncStateProgression) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "data/level.json");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
 
     assetSystem_->loadAssetAsync(handle);
 
@@ -264,7 +274,8 @@ TEST_F(AssetSystemTest, LoadAssetAsyncStateProgression) {
 //==========================================================================
 
 TEST_F(AssetSystemTest, UnloadLoadedAsset) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/temp.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 
@@ -285,7 +296,8 @@ TEST_F(AssetSystemTest, UnloadUnregisteredAssetDoesNotCrash) {
 }
 
 TEST_F(AssetSystemTest, UnloadAndReload) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/cycle.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
 
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -302,9 +314,10 @@ TEST_F(AssetSystemTest, UnloadAndReload) {
 //==========================================================================
 
 TEST_F(AssetSystemTest, LoadAllAssets) {
-    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
-    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/3.ttf");
+    // Use real test files
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAll();
 
@@ -314,8 +327,9 @@ TEST_F(AssetSystemTest, LoadAllAssets) {
 }
 
 TEST_F(AssetSystemTest, LoadAllWithPartiallyLoadedAssets) {
-    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
-    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
+    // Use real test files
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
 
     assetSystem_->loadAsset(h1);
     EXPECT_TRUE(assetSystem_->isLoaded(h1));
@@ -328,9 +342,10 @@ TEST_F(AssetSystemTest, LoadAllWithPartiallyLoadedAssets) {
 }
 
 TEST_F(AssetSystemTest, UnloadAllAssets) {
-    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Texture, "textures/1.png");
-    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "sounds/2.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Font, "fonts/3.ttf");
+    // Use real test files
+    AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
+    AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAll();
     EXPECT_TRUE(assetSystem_->isLoaded(h1));
@@ -421,7 +436,8 @@ TEST_F(AssetSystemTest, GetRawAssetInvalidHandleReturnsNull) {
 }
 
 TEST_F(AssetSystemTest, GetRawAssetAfterUnload) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
     assetSystem_->loadAsset(handle);
 
     assetSystem_->unloadAsset(handle);
@@ -450,7 +466,8 @@ TEST_F(AssetSystemTest, CheckForReloadsWhenDisabled) {
 }
 
 TEST_F(AssetSystemTest, ReloadAsset) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/reload.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 
@@ -460,7 +477,8 @@ TEST_F(AssetSystemTest, ReloadAsset) {
 }
 
 TEST_F(AssetSystemTest, ReloadUnloadedAsset) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "sounds/reload.wav");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
 
     assetSystem_->reloadAsset(handle);
 
@@ -481,7 +499,8 @@ TEST_F(AssetSystemTest, UpdateWithNoPendingLoads) {
 }
 
 TEST_F(AssetSystemTest, UpdateProcessesPendingLoads) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/pending.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
 
     bool processed = false;
     assetSystem_->loadAssetAsync(handle, [&](AssetHandle, AssetState) {
@@ -494,7 +513,8 @@ TEST_F(AssetSystemTest, UpdateProcessesPendingLoads) {
 }
 
 TEST_F(AssetSystemTest, UpdateMultipleTimes) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
+    // Use a real test file
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     assetSystem_->loadAssetAsync(handle);
 
     assetSystem_->update();
@@ -531,23 +551,28 @@ TEST_F(AssetSystemTest, RegisterAllAssetTypes) {
 }
 
 TEST_F(AssetSystemTest, LoadAllAssetTypes) {
-    AssetHandle texture = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
-    AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "sounds/effect.wav");
-    AssetHandle music = assetSystem_->registerAsset(AssetType::Music, "music/bgm.mp3");
-    AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
-    AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "data/config.json");
+    // Use real test files where possible
+    AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+    AssetHandle music = assetSystem_->registerAsset(AssetType::Music, "../../../tests/testdata/test_sound.wav");
+    AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
 
-    assetSystem_->loadAsset(texture);
     assetSystem_->loadAsset(sound);
     assetSystem_->loadAsset(music);
-    assetSystem_->loadAsset(font);
     assetSystem_->loadAsset(data);
 
-    EXPECT_TRUE(assetSystem_->isLoaded(texture));
     EXPECT_TRUE(assetSystem_->isLoaded(sound));
     EXPECT_TRUE(assetSystem_->isLoaded(music));
-    EXPECT_TRUE(assetSystem_->isLoaded(font));
     EXPECT_TRUE(assetSystem_->isLoaded(data));
+
+    // Test types that don't have files - they should fail
+    AssetHandle texture = assetSystem_->registerAsset(AssetType::Texture, "textures/sprite.png");
+    AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
+
+    assetSystem_->loadAsset(texture);
+    assetSystem_->loadAsset(font);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(texture));
+    EXPECT_FALSE(assetSystem_->isLoaded(font));
 }
 
 //==========================================================================
@@ -600,6 +625,223 @@ TEST_F(AssetSystemTest, ManyAssetsRegistration) {
             EXPECT_NE(handles[i].uuid, handles[j].uuid);
         }
     }
+}
+
+//==========================================================================
+// Data and Level Asset Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadDataAssetJSON) {
+    // Path relative to build/macos-debug/tests directory
+    std::filesystem::path testDataPath = "../../../tests/testdata/test_config.json";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, testDataPath);
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    // Get the loaded data
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    // Cast to std::any and extract DataAsset
+    auto* anyData = static_cast<std::any*>(rawData);
+    ASSERT_TRUE(anyData->has_value());
+    ASSERT_TRUE(anyData->type() == typeid(DataAsset));
+
+    const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*anyData);
+    EXPECT_TRUE(dataAsset.isJson);
+    EXPECT_FALSE(dataAsset.rawText.empty());
+
+    // Verify JSON was parsed correctly
+    EXPECT_TRUE(dataAsset.jsonData.contains("name"));
+    EXPECT_EQ(dataAsset.jsonData["name"], "TestGame");
+    EXPECT_TRUE(dataAsset.jsonData.contains("settings"));
+    EXPECT_EQ(dataAsset.jsonData["settings"]["windowWidth"], 1920);
+}
+
+TEST_F(AssetSystemTest, LoadDataAssetNonJSON) {
+    std::filesystem::path testDataPath = "../../../tests/testdata/test_plaintext.txt";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, testDataPath);
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    ASSERT_TRUE(anyData->has_value());
+
+    const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*anyData);
+    EXPECT_FALSE(dataAsset.isJson);  // Plain text, not JSON
+    EXPECT_FALSE(dataAsset.rawText.empty());
+    EXPECT_TRUE(dataAsset.rawText.find("plain text file") != std::string::npos);
+}
+
+TEST_F(AssetSystemTest, LoadLevelAsset) {
+    std::filesystem::path testLevelPath = "../../../tests/testdata/test_level.lua";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, testLevelPath);
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    ASSERT_TRUE(anyData->has_value());
+
+    const DataAsset& levelAsset = std::any_cast<const DataAsset&>(*anyData);
+    EXPECT_FALSE(levelAsset.isJson);  // Lua files are not JSON
+    EXPECT_FALSE(levelAsset.rawText.empty());
+    EXPECT_TRUE(levelAsset.rawText.find("Test Level 1") != std::string::npos);
+    EXPECT_TRUE(levelAsset.rawText.find("return") != std::string::npos);
+}
+
+TEST_F(AssetSystemTest, LoadDataAssetFileNotFound) {
+    std::filesystem::path nonexistentPath = "data/nonexistent.json";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, nonexistentPath);
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+    EXPECT_FALSE(metadata.errorMessage->empty());
+}
+
+TEST_F(AssetSystemTest, LoadLevelAssetFileNotFound) {
+    std::filesystem::path nonexistentPath = "levels/nonexistent.lua";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, nonexistentPath);
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, UnloadDataAsset) {
+    std::filesystem::path testDataPath = "../../../tests/testdata/test_config.json";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, testDataPath);
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Unloaded);
+    EXPECT_EQ(assetSystem_->getRawAsset(handle), nullptr);
+}
+
+TEST_F(AssetSystemTest, ReloadDataAsset) {
+    std::filesystem::path testDataPath = "../../../tests/testdata/test_config.json";
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, testDataPath);
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->reloadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Verify data is still accessible
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*anyData);
+    EXPECT_TRUE(dataAsset.isJson);
+}
+
+//==========================================================================
+// Sound Loading Tests
+//==========================================================================
+
+TEST_F(AssetSystemTest, LoadSoundAssetFromFile) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    // Verify we can get raw data
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    // Cast to std::any and extract SoundData
+    auto* anyData = static_cast<std::any*>(rawData);
+    EXPECT_TRUE(anyData->has_value());
+
+    const SoundData& soundData = std::any_cast<const SoundData&>(*anyData);
+    EXPECT_GT(soundData.fileSize, 0);
+    EXPECT_EQ(soundData.fileData.size(), soundData.fileSize);
+    EXPECT_EQ(soundData.path, "../../../tests/testdata/test_sound.wav");
+}
+
+TEST_F(AssetSystemTest, LoadMusicAssetFromFile) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Music, "../../../tests/testdata/test_sound.wav");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const SoundData& soundData = std::any_cast<const SoundData&>(*anyData);
+    EXPECT_GT(soundData.fileSize, 0);
+}
+
+TEST_F(AssetSystemTest, LoadSoundNonExistentFileFails) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "nonexistent.wav");
+
+    assetSystem_->loadAsset(handle);
+
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+    EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Failed);
+
+    AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+    EXPECT_TRUE(metadata.errorMessage.has_value());
+}
+
+TEST_F(AssetSystemTest, LoadSoundAndUnload) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+
+    assetSystem_->loadAsset(handle);
+    EXPECT_TRUE(assetSystem_->isLoaded(handle));
+
+    assetSystem_->unloadAsset(handle);
+    EXPECT_FALSE(assetSystem_->isLoaded(handle));
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    EXPECT_EQ(rawData, nullptr);
+}
+
+TEST_F(AssetSystemTest, LoadSoundDataIntegrity) {
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
+
+    assetSystem_->loadAsset(handle);
+
+    void* rawData = assetSystem_->getRawAsset(handle);
+    ASSERT_NE(rawData, nullptr);
+
+    auto* anyData = static_cast<std::any*>(rawData);
+    const SoundData& soundData = std::any_cast<const SoundData&>(*anyData);
+
+    // Verify WAV file header (RIFF)
+    EXPECT_EQ(soundData.fileData[0], 'R');
+    EXPECT_EQ(soundData.fileData[1], 'I');
+    EXPECT_EQ(soundData.fileData[2], 'F');
+    EXPECT_EQ(soundData.fileData[3], 'F');
 }
 
 }  // namespace jframe::tests

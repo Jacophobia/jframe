@@ -1,0 +1,3 @@
+This is a plain text file.
+It does not contain JSON.
+It should be loaded as raw text.

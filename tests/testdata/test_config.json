@@ -1,0 +1,13 @@
+{
+  "name": "TestGame",
+  "version": "1.0.0",
+  "settings": {
+    "windowWidth": 1920,
+    "windowHeight": 1080,
+    "fullscreen": false
+  },
+  "player": {
+    "maxHealth": 100,
+    "speed": 5.0
+  }
+}

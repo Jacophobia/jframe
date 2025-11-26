@@ -16,16 +16,22 @@
 
 ### Compiler Requirements
 
-| Platform | Compiler | Minimum Version |
-|----------|----------|-----------------|
-| macOS | Apple Clang | 15.0+ (Xcode 15+) |
-| macOS | LLVM Clang | 17.0+ |
-| Windows | MSVC | 19.38+ (VS 2022 17.8+) |
-| Windows | Clang-CL | 17.0+ |
-| Linux | GCC | 13.0+ |
-| Linux | Clang | 17.0+ |
+**CRITICAL:** JFrame uses `import std;` which requires **LLVM Clang 20+** on macOS. Apple Clang (Xcode) does not yet support `import std;`.
 
-**Recommended:** Clang 17+ for cross-platform consistency.
+| Platform | Compiler | Minimum Version | Notes |
+|----------|----------|-----------------|-------|
+| macOS | **LLVM Clang** | **20.0+** | **Required** - Install via Homebrew (`brew install llvm@20`) |
+| macOS | ~~Apple Clang~~ | ~~N/A~~ | Does not support `import std;` |
+| Windows | MSVC | 19.38+ (VS 2022 17.8+) | With `/std:c++latest` |
+| Windows | Clang-CL | 17.0+ | |
+| Linux | GCC | 13.0+ | |
+| Linux | Clang | 17.0+ | |
+
+**Setup Instructions:**
+- **macOS:** See `docs/LLVM20-SETUP.md` for LLVM 20 installation and configuration
+- **All Platforms:** Use `CMakePresets.json` to configure the correct compiler
+
+**Important:** All source files must use `import std;` consistently. Do NOT mix `#include <standard_header>` with `import std;` in the same module or translation unit.
 
 ## Build System
 
@@ -50,6 +56,7 @@ JFrame uses C++23 modules. Follow these conventions:
 
 ```
 jframe.types          // Core types and aliases
+jframe.core           // Core utilities (Timer, FrameTimer, Easing, JobSystem, Logging)
 jframe.entity         // IEntitySystem interface
 jframe.graphics       // IGraphicsSystem interface
 jframe.audio          // IAudioSystem interface
@@ -60,6 +67,7 @@ jframe.level          // ILevelSystem interface
 jframe.events         // IEventSystem interface
 jframe.physics        // IPhysicsSystem interface
 jframe.ai             // IAISystem interface
+jframe.dev            // Development tools (Debug builds only)
 jframe                // Primary module (re-exports all)
 ```
 
@@ -259,6 +267,155 @@ TEST(EntitySystemTest, CreateEntity) {
 }
 ```
 
+### Testing Workflow
+
+JFrame follows a two-wave testing approach to ensure quality and catch issues early:
+
+#### Wave 1: Test-Driven Development (Define Expected Behavior)
+
+1. **Agents write tests first** - Before implementing features, write tests that:
+   - Compile successfully
+   - Define the expected behavior of the system
+   - May fail initially (this is expected and correct)
+   - Cover all interface methods and critical paths
+
+2. **Tests as specifications** - Failing tests serve as:
+   - Documentation of what needs to be implemented
+   - Validation that the test infrastructure is working
+   - A checklist of incomplete functionality
+
+3. **Orchestrator commits** - After Wave 1, the orchestrator commits all tests to establish a baseline
+
+#### Wave 2: Implementation and Test Fixing
+
+1. **Analyze failures** - For each failing test, determine:
+   - Is it a test bug? (Wrong assertions, incorrect setup, bad assumptions)
+   - Is it an implementation bug? (Missing features, incorrect behavior)
+   - Is it a documentation issue? (Interface contract unclear)
+
+2. **Fix systematically** - Address failures in priority order:
+   - Critical path functionality first
+   - Edge cases second
+   - Nice-to-have features last
+
+3. **Verify fixes** - After fixing:
+   - Run the specific test to confirm it passes
+   - Run related tests to check for regressions
+   - Document any assumptions or limitations
+
+#### End-of-Wave Validation
+
+At the completion of each development wave, agents perform a **swarming review**:
+
+1. **Check for stubs** - Search for:
+   ```bash
+   grep -r "// TODO" jframe-yoursystem/src/
+   grep -r "return.*;" jframe-yoursystem/src/  # Empty returns
+   grep -r "throw.*NotImplemented" jframe-yoursystem/src/
+   ```
+
+2. **Verify all requirements** - Confirm:
+   - All interface methods are fully implemented (not stubbed)
+   - All tests pass
+   - No placeholder code remains
+   - Documentation is complete
+
+3. **Handle blockers** - If something cannot be implemented:
+   - Document the reason in comments
+   - Add to `/TODO.md` at project root (see Stub/TODO Policy below)
+   - Notify orchestrator for coordination
+
+#### Running Tests
+
+```bash
+# Run all tests
+ctest --preset macos-debug
+
+# Run specific system tests
+ctest --preset macos-debug -R "EntitySystemTest"
+
+# Run with verbose output
+ctest --preset macos-debug --output-on-failure
+
+# Run in parallel
+ctest --preset macos-debug -j8
+```
+
+### Stub and TODO Policy
+
+**Stubs and TODO comments indicate incomplete work.** All systems must be fully implemented before being marked as complete.
+
+#### What Counts as Incomplete
+
+- **Stub functions** - Methods that compile but do nothing:
+  ```cpp
+  void doSomething() override {
+      // TODO: Implement
+  }
+  ```
+
+- **Placeholder returns** - Returning default values without logic:
+  ```cpp
+  Entity createEntity() override {
+      return Entity{};  // Stub - not creating real entity
+  }
+  ```
+
+- **TODO comments** - Any comment indicating missing functionality:
+  ```cpp
+  // TODO: Add collision filtering
+  // FIXME: Memory leak here
+  // HACK: Temporary workaround
+  ```
+
+#### Resolution Requirements
+
+Before a system is considered complete:
+
+1. **All stubs must be resolved** - Every interface method must have a real implementation
+2. **All TODOs must be addressed** - Either implement the feature or document why it's deferred
+3. **All tests must pass** - No skipped or failing tests
+
+#### When Something Cannot Be Implemented
+
+If a feature truly cannot be implemented due to external dependencies or technical limitations:
+
+1. **Document in code** - Add a detailed comment explaining:
+   ```cpp
+   // NOTE: Hot reload for FMOD sounds is not supported by FMOD API.
+   // Workaround: Unload and reload the sound manually.
+   ```
+
+2. **Add to project TODO** - Create or update `/TODO.md` at project root:
+   ```markdown
+   ## Deferred Features
+
+   ### Audio System
+   - [ ] Hot reload for FMOD sounds - Blocked by FMOD API limitation
+   - [ ] Spatial audio reverb - Requires FMOD Studio (not Core)
+   ```
+
+3. **Notify orchestrator** - Flag the issue for project-level decision:
+   - Is this a critical feature?
+   - Should we switch libraries?
+   - Can we defer to a future version?
+
+#### Checking for Incomplete Work
+
+```bash
+# Find all TODOs in a system
+grep -rn "// TODO\|// FIXME\|// HACK" jframe-yoursystem/src/
+
+# Find stub functions (empty or single-line implementations)
+# Manual review required - look for minimal implementations
+
+# Run static analysis
+clang-tidy jframe-yoursystem/src/*.cpp
+
+# Verify test coverage
+ctest --preset macos-debug -R "YourSystemTest" --verbose
+```
+
 ## Profiling
 
 Tracy integration is available with `JFRAME_ENABLE_TRACY`:
@@ -274,18 +431,41 @@ void update(DeltaTime dt) {
 
 ## Key Dependencies
 
-| Library | Version | Purpose |
-|---------|---------|---------|
-| GLFW | 3.3+ | Windowing/Input |
-| SDL2 | 2.28+ | Game Controllers |
-| glm | 0.9.9+ | Math |
-| spdlog | 1.12+ | Logging |
-| Lua | 5.4+ | Scripting |
-| sol2 | 3.3+ | Lua C++ Bindings |
-| EnTT | 3.12+ | ECS |
-| Box2D | 3.0+ | Physics |
-| FMOD Core | 2.02+ | Audio |
-| cereal | 1.3+ | Serialization |
+| Library | Version | Purpose | System |
+|---------|---------|---------|--------|
+| **Core Libraries** |
+| GLFW | 3.3+ | Windowing/Input | Graphics |
+| SDL2 | 2.28+ | Game Controllers | Input |
+| glad | 0.1.36+ | OpenGL Loader | Graphics |
+| glm | 0.9.9+ | Math | Core/All |
+| spdlog | 1.12+ | Logging | Core |
+| nlohmann_json | 3.11+ | JSON Parsing | Save/Assets |
+| **Rendering** |
+| stb_image | Latest | Image Loading | Assets |
+| FreeType | 2.13+ | Font Rasterization | Graphics |
+| msdf-atlas-gen | Latest | MSDF Font Atlas Generation | Graphics |
+| **Scripting** |
+| Lua | 5.4+ | Scripting | Level |
+| sol2 | 3.3+ | Lua C++ Bindings | Level |
+| **Game Systems** |
+| EnTT | 3.12+ | ECS | Entity |
+| Box2D | 3.1+ | 2D Physics | Physics |
+| FMOD Core | 2.02+ | Audio Engine | Audio |
+| **Serialization** |
+| cereal | 1.3+ | Binary Serialization | Save |
+| zstd | 1.5+ | Compression | Save |
+| **AI** |
+| BehaviorTree.CPP | 4.5+ | Behavior Trees | AI |
+| Recast | Latest | Navigation Mesh Generation | AI |
+| Detour | Latest | Pathfinding | AI |
+| **Utilities** |
+| Taskflow | 3.6+ | Job System | Core |
+| efsw | 1.3+ | File Watching (Hot Reload) | Dev |
+| ImGui | 1.90+ | Debug UI | Dev |
+
+**Manual Installation Required:**
+- **FMOD Core API** - Download from [fmod.com](https://www.fmod.com/download) and place in `external/fmod/`
+- See `docs/SYSTEM-IMPLEMENTATION-GUIDE.md` for FMOD setup instructions
 
 ## Common Patterns
 
@@ -340,20 +520,20 @@ Each system has clear file boundaries. Agents should claim ownership of exactly 
 
 | System | Owned Files | Dependencies |
 |--------|-------------|--------------|
-| Events | `jframe-events/*` | None |
-| Types/Core | `jframe-contract/src/jframe.types.cppm` | None |
-| Entity | `jframe-entity/*` | Events |
-| Assets | `jframe-assets/*` | Events |
-| Input | `jframe-input/*` | Events |
-| Save | `jframe-save/*` | Events |
-| Graphics | `jframe-graphics/*` | Entity, Assets |
-| Audio | `jframe-audio/*` | Entity, Assets |
-| Physics | `jframe-physics/*` | Entity, Events |
-| Level | `jframe-level/*` | Entity, Assets, Events |
-| AI | `jframe-ai/*` | Entity, Physics |
+| Types | `jframe-contract/src/jframe.types.cppm` | None |
+| Core Utilities | `jframe-core/*` | Types |
+| Events | `jframe-events/*` | Types |
+| Entity | `jframe-entity/*` | Types, Events |
+| Assets | `jframe-assets/*` | Types, Events |
+| Input | `jframe-input/*` | Types, Events |
+| Save | `jframe-save/*` | Types, Events |
+| Graphics | `jframe-graphics/*` | Types, Entity, Assets |
+| Audio | `jframe-audio/*` | Types, Entity, Assets |
+| Physics | `jframe-physics/*` | Types, Entity, Events |
+| Level | `jframe-level/*` | Types, Entity, Assets, Events |
+| AI | `jframe-ai/*` | Types, Entity, Physics |
 | Dev Tools | `jframe-dev/*` | All systems |
-| Core Engine | `jframe-core/*` | All systems |
-| Platformer | `examples/platformer/*` | Core Engine |
+| Platformer | `examples/platformer/*` | All systems |
 
 ### Rules for Independent Work
 
