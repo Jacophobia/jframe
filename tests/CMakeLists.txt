@@ -6,6 +6,9 @@ add_executable(jframe-tests
     unit/SaveSystemTests.cpp
     unit/EventSystemTests.cpp
     unit/InputSystemTests.cpp
+    unit/AudioSystemTests.cpp
+    unit/GraphicsSystemTests.cpp
+    unit/PhysicsSystemTests.cpp
 )
 target_use_std_module(jframe-tests)
 
@@ -17,6 +20,9 @@ target_link_libraries(jframe-tests
         jframe-events
         jframe-save
         jframe-input
+        jframe-audio
+        jframe-graphics
+        jframe-physics
         GTest::gtest
         GTest::gtest_main
 )
