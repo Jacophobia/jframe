@@ -77,10 +77,18 @@ private:
         std::size_t dataSize = 0;
     };
 
+    struct PendingLoad {
+        AssetHandle handle;
+        AssetLoadCallback callback;
+        std::future<void> future;
+    };
+
     UUID generateUUID();
+    void loadAssetImpl(AssetHandle handle);  // Thread-safe loading implementation
 
     std::unordered_map<UUID, AssetEntry> assets_;
-    std::vector<std::pair<AssetHandle, AssetLoadCallback>> pendingLoads_;
+    std::vector<PendingLoad> pendingLoads_;
+    mutable std::mutex assetsMutex_;  // Protects assets_ during async loads
     bool hotReloadEnabled_ = false;
     UUID nextUUID_ = 1;
 };

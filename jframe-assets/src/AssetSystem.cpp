@@ -9,7 +9,9 @@ module;
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
@@ -32,12 +34,22 @@ UUID AssetSystem::generateUUID() {
 void AssetSystem::update() {
     // Process pending async loads
     for (auto it = pendingLoads_.begin(); it != pendingLoads_.end();) {
-        auto& [handle, callback] = *it;
-        auto state = getAssetState(handle);
-        if (state != AssetState::Loading) {
-            if (callback) {
-                callback(handle, state);
+        // Check if the future is ready (non-blocking)
+        if (it->future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            // Future is complete, get any exception that may have occurred
+            try {
+                it->future.get();  // This will rethrow any exception from the worker thread
+            } catch (...) {
+                // Exception already caught and stored in asset state by loadAssetImpl
             }
+
+            // Get the final state and invoke callback on main thread
+            auto state = getAssetState(it->handle);
+            if (it->callback) {
+                it->callback(it->handle, state);
+            }
+
+            // Remove completed load from pending list
             it = pendingLoads_.erase(it);
         } else {
             ++it;
@@ -62,20 +74,34 @@ void AssetSystem::unregisterAsset(AssetHandle handle) {
 }
 
 void AssetSystem::loadAsset(AssetHandle handle) {
-    auto it = assets_.find(handle.uuid);
-    if (it == assets_.end()) return;
+    // Synchronous load - just call the implementation directly
+    loadAssetImpl(handle);
+}
 
-    auto& entry = it->second;
-    entry.metadata.state = AssetState::Loading;
+void AssetSystem::loadAssetImpl(AssetHandle handle) {
+    // Thread-safe asset loading implementation
+    // Get the source path while holding the lock
+    std::filesystem::path sourcePath;
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it == assets_.end()) return;
+        sourcePath = it->second.metadata.sourcePath;
+        it->second.metadata.state = AssetState::Loading;
+    }
 
-    // Load based on type
+    // Load the file WITHOUT holding the lock (this is the slow I/O part)
+    std::any loadedData;
+    std::size_t loadedSize = 0;
+    std::optional<std::string> errorMessage;
+
     try {
         switch (handle.type) {
             case AssetType::Data: {
                 // Load data file (JSON or other text format)
-                std::ifstream file(entry.metadata.sourcePath);
+                std::ifstream file(sourcePath);
                 if (!file.is_open()) {
-                    throw std::runtime_error("Failed to open file: " + entry.metadata.sourcePath.string());
+                    throw std::runtime_error("Failed to open file: " + sourcePath.string());
                 }
 
                 std::stringstream buffer;
@@ -94,16 +120,16 @@ void AssetSystem::loadAsset(AssetHandle handle) {
                     dataAsset.isJson = false;
                 }
 
-                entry.data = std::move(dataAsset);
-                entry.dataSize = fileContents.size();
+                loadedData = std::move(dataAsset);
+                loadedSize = fileContents.size();
                 break;
             }
 
             case AssetType::Level: {
                 // Load Lua level file
-                std::ifstream file(entry.metadata.sourcePath);
+                std::ifstream file(sourcePath);
                 if (!file.is_open()) {
-                    throw std::runtime_error("Failed to open file: " + entry.metadata.sourcePath.string());
+                    throw std::runtime_error("Failed to open file: " + sourcePath.string());
                 }
 
                 std::stringstream buffer;
@@ -114,14 +140,14 @@ void AssetSystem::loadAsset(AssetHandle handle) {
                 levelAsset.rawText = luaContents;
                 levelAsset.isJson = false;  // Lua files are not JSON
 
-                entry.data = std::move(levelAsset);
-                entry.dataSize = luaContents.size();
+                loadedData = std::move(levelAsset);
+                loadedSize = luaContents.size();
                 break;
             }
 
             case AssetType::Texture: {
                 // Load texture using stb_image
-                std::string pathStr = entry.metadata.sourcePath.string();
+                std::string pathStr = sourcePath.string();
 
                 int width, height, channels;
                 unsigned char* pixels = stbi_load(pathStr.c_str(), &width, &height, &channels, 0);
@@ -151,8 +177,8 @@ void AssetSystem::loadAsset(AssetHandle handle) {
                 // Free stb_image memory
                 stbi_image_free(pixels);
 
-                entry.data = std::move(textureData);
-                entry.dataSize = pixelDataSize;
+                loadedData = std::move(textureData);
+                loadedSize = pixelDataSize;
                 break;
             }
 
@@ -160,9 +186,9 @@ void AssetSystem::loadAsset(AssetHandle handle) {
             case AssetType::Music: {
                 // Load audio file as raw bytes for FMOD to consume
                 // Open file in binary mode
-                std::ifstream file(entry.metadata.sourcePath, std::ios::binary | std::ios::ate);
+                std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
                 if (!file.is_open()) {
-                    throw std::runtime_error("Failed to open audio file: " + entry.metadata.sourcePath.string());
+                    throw std::runtime_error("Failed to open audio file: " + sourcePath.string());
                 }
 
                 // Get file size
@@ -171,18 +197,17 @@ void AssetSystem::loadAsset(AssetHandle handle) {
 
                 // Read entire file into memory
                 SoundData soundData;
-                soundData.path = entry.metadata.sourcePath.string();
+                soundData.path = sourcePath.string();
                 soundData.fileSize = static_cast<size_t>(fileSize);
                 soundData.fileData.resize(soundData.fileSize);
 
                 if (!file.read(reinterpret_cast<char*>(soundData.fileData.data()), fileSize)) {
-                    throw std::runtime_error("Failed to read audio file: " + entry.metadata.sourcePath.string());
+                    throw std::runtime_error("Failed to read audio file: " + sourcePath.string());
                 }
 
                 // Store size before moving
-                std::size_t dataSize = soundData.fileSize;
-                entry.data = std::move(soundData);
-                entry.dataSize = dataSize;
+                loadedSize = soundData.fileSize;
+                loadedData = std::move(soundData);
                 break;
             }
 
@@ -190,26 +215,50 @@ void AssetSystem::loadAsset(AssetHandle handle) {
                 // Other asset types not yet implemented
                 throw std::runtime_error("Asset type not yet implemented");
         }
-
-        entry.metadata.state = AssetState::Loaded;
     } catch (const std::exception& e) {
-        entry.metadata.state = AssetState::Failed;
-        entry.metadata.errorMessage = e.what();
+        errorMessage = e.what();
     } catch (...) {
-        entry.metadata.state = AssetState::Failed;
-        entry.metadata.errorMessage = "Failed to load asset";
+        errorMessage = "Failed to load asset";
+    }
+
+    // Update the asset entry with loaded data (quick lock)
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it == assets_.end()) return;
+
+        auto& entry = it->second;
+        if (errorMessage) {
+            entry.metadata.state = AssetState::Failed;
+            entry.metadata.errorMessage = *errorMessage;
+        } else {
+            entry.data = std::move(loadedData);
+            entry.dataSize = loadedSize;
+            entry.metadata.state = AssetState::Loaded;
+        }
     }
 }
 
 void AssetSystem::loadAssetAsync(AssetHandle handle, AssetLoadCallback callback) {
-    auto it = assets_.find(handle.uuid);
-    if (it == assets_.end()) return;
+    // Verify asset exists before launching async task
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it == assets_.end()) return;
+        it->second.metadata.state = AssetState::Loading;
+    }
 
-    it->second.metadata.state = AssetState::Loading;
-    pendingLoads_.emplace_back(handle, std::move(callback));
+    // Launch async loading task
+    std::future<void> future = std::async(std::launch::async, [this, handle]() {
+        loadAssetImpl(handle);
+    });
 
-    // In a real implementation, this would spawn a task
-    loadAsset(handle);
+    // Store pending load for callback processing in update()
+    pendingLoads_.push_back(PendingLoad{
+        .handle = handle,
+        .callback = std::move(callback),
+        .future = std::move(future)
+    });
 }
 
 void AssetSystem::unloadAsset(AssetHandle handle) {
@@ -222,11 +271,13 @@ void AssetSystem::unloadAsset(AssetHandle handle) {
 }
 
 AssetState AssetSystem::getAssetState(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
     auto it = assets_.find(handle.uuid);
     return it != assets_.end() ? it->second.metadata.state : AssetState::Unloaded;
 }
 
 AssetMetadata AssetSystem::getAssetMetadata(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
     auto it = assets_.find(handle.uuid);
     return it != assets_.end() ? it->second.metadata : AssetMetadata{};
 }
@@ -236,6 +287,7 @@ bool AssetSystem::isLoaded(AssetHandle handle) const {
 }
 
 void* AssetSystem::getRawAsset(AssetHandle handle) {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
     auto it = assets_.find(handle.uuid);
     if (it == assets_.end() || !it->second.data.has_value()) {
         return nullptr;
@@ -244,6 +296,7 @@ void* AssetSystem::getRawAsset(AssetHandle handle) {
 }
 
 const void* AssetSystem::getRawAsset(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
     auto it = assets_.find(handle.uuid);
     if (it == assets_.end() || !it->second.data.has_value()) {
         return nullptr;

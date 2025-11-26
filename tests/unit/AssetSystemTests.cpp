@@ -1,10 +1,13 @@
 // tests/unit/AssetSystemTests.cpp
 // Asset system unit tests
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <iostream>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -212,7 +215,13 @@ TEST_F(AssetSystemTest, LoadAssetAsyncWithoutCallback) {
     AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_plaintext.txt");
 
     assetSystem_->loadAssetAsync(handle, nullptr);
-    assetSystem_->update();
+
+    // Poll update() until async load completes (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (assetSystem_->isLoaded(handle)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 }
@@ -231,10 +240,24 @@ TEST_F(AssetSystemTest, LoadAssetAsyncWithCallback) {
         receivedState = s;
     });
 
-    assetSystem_->update();
+    // Poll update() until callback is invoked (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (callbackInvoked) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     EXPECT_TRUE(callbackInvoked);
     EXPECT_EQ(receivedHandle.uuid, handle.uuid);
+
+    // If failed, print error message for debugging
+    if (receivedState != AssetState::Loaded) {
+        AssetMetadata metadata = assetSystem_->getAssetMetadata(handle);
+        if (metadata.errorMessage) {
+            std::cerr << "Asset load failed: " << *metadata.errorMessage << std::endl;
+        }
+    }
+
     EXPECT_EQ(receivedState, AssetState::Loaded);
 }
 
@@ -248,7 +271,12 @@ TEST_F(AssetSystemTest, LoadAssetAsyncMultipleCallbacks) {
     assetSystem_->loadAssetAsync(h1, [&](AssetHandle, AssetState) { callbackCount++; });
     assetSystem_->loadAssetAsync(h2, [&](AssetHandle, AssetState) { callbackCount++; });
 
-    assetSystem_->update();
+    // Poll update() until both callbacks are invoked (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (callbackCount == 2) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     EXPECT_EQ(callbackCount, 2);
 }
@@ -263,7 +291,12 @@ TEST_F(AssetSystemTest, LoadAssetAsyncStateProgression) {
     AssetState state = assetSystem_->getAssetState(handle);
     EXPECT_TRUE(state == AssetState::Loading || state == AssetState::Loaded);
 
-    assetSystem_->update();
+    // Poll update() until async load completes (with timeout)
+    for (int i = 0; i < 100; ++i) {
+        assetSystem_->update();
+        if (assetSystem_->getAssetState(handle) == AssetState::Loaded) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
 
     // After update, should be Loaded
     EXPECT_EQ(assetSystem_->getAssetState(handle), AssetState::Loaded);
