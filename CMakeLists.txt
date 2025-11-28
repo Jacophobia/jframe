@@ -69,3 +69,6 @@ endif()
 if(JFRAME_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
+
+# Template game project (always built as a reference)
+add_subdirectory(template)

@@ -22,12 +22,7 @@ struct DataAsset {
     bool isJson = false;
 };
 
-// Sound/Music data structure - stores raw file bytes for FMOD to consume
-struct SoundData {
-    std::vector<unsigned char> fileData;  // Raw file bytes
-    std::string path;
-    size_t fileSize = 0;
-};
+// Note: SoundData is now defined in jframe.assets contract module
 
 // Note: FontData is now defined in jframe.assets contract module
 

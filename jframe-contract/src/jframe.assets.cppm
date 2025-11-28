@@ -31,6 +31,13 @@ struct FontData {
     std::size_t fileSize = 0;
 };
 
+// Sound data structure - stores raw audio file bytes for FMOD to process
+struct SoundData {
+    std::vector<unsigned char> fileData;  // Raw WAV/OGG/MP3 bytes
+    std::string path;
+    std::size_t fileSize = 0;
+};
+
 struct AssetMetadata {
     AssetHandle handle;
     std::filesystem::path sourcePath;

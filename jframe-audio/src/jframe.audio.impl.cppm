@@ -71,6 +71,7 @@ private:
 
     struct PositionalSoundData {
         Vec3 position;
+        bool isPlaying = false;
 #ifdef JFRAME_HAS_FMOD
         FMOD_CHANNEL* fmodChannel = nullptr;
 #endif

@@ -23,7 +23,15 @@ public:
     void publish(const EventType& type, const EventData& data) override {
         auto it = subscribers_.find(type);
         if (it != subscribers_.end()) {
+            // Copy callbacks to avoid iterator invalidation if unsubscribe is called during callback execution
+            std::vector<EventCallback> callbacks;
+            callbacks.reserve(it->second.size());
             for (const auto& [id, callback] : it->second) {
+                callbacks.push_back(callback);
+            }
+
+            // Execute callbacks from the copy
+            for (const auto& callback : callbacks) {
                 callback(data);
             }
         }
@@ -99,7 +107,8 @@ private:
         EventData data;
     };
 
-    std::unordered_map<EventType, std::unordered_map<SubscriptionId, EventCallback>> subscribers_;
+    // Use std::map to maintain insertion order for callbacks
+    std::unordered_map<EventType, std::map<SubscriptionId, EventCallback>> subscribers_;
     std::unordered_map<SubscriptionId, EventType> subscriptionTypes_;
     std::queue<QueuedEvent> eventQueue_;
     mutable std::mutex queueMutex_;

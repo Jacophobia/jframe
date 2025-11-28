@@ -37,9 +37,13 @@ struct Health {
 
     bool isDead() const { return current <= 0; }
     bool isInvincible() const { return invincibilityTime > 0.0f; }
-    float healthPercent() const { return static_cast<float>(current) / maximum; }
+    float healthPercent() const {
+        if (maximum <= 0) return 0.0f;  // Avoid division by zero
+        return static_cast<float>(current) / maximum;
+    }
 
     void takeDamage(int amount) {
+        if (amount < 0) return;  // Ignore negative damage
         if (!isInvincible()) {
             current = std::max(0, current - amount);
             invincibilityTime = invincibilityDuration;
@@ -47,6 +51,7 @@ struct Health {
     }
 
     void heal(int amount) {
+        if (amount < 0) return;  // Ignore negative heal
         current = std::min(maximum, current + amount);
     }
 
@@ -80,12 +85,22 @@ struct Timer {
     }
 
     void update(float dt) {
-        if (paused || remaining <= 0.0f) return;
+        if (paused) return;
+
+        // Don't process if already complete (non-repeating timer)
+        if (remaining <= 0.0f && !repeating) return;
 
         remaining -= dt;
-        if (remaining <= 0.0f) {
+
+        // Handle repeating timers that may fire multiple times in one update
+        while (remaining <= 0.0f) {
             if (onComplete) onComplete();
-            if (repeating) remaining = duration;
+
+            if (repeating) {
+                remaining += duration;  // Add duration to handle overflow correctly
+            } else {
+                break;  // Non-repeating timer stops
+            }
         }
     }
 

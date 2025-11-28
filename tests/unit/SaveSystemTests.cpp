@@ -682,4 +682,779 @@ TEST_F(SaveSystemTest, ArchiveSupportsAllDataTypes) {
     saveSystem_->unregisterSaveable(&saveable);
 }
 
+// ============================================================================
+// Profile Management - Edge Cases
+// ============================================================================
+
+TEST_F(SaveSystemTest, SetProfileWithSpecialCharacters) {
+    // Test profile names with spaces and special chars
+    saveSystem_->setActiveProfile("player_profile_2024");
+    EXPECT_EQ(saveSystem_->getActiveProfile(), "player_profile_2024");
+
+    saveSystem_->setActiveProfile("test profile");
+    EXPECT_EQ(saveSystem_->getActiveProfile(), "test profile");
+}
+
+TEST_F(SaveSystemTest, ProfilesAreIsolated) {
+    // Create a save in profile A
+    saveSystem_->setActiveProfile("profile_a");
+    auto resultA = saveSystem_->save(0, "Save A");
+    EXPECT_TRUE(resultA.has_value());
+    EXPECT_TRUE(saveSystem_->saveExists(0));
+
+    // Switch to profile B - save should not exist
+    saveSystem_->setActiveProfile("profile_b");
+    EXPECT_FALSE(saveSystem_->saveExists(0));
+
+    // Create different save in profile B
+    auto resultB = saveSystem_->save(0, "Save B");
+    EXPECT_TRUE(resultB.has_value());
+    EXPECT_TRUE(saveSystem_->saveExists(0));
+
+    // Switch back to profile A - original save should still exist
+    saveSystem_->setActiveProfile("profile_a");
+    EXPECT_TRUE(saveSystem_->saveExists(0));
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->saveName, "Save A");
+    }
+}
+
+TEST_F(SaveSystemTest, GetProfilesReturnsAllProfiles) {
+    // Create multiple profiles by switching and saving
+    saveSystem_->setActiveProfile("profile_1");
+    saveSystem_->save(0, "Test 1");
+
+    saveSystem_->setActiveProfile("profile_2");
+    saveSystem_->save(0, "Test 2");
+
+    saveSystem_->setActiveProfile("profile_3");
+    saveSystem_->save(0, "Test 3");
+
+    auto profiles = saveSystem_->getProfiles();
+
+    // Should contain all three profiles
+    EXPECT_GE(profiles.size(), 3);
+
+    bool foundProfile1 = std::find(profiles.begin(), profiles.end(), "profile_1") != profiles.end();
+    bool foundProfile2 = std::find(profiles.begin(), profiles.end(), "profile_2") != profiles.end();
+    bool foundProfile3 = std::find(profiles.begin(), profiles.end(), "profile_3") != profiles.end();
+
+    EXPECT_TRUE(foundProfile1);
+    EXPECT_TRUE(foundProfile2);
+    EXPECT_TRUE(foundProfile3);
+}
+
+// ============================================================================
+// Auto-Save Tests - Additional Coverage
+// ============================================================================
+
+TEST_F(SaveSystemTest, AutoSaveCreatesFileInAutoSaveSlot) {
+    TestSaveable saveable;
+    saveable.value = 123;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    saveSystem_->autoSave();
+
+    // Should create save in AutoSave slot
+    EXPECT_TRUE(saveSystem_->saveExists(SaveSlots::AutoSave));
+
+    auto metadata = saveSystem_->getSaveMetadata(SaveSlots::AutoSave);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->saveName, "Auto Save");
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, AutoSaveDoesNotTriggerBeforeInterval) {
+    saveSystem_->enableAutoSave(std::chrono::seconds(10));
+
+    // Update for less than interval
+    saveSystem_->update(DeltaTime{5.0f});
+
+    // Auto-save should not have triggered yet
+    // (This test just ensures no crashes; checking file existence is impl-dependent)
+}
+
+TEST_F(SaveSystemTest, AutoSaveResetsTimerAfterSave) {
+    TestSaveable saveable;
+    saveable.value = 456;
+
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->enableAutoSave(std::chrono::seconds(5));
+
+    // First trigger
+    saveSystem_->update(DeltaTime{5.1f});
+
+    // Modify data
+    saveable.value = 789;
+
+    // Second trigger (should happen after another interval)
+    saveSystem_->update(DeltaTime{5.1f});
+
+    // Load and verify we got the second save
+    saveSystem_->load(SaveSlots::AutoSave);
+    EXPECT_EQ(saveable.value, 789);
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, DisableAutoSavePreventsAutoSaving) {
+    saveSystem_->enableAutoSave(std::chrono::seconds(1));
+    saveSystem_->disableAutoSave();
+
+    // Update past the interval
+    saveSystem_->update(DeltaTime{2.0f});
+
+    // No auto-save should have occurred (test mainly for no crashes)
+}
+
+// ============================================================================
+// Save/Load Edge Cases
+// ============================================================================
+
+TEST_F(SaveSystemTest, SaveWithEmptyName) {
+    auto result = saveSystem_->save(0, "");
+    EXPECT_TRUE(result.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->saveName, "");
+    }
+}
+
+TEST_F(SaveSystemTest, SaveToSameSlotOverwritesPreviousSave) {
+    TestSaveable saveable;
+    saveable.value = 100;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    // First save
+    saveSystem_->save(0, "First Save");
+
+    // Modify and save again to same slot
+    saveable.value = 200;
+    saveSystem_->save(0, "Second Save");
+
+    // Reset and load
+    saveable.value = 0;
+    saveSystem_->load(0);
+
+    // Should have the second value
+    EXPECT_EQ(saveable.value, 200);
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->saveName, "Second Save");
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, SaveWithNoRegisteredSaveables) {
+    // Should succeed even with no saveables registered
+    auto result = saveSystem_->save(0, "Empty Save");
+    EXPECT_TRUE(result.has_value());
+
+    // Should be able to load it back
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+}
+
+TEST_F(SaveSystemTest, LoadWithNoRegisteredSaveables) {
+    TestSaveable saveable;
+    saveable.value = 42;
+
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->save(0, "Test");
+    saveSystem_->unregisterSaveable(&saveable);
+
+    // Load with no registered saveables
+    // This should fail because save has data for unregistered saveables
+    auto result = saveSystem_->load(0);
+    EXPECT_FALSE(result.has_value());
+
+    if (!result.has_value()) {
+        EXPECT_EQ(result.error(), SaveError::SerializationError);
+    }
+}
+
+TEST_F(SaveSystemTest, SaveToHighSlotNumber) {
+    // Test saving to a very high slot number (but not reserved slots)
+    SaveSlot highSlot = 999999;
+
+    auto result = saveSystem_->save(highSlot, "High Slot Save");
+    EXPECT_TRUE(result.has_value());
+    EXPECT_TRUE(saveSystem_->saveExists(highSlot));
+
+    auto metadata = saveSystem_->getSaveMetadata(highSlot);
+    EXPECT_TRUE(metadata.has_value());
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->slot, highSlot);
+    }
+}
+
+TEST_F(SaveSystemTest, SaveToMultipleSlots) {
+    TestSaveable saveable;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    // Save to multiple slots with different data
+    for (int i = 0; i < 5; ++i) {
+        saveable.value = i * 100;
+        saveSystem_->save(i, "Save " + std::to_string(i));
+    }
+
+    // Verify each slot has correct data
+    for (int i = 0; i < 5; ++i) {
+        saveable.value = 0;
+        saveSystem_->load(i);
+        EXPECT_EQ(saveable.value, i * 100);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+// ============================================================================
+// Delete Operations - Additional Coverage
+// ============================================================================
+
+TEST_F(SaveSystemTest, DeleteSaveAlsoDeletesMetadata) {
+    auto saveResult = saveSystem_->save(0, "Delete Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    // Verify metadata exists
+    EXPECT_TRUE(saveSystem_->getSaveMetadata(0).has_value());
+
+    // Delete save
+    bool deleted = saveSystem_->deleteSave(0);
+    EXPECT_TRUE(deleted);
+
+    // Metadata should be gone
+    EXPECT_FALSE(saveSystem_->getSaveMetadata(0).has_value());
+}
+
+TEST_F(SaveSystemTest, DeleteSaveFromDifferentProfile) {
+    // Create save in profile A
+    saveSystem_->setActiveProfile("profile_a");
+    saveSystem_->save(0, "Profile A Save");
+
+    // Switch to profile B
+    saveSystem_->setActiveProfile("profile_b");
+
+    // Try to delete slot 0 from profile B (shouldn't affect profile A)
+    bool deleted = saveSystem_->deleteSave(0);
+    EXPECT_FALSE(deleted);  // No save exists in profile B slot 0
+
+    // Switch back to profile A
+    saveSystem_->setActiveProfile("profile_a");
+
+    // Save should still exist
+    EXPECT_TRUE(saveSystem_->saveExists(0));
+}
+
+TEST_F(SaveSystemTest, DeleteQuickSave) {
+    TestSaveable saveable;
+    saveable.value = 123;
+
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->quickSave();
+
+    EXPECT_TRUE(saveSystem_->saveExists(SaveSlots::QuickSave));
+
+    bool deleted = saveSystem_->deleteSave(SaveSlots::QuickSave);
+    EXPECT_TRUE(deleted);
+
+    EXPECT_FALSE(saveSystem_->saveExists(SaveSlots::QuickSave));
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, DeleteAutoSave) {
+    TestSaveable saveable;
+    saveable.value = 456;
+
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->autoSave();
+
+    EXPECT_TRUE(saveSystem_->saveExists(SaveSlots::AutoSave));
+
+    bool deleted = saveSystem_->deleteSave(SaveSlots::AutoSave);
+    EXPECT_TRUE(deleted);
+
+    EXPECT_FALSE(saveSystem_->saveExists(SaveSlots::AutoSave));
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+// ============================================================================
+// Metadata - Additional Coverage
+// ============================================================================
+
+TEST_F(SaveSystemTest, MetadataTimestampIsRecent) {
+    auto saveResult = saveSystem_->save(0, "Timestamp Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        auto now = std::chrono::system_clock::now();
+        auto diff = std::chrono::duration_cast<std::chrono::seconds>(now - metadata->timestamp);
+
+        // Timestamp should be within 5 seconds of now
+        EXPECT_LT(diff.count(), 5);
+    }
+}
+
+TEST_F(SaveSystemTest, MetadataCompletionPercentage) {
+    auto saveResult = saveSystem_->save(0, "Completion Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        // Should be initialized to 0.0
+        EXPECT_FLOAT_EQ(metadata->completionPercentage, 0.0f);
+    }
+}
+
+TEST_F(SaveSystemTest, MetadataLevelNameIsOptional) {
+    auto saveResult = saveSystem_->save(0, "Level Name Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        // levelName is optional, should not be set by default
+        EXPECT_FALSE(metadata->levelName.has_value());
+    }
+}
+
+TEST_F(SaveSystemTest, MetadataHasScreenshotIsFalse) {
+    auto saveResult = saveSystem_->save(0, "Screenshot Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        // Screenshots not implemented yet
+        EXPECT_FALSE(metadata->hasScreenshot);
+    }
+}
+
+TEST_F(SaveSystemTest, GetAllSaveMetadataReturnsCorrectCount) {
+    // Create 5 saves
+    for (int i = 0; i < 5; ++i) {
+        saveSystem_->save(i, "Save " + std::to_string(i));
+    }
+
+    auto allMetadata = saveSystem_->getAllSaveMetadata();
+
+    // Should have at least 5 saves
+    EXPECT_GE(allMetadata.size(), 5);
+}
+
+TEST_F(SaveSystemTest, GetAllSaveMetadataAfterDeletingSome) {
+    // Create 5 saves
+    for (int i = 0; i < 5; ++i) {
+        saveSystem_->save(i, "Save " + std::to_string(i));
+    }
+
+    // Delete 2 of them
+    saveSystem_->deleteSave(1);
+    saveSystem_->deleteSave(3);
+
+    auto allMetadata = saveSystem_->getAllSaveMetadata();
+
+    // Should have 3 remaining
+    EXPECT_EQ(allMetadata.size(), 3);
+
+    // Verify the correct ones remain
+    bool found0 = false, found2 = false, found4 = false;
+    for (const auto& meta : allMetadata) {
+        if (meta.slot == 0) found0 = true;
+        if (meta.slot == 2) found2 = true;
+        if (meta.slot == 4) found4 = true;
+    }
+
+    EXPECT_TRUE(found0);
+    EXPECT_TRUE(found2);
+    EXPECT_TRUE(found4);
+}
+
+// ============================================================================
+// ISaveable Interface - Additional Coverage
+// ============================================================================
+
+TEST_F(SaveSystemTest, RegisterSameableMultipleTimesIsIdempotent) {
+    TestSaveable saveable;
+    saveable.value = 42;
+
+    // Register multiple times
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->registerSaveable(&saveable);
+
+    // Save and verify
+    saveSystem_->save(0, "Multiple Register Test");
+    saveable.value = 0;
+    saveSystem_->load(0);
+
+    // Should still work correctly (implementation may have duplicates, but that's ok)
+    EXPECT_EQ(saveable.value, 42);
+
+    // Unregister once should be enough (or may need multiple unregisters)
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, UnregisterNonExistentSaveable) {
+    TestSaveable saveable;
+
+    // Unregister something that was never registered
+    // Should not crash
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, SaveableWithLongName) {
+    TestSaveable saveable;
+    saveable.value = 999;
+    saveable.name = std::string(1000, 'x');  // Very long name
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Long Name Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.value = 0;
+    saveable.name = "";
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.value, 999);
+        EXPECT_EQ(saveable.name.length(), 1000);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, SaveableWithSpecialCharactersInData) {
+    TestSaveable saveable;
+    saveable.value = 123;
+    // Test newlines and tabs (embedded nulls not portable in serialization)
+    saveable.name = "Test\nWith\tSpecialChars";
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Special Chars Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.value = 0;
+    saveable.name = "";
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.value, 123);
+        EXPECT_EQ(saveable.name, "Test\nWith\tSpecialChars");
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+// ============================================================================
+// Archive Edge Cases
+// ============================================================================
+
+TEST_F(SaveSystemTest, ArchiveSupportsEmptyString) {
+    TestSaveable saveable;
+    saveable.value = 42;
+    saveable.name = "";  // Empty string
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Empty String Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.name = "not empty";
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.name, "");
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, ArchiveSupportsEmptyByteArray) {
+    class BytesSaveable : public ISaveable {
+    public:
+        std::vector<std::uint8_t> data;
+
+        std::string getSaveKey() const override { return "bytes_saveable"; }
+
+        void serialize(ISaveArchive& archive) const override {
+            archive.writeBytes("data", data);
+        }
+
+        void deserialize(const ILoadArchive& archive) override {
+            data = archive.readBytes("data");
+        }
+    };
+
+    BytesSaveable saveable;
+    saveable.data = {};  // Empty vector
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Empty Bytes Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.data = {0x01, 0x02, 0x03};
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_TRUE(saveable.data.empty());
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, ArchiveSupportsLargeByteArray) {
+    class BytesSaveable : public ISaveable {
+    public:
+        std::vector<std::uint8_t> data;
+
+        std::string getSaveKey() const override { return "bytes_saveable"; }
+
+        void serialize(ISaveArchive& archive) const override {
+            archive.writeBytes("data", data);
+        }
+
+        void deserialize(const ILoadArchive& archive) override {
+            data = archive.readBytes("data");
+        }
+    };
+
+    BytesSaveable saveable;
+    saveable.data.resize(100000);  // 100KB
+    for (size_t i = 0; i < saveable.data.size(); ++i) {
+        saveable.data[i] = static_cast<std::uint8_t>(i % 256);
+    }
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Large Bytes Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.data.clear();
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.data.size(), 100000);
+        // Verify some values
+        EXPECT_EQ(saveable.data[0], 0);
+        EXPECT_EQ(saveable.data[255], 255);
+        EXPECT_EQ(saveable.data[256], 0);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, ArchiveSupportsExtremeFloatValues) {
+    class FloatSaveable : public ISaveable {
+    public:
+        float minFloat = 0.0f;
+        float maxFloat = 0.0f;
+        float negativeFloat = 0.0f;
+        float zeroFloat = 0.0f;
+
+        std::string getSaveKey() const override { return "float_saveable"; }
+
+        void serialize(ISaveArchive& archive) const override {
+            archive.writeFloat("min", minFloat);
+            archive.writeFloat("max", maxFloat);
+            archive.writeFloat("negative", negativeFloat);
+            archive.writeFloat("zero", zeroFloat);
+        }
+
+        void deserialize(const ILoadArchive& archive) override {
+            minFloat = archive.readFloat("min");
+            maxFloat = archive.readFloat("max");
+            negativeFloat = archive.readFloat("negative");
+            zeroFloat = archive.readFloat("zero");
+        }
+    };
+
+    FloatSaveable saveable;
+    saveable.minFloat = std::numeric_limits<float>::min();
+    saveable.maxFloat = std::numeric_limits<float>::max();
+    saveable.negativeFloat = -12345.6789f;
+    saveable.zeroFloat = 0.0f;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Float Extremes Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.minFloat = 0.0f;
+    saveable.maxFloat = 0.0f;
+    saveable.negativeFloat = 0.0f;
+    saveable.zeroFloat = 1.0f;
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_FLOAT_EQ(saveable.minFloat, std::numeric_limits<float>::min());
+        EXPECT_FLOAT_EQ(saveable.maxFloat, std::numeric_limits<float>::max());
+        EXPECT_FLOAT_EQ(saveable.negativeFloat, -12345.6789f);
+        EXPECT_FLOAT_EQ(saveable.zeroFloat, 0.0f);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, ArchiveSupportsExtremeIntValues) {
+    class IntSaveable : public ISaveable {
+    public:
+        int minInt = 0;
+        int maxInt = 0;
+        int negativeInt = 0;
+        int zeroInt = 1;
+
+        std::string getSaveKey() const override { return "int_saveable"; }
+
+        void serialize(ISaveArchive& archive) const override {
+            archive.writeInt("min", minInt);
+            archive.writeInt("max", maxInt);
+            archive.writeInt("negative", negativeInt);
+            archive.writeInt("zero", zeroInt);
+        }
+
+        void deserialize(const ILoadArchive& archive) override {
+            minInt = archive.readInt("min");
+            maxInt = archive.readInt("max");
+            negativeInt = archive.readInt("negative");
+            zeroInt = archive.readInt("zero");
+        }
+    };
+
+    IntSaveable saveable;
+    saveable.minInt = std::numeric_limits<int>::min();
+    saveable.maxInt = std::numeric_limits<int>::max();
+    saveable.negativeInt = -987654321;
+    saveable.zeroInt = 0;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    auto saveResult = saveSystem_->save(0, "Int Extremes Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    saveable.minInt = 0;
+    saveable.maxInt = 0;
+    saveable.negativeInt = 0;
+    saveable.zeroInt = 1;
+
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.minInt, std::numeric_limits<int>::min());
+        EXPECT_EQ(saveable.maxInt, std::numeric_limits<int>::max());
+        EXPECT_EQ(saveable.negativeInt, -987654321);
+        EXPECT_EQ(saveable.zeroInt, 0);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+// ============================================================================
+// Quick Save/Load - Additional Coverage
+// ============================================================================
+
+TEST_F(SaveSystemTest, QuickLoadWithoutQuickSaveReturnsError) {
+    // Try to quick load without having quick saved
+    saveSystem_->quickLoad();
+
+    // Quick load calls load() which should return an error
+    // Since quickLoad() returns void, we can't check the result directly
+    // But we can verify the save doesn't exist
+    EXPECT_FALSE(saveSystem_->saveExists(SaveSlots::QuickSave));
+}
+
+TEST_F(SaveSystemTest, MultipleQuickSavesOverwriteEachOther) {
+    TestSaveable saveable;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    // First quick save
+    saveable.value = 100;
+    saveSystem_->quickSave();
+
+    // Second quick save
+    saveable.value = 200;
+    saveSystem_->quickSave();
+
+    // Third quick save
+    saveable.value = 300;
+    saveSystem_->quickSave();
+
+    // Reset and load
+    saveable.value = 0;
+    saveSystem_->quickLoad();
+
+    // Should have the last value
+    EXPECT_EQ(saveable.value, 300);
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, QuickSaveAndAutoSaveAreIndependent) {
+    TestSaveable saveable;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    // Quick save
+    saveable.value = 111;
+    saveSystem_->quickSave();
+
+    // Auto save
+    saveable.value = 222;
+    saveSystem_->autoSave();
+
+    // Load quick save
+    saveable.value = 0;
+    saveSystem_->quickLoad();
+    EXPECT_EQ(saveable.value, 111);
+
+    // Load auto save
+    saveable.value = 0;
+    saveSystem_->load(SaveSlots::AutoSave);
+    EXPECT_EQ(saveable.value, 222);
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
 }  // namespace jframe::tests

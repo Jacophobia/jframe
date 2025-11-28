@@ -294,10 +294,16 @@ public:
     }
 
     // Wait for all submitted jobs to complete
+    // Note: Jobs submitted during execution will remain in the taskflow
+    // and require a subsequent wait() call
     void wait() {
         if (!taskflow_.empty()) {
-            executor_.run(taskflow_).wait();
-            taskflow_.clear();
+            // Create a new taskflow for the current batch
+            tf::Taskflow currentBatch = std::move(taskflow_);
+            taskflow_ = tf::Taskflow{};
+
+            // Run only the current batch
+            executor_.run(currentBatch).wait();
         }
     }
 

@@ -558,4 +558,646 @@ TEST_F(GraphicsSystemTest, DISABLED_MeasureTextReturnsPositiveSize) {
     EXPECT_GT(size.y, 0.0f);
 }
 
+//==============================================================================
+// Additional Coverage Tests - Missing Methods
+//==============================================================================
+
+TEST_F(GraphicsSystemTest, DISABLED_SetAssetSystemDoesNotCrash) {
+    // Should be able to set asset system pointer without crashing
+    graphics_->setAssetSystem(nullptr);
+    // No assertion needed - test passes if no crash
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteSheetDoesNotCrash) {
+    // Create a mock spritesheet
+    SpriteSheet sheet;
+    sheet.texture = AssetHandle{};
+    sheet.frameWidth = 32;
+    sheet.frameHeight = 32;
+    sheet.columns = 4;
+    sheet.rows = 4;
+    sheet.padding = 0;
+
+    Transform2D transform{
+        .x = 100.0f,
+        .y = 100.0f,
+        .rotation = 0.0f,
+        .scaleX = 1.0f,
+        .scaleY = 1.0f
+    };
+
+    graphics_->beginFrame();
+    graphics_->drawSprite(sheet, 0, transform, Color::white());
+    graphics_->drawSprite(sheet, 5, transform, Color::red());
+    graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawAnimatedSpriteDoesNotCrash) {
+    // Create a mock animated sprite
+    SpriteSheet sheet;
+    sheet.texture = AssetHandle{};
+    sheet.frameWidth = 32;
+    sheet.frameHeight = 32;
+    sheet.columns = 4;
+    sheet.rows = 4;
+
+    AnimatedSprite animSprite;
+    animSprite.sheet = sheet;
+
+    // Create a simple animation
+    Animation walkAnim;
+    walkAnim.name = "walk";
+    walkAnim.looping = true;
+    walkAnim.frames = {
+        AnimationFrame{0, 0.1f},
+        AnimationFrame{1, 0.1f},
+        AnimationFrame{2, 0.1f},
+        AnimationFrame{3, 0.1f}
+    };
+
+    animSprite.animations["walk"] = walkAnim;
+    animSprite.currentAnimation = "walk";
+    animSprite.currentFrameIndex = 0;
+    animSprite.frameTimer = 0.0f;
+    animSprite.playing = true;
+
+    Transform2D transform{
+        .x = 200.0f,
+        .y = 200.0f,
+        .rotation = 0.0f,
+        .scaleX = 1.0f,
+        .scaleY = 1.0f
+    };
+
+    graphics_->beginFrame();
+    graphics_->drawAnimatedSprite(animSprite, transform, Color::white());
+    graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_RenderEntitiesWithNoLayersDoesNotCrash) {
+    // Mock entity system (would need actual implementation)
+    // This test defines expected behavior
+    // graphics_->beginFrame();
+    // graphics_->renderEntities(mockEntitySystem);
+    // graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_RenderEntitiesWithLayerRangeDoesNotCrash) {
+    // Mock entity system (would need actual implementation)
+    // This test defines expected behavior
+    // graphics_->beginFrame();
+    // graphics_->renderEntities(mockEntitySystem, 0, 10);
+    // graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_ViewportCullingToggle) {
+    // Should start disabled
+    EXPECT_FALSE(graphics_->isViewportCullingEnabled());
+
+    graphics_->setViewportCulling(true);
+    EXPECT_TRUE(graphics_->isViewportCullingEnabled());
+
+    graphics_->setViewportCulling(false);
+    EXPECT_FALSE(graphics_->isViewportCullingEnabled());
+}
+
+//==============================================================================
+// Edge Cases and Boundary Tests
+//==============================================================================
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteWithZeroScale) {
+    Sprite sprite;
+    sprite.transform.x = 100.0f;
+    sprite.transform.y = 100.0f;
+    sprite.transform.scaleX = 0.0f;
+    sprite.transform.scaleY = 0.0f;
+    sprite.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should handle zero scale gracefully (draw nothing or point)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteWithNegativeScale) {
+    Sprite sprite;
+    sprite.transform.x = 100.0f;
+    sprite.transform.y = 100.0f;
+    sprite.transform.scaleX = -1.0f;  // Flipped horizontally
+    sprite.transform.scaleY = -1.0f;  // Flipped vertically
+    sprite.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should render flipped sprite
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteWithExtremeRotation) {
+    Sprite sprite;
+    sprite.transform.x = 100.0f;
+    sprite.transform.y = 100.0f;
+    sprite.transform.rotation = 100.0f;  // Many rotations
+    sprite.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should handle extreme rotation values
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawRectWithZeroSize) {
+    Canvas rect{
+        .origin = {100, 100},
+        .size = {0, 0}
+    };
+
+    graphics_->beginFrame();
+    graphics_->drawRect(rect, Color::red(), true);
+    graphics_->endFrame();
+
+    // Should handle zero size gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawRectWithNegativeSize) {
+    Canvas rect{
+        .origin = {100, 100},
+        .size = {-50, -50}
+    };
+
+    graphics_->beginFrame();
+    graphics_->drawRect(rect, Color::red(), true);
+    graphics_->endFrame();
+
+    // Should handle negative size gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawLineWithSameStartAndEnd) {
+    graphics_->beginFrame();
+    graphics_->drawLine(Vec2{100.0f, 100.0f}, Vec2{100.0f, 100.0f}, Color::green(), 2.0f);
+    graphics_->endFrame();
+
+    // Should handle degenerate line gracefully (draw nothing or point)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawLineWithZeroThickness) {
+    graphics_->beginFrame();
+    graphics_->drawLine(Vec2{0.0f, 0.0f}, Vec2{100.0f, 100.0f}, Color::green(), 0.0f);
+    graphics_->endFrame();
+
+    // Should handle zero thickness gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawLineWithVeryThickLine) {
+    graphics_->beginFrame();
+    graphics_->drawLine(Vec2{0.0f, 0.0f}, Vec2{100.0f, 100.0f}, Color::green(), 50.0f);
+    graphics_->endFrame();
+
+    // Should handle very thick lines (may be clamped by OpenGL)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawCircleWithNegativeRadius) {
+    graphics_->beginFrame();
+    graphics_->drawCircle(Vec2{100.0f, 100.0f}, -50.0f, Color::red(), true);
+    graphics_->endFrame();
+
+    // Should handle negative radius gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawCircleWithOneSegment) {
+    graphics_->beginFrame();
+    graphics_->drawCircle(Vec2{100.0f, 100.0f}, 50.0f, Color::blue(), true, 1);
+    graphics_->endFrame();
+
+    // Should handle degenerate circle (1 segment)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawCircleWithZeroSegments) {
+    graphics_->beginFrame();
+    graphics_->drawCircle(Vec2{100.0f, 100.0f}, 50.0f, Color::blue(), true, 0);
+    graphics_->endFrame();
+
+    // Should handle zero segments gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawCircleWithManySegments) {
+    graphics_->beginFrame();
+    graphics_->drawCircle(Vec2{100.0f, 100.0f}, 50.0f, Color::blue(), true, 1000);
+    graphics_->endFrame();
+
+    // Should handle very high segment count
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawPolygonWithEmptyVertices) {
+    std::vector<Vec2> empty;
+
+    graphics_->beginFrame();
+    graphics_->drawPolygon(empty, Color::green(), true);
+    graphics_->endFrame();
+
+    // Should handle empty polygon gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawPolygonWithOneVertex) {
+    std::vector<Vec2> point = { Vec2{100.0f, 100.0f} };
+
+    graphics_->beginFrame();
+    graphics_->drawPolygon(point, Color::green(), true);
+    graphics_->endFrame();
+
+    // Should handle single vertex gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithLongString) {
+    AssetHandle fontHandle;
+    std::string longString(10000, 'A');  // 10000 characters
+    Vec2 size = graphics_->measureText(longString, fontHandle, 16.0f);
+
+    EXPECT_GT(size.x, 0.0f);
+    EXPECT_GT(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithNewlines) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("Line1\nLine2\nLine3", fontHandle, 16.0f);
+
+    // Current implementation may not handle newlines specially
+    EXPECT_GE(size.x, 0.0f);
+    EXPECT_GE(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithSpecialCharacters) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("!@#$%^&*()_+-=[]{}|;:',.<>?/~`", fontHandle, 16.0f);
+
+    EXPECT_GT(size.x, 0.0f);
+    EXPECT_GT(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithZeroSize) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("Test", fontHandle, 0.0f);
+
+    // Should handle zero font size gracefully
+    EXPECT_GE(size.x, 0.0f);
+    EXPECT_GE(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithNegativeSize) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("Test", fontHandle, -16.0f);
+
+    // Should handle negative font size gracefully
+    EXPECT_GE(size.x, 0.0f);
+    EXPECT_GE(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextWithVeryLargeSize) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("Test", fontHandle, 1000.0f);
+
+    EXPECT_GT(size.x, 0.0f);
+    EXPECT_GT(size.y, 0.0f);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawTextWithLongString) {
+    AssetHandle fontHandle;
+    std::string longString(10000, 'A');
+
+    graphics_->beginFrame();
+    graphics_->drawText(longString, Vec2{100.0f, 100.0f}, fontHandle, 16.0f, Color::white());
+    graphics_->endFrame();
+
+    // Should handle very long strings without crashing
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawTextCenteredWithEmptyString) {
+    AssetHandle fontHandle;
+
+    graphics_->beginFrame();
+    graphics_->drawTextCentered("", Vec2{400.0f, 300.0f}, fontHandle, 24.0f, Color::white());
+    graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetWindowSizeToZero) {
+    Size zeroSize{0, 0};
+    graphics_->setWindowSize(zeroSize);
+
+    // Should handle zero size gracefully (may clamp to minimum)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetWindowSizeToNegative) {
+    Size negativeSize{-800, -600};
+    graphics_->setWindowSize(negativeSize);
+
+    // Should handle negative size gracefully (may clamp to minimum)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetWindowSizeToVeryLarge) {
+    Size largeSize{100000, 100000};
+    graphics_->setWindowSize(largeSize);
+
+    // Should handle very large size (may be limited by display)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetCameraWithNegativeZoom) {
+    Camera camera = graphics_->getCamera();
+    camera.zoom = -1.0f;
+    graphics_->setCamera(camera);
+
+    Camera retrieved = graphics_->getCamera();
+    EXPECT_FLOAT_EQ(retrieved.zoom, -1.0f);
+
+    // Negative zoom may cause inverted rendering or be clamped
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetCameraWithZeroZoom) {
+    Camera camera = graphics_->getCamera();
+    camera.zoom = 0.0f;
+    graphics_->setCamera(camera);
+
+    Camera retrieved = graphics_->getCamera();
+    EXPECT_FLOAT_EQ(retrieved.zoom, 0.0f);
+
+    // Zero zoom may cause division by zero or be clamped
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetCameraWithVeryLargeZoom) {
+    Camera camera = graphics_->getCamera();
+    camera.zoom = 1000.0f;
+    graphics_->setCamera(camera);
+
+    Camera retrieved = graphics_->getCamera();
+    EXPECT_FLOAT_EQ(retrieved.zoom, 1000.0f);
+
+    // Very large zoom should work but may cause precision issues
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetCameraWithExtremePosition) {
+    Camera camera = graphics_->getCamera();
+    camera.transform.x = 1e10f;
+    camera.transform.y = -1e10f;
+    graphics_->setCamera(camera);
+
+    Camera retrieved = graphics_->getCamera();
+    EXPECT_FLOAT_EQ(retrieved.transform.x, 1e10f);
+    EXPECT_FLOAT_EQ(retrieved.transform.y, -1e10f);
+
+    // Extreme positions should work but may cause precision issues
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_WorldToScreenWithExtremeCoordinates) {
+    Vec2 extremePos{1e10f, -1e10f};
+    Vec2 screenPos = graphics_->worldToScreen(extremePos);
+
+    // Should return some value, even if off-screen
+    // No specific assertion - just checking it doesn't crash
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_ScreenToWorldWithExtremeCoordinates) {
+    Vec2 extremePos{1e10f, -1e10f};
+    Vec2 worldPos = graphics_->screenToWorld(extremePos);
+
+    // Should return some value
+    // No specific assertion - just checking it doesn't crash
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_WorldToScreenAtNegativeScreenCoordinates) {
+    // Test point that maps to negative screen coordinates
+    Camera camera = graphics_->getCamera();
+    camera.transform.x = 0.0f;
+    camera.transform.y = 0.0f;
+    graphics_->setCamera(camera);
+
+    Vec2 worldPos{-1000.0f, -1000.0f};
+    Vec2 screenPos = graphics_->worldToScreen(worldPos);
+
+    // Should return negative screen coordinates
+    EXPECT_LT(screenPos.x, 0.0f);
+    EXPECT_GT(screenPos.y, camera.viewportSize.height);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetClearColorWithTransparency) {
+    graphics_->setClearColor(Color{100, 150, 200, 128});
+
+    graphics_->beginFrame();
+    graphics_->endFrame();
+
+    // Clear color with alpha should work (though typically ignored in clearing)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetClearColorMultipleTimes) {
+    graphics_->setClearColor(Color::red());
+    graphics_->setClearColor(Color::green());
+    graphics_->setClearColor(Color::blue());
+
+    graphics_->beginFrame();
+    graphics_->endFrame();
+
+    // Should use the last set color (blue)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SetVSyncMultipleTimes) {
+    graphics_->setVSync(true);
+    graphics_->setVSync(false);
+    graphics_->setVSync(true);
+
+    // Should be able to toggle vsync multiple times
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_ToggleFullscreenMultipleTimes) {
+    graphics_->setFullscreen(true);
+    graphics_->setFullscreen(false);
+    graphics_->setFullscreen(true);
+    graphics_->setFullscreen(false);
+
+    EXPECT_FALSE(graphics_->isFullscreen());
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MultipleBeginFrameWithoutEnd) {
+    graphics_->beginFrame();
+    // Note: Calling beginFrame again without endFrame is undefined behavior
+    // This test documents that it may crash or produce artifacts
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_EndFrameWithoutBegin) {
+    // Note: Calling endFrame without beginFrame is undefined behavior
+    // This test documents that it may crash
+    // graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawOutsideBeginEndFrame) {
+    Sprite sprite;
+    sprite.sourceRect.size = Size{32, 32};
+
+    // Drawing outside begin/end frame should add to batch
+    // but won't be rendered until next frame
+    graphics_->draw(sprite);
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawBatchWithManySprites) {
+    std::vector<Sprite> sprites;
+    sprites.reserve(10000);
+
+    for (int i = 0; i < 10000; i++) {
+        Sprite sprite;
+        sprite.transform.x = static_cast<float>(i % 100) * 10.0f;
+        sprite.transform.y = static_cast<float>(i / 100) * 10.0f;
+        sprite.sourceRect.size = Size{8, 8};
+        sprites.push_back(sprite);
+    }
+
+    graphics_->beginFrame();
+    graphics_->drawBatch(sprites);
+    graphics_->endFrame();
+
+    // Should handle large batches
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawWithDifferentLayersInBatch) {
+    std::vector<Sprite> sprites;
+
+    for (int i = 0; i < 10; i++) {
+        Sprite sprite;
+        sprite.transform.x = static_cast<float>(i * 50);
+        sprite.layer = i % 3;  // Layers 0, 1, 2
+        sprite.sourceRect.size = Size{32, 32};
+        sprites.push_back(sprite);
+    }
+
+    graphics_->beginFrame();
+    graphics_->drawBatch(sprites);
+    graphics_->endFrame();
+
+    // Should sort by layer regardless of batch order
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawWithNegativeLayers) {
+    Sprite sprite1;
+    sprite1.layer = -100;
+    sprite1.sourceRect.size = Size{32, 32};
+
+    Sprite sprite2;
+    sprite2.layer = -50;
+    sprite2.sourceRect.size = Size{32, 32};
+
+    Sprite sprite3;
+    sprite3.layer = 0;
+    sprite3.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite3);
+    graphics_->draw(sprite1);
+    graphics_->draw(sprite2);
+    graphics_->endFrame();
+
+    // Should render in order: sprite1 (-100), sprite2 (-50), sprite3 (0)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawWithExtremeLayerValues) {
+    Sprite sprite1;
+    sprite1.layer = std::numeric_limits<RenderLayer>::min();
+    sprite1.sourceRect.size = Size{32, 32};
+
+    Sprite sprite2;
+    sprite2.layer = std::numeric_limits<RenderLayer>::max();
+    sprite2.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite2);
+    graphics_->draw(sprite1);
+    graphics_->endFrame();
+
+    // Should handle extreme layer values
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SpriteWithInvalidAnchor) {
+    Sprite sprite;
+    sprite.anchor = Vec2{5.0f, 5.0f};  // Outside normal [0,1] range
+    sprite.sourceRect.size = Size{32, 32};
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should handle out-of-range anchor values
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SpriteWithZeroSourceRect) {
+    Sprite sprite;
+    sprite.transform.x = 100.0f;
+    sprite.transform.y = 100.0f;
+    sprite.sourceRect = Canvas{
+        .origin = {0, 0},
+        .size = {0, 0}
+    };
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should handle zero source rect (may use default size)
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_SpriteWithNegativeSourceRect) {
+    Sprite sprite;
+    sprite.sourceRect = Canvas{
+        .origin = {-10, -10},
+        .size = {-32, -32}
+    };
+
+    graphics_->beginFrame();
+    graphics_->draw(sprite);
+    graphics_->endFrame();
+
+    // Should handle negative source rect values
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteSheetWithInvalidFrameIndex) {
+    SpriteSheet sheet;
+    sheet.texture = AssetHandle{};
+    sheet.frameWidth = 32;
+    sheet.frameHeight = 32;
+    sheet.columns = 4;
+    sheet.rows = 4;  // Total 16 frames (0-15)
+
+    Transform2D transform{.x = 100.0f, .y = 100.0f};
+
+    graphics_->beginFrame();
+    graphics_->drawSprite(sheet, -1, transform);  // Negative index
+    graphics_->drawSprite(sheet, 100, transform);  // Out of bounds index
+    graphics_->endFrame();
+
+    // Should handle invalid frame indices gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_DrawSpriteSheetWithZeroColumnsRows) {
+    SpriteSheet sheet;
+    sheet.texture = AssetHandle{};
+    sheet.frameWidth = 32;
+    sheet.frameHeight = 32;
+    sheet.columns = 0;
+    sheet.rows = 0;
+
+    Transform2D transform{.x = 100.0f, .y = 100.0f};
+
+    graphics_->beginFrame();
+    graphics_->drawSprite(sheet, 0, transform);
+    graphics_->endFrame();
+
+    // Should handle degenerate spritesheet gracefully
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_ColorComponentsAtBoundaries) {
+    // Test colors at min/max boundaries
+    graphics_->beginFrame();
+    graphics_->drawRect(Canvas{{0,0}, {10,10}}, Color{0, 0, 0, 0}, true);      // All min
+    graphics_->drawRect(Canvas{{10,0}, {10,10}}, Color{255, 255, 255, 255}, true);  // All max
+    graphics_->drawRect(Canvas{{20,0}, {10,10}}, Color{255, 0, 255, 0}, true);      // Mixed
+    graphics_->endFrame();
+}
+
 }  // namespace jframe::tests

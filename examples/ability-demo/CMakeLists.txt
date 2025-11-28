@@ -13,6 +13,7 @@ target_link_libraries(ability-demo
         jframe-entity
         jframe-graphics
         jframe-physics
+        jframe-audio
         jframe-input
         jframe-events
         jframe-assets
@@ -21,6 +22,7 @@ target_link_libraries(ability-demo
         jframe-gas
         jframe-camera
         jframe-blueprints
+        jframe-components
 )
 
 target_compile_features(ability-demo PRIVATE cxx_std_23)
@@ -31,3 +33,12 @@ add_custom_command(TARGET ability-demo POST_BUILD
     ${CMAKE_CURRENT_SOURCE_DIR}/data
     $<TARGET_FILE_DIR:ability-demo>/data
 )
+
+# Copy FMOD dylib to build output (macOS)
+if(APPLE AND TARGET fmod)
+    add_custom_command(TARGET ability-demo POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/external/fmod/lib/macos/libfmod.dylib
+        $<TARGET_FILE_DIR:ability-demo>/libfmod.dylib
+    )
+endif()

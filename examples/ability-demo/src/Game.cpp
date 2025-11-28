@@ -18,6 +18,8 @@ import jframe.camera.impl;
 import jframe.blueprints;
 import jframe.blueprints.impl;
 import jframe.config.impl;
+import jframe.builders;
+import jframe.luaconfig;
 
 #include "Game.h"
 #include "Components.h"
@@ -410,69 +412,54 @@ void Game::stopMusic() {
 void Game::setupInputMappings() {
     auto& input = *engine_->systems().input;
 
-    // Movement (A/E for left/right)
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 65},  // A
-        .action = "move_left"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 69},  // E
-        .action = "move_right"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 263},  // Left arrow
-        .action = "move_left"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 262},  // Right arrow
-        .action = "move_right"
-    });
+    // Use the new InputMappingBuilder for cleaner input configuration
+    jframe::InputMappingBuilder(input)
+        // Movement (A/E for left/right, with arrow key alternatives)
+        .action("move_left")
+            .key(jframe::Keys::A)
+            .key(jframe::Keys::Left)
+            .button(jframe::ControllerButtons::DPadLeft)
+        .action("move_right")
+            .key(jframe::Keys::E)  // E for right (non-standard but keeping existing behavior)
+            .key(jframe::Keys::Right)
+            .button(jframe::ControllerButtons::DPadRight)
 
-    // Jump
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 32},  // Space
-        .action = "jump"
-    });
+        // Jump
+        .action("jump")
+            .key(jframe::Keys::Space)
+            .key(jframe::Keys::W)  // W also jumps
+            .key(jframe::Keys::Up)
+            .button(jframe::ControllerButtons::A)
 
-    // Dash
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 340},  // Left Shift
-        .action = "dash"
-    });
+        // Dash
+        .action("dash")
+            .key(jframe::Keys::LeftShift)
+            .button(jframe::ControllerButtons::RightShoulder)
 
-    // Combat abilities
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 70},  // F
-        .action = "attack"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 71},  // G
-        .action = "shield"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 82},  // R
-        .action = "ranged"
-    });
+        // Combat abilities
+        .action("attack")
+            .key(jframe::Keys::F)
+            .button(jframe::ControllerButtons::X)
+        .action("shield")
+            .key(jframe::Keys::G)
+            .button(jframe::ControllerButtons::B)
+        .action("ranged")
+            .key(jframe::Keys::R)
+            .button(jframe::ControllerButtons::Y)
 
-    // Ground pound (Down arrow)
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 264},  // Down arrow
-        .action = "ground_pound"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 83},  // S
-        .action = "ground_pound"
-    });
+        // Ground pound (Down arrow or S)
+        .action("ground_pound")
+            .key(jframe::Keys::Down)
+            .key(jframe::Keys::S)
+            .button(jframe::ControllerButtons::DPadDown)
 
-    // Test effects
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 72},  // H
-        .action = "apply_health_regen"
-    });
-    input.registerMapping(jframe::InputMapping{
-        .binding = {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 84},  // T
-        .action = "apply_stun"
-    });
+        // Test effects
+        .action("apply_health_regen")
+            .key(jframe::Keys::H)
+        .action("apply_stun")
+            .key(jframe::Keys::T)
+
+        .apply();
 }
 
 void Game::setupGAS() {
@@ -786,16 +773,14 @@ void Game::createPlayer() {
         .filled = true
     });
 
-    // Create physics body using config values
-    jframe::PhysicsBodyDef playerDef{
-        .type = jframe::BodyType::Dynamic,
-        .transform = {.x = spawnX, .y = spawnY},
-        .size = {playerPhysicsWidth_, playerPhysicsHeight_},
-        .fixedRotation = config_->getBoolOr("physics.fixedRotation", true),
-        .linearDamping = config_->getFloatOr("physics.linearDamping", 0.0f),
-        .friction = config_->getFloatOr("physics.friction", 0.0f)  // Zero friction prevents wall sticking
-    };
-    sys.physics->createBody(player_, playerDef);
+    // Create physics body using the new PhysicsBodyBuilder
+    jframe::physics::character(*sys.physics, player_, spawnX, spawnY,
+                               playerPhysicsWidth_, playerPhysicsHeight_)
+        .fixedRotation(config_->getBoolOr("physics.fixedRotation", true))
+        .linearDamping(config_->getFloatOr("physics.linearDamping", 0.0f))
+        .friction(config_->getFloatOr("physics.friction", 0.0f))  // Zero friction prevents wall sticking
+        .layer(jframe::CollisionLayers::Player)
+        .create();
 
     // Initialize GAS component and attributes using config values
     float initialHealth = config_->getFloatOr("attributes.health", 100.0f);

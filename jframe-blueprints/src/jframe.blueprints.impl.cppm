@@ -74,7 +74,8 @@ private:
 
     // Blueprint resolution
     BlueprintDef resolveInheritance(const BlueprintDef& def) const;
-    void mergeBlueprints(BlueprintDef& child, const BlueprintDef& parent) const;
+    void mergeBlueprints(BlueprintDef& base, const BlueprintDef& override) const;
+    void mergeProperties(PropertyMap& base, const PropertyMap& override) const;
 
     // Entity creation helpers
     Entity createEntityFromBlueprint(const BlueprintDef& def,
@@ -83,6 +84,7 @@ private:
                                       const PropertyMap& overrides);
     void applyComponents(Entity entity, const BlueprintDef& def, const PropertyMap& overrides);
     void applyPhysics(Entity entity, const BlueprintDef& def, float x, float y, float width, float height);
+    void applyNestedOverride(PropertyMap& props, const std::string& path, const std::any& value);
 
     // Built-in component registration
     void registerBuiltinComponents();

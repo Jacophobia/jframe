@@ -170,11 +170,22 @@ public:
     }
 
     /// Collect entities with exclusion filter
-    template<typename... Include, typename... Exclude>
+    /// Usage: collectExcluding<Include, Exclude1, Exclude2, ...>()
+    /// The first template parameter is the required component,
+    /// all subsequent parameters are excluded components
+    template<typename Include, typename... Exclude>
     std::vector<Entity> collectExcluding() const {
         std::vector<Entity> result;
-        for (auto entity : getRegistry().view<Include...>(entt::exclude<Exclude...>)) {
-            result.push_back(entity);
+        if constexpr (sizeof...(Exclude) > 0) {
+            // With exclusions
+            for (auto entity : getRegistry().view<Include>(entt::exclude<Exclude...>)) {
+                result.push_back(entity);
+            }
+        } else {
+            // No exclusions, same as collect<Include>()
+            for (auto entity : getRegistry().view<Include>()) {
+                result.push_back(entity);
+            }
         }
         return result;
     }

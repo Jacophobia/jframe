@@ -167,8 +167,10 @@ void GASSystem::applyEffect(Entity target, EffectId effectId, Entity source) {
         comp->ownedTags.addTag(tag);
     }
 
-    // Apply modifiers
-    applyEffectModifiers(target, def, 1);
+    // Apply modifiers (only for non-periodic effects - periodic effects apply on tick)
+    if (def.period <= 0.0f) {
+        applyEffectModifiers(target, def, 1);
+    }
 
     // Notify callback
     if (effectAppliedCallback_) {

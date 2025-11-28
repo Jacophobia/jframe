@@ -230,21 +230,27 @@ void CameraSystem::applyDeadzone(Vec2 target) {
     float halfDeadzoneX = deadzoneSize_.x * 0.5f;
     float halfDeadzoneY = deadzoneSize_.y * 0.5f;
 
-    // Check if target is outside deadzone
-    Vec2 delta = target - targetPosition_;
+    // Check if target is outside deadzone relative to CURRENT position
+    Vec2 delta = target - position_;
 
     // X-axis deadzone
     if (delta.x > halfDeadzoneX) {
-        targetPosition_.x = target.x - halfDeadzoneX;
+        targetPosition_.x = target.x;
     } else if (delta.x < -halfDeadzoneX) {
-        targetPosition_.x = target.x + halfDeadzoneX;
+        targetPosition_.x = target.x;
+    } else {
+        // Within deadzone - don't move
+        targetPosition_.x = position_.x;
     }
 
     // Y-axis deadzone
     if (delta.y > halfDeadzoneY) {
-        targetPosition_.y = target.y - halfDeadzoneY;
+        targetPosition_.y = target.y;
     } else if (delta.y < -halfDeadzoneY) {
-        targetPosition_.y = target.y + halfDeadzoneY;
+        targetPosition_.y = target.y;
+    } else {
+        // Within deadzone - don't move
+        targetPosition_.y = position_.y;
     }
 }
 
@@ -257,21 +263,26 @@ void CameraSystem::applyBounds() {
     float halfViewportWidth = (viewportSize_.width * 0.5f) / zoom_;
     float halfViewportHeight = (viewportSize_.height * 0.5f) / zoom_;
 
-    // Clamp camera position to bounds
-    float clampedX = std::clamp(
-        position_.x,
-        minX_ + halfViewportWidth,
-        maxX_ - halfViewportWidth
-    );
+    // Check if bounds are smaller than viewport (handle edge case)
+    float minPossibleX = minX_ + halfViewportWidth;
+    float maxPossibleX = maxX_ - halfViewportWidth;
 
-    float clampedY = std::clamp(
-        position_.y,
-        minY_ + halfViewportHeight,
-        maxY_ - halfViewportHeight
-    );
+    if (minPossibleX > maxPossibleX) {
+        // Viewport larger than bounds - center camera within bounds
+        position_.x = (minX_ + maxX_) * 0.5f;
+    } else {
+        position_.x = std::clamp(position_.x, minPossibleX, maxPossibleX);
+    }
 
-    position_.x = clampedX;
-    position_.y = clampedY;
+    float minPossibleY = minY_ + halfViewportHeight;
+    float maxPossibleY = maxY_ - halfViewportHeight;
+
+    if (minPossibleY > maxPossibleY) {
+        // Viewport larger than bounds - center camera within bounds
+        position_.y = (minY_ + maxY_) * 0.5f;
+    } else {
+        position_.y = std::clamp(position_.y, minPossibleY, maxPossibleY);
+    }
 }
 
 Vec2 CameraSystem::generateShakeOffset() const {

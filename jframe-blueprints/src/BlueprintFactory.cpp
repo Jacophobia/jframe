@@ -324,38 +324,56 @@ BlueprintDef BlueprintFactory::resolveInheritance(const BlueprintDef& def) const
     return result;
 }
 
-void BlueprintFactory::mergeBlueprints(BlueprintDef& child, const BlueprintDef& parent) const {
-    child.name = parent.name;
+void BlueprintFactory::mergeBlueprints(BlueprintDef& base, const BlueprintDef& override) const {
+    // base starts as a copy of parent, override is the child
+    // We want child properties to override parent properties
+    base.name = override.name;
 
-    // Merge components (parent components can be overridden)
-    for (const auto& parentComp : parent.components) {
+    // Merge components - child components override parent components
+    for (const auto& overrideComp : override.components) {
         bool found = false;
-        for (auto& childComp : child.components) {
-            if (childComp.name == parentComp.name) {
-                // Merge properties
-                for (const auto& [key, value] : parentComp.properties) {
-                    if (!childComp.properties.contains(key)) {
-                        childComp.properties[key] = value;
-                    }
-                }
+        for (auto& baseComp : base.components) {
+            if (baseComp.name == overrideComp.name) {
+                // Merge properties - child properties override parent properties
+                mergeProperties(baseComp.properties, overrideComp.properties);
                 found = true;
                 break;
             }
         }
         if (!found) {
-            child.components.push_back(parentComp);
+            base.components.push_back(overrideComp);
         }
     }
 
-    // Override physics if child has it, otherwise inherit
-    if (parent.physics && !child.physics) {
-        child.physics = parent.physics;
+    // Child physics overrides parent physics
+    if (override.physics) {
+        base.physics = override.physics;
     }
+    // If child has no physics, parent physics is already in base (from copy)
 
-    // Merge metadata
-    for (const auto& [key, value] : parent.metadata) {
-        if (!child.metadata.contains(key)) {
-            child.metadata[key] = value;
+    // Merge metadata - child metadata overrides parent metadata
+    for (const auto& [key, value] : override.metadata) {
+        base.metadata[key] = value;
+    }
+}
+
+void BlueprintFactory::mergeProperties(PropertyMap& base, const PropertyMap& override) const {
+    for (const auto& [key, value] : override) {
+        // If override has a PropertyMap (nested table), merge recursively
+        if (auto* overrideMap = std::any_cast<PropertyMap>(&value)) {
+            auto baseIt = base.find(key);
+            if (baseIt != base.end()) {
+                if (auto* baseMap = std::any_cast<PropertyMap>(&baseIt->second)) {
+                    // Both are PropertyMaps, merge recursively
+                    mergeProperties(*baseMap, *overrideMap);
+                    continue;
+                }
+            }
+            // Base doesn't have this property or it's not a PropertyMap, just overwrite
+            base[key] = value;
+        } else {
+            // Simple value, just overwrite
+            base[key] = value;
         }
     }
 }
@@ -412,21 +430,67 @@ void BlueprintFactory::applyComponents(Entity entity, const BlueprintDef& def, c
         // Merge properties with overrides
         PropertyMap props = compDef.properties;
 
-        // Apply overrides in format "ComponentName.property"
+        // Apply overrides in format "ComponentName.property" or "ComponentName.nested.property"
         for (const auto& [key, value] : overrides) {
             // Check if override is for this component
             size_t dotPos = key.find('.');
             if (dotPos != std::string::npos) {
                 std::string compName = key.substr(0, dotPos);
                 if (compName == compDef.name) {
-                    std::string propName = key.substr(dotPos + 1);
-                    props[propName] = value;
+                    std::string propPath = key.substr(dotPos + 1);
+                    applyNestedOverride(props, propPath, value);
                 }
             }
         }
 
         // Create component
         creatorIt->second(entity, entities_, props);
+    }
+}
+
+void BlueprintFactory::applyNestedOverride(PropertyMap& props, const std::string& path, const std::any& value) {
+    // Handle nested property paths like "fillColor.r" or "size.x"
+    size_t dotPos = path.find('.');
+    if (dotPos == std::string::npos) {
+        // No nesting, direct property
+        props[path] = value;
+        return;
+    }
+
+    // Split into first part and remaining path
+    std::string firstKey = path.substr(0, dotPos);
+    std::string remainingPath = path.substr(dotPos + 1);
+
+    // Get or create nested PropertyMap
+    auto it = props.find(firstKey);
+    if (it == props.end()) {
+        // Property doesn't exist, create new nested map
+        PropertyMap nested;
+        applyNestedOverride(nested, remainingPath, value);
+        props[firstKey] = nested;
+    } else {
+        // Property exists
+        if (auto* nestedMap = std::any_cast<PropertyMap>(&it->second)) {
+            // It's already a PropertyMap, recurse into it
+            applyNestedOverride(*nestedMap, remainingPath, value);
+        } else if (auto* arr = std::any_cast<std::vector<double>>(&it->second)) {
+            // It's an array (e.g., color {128, 128, 128, 255})
+            // Convert to PropertyMap for nested overrides
+            PropertyMap nested;
+            // For colors, map array indices to r, g, b, a
+            if (arr->size() >= 1) nested["r"] = (*arr)[0];
+            if (arr->size() >= 2) nested["g"] = (*arr)[1];
+            if (arr->size() >= 3) nested["b"] = (*arr)[2];
+            if (arr->size() >= 4) nested["a"] = (*arr)[3];
+            // Now apply the override
+            applyNestedOverride(nested, remainingPath, value);
+            props[firstKey] = nested;
+        } else {
+            // It's some other type, replace it with a PropertyMap
+            PropertyMap nested;
+            applyNestedOverride(nested, remainingPath, value);
+            props[firstKey] = nested;
+        }
     }
 }
 
@@ -485,6 +549,7 @@ void BlueprintFactory::registerBuiltinComponents() {
         auto it = props.find(key);
         if (it == props.end()) return def;
         if (auto* d = std::any_cast<double>(&it->second)) return *d;
+        if (auto* i = std::any_cast<int>(&it->second)) return static_cast<double>(*i);
         return def;
     };
 
@@ -505,6 +570,8 @@ void BlueprintFactory::registerBuiltinComponents() {
     auto getColor = [&getDouble](const PropertyMap& props, const std::string& key, Color def) -> Color {
         auto it = props.find(key);
         if (it == props.end()) return def;
+
+        // Try array format: {255, 128, 0, 255}
         if (auto* arr = std::any_cast<std::vector<double>>(&it->second)) {
             if (arr->size() >= 3) {
                 return Color{
@@ -515,6 +582,17 @@ void BlueprintFactory::registerBuiltinComponents() {
                 };
             }
         }
+
+        // Try nested map format: {r = 255, g = 128, b = 0}
+        if (auto* nestedMap = std::any_cast<PropertyMap>(&it->second)) {
+            return Color{
+                static_cast<uint8_t>(getDouble(*nestedMap, "r", def.r)),
+                static_cast<uint8_t>(getDouble(*nestedMap, "g", def.g)),
+                static_cast<uint8_t>(getDouble(*nestedMap, "b", def.b)),
+                static_cast<uint8_t>(getDouble(*nestedMap, "a", def.a))
+            };
+        }
+
         return def;
     };
 

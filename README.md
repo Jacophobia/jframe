@@ -6,11 +6,82 @@ A modern C++23 game framework built with modularity, data-driven design, and per
 
 **New to JFrame?** Start with the [Getting Started Guide](docs/Getting-Started.md) to learn how to build your first game.
 
+---
+
+## Start Your Own Game
+
+The easiest way to start a new JFrame game is to copy the **template project**:
+
+```bash
+# Copy the template to your projects directory
+cp -r template/ ~/Projects/my-game
+cd ~/Projects/my-game
+
+# Edit CMakeLists.txt to point JFRAME_DIR to your JFrame installation
+# Then build!
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+./build/my-game
+```
+
+### Template Structure
+
+```
+template/
+├── CMakeLists.txt              # Build config (edit JFRAME_DIR path)
+├── README.md                   # Detailed usage instructions
+├── src/
+│   ├── main.cpp                # Entry point with EngineBuilder
+│   ├── Game.cpp                # Complete game using ALL 15 systems
+│   └── Game.h                  # Game class header
+└── data/
+    ├── blueprints/entities.lua # Entity definitions (player, platforms)
+    ├── levels/main.lua         # Level layout with Lua scripting
+    ├── config/game.lua         # Game settings
+    ├── config/audio.lua        # Audio settings
+    └── input/bindings.lua      # Input mappings reference
+```
+
+The template demonstrates every JFrame system: entities, physics, graphics, input, audio, events, assets, levels, camera, GAS (abilities), and blueprints. Delete what you don't need!
+
+---
+
 ## Documentation
 
-### Core Documentation
+### Learning Path
 
-- [Getting Started Guide](docs/Getting-Started.md) - Your first JFrame game
+| Step | Resource | Description |
+|------|----------|-------------|
+| 1 | [Getting Started](docs/Getting-Started.md) | Installation, build setup, your first game |
+| 2 | [Template README](template/README.md) | How to use the starter template |
+| 3 | [Tutorials](docs/tutorials/) | Step-by-step guides for each system |
+| 4 | [API Reference](docs/api/) | Detailed API documentation |
+| 5 | [Examples](examples/) | Complete example games to study |
+
+### Tutorials
+
+| Tutorial | Topics Covered |
+|----------|----------------|
+| [01 - Your First Game](docs/tutorials/01-Your-First-Game.md) | Engine setup, entities, basic rendering |
+| [02 - Blueprints & Levels](docs/tutorials/02-Blueprints-And-Levels.md) | Lua data files, entity templates, level design |
+| [03 - Physics & Collision](docs/tutorials/03-Physics-And-Collision.md) | Box2D bodies, collision events, raycasting |
+| [04 - Input & Controls](docs/tutorials/04-Input-And-Controls.md) | Keyboard, mouse, gamepad, action mapping |
+| [05 - Audio](docs/tutorials/05-Audio.md) | Sound effects, music, positional audio |
+
+### API Reference
+
+Full API documentation is available in [`docs/api/`](docs/api/):
+
+- [EngineBuilder](docs/api/EngineBuilder.md) - Engine initialization
+- [Entity System](docs/api/Entity.md) - ECS operations
+- [Physics](docs/api/Physics.md) - Box2D integration
+- [Graphics](docs/api/Graphics.md) - Rendering
+- [Input](docs/api/Input.md) - Input handling
+- [Audio](docs/api/Audio.md) - Sound playback
+- [And more...](docs/api/README.md)
+
+### Architecture & Design
+
 - [Data-Driven Design Guide](docs/Data-Driven-Design.md) - What goes in Lua vs C++
 - [Technical Design](docs/jframe-technical-design.md) - Architecture and design decisions
 - [Project Status](docs/PROJECT-STATUS.md) - Implementation progress

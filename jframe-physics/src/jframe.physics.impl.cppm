@@ -86,6 +86,7 @@ private:
         CollisionLayer layer = 0x0001;
         CollisionMask mask = 0xFFFF;
         bool isSensor = false;
+        Vec2 size{0.0f, 0.0f};  // Original size (not affected by Box2D AABB padding)
     };
 
     b2WorldId worldId_;

@@ -200,13 +200,13 @@ void InputSystem::updateActionStates() {
 
         switch (mapping.binding.deviceType) {
             case InputDeviceType::Keyboard:
-                if (glfwGetKey(window_, mapping.binding.keyCode) == GLFW_PRESS) {
+                if (window_ && glfwGetKey(window_, mapping.binding.keyCode) == GLFW_PRESS) {
                     newValue = mapping.binding.scale;
                 }
                 break;
 
             case InputDeviceType::Mouse:
-                if (mapping.binding.keyCode < 8 && mouseButtons_[mapping.binding.keyCode]) {
+                if (window_ && mapping.binding.keyCode < 8 && mouseButtons_[mapping.binding.keyCode]) {
                     newValue = mapping.binding.scale;
                 }
                 break;

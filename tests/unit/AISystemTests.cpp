@@ -619,6 +619,390 @@ TEST_F(AISystemTest, UpdateWithMultipleEntitiesDoesNotCrash) {
 }
 
 //=============================================================================
+// Patrol Behavior Tests
+//=============================================================================
+
+TEST_F(AISystemTest, CanSetPatrolBehavior) {
+    Entity entity = static_cast<Entity>(600);
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(retrieved.has_value());
+    EXPECT_FLOAT_EQ(retrieved->startX, patrol.startX);
+    EXPECT_FLOAT_EQ(retrieved->range, patrol.range);
+    EXPECT_FLOAT_EQ(retrieved->speed, patrol.speed);
+    EXPECT_EQ(retrieved->movingRight, patrol.movingRight);
+}
+
+TEST_F(AISystemTest, CanClearPatrolBehavior) {
+    Entity entity = static_cast<Entity>(601);
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+
+    aiSystem->setPatrolBehavior(entity, patrol);
+    EXPECT_TRUE(aiSystem->getPatrolBehavior(entity).has_value());
+
+    aiSystem->clearPatrolBehavior(entity);
+    EXPECT_FALSE(aiSystem->getPatrolBehavior(entity).has_value());
+}
+
+TEST_F(AISystemTest, GetPatrolBehaviorReturnsNulloptForEntityWithoutPatrol) {
+    Entity entity = static_cast<Entity>(602);
+    EXPECT_FALSE(aiSystem->getPatrolBehavior(entity).has_value());
+}
+
+TEST_F(AISystemTest, ClearPatrolBehaviorOnNonExistentEntityDoesNotCrash) {
+    Entity entity = static_cast<Entity>(999);
+    aiSystem->clearPatrolBehavior(entity);  // Should not crash
+}
+
+TEST_F(AISystemTest, SetPatrolBehaviorReplacesOldBehavior) {
+    Entity entity = static_cast<Entity>(603);
+    PatrolBehavior patrol1{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    PatrolBehavior patrol2{
+        .startX = 200.0f,
+        .range = 100.0f,
+        .speed = 120.0f,
+        .movingRight = false
+    };
+
+    aiSystem->setPatrolBehavior(entity, patrol1);
+    aiSystem->setPatrolBehavior(entity, patrol2);
+
+    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(retrieved.has_value());
+    EXPECT_FLOAT_EQ(retrieved->startX, patrol2.startX);
+    EXPECT_FLOAT_EQ(retrieved->range, patrol2.range);
+    EXPECT_FLOAT_EQ(retrieved->speed, patrol2.speed);
+    EXPECT_EQ(retrieved->movingRight, patrol2.movingRight);
+}
+
+TEST_F(AISystemTest, PatrolBehaviorWithZeroRange) {
+    Entity entity = static_cast<Entity>(604);
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 0.0f,
+        .speed = 50.0f,
+        .movingRight = true
+    };
+
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(retrieved.has_value());
+    EXPECT_FLOAT_EQ(retrieved->range, 0.0f);
+}
+
+TEST_F(AISystemTest, PatrolBehaviorWithNegativeSpeed) {
+    Entity entity = static_cast<Entity>(605);
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = -75.0f,  // Negative speed
+        .movingRight = true
+    };
+
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(retrieved.has_value());
+    EXPECT_FLOAT_EQ(retrieved->speed, -75.0f);
+}
+
+TEST_F(AISystemTest, PatrolBehaviorIndependentBetweenEntities) {
+    Entity entity1 = static_cast<Entity>(606);
+    Entity entity2 = static_cast<Entity>(607);
+
+    PatrolBehavior patrol1{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    PatrolBehavior patrol2{
+        .startX = 300.0f,
+        .range = 80.0f,
+        .speed = 120.0f,
+        .movingRight = false
+    };
+
+    aiSystem->setPatrolBehavior(entity1, patrol1);
+    aiSystem->setPatrolBehavior(entity2, patrol2);
+
+    std::optional<PatrolBehavior> retrieved1 = aiSystem->getPatrolBehavior(entity1);
+    std::optional<PatrolBehavior> retrieved2 = aiSystem->getPatrolBehavior(entity2);
+
+    ASSERT_TRUE(retrieved1.has_value());
+    ASSERT_TRUE(retrieved2.has_value());
+
+    EXPECT_FLOAT_EQ(retrieved1->startX, 100.0f);
+    EXPECT_FLOAT_EQ(retrieved2->startX, 300.0f);
+}
+
+TEST_F(AISystemTest, PatrolBehaviorUpdatesVelocityDuringUpdate) {
+    Entity entity = static_cast<Entity>(608);
+
+    // Create physics body for the entity
+    PhysicsBodyDef bodyDef{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 50.0f}  // Start at patrol center
+    };
+    physicsSystem->createBody(entity, bodyDef);
+
+    // Set patrol behavior
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    // Update AI system
+    aiSystem->update(1.0f / 60.0f);
+
+    // Verify velocity was set
+    Vec2 velocity = physicsSystem->getVelocity(entity);
+    EXPECT_FLOAT_EQ(velocity.x, 75.0f);  // Moving right at patrol speed
+}
+
+TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtRightBound) {
+    Entity entity = static_cast<Entity>(609);
+
+    // Create physics body at right bound
+    PhysicsBodyDef bodyDef{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 150.0f, .y = 50.0f}  // At right bound (100 + 50)
+    };
+    physicsSystem->createBody(entity, bodyDef);
+
+    // Set patrol behavior moving right
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    // Update AI system
+    aiSystem->update(1.0f / 60.0f);
+
+    // Verify direction flipped
+    std::optional<PatrolBehavior> updated = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_FALSE(updated->movingRight);  // Should flip to left
+
+    // Verify velocity is now negative
+    Vec2 velocity = physicsSystem->getVelocity(entity);
+    EXPECT_FLOAT_EQ(velocity.x, -75.0f);  // Moving left at patrol speed
+}
+
+TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtLeftBound) {
+    Entity entity = static_cast<Entity>(610);
+
+    // Create physics body at left bound
+    PhysicsBodyDef bodyDef{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 50.0f, .y = 50.0f}  // At left bound (100 - 50)
+    };
+    physicsSystem->createBody(entity, bodyDef);
+
+    // Set patrol behavior moving left
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = false
+    };
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    // Update AI system
+    aiSystem->update(1.0f / 60.0f);
+
+    // Verify direction flipped
+    std::optional<PatrolBehavior> updated = aiSystem->getPatrolBehavior(entity);
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_TRUE(updated->movingRight);  // Should flip to right
+
+    // Verify velocity is now positive
+    Vec2 velocity = physicsSystem->getVelocity(entity);
+    EXPECT_FLOAT_EQ(velocity.x, 75.0f);  // Moving right at patrol speed
+}
+
+TEST_F(AISystemTest, PatrolBehaviorPreservesYVelocity) {
+    Entity entity = static_cast<Entity>(611);
+
+    // Create physics body with Y velocity
+    PhysicsBodyDef bodyDef{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 50.0f}
+    };
+    physicsSystem->createBody(entity, bodyDef);
+    physicsSystem->setVelocity(entity, {0.0f, 100.0f});  // Y velocity set
+
+    // Set patrol behavior
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    // Update AI system
+    aiSystem->update(1.0f / 60.0f);
+
+    // Verify Y velocity preserved, X velocity set
+    Vec2 velocity = physicsSystem->getVelocity(entity);
+    EXPECT_FLOAT_EQ(velocity.x, 75.0f);
+    EXPECT_FLOAT_EQ(velocity.y, 100.0f);  // Y velocity should be preserved
+}
+
+TEST_F(AISystemTest, UpdateWithoutPhysicsBodyDoesNotCrash) {
+    Entity entity = static_cast<Entity>(612);
+
+    // Set patrol behavior without creating physics body
+    PatrolBehavior patrol{
+        .startX = 100.0f,
+        .range = 50.0f,
+        .speed = 75.0f,
+        .movingRight = true
+    };
+    aiSystem->setPatrolBehavior(entity, patrol);
+
+    // Update should not crash even without physics body
+    aiSystem->update(1.0f / 60.0f);
+}
+
+//=============================================================================
+// Edge Case Tests
+//=============================================================================
+
+TEST_F(AISystemTest, FindEntitiesInRadiusWithNegativeRadius) {
+    Vec2 center{100.0f, 100.0f};
+    float radius = -50.0f;  // Negative radius
+
+    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    // Implementation should handle gracefully (likely return empty)
+    EXPECT_TRUE(entities.empty());
+}
+
+TEST_F(AISystemTest, FindPathWithVeryLargeAgentRadius) {
+    AssetHandle navMeshAsset = static_cast<AssetHandle>(700);
+    aiSystem->loadNavMesh(navMeshAsset);
+
+    NavMeshQuery query{
+        .start = {0.0f, 0.0f},
+        .end = {100.0f, 100.0f},
+        .agentRadius = 10000.0f  // Extremely large agent
+    };
+
+    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    // Should still return a path (may be simplified)
+    EXPECT_TRUE(path.has_value());
+}
+
+TEST_F(AISystemTest, FindPathWithZeroAgentRadius) {
+    AssetHandle navMeshAsset = static_cast<AssetHandle>(701);
+    aiSystem->loadNavMesh(navMeshAsset);
+
+    NavMeshQuery query{
+        .start = {0.0f, 0.0f},
+        .end = {100.0f, 100.0f},
+        .agentRadius = 0.0f  // Zero radius
+    };
+
+    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    EXPECT_TRUE(path.has_value());
+}
+
+TEST_F(AISystemTest, FindPathFromSameStartAndEnd) {
+    AssetHandle navMeshAsset = static_cast<AssetHandle>(702);
+    aiSystem->loadNavMesh(navMeshAsset);
+
+    Vec2 samePoint{50.0f, 50.0f};
+    NavMeshQuery query{
+        .start = samePoint,
+        .end = samePoint,
+        .agentRadius = 0.5f
+    };
+
+    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    ASSERT_TRUE(path.has_value());
+    // Path should have zero or minimal length
+    EXPECT_GE(path->totalLength, 0.0f);
+}
+
+TEST_F(AISystemTest, BlackboardCanOverwriteExistingValue) {
+    Entity entity = static_cast<Entity>(800);
+
+    aiSystem->setBehaviorTreeBlackboard(entity, "health", 100);
+    EXPECT_EQ(std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity, "health")), 100);
+
+    // Overwrite with same key, different type
+    aiSystem->setBehaviorTreeBlackboard(entity, "health", std::string("full"));
+    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "health");
+    EXPECT_TRUE(retrieved.has_value());
+    EXPECT_EQ(std::any_cast<std::string>(retrieved), "full");
+}
+
+TEST_F(AISystemTest, BlackboardCanStoreComplexTypes) {
+    Entity entity = static_cast<Entity>(801);
+
+    // Store Vec2 in blackboard
+    Vec2 targetPos{123.45f, 678.90f};
+    aiSystem->setBehaviorTreeBlackboard(entity, "targetPos", targetPos);
+
+    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "targetPos");
+    ASSERT_TRUE(retrieved.has_value());
+    Vec2 retrievedPos = std::any_cast<Vec2>(retrieved);
+    EXPECT_FLOAT_EQ(retrievedPos.x, targetPos.x);
+    EXPECT_FLOAT_EQ(retrievedPos.y, targetPos.y);
+}
+
+TEST_F(AISystemTest, HasLineOfSightWithVeryShortDistance) {
+    Vec2 from{0.0f, 0.0f};
+    Vec2 to{0.0001f, 0.0001f};  // Very close
+
+    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    EXPECT_TRUE(hasLOS);
+}
+
+TEST_F(AISystemTest, FindClosestEntityWithNoPhysicsBodies) {
+    Vec2 position{100.0f, 100.0f};
+    std::optional<Entity> closest = aiSystem->findClosestEntity(position);
+    EXPECT_FALSE(closest.has_value());
+}
+
+TEST_F(AISystemTest, GetClosestPointOnNavMeshWithVeryFarPoint) {
+    AssetHandle navMeshAsset = static_cast<AssetHandle>(703);
+    aiSystem->loadNavMesh(navMeshAsset);
+
+    Vec2 farPoint{100000.0f, 100000.0f};  // Very far from origin
+    std::optional<Vec2> closest = aiSystem->getClosestPointOnNavMesh(farPoint);
+
+    // Should still return a point (possibly projected to navmesh bounds)
+    EXPECT_TRUE(closest.has_value());
+}
+
+//=============================================================================
 // Physics Integration Tests
 //=============================================================================
 

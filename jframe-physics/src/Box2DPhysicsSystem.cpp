@@ -60,7 +60,12 @@ bool Box2DPhysicsSystem::initialize() {
 
     b2WorldDef worldDef = b2DefaultWorldDef();
     // Convert from pixels/s² to meters/s² for Box2D
-    worldDef.gravity = {gravity_.x / PIXELS_PER_METER, gravity_.y / PIXELS_PER_METER};
+    // NOTE: JFrame uses Y-down screen coordinates but Box2D uses Y-up physics coordinates.
+    // By negating gravity's Y component, we make Box2D's world behave as if Y-down.
+    worldDef.gravity = {gravity_.x / PIXELS_PER_METER, -gravity_.y / PIXELS_PER_METER};
+
+    // Set hit event threshold to 0 to ensure all collisions generate events
+    worldDef.hitEventThreshold = 0.0f;
 
     worldId_ = b2CreateWorld(&worldDef);
     initialized_ = b2World_IsValid(worldId_);
@@ -241,8 +246,12 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
     // Set sensor flag - sensors detect overlap without collision response
     shapeDef.isSensor = def.isSensor;
 
-    // Enable contact events for collision callbacks
+    // Enable contact events for collision callbacks (begin/end touch)
     shapeDef.enableContactEvents = true;
+
+    // Enable hit events for collision data (contact point, normal, impulse)
+    // This is REQUIRED for collision callbacks to receive detailed contact information
+    shapeDef.enableHitEvents = true;
 
     // Enable sensor events for trigger callbacks
     // Note: In Box2D 3.0, sensor events are generated when a sensor overlaps any shape
@@ -263,7 +272,8 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
         .entity = entity,
         .layer = 0x0001,
         .mask = 0xFFFF,
-        .isSensor = def.isSensor
+        .isSensor = def.isSensor,
+        .size = def.size  // Store original size to avoid Box2D AABB padding
     };
 }
 
@@ -345,7 +355,8 @@ void Box2DPhysicsSystem::setVelocity(Entity entity, Vec2 velocity) {
     auto it = entityToBody_.find(entityKey);
     if (it == entityToBody_.end()) return;
 
-    b2Vec2 vel = {velocity.x / PIXELS_PER_METER, velocity.y / PIXELS_PER_METER};
+    // Negate Y to convert from JFrame Y-down to Box2D Y-up
+    b2Vec2 vel = {velocity.x / PIXELS_PER_METER, -velocity.y / PIXELS_PER_METER};
     b2Body_SetLinearVelocity(it->second, vel);
 }
 
@@ -355,7 +366,8 @@ Vec2 Box2DPhysicsSystem::getVelocity(Entity entity) const {
     if (it == entityToBody_.end()) return {0, 0};
 
     b2Vec2 vel = b2Body_GetLinearVelocity(it->second);
-    return {vel.x * PIXELS_PER_METER, vel.y * PIXELS_PER_METER};
+    // Negate Y to convert from Box2D Y-up to JFrame Y-down
+    return {vel.x * PIXELS_PER_METER, -vel.y * PIXELS_PER_METER};
 }
 
 void Box2DPhysicsSystem::setAngularVelocity(Entity entity, float velocity) {
@@ -379,18 +391,16 @@ Vec2 Box2DPhysicsSystem::getBodySize(Entity entity) const {
     auto it = entityToBody_.find(entityKey);
     if (it == entityToBody_.end()) return {0, 0};
 
-    // Get the first shape's AABB to determine body size
-    constexpr int MAX_SHAPES = 4;
-    b2ShapeId shapes[MAX_SHAPES];
-    int shapeCount = b2Body_GetShapes(it->second, shapes, MAX_SHAPES);
-    if (shapeCount == 0) return {0, 0};
+    // Return the stored original size from BodyMeta
+    // This avoids the Box2D AABB padding (skin radius) which adds ~2 pixels per side
+    auto bodyKey = bodyIdToKey(it->second);
+    auto metaIt = bodyToMeta_.find(bodyKey);
+    if (metaIt != bodyToMeta_.end()) {
+        return metaIt->second.size;
+    }
 
-    // Get AABB from the first shape
-    b2AABB aabb = b2Shape_GetAABB(shapes[0]);
-    float width = (aabb.upperBound.x - aabb.lowerBound.x) * PIXELS_PER_METER;
-    float height = (aabb.upperBound.y - aabb.lowerBound.y) * PIXELS_PER_METER;
-
-    return {width, height};
+    // Fallback: should not happen if createBody was called correctly
+    return {0, 0};
 }
 
 void Box2DPhysicsSystem::applyForce(Entity entity, Vec2 force, Vec2 point) {
@@ -667,7 +677,8 @@ void Box2DPhysicsSystem::setGravity(Vec2 gravity) {
     gravity_ = gravity;
     if (initialized_) {
         // Convert from pixels/s² to meters/s² for Box2D
-        b2World_SetGravity(worldId_, {gravity.x / PIXELS_PER_METER, gravity.y / PIXELS_PER_METER});
+        // NOTE: Negate Y to account for JFrame Y-down vs Box2D Y-up coordinates
+        b2World_SetGravity(worldId_, {gravity.x / PIXELS_PER_METER, -gravity.y / PIXELS_PER_METER});
     }
 }
 
@@ -712,15 +723,15 @@ GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
     float halfHeight = (aabb.upperBound.y - aabb.lowerBound.y) / 2.0f;
 
     // Raycast from body CENTER going down, extending past the bottom
-    // This game uses Y-down screen coordinates (positive Y = down)
-    // Start from body center to ensure ray origin is well above any ground surface
-    // when the player is standing on the ground
+    // NOTE: Box2D uses Y-up coordinates, but we simulate Y-down by negating gravity.
+    // Since positions aren't flipped, positive Y still means "down" in our world.
+    // BUT raycasts need to go in the negative Y direction in Box2D's Y-up coordinate system.
     float rayStartY = pos.y;  // Body center
     // Ray needs to travel: halfHeight (to reach bottom) + rayDistance (to detect ground below)
     float rayLength = halfHeight + params.rayDistance / PIXELS_PER_METER;
 
     b2Vec2 origin = {pos.x, rayStartY};
-    b2Vec2 translation = {0.0f, rayLength};  // Cast downward (positive Y in Y-down coords)
+    b2Vec2 translation = {0.0f, -rayLength};  // Cast downward (negative Y in Box2D Y-up coords)
 
     // Use default filter to hit all shapes - we'll filter by layer ourselves
     // This is more reliable than relying on Box2D's categoryBits matching
@@ -744,11 +755,11 @@ GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
             bool layerMatches = (metaIt->second.layer & params.groundMask) != 0;
 
             if (layerMatches) {
-                // Check slope angle - in Y-down coords, flat floor normal points up (negative Y)
+                // Check slope angle - in Box2D Y-up coords, flat floor normal points up (positive Y)
                 // The raycast returns the normal pointing toward the ray origin
-                // For a flat floor with ray going down, normal.y will be negative (pointing up)
-                // We flip it so that flat ground gives us normalY ≈ +1
-                float normalY = -rayResult.normal.y;  // Flip for Y-down coords
+                // For a flat floor with ray going down (negative Y), the normal points up (positive Y)
+                // For flat ground, normalY should be ≈ +1 (no flip needed)
+                float normalY = rayResult.normal.y;  // Box2D Y-up: flat floor has positive Y normal
                 float slopeAngle = std::acos(std::clamp(normalY, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
 
                 if (slopeAngle <= params.slopeToleranceDeg) {

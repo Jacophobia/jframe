@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -858,6 +859,532 @@ TEST_F(LevelSystemTest, GetEntityDefsAfterUnload) {
 
     auto entityDefs = levelSystem_->getEntityDefs(levelId);
     EXPECT_TRUE(entityDefs.empty());
+}
+
+//==============================================================================
+// Additional Test Coverage: Error Handling and Edge Cases
+//==============================================================================
+
+TEST_F(LevelSystemTest, LoadLevelWithInvalidAssetHandle) {
+    // Test loading a level with an invalid/zero UUID
+    auto asset = createMockAsset(0);
+    auto result = levelSystem_->loadLevel(asset);
+
+    // Should still create a level even with invalid asset
+    ASSERT_TRUE(result.has_value());
+    EXPECT_NE(result.value(), 0);
+}
+
+TEST_F(LevelSystemTest, UpdateWithZeroDeltaTime) {
+    auto asset1 = createMockAsset(1);
+    auto asset2 = createMockAsset(2);
+
+    auto result1 = levelSystem_->loadLevel(asset1);
+    auto result2 = levelSystem_->loadLevel(asset2);
+
+    ASSERT_TRUE(result1.has_value());
+    ASSERT_TRUE(result2.has_value());
+
+    levelSystem_->setActiveLevel(result1.value());
+
+    LevelTransition transition{
+        .fromLevel = result1.value(),
+        .toLevel = result2.value(),
+        .spawnPoint = std::nullopt,
+        .unloadPrevious = false
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(0.0f);  // Zero delta time
+
+    // Transition should still happen
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result2.value());
+}
+
+TEST_F(LevelSystemTest, UpdateWithNegativeDeltaTime) {
+    auto asset1 = createMockAsset(1);
+    auto asset2 = createMockAsset(2);
+
+    auto result1 = levelSystem_->loadLevel(asset1);
+    auto result2 = levelSystem_->loadLevel(asset2);
+
+    ASSERT_TRUE(result1.has_value());
+    ASSERT_TRUE(result2.has_value());
+
+    levelSystem_->setActiveLevel(result1.value());
+
+    LevelTransition transition{
+        .fromLevel = result1.value(),
+        .toLevel = result2.value(),
+        .spawnPoint = std::nullopt,
+        .unloadPrevious = false
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(-0.016f);  // Negative delta time
+
+    // System should handle negative time gracefully
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result2.value());
+}
+
+TEST_F(LevelSystemTest, UpdateWithVeryLargeDeltaTime) {
+    auto asset1 = createMockAsset(1);
+    auto asset2 = createMockAsset(2);
+
+    auto result1 = levelSystem_->loadLevel(asset1);
+    auto result2 = levelSystem_->loadLevel(asset2);
+
+    ASSERT_TRUE(result1.has_value());
+    ASSERT_TRUE(result2.has_value());
+
+    levelSystem_->setActiveLevel(result1.value());
+
+    LevelTransition transition{
+        .fromLevel = result1.value(),
+        .toLevel = result2.value(),
+        .spawnPoint = std::nullopt,
+        .unloadPrevious = false
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(1000.0f);  // Very large delta time
+
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result2.value());
+}
+
+TEST_F(LevelSystemTest, ClearActiveLevelManually) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    levelSystem_->setActiveLevel(levelId);
+    EXPECT_TRUE(levelSystem_->getActiveLevel().has_value());
+
+    // Setting invalid level ID shouldn't set active level
+    levelSystem_->setActiveLevel(999999);
+    EXPECT_TRUE(levelSystem_->getActiveLevel().has_value());
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), levelId);
+}
+
+TEST_F(LevelSystemTest, LevelIdUniquenessAcrossManyLevels) {
+    std::vector<LevelId> levelIds;
+
+    // Create many levels
+    for (int i = 0; i < 100; ++i) {
+        auto asset = createMockAsset(i);
+        auto result = levelSystem_->loadLevel(asset);
+        ASSERT_TRUE(result.has_value());
+        levelIds.push_back(result.value());
+    }
+
+    // Check all IDs are unique
+    std::set<LevelId> uniqueIds(levelIds.begin(), levelIds.end());
+    EXPECT_EQ(uniqueIds.size(), levelIds.size());
+}
+
+TEST_F(LevelSystemTest, UnloadAllLevels) {
+    std::vector<LevelId> levelIds;
+
+    for (int i = 0; i < 5; ++i) {
+        auto asset = createMockAsset(i);
+        auto result = levelSystem_->loadLevel(asset);
+        ASSERT_TRUE(result.has_value());
+        levelIds.push_back(result.value());
+    }
+
+    EXPECT_EQ(levelSystem_->getLoadedLevels().size(), 5);
+
+    // Unload all levels
+    for (LevelId id : levelIds) {
+        levelSystem_->unloadLevel(id);
+    }
+
+    EXPECT_EQ(levelSystem_->getLoadedLevels().size(), 0);
+    EXPECT_FALSE(levelSystem_->getActiveLevel().has_value());
+}
+
+TEST_F(LevelSystemTest, TransitionFromInvalidLevel) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+
+    LevelTransition transition{
+        .fromLevel = 999999,  // Invalid source level
+        .toLevel = result.value(),
+        .spawnPoint = std::nullopt,
+        .unloadPrevious = false
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(0.016f);
+
+    // Should still transition to valid level
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result.value());
+}
+
+TEST_F(LevelSystemTest, TransitionWithInvalidSpawnPoint) {
+    auto asset1 = createMockAsset(1);
+    auto asset2 = createMockAsset(2);
+
+    auto result1 = levelSystem_->loadLevel(asset1);
+    auto result2 = levelSystem_->loadLevel(asset2);
+
+    ASSERT_TRUE(result1.has_value());
+    ASSERT_TRUE(result2.has_value());
+
+    levelSystem_->setActiveLevel(result1.value());
+
+    LevelTransition transition{
+        .fromLevel = result1.value(),
+        .toLevel = result2.value(),
+        .spawnPoint = "nonexistent_spawn_point_12345",
+        .unloadPrevious = false
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(0.016f);
+
+    // Should still complete the transition
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result2.value());
+}
+
+TEST_F(LevelSystemTest, GetLoadedLevelsOrderPreservation) {
+    std::vector<LevelId> loadOrder;
+
+    for (int i = 0; i < 5; ++i) {
+        auto asset = createMockAsset(i);
+        auto result = levelSystem_->loadLevel(asset);
+        ASSERT_TRUE(result.has_value());
+        loadOrder.push_back(result.value());
+    }
+
+    auto loadedLevels = levelSystem_->getLoadedLevels();
+    EXPECT_EQ(loadedLevels.size(), 5);
+
+    // All loaded level IDs should be in the returned list
+    for (LevelId id : loadOrder) {
+        bool found = false;
+        for (const auto& metadata : loadedLevels) {
+            if (metadata.id == id) {
+                found = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(found);
+    }
+}
+
+TEST_F(LevelSystemTest, MetadataPreservationAfterMultipleOperations) {
+    auto asset = createMockAsset(42);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify initial metadata
+    LevelMetadata metadata1 = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata1.assetHandle.uuid, 42);
+
+    // Set as active
+    levelSystem_->setActiveLevel(levelId);
+
+    // Verify metadata unchanged
+    LevelMetadata metadata2 = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata2.assetHandle.uuid, 42);
+    EXPECT_EQ(metadata2.id, levelId);
+
+    // Update
+    levelSystem_->update(0.016f);
+
+    // Verify metadata still unchanged
+    LevelMetadata metadata3 = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata3.assetHandle.uuid, 42);
+    EXPECT_EQ(metadata3.id, levelId);
+}
+
+TEST_F(LevelSystemTest, SpawnPointNamesReturnsAllNames) {
+    // This test requires actual Lua parsing
+    // For now it verifies the interface works correctly
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+
+    auto names = levelSystem_->getSpawnPointNames(result.value());
+    EXPECT_TRUE(names.empty());  // No spawn points in basic level
+}
+
+TEST_F(LevelSystemTest, GetSpawnPointWithEmptyName) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+
+    auto spawnPoint = levelSystem_->getSpawnPoint(result.value(), "");
+    EXPECT_FALSE(spawnPoint.has_value());
+}
+
+TEST_F(LevelSystemTest, StateConsistencyAfterMultipleUnloads) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    levelSystem_->setActiveLevel(levelId);
+    EXPECT_EQ(levelSystem_->getLevelState(levelId), LevelState::Loaded);
+
+    levelSystem_->unloadLevel(levelId);
+    EXPECT_EQ(levelSystem_->getLevelState(levelId), LevelState::Unloaded);
+
+    // Unload again
+    levelSystem_->unloadLevel(levelId);
+    EXPECT_EQ(levelSystem_->getLevelState(levelId), LevelState::Unloaded);
+
+    // Verify consistency
+    EXPECT_FALSE(levelSystem_->getActiveLevel().has_value());
+    EXPECT_TRUE(levelSystem_->getLevelEntities(levelId).empty());
+}
+
+//==============================================================================
+// Lua Integration: Additional Coverage
+//==============================================================================
+
+TEST_F(LevelSystemLuaTest, LoadEmptyLevel) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_empty.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify metadata
+    LevelMetadata metadata = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata.levelName, "Empty Level");
+    EXPECT_EQ(metadata.width, 800.0f);
+    EXPECT_EQ(metadata.height, 600.0f);
+
+    // Verify no entities
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_TRUE(entityDefs.empty());
+
+    // Verify no spawn points
+    auto spawnNames = levelSystem_->getSpawnPointNames(levelId);
+    EXPECT_TRUE(spawnNames.empty());
+}
+
+TEST_F(LevelSystemLuaTest, LoadLargeLevel) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_large.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify metadata
+    LevelMetadata metadata = levelSystem_->getLevelMetadata(levelId);
+    EXPECT_EQ(metadata.levelName, "Large Test Level");
+    EXPECT_EQ(metadata.width, 3840.0f);
+    EXPECT_EQ(metadata.height, 2160.0f);
+
+    // Verify many entities (16 total: 1 ground + 10 enemies + 5 platforms)
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_EQ(entityDefs.size(), 16);
+
+    // Verify spawn point
+    auto spawnNames = levelSystem_->getSpawnPointNames(levelId);
+    EXPECT_EQ(spawnNames.size(), 1);
+
+    auto defaultSpawn = levelSystem_->getSpawnPoint(levelId, "default");
+    ASSERT_TRUE(defaultSpawn.has_value());
+    EXPECT_FLOAT_EQ(defaultSpawn->x, 100.0f);
+    EXPECT_FLOAT_EQ(defaultSpawn->y, 2000.0f);
+}
+
+TEST_F(LevelSystemLuaTest, LoadBasicLevelEntityDefinitions) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Should have 3 entities
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_EQ(entityDefs.size(), 3);
+
+    // Check player entity
+    bool foundPlayer = false;
+    for (const auto& def : entityDefs) {
+        if (def.type == "player") {
+            foundPlayer = true;
+            EXPECT_FLOAT_EQ(def.transform.x, 100.0f);
+            EXPECT_FLOAT_EQ(def.transform.y, 500.0f);
+            break;
+        }
+    }
+    EXPECT_TRUE(foundPlayer);
+
+    // Check enemy entity
+    bool foundEnemy = false;
+    for (const auto& def : entityDefs) {
+        if (def.type == "enemy") {
+            foundEnemy = true;
+            EXPECT_FLOAT_EQ(def.transform.x, 800.0f);
+            EXPECT_FLOAT_EQ(def.transform.y, 500.0f);
+            break;
+        }
+    }
+    EXPECT_TRUE(foundEnemy);
+
+    // Check platform entity
+    bool foundPlatform = false;
+    for (const auto& def : entityDefs) {
+        if (def.type == "platform") {
+            foundPlatform = true;
+            EXPECT_FLOAT_EQ(def.transform.x, 0.0f);
+            EXPECT_FLOAT_EQ(def.transform.y, 900.0f);
+            // Check custom properties
+            EXPECT_TRUE(def.properties.contains("width"));
+            EXPECT_TRUE(def.properties.contains("height"));
+            EXPECT_NEAR(std::any_cast<double>(def.properties.at("width")), 1920.0, 0.01);
+            EXPECT_NEAR(std::any_cast<double>(def.properties.at("height")), 180.0, 0.01);
+            break;
+        }
+    }
+    EXPECT_TRUE(foundPlatform);
+}
+
+TEST_F(LevelSystemLuaTest, SpawnPointRotationValues) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_spawns.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Check secret_area with 90 degree rotation
+    auto secretArea = levelSystem_->getSpawnPoint(levelId, "secret_area");
+    ASSERT_TRUE(secretArea.has_value());
+    EXPECT_FLOAT_EQ(secretArea->x, 200.0f);
+    EXPECT_FLOAT_EQ(secretArea->y, 100.0f);
+    EXPECT_FLOAT_EQ(secretArea->rotation, 90.0f);
+
+    // Check checkpoint2
+    auto checkpoint2 = levelSystem_->getSpawnPoint(levelId, "checkpoint2");
+    ASSERT_TRUE(checkpoint2.has_value());
+    EXPECT_FLOAT_EQ(checkpoint2->x, 1000.0f);
+    EXPECT_FLOAT_EQ(checkpoint2->y, 300.0f);
+    EXPECT_FLOAT_EQ(checkpoint2->rotation, 0.0f);
+}
+
+TEST_F(LevelSystemLuaTest, MultipleLoadAndUnloadCycles) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Load, unload, load again
+    auto result1 = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result1.has_value());
+    LevelId levelId1 = result1.value();
+
+    auto entityDefs1 = levelSystem_->getEntityDefs(levelId1);
+    EXPECT_EQ(entityDefs1.size(), 3);
+
+    levelSystem_->unloadLevel(levelId1);
+
+    auto result2 = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result2.has_value());
+    LevelId levelId2 = result2.value();
+
+    // Should be a different level instance
+    EXPECT_NE(levelId1, levelId2);
+
+    // But should have same content
+    auto entityDefs2 = levelSystem_->getEntityDefs(levelId2);
+    EXPECT_EQ(entityDefs2.size(), 3);
+}
+
+TEST_F(LevelSystemLuaTest, LevelMetadataWidthAndHeightParsing) {
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_spawns.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    LevelMetadata metadata = levelSystem_->getLevelMetadata(levelId);
+
+    // Verify exact dimensions
+    EXPECT_FLOAT_EQ(metadata.width, 2000.0f);
+    EXPECT_FLOAT_EQ(metadata.height, 1200.0f);
+}
+
+TEST_F(LevelSystemLuaTest, TransitionBetweenActualLevels) {
+    // Load two actual Lua levels
+    AssetHandle handle1 = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level.lua"
+    );
+    AssetHandle handle2 = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_spawns.lua"
+    );
+
+    assetSystem_->loadAsset(handle1);
+    assetSystem_->loadAsset(handle2);
+
+    ASSERT_TRUE(assetSystem_->isLoaded(handle1));
+    ASSERT_TRUE(assetSystem_->isLoaded(handle2));
+
+    auto result1 = levelSystem_->loadLevel(handle1);
+    auto result2 = levelSystem_->loadLevel(handle2);
+
+    ASSERT_TRUE(result1.has_value());
+    ASSERT_TRUE(result2.has_value());
+
+    levelSystem_->setActiveLevel(result1.value());
+
+    // Transition with spawn point
+    LevelTransition transition{
+        .fromLevel = result1.value(),
+        .toLevel = result2.value(),
+        .spawnPoint = "checkpoint1",
+        .unloadPrevious = true
+    };
+
+    levelSystem_->transition(transition);
+    levelSystem_->update(0.016f);
+
+    // Verify transition
+    EXPECT_EQ(levelSystem_->getActiveLevel().value(), result2.value());
+    EXPECT_EQ(levelSystem_->getLevelState(result1.value()), LevelState::Unloaded);
+
+    // Verify we can access spawn point
+    auto spawnPoint = levelSystem_->getSpawnPoint(result2.value(), "checkpoint1");
+    ASSERT_TRUE(spawnPoint.has_value());
+    EXPECT_FLOAT_EQ(spawnPoint->x, 500.0f);
+    EXPECT_FLOAT_EQ(spawnPoint->y, 400.0f);
 }
 
 }  // namespace jframe::tests
