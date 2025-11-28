@@ -59,7 +59,8 @@ bool Box2DPhysicsSystem::initialize() {
     if (initialized_) return true;
 
     b2WorldDef worldDef = b2DefaultWorldDef();
-    worldDef.gravity = {gravity_.x, gravity_.y};
+    // Convert from pixels/s² to meters/s² for Box2D
+    worldDef.gravity = {gravity_.x / PIXELS_PER_METER, gravity_.y / PIXELS_PER_METER};
 
     worldId_ = b2CreateWorld(&worldDef);
     initialized_ = b2World_IsValid(worldId_);
@@ -77,58 +78,137 @@ void Box2DPhysicsSystem::update(DeltaTime dt) {
 }
 
 void Box2DPhysicsSystem::processContactEvents() {
-    if (!collisionCallback_) return;
+    if (!collisionCallback_ && !triggerEnterCallback_ && !triggerExitCallback_) return;
 
     b2ContactEvents events = b2World_GetContactEvents(worldId_);
+    b2SensorEvents sensorEvents = b2World_GetSensorEvents(worldId_);
 
-    // Process begin contact events
-    for (int i = 0; i < events.beginCount; ++i) {
-        const b2ContactBeginTouchEvent& event = events.beginEvents[i];
+    // Process begin contact events (for physical collisions)
+    if (collisionCallback_) {
+        for (int i = 0; i < events.beginCount; ++i) {
+            const b2ContactBeginTouchEvent& event = events.beginEvents[i];
 
-        // Get shape user data to find entities
-        b2BodyId bodyA = b2Shape_GetBody(event.shapeIdA);
-        b2BodyId bodyB = b2Shape_GetBody(event.shapeIdB);
+            // Validate shapes before accessing - they may have been destroyed
+            if (!b2Shape_IsValid(event.shapeIdA) || !b2Shape_IsValid(event.shapeIdB)) {
+                continue;
+            }
 
-        auto keyA = bodyIdToKey(bodyA);
-        auto keyB = bodyIdToKey(bodyB);
+            // Get shape user data to find entities
+            b2BodyId bodyA = b2Shape_GetBody(event.shapeIdA);
+            b2BodyId bodyB = b2Shape_GetBody(event.shapeIdB);
 
-        auto itA = bodyToMeta_.find(keyA);
-        auto itB = bodyToMeta_.find(keyB);
+            auto keyA = bodyIdToKey(bodyA);
+            auto keyB = bodyIdToKey(bodyB);
 
-        if (itA != bodyToMeta_.end() && itB != bodyToMeta_.end()) {
-            CollisionEvent collision{
-                .entityA = itA->second.entity,
-                .entityB = itB->second.entity,
-                .contactPoint = {0, 0},  // Could extract from manifold
-                .normal = {0, 0},
-                .impulse = 0.0f
-            };
-            collisionCallback_(collision);
+            auto itA = bodyToMeta_.find(keyA);
+            auto itB = bodyToMeta_.find(keyB);
+
+            if (itA != bodyToMeta_.end() && itB != bodyToMeta_.end()) {
+                // Only report collision if neither body is a sensor
+                if (!itA->second.isSensor && !itB->second.isSensor) {
+                    CollisionEvent collision{
+                        .entityA = itA->second.entity,
+                        .entityB = itB->second.entity,
+                        .contactPoint = {0, 0},  // Could extract from manifold
+                        .normal = {0, 0},
+                        .impulse = 0.0f
+                    };
+                    collisionCallback_(collision);
+                }
+            }
+        }
+
+        // Process end contact events (using hit events for collision data)
+        for (int i = 0; i < events.hitCount; ++i) {
+            const b2ContactHitEvent& event = events.hitEvents[i];
+
+            // Validate shapes before accessing - they may have been destroyed
+            if (!b2Shape_IsValid(event.shapeIdA) || !b2Shape_IsValid(event.shapeIdB)) {
+                continue;
+            }
+
+            b2BodyId bodyA = b2Shape_GetBody(event.shapeIdA);
+            b2BodyId bodyB = b2Shape_GetBody(event.shapeIdB);
+
+            auto keyA = bodyIdToKey(bodyA);
+            auto keyB = bodyIdToKey(bodyB);
+
+            auto itA = bodyToMeta_.find(keyA);
+            auto itB = bodyToMeta_.find(keyB);
+
+            if (itA != bodyToMeta_.end() && itB != bodyToMeta_.end()) {
+                // Only report collision if neither body is a sensor
+                if (!itA->second.isSensor && !itB->second.isSensor) {
+                    CollisionEvent collision{
+                        .entityA = itA->second.entity,
+                        .entityB = itB->second.entity,
+                        .contactPoint = {event.point.x * PIXELS_PER_METER, event.point.y * PIXELS_PER_METER},
+                        .normal = {event.normal.x, event.normal.y},
+                        .impulse = event.approachSpeed
+                    };
+                    collisionCallback_(collision);
+                }
+            }
         }
     }
 
-    // Process end contact events (using hit events for collision data)
-    for (int i = 0; i < events.hitCount; ++i) {
-        const b2ContactHitEvent& event = events.hitEvents[i];
+    // Process sensor begin events (trigger enter)
+    if (triggerEnterCallback_) {
+        for (int i = 0; i < sensorEvents.beginCount; ++i) {
+            const b2SensorBeginTouchEvent& event = sensorEvents.beginEvents[i];
 
-        b2BodyId bodyA = b2Shape_GetBody(event.shapeIdA);
-        b2BodyId bodyB = b2Shape_GetBody(event.shapeIdB);
+            // Validate shapes before accessing - they may have been destroyed
+            if (!b2Shape_IsValid(event.sensorShapeId) || !b2Shape_IsValid(event.visitorShapeId)) {
+                continue;
+            }
 
-        auto keyA = bodyIdToKey(bodyA);
-        auto keyB = bodyIdToKey(bodyB);
+            b2BodyId sensorBodyId = b2Shape_GetBody(event.sensorShapeId);
+            b2BodyId visitorBodyId = b2Shape_GetBody(event.visitorShapeId);
 
-        auto itA = bodyToMeta_.find(keyA);
-        auto itB = bodyToMeta_.find(keyB);
+            auto keySensor = bodyIdToKey(sensorBodyId);
+            auto keyVisitor = bodyIdToKey(visitorBodyId);
 
-        if (itA != bodyToMeta_.end() && itB != bodyToMeta_.end()) {
-            CollisionEvent collision{
-                .entityA = itA->second.entity,
-                .entityB = itB->second.entity,
-                .contactPoint = {event.point.x * PIXELS_PER_METER, event.point.y * PIXELS_PER_METER},
-                .normal = {event.normal.x, event.normal.y},
-                .impulse = event.approachSpeed
-            };
-            collisionCallback_(collision);
+            auto itSensor = bodyToMeta_.find(keySensor);
+            auto itVisitor = bodyToMeta_.find(keyVisitor);
+
+            if (itSensor != bodyToMeta_.end() && itVisitor != bodyToMeta_.end()) {
+                TriggerEvent trigger{
+                    .entityA = itSensor->second.entity,
+                    .entityB = itVisitor->second.entity,
+                    .contactPoint = {0, 0}  // Box2D doesn't provide contact point for sensors
+                };
+                triggerEnterCallback_(trigger);
+            }
+        }
+    }
+
+    // Process sensor end events (trigger exit)
+    if (triggerExitCallback_) {
+        for (int i = 0; i < sensorEvents.endCount; ++i) {
+            const b2SensorEndTouchEvent& event = sensorEvents.endEvents[i];
+
+            // Validate shapes before accessing - they may have been destroyed
+            if (!b2Shape_IsValid(event.sensorShapeId) || !b2Shape_IsValid(event.visitorShapeId)) {
+                continue;
+            }
+
+            b2BodyId sensorBodyId = b2Shape_GetBody(event.sensorShapeId);
+            b2BodyId visitorBodyId = b2Shape_GetBody(event.visitorShapeId);
+
+            auto keySensor = bodyIdToKey(sensorBodyId);
+            auto keyVisitor = bodyIdToKey(visitorBodyId);
+
+            auto itSensor = bodyToMeta_.find(keySensor);
+            auto itVisitor = bodyToMeta_.find(keyVisitor);
+
+            if (itSensor != bodyToMeta_.end() && itVisitor != bodyToMeta_.end()) {
+                TriggerEvent trigger{
+                    .entityA = itSensor->second.entity,
+                    .entityB = itVisitor->second.entity,
+                    .contactPoint = {0, 0}
+                };
+                triggerExitCallback_(trigger);
+            }
         }
     }
 }
@@ -150,8 +230,7 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
 
     b2BodyId bodyId = b2CreateBody(worldId_, &bodyDef);
 
-    // Create a default box shape (32x32 pixels default size)
-    constexpr float DEFAULT_SIZE = 32.0f;
+    // Create box shape using the size from PhysicsBodyDef
     b2ShapeDef shapeDef = b2DefaultShapeDef();
     shapeDef.density = def.density;
 
@@ -159,10 +238,20 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
     shapeDef.material.friction = def.friction;
     shapeDef.material.restitution = def.restitution;
 
+    // Set sensor flag - sensors detect overlap without collision response
+    shapeDef.isSensor = def.isSensor;
+
     // Enable contact events for collision callbacks
     shapeDef.enableContactEvents = true;
 
-    b2Polygon box = b2MakeBox(DEFAULT_SIZE / (2.0f * PIXELS_PER_METER), DEFAULT_SIZE / (2.0f * PIXELS_PER_METER));
+    // Enable sensor events for trigger callbacks
+    // Note: In Box2D 3.0, sensor events are generated when a sensor overlaps any shape
+    shapeDef.enableSensorEvents = true;
+
+    // Convert pixel size to Box2D meters (half-extents)
+    float halfWidth = def.size.x / (2.0f * PIXELS_PER_METER);
+    float halfHeight = def.size.y / (2.0f * PIXELS_PER_METER);
+    b2Polygon box = b2MakeBox(halfWidth, halfHeight);
     b2CreatePolygonShape(bodyId, &shapeDef, &box);
 
     // Store mappings
@@ -174,7 +263,7 @@ void Box2DPhysicsSystem::createBody(Entity entity, const PhysicsBodyDef& def) {
         .entity = entity,
         .layer = 0x0001,
         .mask = 0xFFFF,
-        .isSensor = false
+        .isSensor = def.isSensor
     };
 }
 
@@ -283,6 +372,25 @@ float Box2DPhysicsSystem::getAngularVelocity(Entity entity) const {
     if (it == entityToBody_.end()) return 0.0f;
 
     return b2Body_GetAngularVelocity(it->second);
+}
+
+Vec2 Box2DPhysicsSystem::getBodySize(Entity entity) const {
+    auto entityKey = static_cast<std::uint32_t>(entity);
+    auto it = entityToBody_.find(entityKey);
+    if (it == entityToBody_.end()) return {0, 0};
+
+    // Get the first shape's AABB to determine body size
+    constexpr int MAX_SHAPES = 4;
+    b2ShapeId shapes[MAX_SHAPES];
+    int shapeCount = b2Body_GetShapes(it->second, shapes, MAX_SHAPES);
+    if (shapeCount == 0) return {0, 0};
+
+    // Get AABB from the first shape
+    b2AABB aabb = b2Shape_GetAABB(shapes[0]);
+    float width = (aabb.upperBound.x - aabb.lowerBound.x) * PIXELS_PER_METER;
+    float height = (aabb.upperBound.y - aabb.lowerBound.y) * PIXELS_PER_METER;
+
+    return {width, height};
 }
 
 void Box2DPhysicsSystem::applyForce(Entity entity, Vec2 force, Vec2 point) {
@@ -481,6 +589,11 @@ std::optional<RaycastHit> Box2DPhysicsSystem::raycast(Vec2 origin, Vec2 directio
     b2RayResult result = b2World_CastRayClosest(worldId_, orig, translation, filter);
 
     if (result.hit) {
+        // Validate shape before accessing - it may have been destroyed
+        if (!b2Shape_IsValid(result.shapeId)) {
+            return std::nullopt;
+        }
+
         b2BodyId bodyId = b2Shape_GetBody(result.shapeId);
         auto key = bodyIdToKey(bodyId);
         auto it = bodyToMeta_.find(key);
@@ -526,6 +639,11 @@ std::vector<RaycastHit> Box2DPhysicsSystem::raycastAll(Vec2 origin, Vec2 directi
 
     b2World_CastRay(worldId_, orig, translation, filter,
         [](b2ShapeId shapeId, b2Vec2 point, b2Vec2 normal, float fraction, void* context) -> float {
+            // Validate shape before accessing - it may have been destroyed
+            if (!b2Shape_IsValid(shapeId)) {
+                return 1.0f;  // Skip invalid shape, continue to find more hits
+            }
+
             auto* ctx = static_cast<RayContextWithDist*>(context);
             b2BodyId bodyId = b2Shape_GetBody(shapeId);
             auto key = bodyIdToKey(bodyId);
@@ -548,7 +666,8 @@ std::vector<RaycastHit> Box2DPhysicsSystem::raycastAll(Vec2 origin, Vec2 directi
 void Box2DPhysicsSystem::setGravity(Vec2 gravity) {
     gravity_ = gravity;
     if (initialized_) {
-        b2World_SetGravity(worldId_, {gravity.x, gravity.y});
+        // Convert from pixels/s² to meters/s² for Box2D
+        b2World_SetGravity(worldId_, {gravity.x / PIXELS_PER_METER, gravity.y / PIXELS_PER_METER});
     }
 }
 
@@ -558,6 +677,108 @@ Vec2 Box2DPhysicsSystem::getGravity() const {
 
 void Box2DPhysicsSystem::setCollisionCallback(CollisionCallback callback) {
     collisionCallback_ = std::move(callback);
+}
+
+void Box2DPhysicsSystem::setTriggerEnterCallback(TriggerCallback callback) {
+    triggerEnterCallback_ = std::move(callback);
+}
+
+void Box2DPhysicsSystem::setTriggerExitCallback(TriggerCallback callback) {
+    triggerExitCallback_ = std::move(callback);
+}
+
+GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
+                                                     const GroundCheckParams& params) const {
+    GroundCheckResult result;
+    if (!initialized_) return result;
+
+    auto entityKey = static_cast<std::uint32_t>(entity);
+    auto it = entityToBody_.find(entityKey);
+    if (it == entityToBody_.end()) return result;
+
+    b2BodyId bodyId = it->second;
+
+    // Get body position and size
+    b2Vec2 pos = b2Body_GetPosition(bodyId);
+
+    // Get the shape to determine body size
+    constexpr int MAX_SHAPES = 4;
+    b2ShapeId shapes[MAX_SHAPES];
+    int shapeCount = b2Body_GetShapes(bodyId, shapes, MAX_SHAPES);
+    if (shapeCount == 0) return result;
+
+    // Get the AABB of the first shape to determine body size
+    b2AABB aabb = b2Shape_GetAABB(shapes[0]);
+    float halfHeight = (aabb.upperBound.y - aabb.lowerBound.y) / 2.0f;
+
+    // Raycast from body CENTER going down, extending past the bottom
+    // This game uses Y-down screen coordinates (positive Y = down)
+    // Start from body center to ensure ray origin is well above any ground surface
+    // when the player is standing on the ground
+    float rayStartY = pos.y;  // Body center
+    // Ray needs to travel: halfHeight (to reach bottom) + rayDistance (to detect ground below)
+    float rayLength = halfHeight + params.rayDistance / PIXELS_PER_METER;
+
+    b2Vec2 origin = {pos.x, rayStartY};
+    b2Vec2 translation = {0.0f, rayLength};  // Cast downward (positive Y in Y-down coords)
+
+    // Use default filter to hit all shapes - we'll filter by layer ourselves
+    // This is more reliable than relying on Box2D's categoryBits matching
+    b2QueryFilter filter = b2DefaultQueryFilter();
+
+    b2RayResult rayResult = b2World_CastRayClosest(worldId_, origin, translation, filter);
+
+    if (rayResult.hit) {
+        // Validate shape before accessing - it may have been destroyed
+        if (!b2Shape_IsValid(rayResult.shapeId)) {
+            return result;
+        }
+
+        // Check if hit body's layer matches ground mask
+        b2BodyId hitBodyId = b2Shape_GetBody(rayResult.shapeId);
+        auto hitKey = bodyIdToKey(hitBodyId);
+        auto metaIt = bodyToMeta_.find(hitKey);
+
+        if (metaIt != bodyToMeta_.end()) {
+            // Check if the hit body's layer is in the ground mask
+            bool layerMatches = (metaIt->second.layer & params.groundMask) != 0;
+
+            if (layerMatches) {
+                // Check slope angle - in Y-down coords, flat floor normal points up (negative Y)
+                // The raycast returns the normal pointing toward the ray origin
+                // For a flat floor with ray going down, normal.y will be negative (pointing up)
+                // We flip it so that flat ground gives us normalY ≈ +1
+                float normalY = -rayResult.normal.y;  // Flip for Y-down coords
+                float slopeAngle = std::acos(std::clamp(normalY, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
+
+                if (slopeAngle <= params.slopeToleranceDeg) {
+                    result.grounded = true;
+                    result.groundEntity = metaIt->second.entity;
+                    result.contactPoint = {
+                        rayResult.point.x * PIXELS_PER_METER,
+                        rayResult.point.y * PIXELS_PER_METER
+                    };
+                    result.surfaceNormal = {rayResult.normal.x, rayResult.normal.y};
+                    result.slopeAngle = slopeAngle;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+CollisionLayer Box2DPhysicsSystem::getCollisionLayer(Entity entity) const {
+    auto entityKey = static_cast<std::uint32_t>(entity);
+    auto bodyIt = entityToBody_.find(entityKey);
+    if (bodyIt == entityToBody_.end()) return 0;
+
+    auto bodyKey = bodyIdToKey(bodyIt->second);
+    auto metaIt = bodyToMeta_.find(bodyKey);
+    if (metaIt != bodyToMeta_.end()) {
+        return metaIt->second.layer;
+    }
+    return 0;
 }
 
 }  // namespace jframe

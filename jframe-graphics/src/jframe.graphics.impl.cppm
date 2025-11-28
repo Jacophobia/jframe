@@ -13,6 +13,8 @@ export module jframe.graphics.impl;
 import std;
 import jframe.graphics;
 import jframe.types;
+import jframe.assets;  // For IAssetSystem
+import jframe.entity;  // For IEntitySystem and entity rendering
 
 export namespace jframe {
 
@@ -61,6 +63,11 @@ public:
     void draw(const Sprite& sprite) override;
     void drawBatch(std::span<const Sprite> sprites) override;
 
+    void drawSprite(const SpriteSheet& sheet, int frameIndex,
+                   const Transform2D& transform, Color tint = Color::white()) override;
+    void drawAnimatedSprite(AnimatedSprite& sprite,
+                           const Transform2D& transform, Color tint = Color::white()) override;
+
     //======================================================================
     // Primitive Rendering
     //======================================================================
@@ -79,6 +86,9 @@ public:
     void drawText(const std::string& text, Vec2 position,
                   AssetHandle fontHandle, float size,
                   const Color& color = Color::white()) override;
+    void drawTextCentered(const std::string& text, Vec2 position,
+                          AssetHandle fontHandle, float size,
+                          const Color& color = Color::white()) override;
     Vec2 measureText(const std::string& text, AssetHandle fontHandle,
                      float size) const override;
 
@@ -110,11 +120,30 @@ public:
     void setClearColor(const Color& color) override;
     void setVSync(bool enabled) override;
 
+    //======================================================================
+    // Asset System Integration
+    //======================================================================
+
+    void setAssetSystem(IAssetSystem* assets) override;
+
+    //======================================================================
+    // Automatic Entity Rendering
+    //======================================================================
+
+    void renderEntities(IEntitySystem& entities) override;
+    void renderEntities(IEntitySystem& entities,
+                        RenderLayer minLayer, RenderLayer maxLayer) override;
+    void setViewportCulling(bool enabled) override;
+    bool isViewportCullingEnabled() const override;
+
 private:
+    // Asset system reference for texture loading
+    IAssetSystem* assetSystem_ = nullptr;
     GLFWwindow* window_ = nullptr;
     Camera camera_;
     Color clearColor_ = Color::black();
     bool isFullscreen_ = false;
+    bool viewportCullingEnabled_ = false;
     int windowedWidth_ = 0;
     int windowedHeight_ = 0;
     int windowedX_ = 0;
@@ -136,8 +165,11 @@ private:
     GLuint textShaderProgram_ = 0;
     GLuint textVAO_ = 0;
     GLuint textVBO_ = 0;
-    std::unordered_map<AssetHandle, FontAtlas, AssetHandleHash> fontAtlases_;
+    mutable std::unordered_map<AssetHandle, FontAtlas, AssetHandleHash> fontAtlases_;
     FontAtlas defaultFontAtlas_;
+
+    // Texture cache (AssetHandle -> OpenGL texture ID)
+    std::unordered_map<AssetHandle, GLuint, AssetHandleHash> textureCache_;
 
     // Shader compilation helpers
     bool compileShader(GLuint shader, const char* source);
@@ -150,6 +182,9 @@ private:
     void createDefaultFont();
     void createTextResources();
     const FontAtlas& getFontAtlas(AssetHandle fontHandle, float size) const;
+
+    // Texture helpers
+    GLuint getOrUploadTexture(AssetHandle handle);
 };
 
 // Factory function (exported via namespace)

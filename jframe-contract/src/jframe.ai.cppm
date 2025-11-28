@@ -26,6 +26,14 @@ struct NavigationPath {
     bool isComplete = false;
 };
 
+// Patrol behavior configuration
+struct PatrolBehavior {
+    float startX = 0.0f;      // Center X position of patrol
+    float range = 100.0f;     // Distance to patrol in each direction
+    float speed = 50.0f;      // Movement speed
+    bool movingRight = true;  // Current direction (for sprite flipping)
+};
+
 class IAISystem {
 public:
     virtual ~IAISystem() = default;
@@ -72,6 +80,14 @@ public:
 
     virtual void setMaxSpeed(Entity entity, float speed) = 0;
     virtual void setMaxAcceleration(Entity entity, float acceleration) = 0;
+
+    //======================================================================
+    // Patrol Behavior
+    //======================================================================
+
+    virtual void setPatrolBehavior(Entity entity, const PatrolBehavior& patrol) = 0;
+    virtual void clearPatrolBehavior(Entity entity) = 0;
+    virtual std::optional<PatrolBehavior> getPatrolBehavior(Entity entity) const = 0;
 
     //======================================================================
     // Spatial Queries

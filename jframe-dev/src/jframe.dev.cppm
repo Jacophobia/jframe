@@ -11,7 +11,19 @@ import std;
 import jframe;
 import jframe.core;
 
+// Forward declare GLFWwindow
+struct GLFWwindow;
+
 export namespace jframe::dev {
+
+//==========================================================================
+// ImGui Backend Functions
+//==========================================================================
+
+void initializeImGui(GLFWwindow* window);
+void beginImGuiFrame();
+void renderImGui();
+void shutdownImGui();
 
 //==========================================================================
 // File Change Event

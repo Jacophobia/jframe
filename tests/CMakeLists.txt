@@ -1,6 +1,7 @@
 enable_testing()
 
 add_executable(jframe-tests
+    unit/ComponentsTests.cpp
     unit/CoreSystemTests.cpp
     unit/EntitySystemTests.cpp
     unit/SaveSystemTests.cpp
@@ -12,12 +13,16 @@ add_executable(jframe-tests
     unit/PhysicsSystemTests.cpp
     unit/LevelSystemTests.cpp
     unit/AISystemTests.cpp
+    unit/CameraSystemTests.cpp
+    unit/GASSystemTests.cpp
+    unit/BlueprintFactoryTests.cpp
 )
 target_use_std_module(jframe-tests)
 
 target_link_libraries(jframe-tests
     PRIVATE
         jframe-contract
+        jframe-components
         jframe-core
         jframe-entity
         jframe-events
@@ -29,6 +34,9 @@ target_link_libraries(jframe-tests
         jframe-physics
         jframe-level
         jframe-ai
+        jframe-camera
+        jframe-gas
+        jframe-blueprints
         GTest::gtest
         GTest::gtest_main
 )

@@ -12,6 +12,10 @@
 
 import jframe.ai;
 import jframe.ai.impl;
+import jframe.assets;
+import jframe.assets.impl;
+import jframe.physics;
+import jframe.physics.impl;
 import jframe.types;
 
 namespace jframe::tests {
@@ -19,7 +23,18 @@ namespace jframe::tests {
 class AISystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        aiSystem = createAISystem();
+        // Create asset system (required dependency)
+        assetSystem = std::make_unique<AssetSystem>();
+
+        // Create physics system (required dependency)
+        physicsSystem = createPhysicsSystem();
+        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem.get());
+        if (physicsImpl) {
+            physicsImpl->initialize();
+        }
+
+        // Create AI system with dependencies
+        aiSystem = createAISystem(physicsSystem.get(), assetSystem.get());
 
         // Downcast to access initialize() method
         auto* implPtr = dynamic_cast<AISystem*>(aiSystem.get());
@@ -28,6 +43,8 @@ protected:
         }
     }
 
+    std::unique_ptr<IAssetSystem> assetSystem;
+    std::unique_ptr<IPhysicsSystem> physicsSystem;
     std::unique_ptr<IAISystem> aiSystem;
 };
 
@@ -470,7 +487,7 @@ TEST_F(AISystemTest, HasLineOfSightReturnsTrueByDefault) {
     Vec2 to{100.0f, 100.0f};
 
     bool hasLOS = aiSystem->hasLineOfSight(from, to);
-    EXPECT_TRUE(hasLOS);  // Wave 1: always returns true
+    EXPECT_TRUE(hasLOS);  // No obstacles = clear line of sight
 }
 
 TEST_F(AISystemTest, HasLineOfSightWithObstacleMask) {
@@ -479,7 +496,7 @@ TEST_F(AISystemTest, HasLineOfSightWithObstacleMask) {
     CollisionMask obstacleMask = 0x0004;  // Terrain layer
 
     bool hasLOS = aiSystem->hasLineOfSight(from, to, obstacleMask);
-    EXPECT_TRUE(hasLOS);  // Wave 1: always returns true
+    EXPECT_TRUE(hasLOS);  // No obstacles = clear line of sight
 }
 
 TEST_F(AISystemTest, HasLineOfSightBetweenSamePoint) {
@@ -599,6 +616,97 @@ TEST_F(AISystemTest, UpdateWithMultipleEntitiesDoesNotCrash) {
 
     // Update should process all entities
     aiSystem->update(1.0f / 60.0f);
+}
+
+//=============================================================================
+// Physics Integration Tests
+//=============================================================================
+
+TEST_F(AISystemTest, LineOfSightClearWithNoObstacles) {
+    Vec2 from{0.0f, 0.0f};
+    Vec2 to{100.0f, 100.0f};
+
+    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    EXPECT_TRUE(hasLOS);  // No physics bodies = clear path
+}
+
+TEST_F(AISystemTest, LineOfSightBlockedByPhysicsBody) {
+    // Create a physics body between two points
+    Entity wallEntity = static_cast<Entity>(500);
+    PhysicsBodyDef wallDef{
+        .type = BodyType::Static,
+        .transform = {.x = 50.0f, .y = 50.0f}
+    };
+    physicsSystem->createBody(wallEntity, wallDef);
+
+    Vec2 from{0.0f, 0.0f};
+    Vec2 to{100.0f, 100.0f};
+
+    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    EXPECT_FALSE(hasLOS);  // Wall blocks the line of sight
+}
+
+TEST_F(AISystemTest, FindClosestEntityWithPhysicsBodies) {
+    // Create multiple physics bodies at different distances
+    Entity entity1 = static_cast<Entity>(501);
+    Entity entity2 = static_cast<Entity>(502);
+    Entity entity3 = static_cast<Entity>(503);
+
+    PhysicsBodyDef def1{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 0.0f}
+    };
+    PhysicsBodyDef def2{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 50.0f, .y = 0.0f}
+    };
+    PhysicsBodyDef def3{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 200.0f, .y = 0.0f}
+    };
+
+    physicsSystem->createBody(entity1, def1);
+    physicsSystem->createBody(entity2, def2);
+    physicsSystem->createBody(entity3, def3);
+
+    Vec2 searchPosition{0.0f, 0.0f};
+    std::optional<Entity> closest = aiSystem->findClosestEntity(searchPosition);
+
+    ASSERT_TRUE(closest.has_value());
+    EXPECT_EQ(closest.value(), entity2);  // entity2 is closest at 50 units
+}
+
+TEST_F(AISystemTest, FindEntitiesInRadiusWithPhysicsBodies) {
+    // Create physics bodies at various positions
+    Entity entity1 = static_cast<Entity>(504);
+    Entity entity2 = static_cast<Entity>(505);
+    Entity entity3 = static_cast<Entity>(506);
+
+    PhysicsBodyDef def1{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 30.0f, .y = 0.0f}
+    };
+    PhysicsBodyDef def2{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 40.0f, .y = 0.0f}
+    };
+    PhysicsBodyDef def3{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 0.0f}
+    };
+
+    physicsSystem->createBody(entity1, def1);
+    physicsSystem->createBody(entity2, def2);
+    physicsSystem->createBody(entity3, def3);
+
+    Vec2 center{0.0f, 0.0f};
+    float radius = 50.0f;
+
+    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+
+    // entity1 and entity2 should be found (within 50 units), entity3 should not (100 units away)
+    EXPECT_FALSE(entities.empty());
+    EXPECT_EQ(entities.size(), 2u);
 }
 
 }  // namespace jframe::tests

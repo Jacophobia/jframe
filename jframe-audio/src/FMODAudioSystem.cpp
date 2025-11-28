@@ -11,6 +11,7 @@ module;
 module jframe.audio.impl;
 
 import std;
+import jframe.assets;
 
 namespace jframe {
 
@@ -33,6 +34,10 @@ namespace {
 #endif
 }  // anonymous namespace
 
+FMODAudioSystem::FMODAudioSystem(IAssetSystem* assetSystem)
+    : assetSystem_(assetSystem) {
+}
+
 FMODAudioSystem::~FMODAudioSystem() {
 #ifdef JFRAME_HAS_FMOD
     if (fmodSystem_) {
@@ -44,17 +49,13 @@ FMODAudioSystem::~FMODAudioSystem() {
         }
         fmodGroups_.clear();
 
-        // Release all sounds
-        for (auto& [channel, data] : channels_) {
-            if (data.fmodSound) {
-                FMOD_Sound_Release(data.fmodSound);
+        // Release cached sounds
+        for (auto& [handle, sound] : soundCache_) {
+            if (sound) {
+                FMOD_Sound_Release(sound);
             }
         }
-        for (auto& [handle, data] : positionalSounds_) {
-            if (data.fmodSound) {
-                FMOD_Sound_Release(data.fmodSound);
-            }
-        }
+        soundCache_.clear();
 
         // Close and release the system
         FMOD_System_Close(fmodSystem_);
@@ -97,6 +98,62 @@ bool FMODAudioSystem::initialize() {
     return true;
 #endif
 }
+
+#ifdef JFRAME_HAS_FMOD
+FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode) {
+    // Check cache first
+    auto cacheIt = soundCache_.find(handle);
+    if (cacheIt != soundCache_.end()) {
+        return cacheIt->second;  // Cache hit
+    }
+
+    // Try to get sound data from asset system
+    if (assetSystem_) {
+        const SoundData* soundData = assetSystem_->getAsset<SoundData>(handle);
+        if (soundData && !soundData->fileData.empty()) {
+            // Create FMOD sound from memory
+            FMOD_CREATESOUNDEXINFO exinfo = {};
+            exinfo.cbsize = sizeof(FMOD_CREATESOUNDEXINFO);
+            exinfo.length = static_cast<unsigned int>(soundData->fileSize);
+
+            FMOD_SOUND* fmodSound = nullptr;
+            FMOD_RESULT result = FMOD_System_CreateSound(
+                fmodSystem_,
+                reinterpret_cast<const char*>(soundData->fileData.data()),
+                mode | FMOD_OPENMEMORY,
+                &exinfo,
+                &fmodSound
+            );
+
+            if (checkFMODResult(result, "FMOD_System_CreateSound (from memory)")) {
+                soundCache_[handle] = fmodSound;
+                return fmodSound;
+            }
+        }
+    }
+
+    // Fallback: try to load from file path if registered
+    auto pathIt = assetPaths_.find(handle);
+    if (pathIt != assetPaths_.end()) {
+        FMOD_SOUND* fmodSound = nullptr;
+        FMOD_RESULT result = FMOD_System_CreateSound(
+            fmodSystem_,
+            pathIt->second.c_str(),
+            mode,
+            nullptr,
+            &fmodSound
+        );
+
+        if (checkFMODResult(result, "FMOD_System_CreateSound (from file)")) {
+            soundCache_[handle] = fmodSound;
+            return fmodSound;
+        }
+    }
+
+    std::cerr << "Failed to load audio asset " << handle << std::endl;
+    return nullptr;
+}
+#endif
 
 void FMODAudioSystem::update(DeltaTime dt) {
 #ifdef JFRAME_HAS_FMOD
@@ -159,22 +216,7 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
         channelData.fmodChannel = nullptr;
     }
 
-    // Release old sound if exists
-    if (channelData.fmodSound) {
-        FMOD_Sound_Release(channelData.fmodSound);
-        channelData.fmodSound = nullptr;
-    }
-
-    // For now, we need asset paths to be registered separately
-    // In a real implementation, this would come from the asset system
-    // TODO(agent): Need asset path lookup from asset system
-    auto pathIt = assetPaths_.find(sound.asset);
-    if (pathIt == assetPaths_.end()) {
-        std::cerr << "Audio asset " << sound.asset << " not registered" << std::endl;
-        return;
-    }
-
-    // Create sound
+    // Determine FMOD mode
     FMOD_MODE mode = FMOD_DEFAULT;
     if (sound.looping) {
         mode |= FMOD_LOOP_NORMAL;
@@ -182,30 +224,22 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
         mode |= FMOD_LOOP_OFF;
     }
 
-    FMOD_RESULT result = FMOD_System_CreateSound(
-        fmodSystem_,
-        pathIt->second.c_str(),
-        mode,
-        nullptr,
-        &channelData.fmodSound
-    );
-
-    if (!checkFMODResult(result, "FMOD_System_CreateSound")) {
+    // Get or create the sound from asset system
+    FMOD_SOUND* fmodSound = getOrCreateSound(sound.asset, mode);
+    if (!fmodSound) {
         return;
     }
 
     // Play the sound
-    result = FMOD_System_PlaySound(
+    FMOD_RESULT result = FMOD_System_PlaySound(
         fmodSystem_,
-        channelData.fmodSound,
+        fmodSound,
         nullptr,  // No channel group yet
         false,    // Don't start paused
         &channelData.fmodChannel
     );
 
     if (!checkFMODResult(result, "FMOD_System_PlaySound")) {
-        FMOD_Sound_Release(channelData.fmodSound);
-        channelData.fmodSound = nullptr;
         return;
     }
 
@@ -351,41 +385,26 @@ SoundHandle FMODAudioSystem::playPositional(const PositionalSound& sound) {
     auto& soundData = positionalSounds_[handle];
     soundData.position = sound.position;
 
-    // Get asset path
-    auto pathIt = assetPaths_.find(sound.asset);
-    if (pathIt == assetPaths_.end()) {
-        std::cerr << "Audio asset " << sound.asset << " not registered" << std::endl;
-        return handle;
-    }
-
-    // Create 3D sound
-    FMOD_RESULT result = FMOD_System_CreateSound(
-        fmodSystem_,
-        pathIt->second.c_str(),
-        FMOD_3D | FMOD_LOOP_OFF,
-        nullptr,
-        &soundData.fmodSound
-    );
-
-    if (!checkFMODResult(result, "FMOD_System_CreateSound (3D)")) {
+    // Get or create 3D sound
+    FMOD_SOUND* fmodSound = getOrCreateSound(sound.asset, FMOD_3D | FMOD_LOOP_OFF);
+    if (!fmodSound) {
         positionalSounds_.erase(handle);
         return 0;
     }
 
     // Set 3D min/max distance
-    FMOD_Sound_Set3DMinMaxDistance(soundData.fmodSound, sound.minDistance, sound.maxDistance);
+    FMOD_Sound_Set3DMinMaxDistance(fmodSound, sound.minDistance, sound.maxDistance);
 
     // Play the sound
-    result = FMOD_System_PlaySound(
+    FMOD_RESULT result = FMOD_System_PlaySound(
         fmodSystem_,
-        soundData.fmodSound,
+        fmodSound,
         nullptr,
         false,
         &soundData.fmodChannel
     );
 
     if (!checkFMODResult(result, "FMOD_System_PlaySound (3D)")) {
-        FMOD_Sound_Release(soundData.fmodSound);
         positionalSounds_.erase(handle);
         return 0;
     }
@@ -415,9 +434,7 @@ void FMODAudioSystem::stopPositional(SoundHandle handle) {
         if (it->second.fmodChannel) {
             FMOD_Channel_Stop(it->second.fmodChannel);
         }
-        if (it->second.fmodSound) {
-            FMOD_Sound_Release(it->second.fmodSound);
-        }
+        // Don't release the sound - it's cached in soundCache_
         positionalSounds_.erase(it);
     }
 #else
@@ -531,9 +548,6 @@ void FMODAudioSystem::stopAll() {
         if (data.fmodChannel) {
             FMOD_Channel_Stop(data.fmodChannel);
         }
-        if (data.fmodSound) {
-            FMOD_Sound_Release(data.fmodSound);
-        }
     }
 
     // Stop all positional sounds
@@ -541,14 +555,12 @@ void FMODAudioSystem::stopAll() {
         if (data.fmodChannel) {
             FMOD_Channel_Stop(data.fmodChannel);
         }
-        if (data.fmodSound) {
-            FMOD_Sound_Release(data.fmodSound);
-        }
     }
 #endif
 
     channels_.clear();
     positionalSounds_.clear();
+    // Don't clear soundCache_ - sounds remain cached for reuse
 }
 
 void FMODAudioSystem::setGroupVolume(const std::string& group, Volume volume) {
@@ -600,6 +612,18 @@ void FMODAudioSystem::assignChannelToGroup(Channel channel, const std::string& g
     if (channelData.fmodChannel && fmodGroup) {
         FMOD_Channel_SetChannelGroup(channelData.fmodChannel, fmodGroup);
     }
+#endif
+}
+
+void FMODAudioSystem::invalidateSoundCache() {
+#ifdef JFRAME_HAS_FMOD
+    // Release all cached sounds
+    for (auto& [handle, sound] : soundCache_) {
+        if (sound) {
+            FMOD_Sound_Release(sound);
+        }
+    }
+    soundCache_.clear();
 #endif
 }
 

@@ -9,14 +9,42 @@ import jframe.core;
 import jframe.dev;
 #endif
 
-// Forward declaration
-class PlatformerGame;
+#include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting Platformer Example");
+    jframe::core::logInfo("Starting JFrame Platformer Example");
 
-    // Create and run the game
-    // In a full implementation, this would create the game class and run it
+    // Build the engine with all required systems
+    auto engineResult = jframe::core::EngineBuilder()
+        .withEvents()
+        .withEntities()
+        .withPhysics()
+        .withGraphics(jframe::core::GraphicsConfig{
+            .width = 800,
+            .height = 600,
+            .title = "JFrame Platformer",
+            .vsync = true,
+            .clearColor = {135, 206, 235, 255}  // Sky blue
+        })
+        .withInput()
+        .withAssets("data")
+        .withAudio()
+        .withLevel()
+        .withSave("saves")
+        .withAI()
+        .build();
 
+    if (!engineResult) {
+        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        return 1;
+    }
+
+    jframe::core::logInfo("Engine built successfully");
+
+    // Create the game and run it
+    platformer::Game game;
+    engineResult.value().run(game);
+
+    jframe::core::logInfo("Platformer exiting");
     return 0;
 }

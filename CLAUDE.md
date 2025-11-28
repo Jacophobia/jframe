@@ -57,6 +57,7 @@ JFrame uses C++23 modules. Follow these conventions:
 ```
 jframe.types          // Core types and aliases
 jframe.core           // Core utilities (Timer, FrameTimer, Easing, JobSystem, Logging)
+jframe.config         // IConfigSystem interface
 jframe.entity         // IEntitySystem interface
 jframe.graphics       // IGraphicsSystem interface
 jframe.audio          // IAudioSystem interface
@@ -523,6 +524,7 @@ Each system has clear file boundaries. Agents should claim ownership of exactly 
 | Types | `jframe-contract/src/jframe.types.cppm` | None |
 | Core Utilities | `jframe-core/*` | Types |
 | Events | `jframe-events/*` | Types |
+| Config | `jframe-config/*` | Types |
 | Entity | `jframe-entity/*` | Types, Events |
 | Assets | `jframe-assets/*` | Types, Events |
 | Input | `jframe-input/*` | Types, Events |
@@ -551,7 +553,7 @@ Each system has clear file boundaries. Agents should claim ownership of exactly 
 
 These systems can be implemented simultaneously by different agents:
 
-- **Events** + **Assets** + **Input** + **Save** (all Tier 1, no dependencies on each other)
+- **Events** + **Config** + **Assets** + **Input** + **Save** (all Tier 1, no dependencies on each other)
 - **Graphics** and **Audio** (both need Entity/Assets, but don't interact)
 - **Physics** and **AI** (both need Entity, minimal interaction)
 
@@ -592,26 +594,27 @@ This section is for the coordinating agent or human managing parallel developmen
 ### Task Assignment Strategy
 
 #### Phase 1: Foundation (Parallelizable)
-Assign these to 4 different agents simultaneously:
+Assign these to 5 different agents simultaneously:
 - Agent A: Events System (already mostly complete)
-- Agent B: Assets System
-- Agent C: Input System
-- Agent D: Save System
+- Agent B: Config System
+- Agent C: Assets System
+- Agent D: Input System
+- Agent E: Save System
 
 #### Phase 2: Core Systems (After Phase 1)
 Assign these to 3 different agents simultaneously:
-- Agent E: Entity System (can start early, Events is done)
-- Agent F: Graphics System (needs Entity + Assets)
-- Agent G: Audio System (needs Entity + Assets)
+- Agent F: Entity System (can start early, Events is done)
+- Agent G: Graphics System (needs Entity + Assets)
+- Agent H: Audio System (needs Entity + Assets)
 
 #### Phase 3: Simulation (After Entity)
 Assign these to 2 different agents simultaneously:
-- Agent H: Physics System
-- Agent I: AI System (can start after Physics basics are done)
+- Agent I: Physics System
+- Agent J: AI System (can start after Physics basics are done)
 
 #### Phase 4: Integration
-- Agent J: Level System (needs Entity, Assets, Events)
-- Agent K: Dev Tools (needs all systems as read-only dependencies)
+- Agent K: Level System (needs Entity, Assets, Events)
+- Agent L: Dev Tools (needs all systems as read-only dependencies)
 
 #### Phase 5: Engine Assembly
 - Single agent: Core Engine composition
@@ -671,7 +674,7 @@ Based on the implementation checklist in PROJECT-STATUS.md:
 | Priority | Systems | Estimated Files | Complexity |
 |----------|---------|-----------------|------------|
 | Tier 0 | Types finalization | 1 file | Low |
-| Tier 1 | Events, Assets, Input, Save | ~20 files | Medium |
+| Tier 1 | Events, Config, Assets, Input, Save | ~25 files | Medium |
 | Tier 2 | Entity, Graphics, Audio | ~15 files | High |
 | Tier 3 | Physics, Level | ~10 files | High |
 | Tier 4 | AI | ~5 files | Medium |
@@ -687,3 +690,21 @@ Based on the implementation checklist in PROJECT-STATUS.md:
 5. Read existing implementation: `jframe-yoursystem/src/*.cpp`
 6. Run existing tests: `ctest --preset macos-debug -R "YourSystemTest"`
 7. Implement, test, document, push
+
+---
+
+## CRITICAL: No Time-Based Estimates
+
+**NEVER use units of time to describe work.** Do not say things like:
+- "This will take 2-3 weeks"
+- "Estimated 1 week of effort"
+- "Can be done in a few days"
+
+Instead, describe work in terms of:
+- **Tasks and subtasks** - What needs to be done
+- **Dependencies** - What must be completed first
+- **Complexity** - Low/Medium/High based on technical difficulty
+- **File count** - Approximate number of files to create/modify
+- **Test coverage** - What tests need to be written
+
+Agents can implement features very quickly when given clear specifications. Time estimates create false constraints and are meaningless in an AI-assisted development context. Focus on WHAT needs to be done, not WHEN.

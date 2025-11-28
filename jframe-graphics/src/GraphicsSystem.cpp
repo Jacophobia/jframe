@@ -4,6 +4,7 @@
 module;
 
 #include <algorithm>
+#include <any>
 #include <cmath>
 #include <span>
 #include <string>
@@ -22,9 +23,17 @@ module;
 
 module jframe.graphics.impl;
 
+import jframe.assets;  // For IAssetSystem interface, TextureData, and FontData types
+
 namespace jframe {
 
 GraphicsSystem::~GraphicsSystem() {
+    // Clean up texture cache
+    for (auto& [handle, textureId] : textureCache_) {
+        if (textureId) glDeleteTextures(1, &textureId);
+    }
+    textureCache_.clear();
+
     // Clean up OpenGL resources
     if (spriteVBO_) glDeleteBuffers(1, &spriteVBO_);
     if (spriteVAO_) glDeleteVertexArrays(1, &spriteVAO_);
@@ -174,6 +183,7 @@ void GraphicsSystem::beginFrame() {
 
 void GraphicsSystem::endFrame() {
     if (spriteBatch_.empty()) {
+        glFlush();  // Ensure clear command completes before swap
         glfwSwapBuffers(window_);
         glfwPollEvents();
         return;
@@ -193,8 +203,8 @@ void GraphicsSystem::endFrame() {
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -244,8 +254,12 @@ void GraphicsSystem::endFrame() {
         );
         glUniform4fv(tintLoc, 1, &tint[0]);
 
-        // Bind texture (use white texture as default for now)
-        glBindTexture(GL_TEXTURE_2D, whiteTexture_);
+        // Bind texture - use actual texture if available, otherwise fallback to white
+        GLuint textureId = whiteTexture_;
+        if (sprite.textureHandle) {
+            textureId = getOrUploadTexture(*sprite.textureHandle);
+        }
+        glBindTexture(GL_TEXTURE_2D, textureId);
 
         // Draw quad
         glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -266,6 +280,33 @@ void GraphicsSystem::drawBatch(std::span<const Sprite> sprites) {
     spriteBatch_.insert(spriteBatch_.end(), sprites.begin(), sprites.end());
 }
 
+void GraphicsSystem::drawSprite(const SpriteSheet& sheet, int frameIndex,
+                                 const Transform2D& transform, Color tint) {
+    // Get the frame rectangle from the spritesheet
+    Canvas frameRect = sheet.getFrameRect(frameIndex);
+
+    // Create a Sprite object with the calculated frame rectangle
+    Sprite sprite;
+    sprite.textureHandle = const_cast<AssetHandle*>(&sheet.texture);
+    sprite.sourceRect = frameRect;
+    sprite.transform = transform;
+    sprite.tint = tint;
+    sprite.layer = 0;
+    sprite.anchor = {0.5f, 0.5f};
+
+    // Add to the batch
+    spriteBatch_.push_back(sprite);
+}
+
+void GraphicsSystem::drawAnimatedSprite(AnimatedSprite& sprite,
+                                        const Transform2D& transform, Color tint) {
+    // Get the current frame index from the animated sprite
+    int frameIndex = sprite.getCurrentFrame();
+
+    // Draw using the spritesheet
+    drawSprite(sprite.sheet, frameIndex, transform, tint);
+}
+
 void GraphicsSystem::drawRect(const Canvas& rect, const Color& color, bool filled) {
     // Calculate view-projection matrix
     Vec2 camPos = camera_.transform.position();
@@ -275,8 +316,8 @@ void GraphicsSystem::drawRect(const Canvas& rect, const Color& color, bool fille
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -342,8 +383,8 @@ void GraphicsSystem::drawLine(Vec2 from, Vec2 to, const Color& color, float thic
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -396,8 +437,8 @@ void GraphicsSystem::drawCircle(Vec2 center, float radius, const Color& color,
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -450,8 +491,8 @@ void GraphicsSystem::drawPolygon(std::span<const Vec2> vertices,
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -510,8 +551,8 @@ void GraphicsSystem::drawText(const std::string& text, Vec2 position,
     glm::mat4 projection = glm::ortho(
         camPos.x - halfWidth,
         camPos.x + halfWidth,
-        camPos.y - halfHeight,
-        camPos.y + halfHeight,
+        camPos.y + halfHeight,  // bottom (Y-down screen coords)
+        camPos.y - halfHeight,  // top
         -1.0f,
         1.0f
     );
@@ -547,14 +588,15 @@ void GraphicsSystem::drawText(const std::string& text, Vec2 position,
         float h = glyph.height * scale;
 
         // Create quad vertices (position + texcoord)
+        // Texture Y coords are flipped: bottom of quad gets top of texture
         float vertices[6][4] = {
-            { xpos,     ypos + h,   glyph.texCoordX,                           glyph.texCoordY },
-            { xpos,     ypos,       glyph.texCoordX,                           glyph.texCoordY + glyph.texCoordH },
-            { xpos + w, ypos,       glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY + glyph.texCoordH },
+            { xpos,     ypos + h,   glyph.texCoordX,                           glyph.texCoordY + glyph.texCoordH },
+            { xpos,     ypos,       glyph.texCoordX,                           glyph.texCoordY },
+            { xpos + w, ypos,       glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY },
 
-            { xpos,     ypos + h,   glyph.texCoordX,                           glyph.texCoordY },
-            { xpos + w, ypos,       glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY + glyph.texCoordH },
-            { xpos + w, ypos + h,   glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY },
+            { xpos,     ypos + h,   glyph.texCoordX,                           glyph.texCoordY + glyph.texCoordH },
+            { xpos + w, ypos,       glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY },
+            { xpos + w, ypos + h,   glyph.texCoordX + glyph.texCoordW,         glyph.texCoordY + glyph.texCoordH },
         };
 
         // Update VBO and render
@@ -569,6 +611,24 @@ void GraphicsSystem::drawText(const std::string& text, Vec2 position,
     glBindVertexArray(0);
     glBindTexture(GL_TEXTURE_2D, 0);
     glUseProgram(0);
+}
+
+void GraphicsSystem::drawTextCentered(const std::string& text, Vec2 position,
+                                       AssetHandle fontHandle, float size,
+                                       const Color& color) {
+    if (text.empty()) return;
+
+    // Measure the text to find its width and height
+    Vec2 textSize = measureText(text, fontHandle, size);
+
+    // Calculate centered position
+    Vec2 centeredPos{
+        position.x - textSize.x / 2.0f,
+        position.y - textSize.y / 2.0f
+    };
+
+    // Draw at the centered position
+    drawText(text, centeredPos, fontHandle, size, color);
 }
 
 Vec2 GraphicsSystem::measureText(const std::string& text, AssetHandle fontHandle,
@@ -901,18 +961,391 @@ void GraphicsSystem::createDefaultFont() {
 }
 
 const FontAtlas& GraphicsSystem::getFontAtlas(AssetHandle fontHandle, float size) const {
-    // For now, always return the default font
-    // In a full implementation, this would:
-    // 1. Check if fontHandle is valid
-    // 2. Look up the font in fontAtlases_ cache
-    // 3. If not found, load the font from AssetSystem and generate atlas using stb_truetype
-    // 4. Return the cached atlas
+    // If no handle or invalid, return default font
+    if (!fontHandle.isValid() || !assetSystem_) {
+        return defaultFontAtlas_;
+    }
 
-    // TODO(jframe): Implement custom font loading from AssetSystem
-    // - Load TTF data from AssetSystem using fontHandle
-    // - Use stb_truetype to bake font atlas at requested size
-    // - Cache the atlas in fontAtlases_ map
-    return defaultFontAtlas_;
+    // Check if already cached
+    auto it = fontAtlases_.find(fontHandle);
+    if (it != fontAtlases_.end()) {
+        return it->second;
+    }
+
+    // Check if asset is loaded
+    if (!assetSystem_->isLoaded(fontHandle)) {
+        return defaultFontAtlas_;
+    }
+
+    // Get font data from asset system
+    void* rawData = assetSystem_->getRawAsset(fontHandle);
+    if (!rawData) {
+        return defaultFontAtlas_;
+    }
+
+    // Cast to std::any and get FontData
+    std::any* anyData = static_cast<std::any*>(rawData);
+    if (!anyData->has_value()) {
+        return defaultFontAtlas_;
+    }
+
+    // FontData is defined in jframe.assets.impl
+    FontData* fontData = nullptr;
+    try {
+        fontData = std::any_cast<FontData>(anyData);
+    } catch (const std::bad_any_cast&) {
+        return defaultFontAtlas_;
+    }
+
+    if (!fontData || fontData->fileData.empty()) {
+        return defaultFontAtlas_;
+    }
+
+    // Create font atlas using stb_truetype
+    const int ATLAS_SIZE = 512;
+    const float FONT_SIZE = size > 0 ? size : 32.0f;
+
+    std::vector<unsigned char> bitmap(ATLAS_SIZE * ATLAS_SIZE);
+
+    // Initialize stb_truetype font info
+    stbtt_fontinfo fontInfo;
+    if (!stbtt_InitFont(&fontInfo, fontData->fileData.data(), 0)) {
+        return defaultFontAtlas_;
+    }
+
+    // Calculate font scale
+    float scale = stbtt_ScaleForPixelHeight(&fontInfo, FONT_SIZE);
+
+    // Get font metrics
+    int ascent, descent, lineGap;
+    stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
+
+    // Create new atlas
+    FontAtlas atlas;
+    atlas.atlasWidth = ATLAS_SIZE;
+    atlas.atlasHeight = ATLAS_SIZE;
+    atlas.fontSize = FONT_SIZE;
+    atlas.lineHeight = (ascent - descent + lineGap) * scale;
+    atlas.fontHandle = fontHandle;
+
+    // Pack glyphs into atlas
+    int x = 1, y = 1;
+    int rowHeight = 0;
+
+    for (int c = 32; c < 127; ++c) {  // ASCII printable characters
+        int w, h, xoff, yoff;
+        unsigned char* glyphBitmap = stbtt_GetCodepointBitmap(&fontInfo, scale, scale,
+                                                               c, &w, &h, &xoff, &yoff);
+
+        // Check if glyph fits in current row
+        if (x + w + 1 >= ATLAS_SIZE) {
+            x = 1;
+            y += rowHeight + 1;
+            rowHeight = 0;
+        }
+
+        // Check if glyph fits in atlas
+        if (y + h + 1 >= ATLAS_SIZE) {
+            stbtt_FreeBitmap(glyphBitmap, nullptr);
+            break;
+        }
+
+        // Copy glyph to atlas bitmap
+        for (int gy = 0; gy < h; ++gy) {
+            for (int gx = 0; gx < w; ++gx) {
+                bitmap[(y + gy) * ATLAS_SIZE + (x + gx)] = glyphBitmap[gy * w + gx];
+            }
+        }
+
+        // Get advance width
+        int advanceWidth, leftSideBearing;
+        stbtt_GetCodepointHMetrics(&fontInfo, c, &advanceWidth, &leftSideBearing);
+
+        // Store glyph info
+        GlyphInfo& glyph = atlas.glyphs[c];
+        glyph.width = static_cast<float>(w);
+        glyph.height = static_cast<float>(h);
+        glyph.bearingX = static_cast<float>(xoff);
+        glyph.bearingY = static_cast<float>(-yoff);  // stbtt uses top-down, we need bottom-up
+        glyph.advanceX = advanceWidth * scale;
+        glyph.texCoordX = static_cast<float>(x) / ATLAS_SIZE;
+        glyph.texCoordY = static_cast<float>(y) / ATLAS_SIZE;
+        glyph.texCoordW = static_cast<float>(w) / ATLAS_SIZE;
+        glyph.texCoordH = static_cast<float>(h) / ATLAS_SIZE;
+
+        x += w + 1;
+        if (h > rowHeight) rowHeight = h;
+
+        stbtt_FreeBitmap(glyphBitmap, nullptr);
+    }
+
+    // Set space character metrics (usually not rendered)
+    int spaceAdvance, spaceLeftBearing;
+    stbtt_GetCodepointHMetrics(&fontInfo, ' ', &spaceAdvance, &spaceLeftBearing);
+    atlas.glyphs[' '].advanceX = spaceAdvance * scale;
+
+    // Create OpenGL texture
+    glGenTextures(1, &atlas.textureID);
+    glBindTexture(GL_TEXTURE_2D, atlas.textureID);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, ATLAS_SIZE, ATLAS_SIZE, 0,
+                 GL_RED, GL_UNSIGNED_BYTE, bitmap.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Cache and return
+    auto [inserted, success] = fontAtlases_.emplace(fontHandle, std::move(atlas));
+    return inserted->second;
+}
+
+void GraphicsSystem::setAssetSystem(IAssetSystem* assets) {
+    assetSystem_ = assets;
+}
+
+GLuint GraphicsSystem::getOrUploadTexture(AssetHandle handle) {
+    // Check cache first
+    auto it = textureCache_.find(handle);
+    if (it != textureCache_.end()) {
+        return it->second;
+    }
+
+    // Not in cache - need to upload from asset system
+    if (!assetSystem_ || !assetSystem_->isLoaded(handle)) {
+        return whiteTexture_;  // Fallback if asset not available
+    }
+
+    // Get texture data from asset system
+    void* rawData = assetSystem_->getRawAsset(handle);
+    if (!rawData) {
+        return whiteTexture_;
+    }
+
+    // Cast the std::any to TextureData (asset system stores data as std::any)
+    std::any* anyData = static_cast<std::any*>(rawData);
+    if (!anyData->has_value()) {
+        return whiteTexture_;
+    }
+
+    TextureData* textureData = nullptr;
+    try {
+        textureData = std::any_cast<TextureData>(anyData);
+    } catch (const std::bad_any_cast&) {
+        return whiteTexture_;
+    }
+
+    if (!textureData || textureData->pixels.empty()) {
+        return whiteTexture_;
+    }
+
+    // Create OpenGL texture
+    GLuint textureId = 0;
+    glGenTextures(1, &textureId);
+    glBindTexture(GL_TEXTURE_2D, textureId);
+
+    // Determine format based on channels
+    GLenum format = GL_RGBA;
+    GLenum internalFormat = GL_RGBA;
+    if (textureData->channels == 1) {
+        format = GL_RED;
+        internalFormat = GL_RED;
+    } else if (textureData->channels == 3) {
+        format = GL_RGB;
+        internalFormat = GL_RGB;
+    } else if (textureData->channels == 4) {
+        format = GL_RGBA;
+        internalFormat = GL_RGBA;
+    }
+
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
+                 textureData->width, textureData->height, 0,
+                 format, GL_UNSIGNED_BYTE, textureData->pixels.data());
+
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Cache the texture
+    textureCache_[handle] = textureId;
+    return textureId;
+}
+
+//==============================================================================
+// Automatic Entity Rendering
+//==============================================================================
+
+void GraphicsSystem::setViewportCulling(bool enabled) {
+    viewportCullingEnabled_ = enabled;
+}
+
+bool GraphicsSystem::isViewportCullingEnabled() const {
+    return viewportCullingEnabled_;
+}
+
+void GraphicsSystem::renderEntities(IEntitySystem& entities) {
+    // Render all layers
+    renderEntities(entities, std::numeric_limits<RenderLayer>::min(),
+                   std::numeric_limits<RenderLayer>::max());
+}
+
+void GraphicsSystem::renderEntities(IEntitySystem& entities,
+                                    RenderLayer minLayer, RenderLayer maxLayer) {
+    // Structure to hold renderable items for sorting
+    struct RenderItem {
+        Entity entity;
+        RenderLayer layer;
+        enum class Type { Sprite, DebugRect, DebugCircle, DebugLine } type;
+    };
+
+    std::vector<RenderItem> items;
+
+    // Calculate visible bounds for culling
+    float viewHalfW = 0, viewHalfH = 0;
+    Vec2 camPos = camera_.transform.position();
+    if (viewportCullingEnabled_) {
+        viewHalfW = camera_.viewportSize.width / (2.0f * camera_.zoom);
+        viewHalfH = camera_.viewportSize.height / (2.0f * camera_.zoom);
+    }
+
+    auto isVisible = [&](const Transform2D& transform, float width, float height) -> bool {
+        if (!viewportCullingEnabled_) return true;
+
+        // Simple AABB check against camera viewport
+        float entityLeft = transform.x - width / 2.0f;
+        float entityRight = transform.x + width / 2.0f;
+        float entityTop = transform.y - height / 2.0f;
+        float entityBottom = transform.y + height / 2.0f;
+
+        float viewLeft = camPos.x - viewHalfW;
+        float viewRight = camPos.x + viewHalfW;
+        float viewTop = camPos.y - viewHalfH;
+        float viewBottom = camPos.y + viewHalfH;
+
+        return !(entityRight < viewLeft || entityLeft > viewRight ||
+                 entityBottom < viewTop || entityTop > viewBottom);
+    };
+
+    // Collect Sprites
+    for (auto entity : entities.view<Transform2D, Sprite>()) {
+        const auto& sprite = entities.get<Sprite>(entity);
+        if (sprite.layer < minLayer || sprite.layer > maxLayer) continue;
+
+        const auto& transform = entities.get<Transform2D>(entity);
+        float width = static_cast<float>(sprite.sourceRect.size.width) * transform.scaleX;
+        float height = static_cast<float>(sprite.sourceRect.size.height) * transform.scaleY;
+
+        if (isVisible(transform, width, height)) {
+            items.push_back({entity, sprite.layer, RenderItem::Type::Sprite});
+        }
+    }
+
+    // Collect DebugRects
+    for (auto entity : entities.view<Transform2D, DebugRect>()) {
+        const auto& rect = entities.get<DebugRect>(entity);
+        if (rect.layer < minLayer || rect.layer > maxLayer) continue;
+
+        const auto& transform = entities.get<Transform2D>(entity);
+        if (isVisible(transform, rect.size.x, rect.size.y)) {
+            items.push_back({entity, rect.layer, RenderItem::Type::DebugRect});
+        }
+    }
+
+    // Collect DebugCircles
+    for (auto entity : entities.view<Transform2D, DebugCircle>()) {
+        const auto& circle = entities.get<DebugCircle>(entity);
+        if (circle.layer < minLayer || circle.layer > maxLayer) continue;
+
+        const auto& transform = entities.get<Transform2D>(entity);
+        if (isVisible(transform, circle.radius * 2, circle.radius * 2)) {
+            items.push_back({entity, circle.layer, RenderItem::Type::DebugCircle});
+        }
+    }
+
+    // Collect DebugLines
+    for (auto entity : entities.view<Transform2D, DebugLine>()) {
+        const auto& line = entities.get<DebugLine>(entity);
+        if (line.layer < minLayer || line.layer > maxLayer) continue;
+
+        items.push_back({entity, line.layer, RenderItem::Type::DebugLine});
+    }
+
+    // Sort by layer
+    std::sort(items.begin(), items.end(),
+              [](const RenderItem& a, const RenderItem& b) {
+                  return a.layer < b.layer;
+              });
+
+    // Render in order
+    for (const auto& item : items) {
+        switch (item.type) {
+            case RenderItem::Type::Sprite: {
+                const auto& sprite = entities.get<Sprite>(item.entity);
+                draw(sprite);
+                break;
+            }
+            case RenderItem::Type::DebugRect: {
+                const auto& transform = entities.get<Transform2D>(item.entity);
+                const auto& rect = entities.get<DebugRect>(item.entity);
+
+                // Calculate rectangle bounds centered on transform
+                float halfW = rect.size.x / 2.0f;
+                float halfH = rect.size.y / 2.0f;
+
+                Canvas canvas{
+                    .origin = {static_cast<int>(transform.x - halfW),
+                               static_cast<int>(transform.y - halfH)},
+                    .size = {static_cast<int>(rect.size.x),
+                             static_cast<int>(rect.size.y)}
+                };
+
+                // Draw filled rect
+                if (rect.filled && rect.fillColor.a > 0) {
+                    drawRect(canvas, rect.fillColor, true);
+                }
+
+                // Draw outline
+                if (rect.outlineWidth > 0.0f && rect.outlineColor.a > 0) {
+                    drawRect(canvas, rect.outlineColor, false);
+                }
+                break;
+            }
+            case RenderItem::Type::DebugCircle: {
+                const auto& transform = entities.get<Transform2D>(item.entity);
+                const auto& circle = entities.get<DebugCircle>(item.entity);
+
+                Vec2 center = {transform.x, transform.y};
+
+                // Draw filled circle
+                if (circle.filled && circle.fillColor.a > 0) {
+                    drawCircle(center, circle.radius, circle.fillColor, true, circle.segments);
+                }
+
+                // Draw outline
+                if (circle.outlineWidth > 0.0f && circle.outlineColor.a > 0) {
+                    drawCircle(center, circle.radius, circle.outlineColor, false, circle.segments);
+                }
+                break;
+            }
+            case RenderItem::Type::DebugLine: {
+                const auto& transform = entities.get<Transform2D>(item.entity);
+                const auto& line = entities.get<DebugLine>(item.entity);
+
+                Vec2 from = {transform.x, transform.y};
+                Vec2 to = {transform.x + line.endOffset.x, transform.y + line.endOffset.y};
+
+                drawLine(from, to, line.color, line.thickness);
+                break;
+            }
+        }
+    }
 }
 
 }  // namespace jframe

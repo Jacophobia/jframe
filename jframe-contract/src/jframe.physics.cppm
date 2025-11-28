@@ -57,6 +57,9 @@ public:
     virtual void setAngularVelocity(Entity entity, float velocity) = 0;
     virtual float getAngularVelocity(Entity entity) const = 0;
 
+    /// Get the size of a physics body (returns the collision box size in pixels)
+    virtual Vec2 getBodySize(Entity entity) const = 0;
+
     //======================================================================
     // Forces
     //======================================================================
@@ -101,6 +104,18 @@ public:
 
     using CollisionCallback = std::function<void(const CollisionEvent&)>;
     virtual void setCollisionCallback(CollisionCallback callback) = 0;
+
+    //======================================================================
+    // Ground Detection
+    //======================================================================
+
+    /// Check if an entity is grounded (standing on a valid surface)
+    /// Uses collision layer filtering - set Ground layer on platforms that count as ground
+    virtual GroundCheckResult checkGrounded(Entity entity,
+                                            const GroundCheckParams& params = {}) const = 0;
+
+    /// Get the collision layer for an entity (for debugging/inspection)
+    virtual CollisionLayer getCollisionLayer(Entity entity) const = 0;
 };
 
 // Common collision layer constants
@@ -111,6 +126,7 @@ namespace CollisionLayers {
     inline constexpr CollisionLayer Terrain = 0x0008;
     inline constexpr CollisionLayer Trigger = 0x0010;
     inline constexpr CollisionLayer Collectible = 0x0020;
+    inline constexpr CollisionLayer Ground = 0x0040;  // Valid surface for grounded check
 }
 
 }  // namespace jframe

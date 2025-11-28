@@ -14,6 +14,10 @@ export import jframe.level;
 export import jframe.events;
 export import jframe.physics;
 export import jframe.ai;
+export import jframe.config;
+export import jframe.camera;
+export import jframe.gas;
+export import jframe.blueprints;
 
 export namespace jframe {
 
@@ -29,10 +33,14 @@ struct JFrameEngine {
     ILevelSystem* levels = nullptr;
     ISaveSystem* save = nullptr;
     IAISystem* ai = nullptr;
+    IConfigSystem* config = nullptr;
+    ICameraSystem* camera = nullptr;
+    IGASSystem* gas = nullptr;
+    IBlueprintFactory* blueprints = nullptr;
 
     bool isValid() const {
         return events && assets && entities && graphics &&
-               audio && input && physics && levels && save && ai;
+               audio && input && physics && levels && save && ai && config;
     }
 };
 

@@ -164,6 +164,86 @@ inline float easeInBounce(float t) {
 }  // namespace Easing
 
 //==========================================================================
+// Engine Configuration
+//==========================================================================
+
+struct GraphicsConfig {
+    int width = 1280;
+    int height = 720;
+    std::string title = "JFrame Application";
+    bool vsync = true;
+    Color clearColor = Color{26, 26, 26, 255};  // Dark gray (0.1 * 255 ≈ 26)
+};
+
+//==========================================================================
+// Forward Declarations
+//==========================================================================
+
+class Engine;
+
+//==========================================================================
+// Engine Builder
+//==========================================================================
+
+class EngineBuilder {
+public:
+    EngineBuilder();
+    ~EngineBuilder();
+
+    // System configuration (fluent interface)
+    EngineBuilder& withEvents();
+    EngineBuilder& withEntities();
+    EngineBuilder& withPhysics();
+    EngineBuilder& withGraphics(GraphicsConfig config);
+    EngineBuilder& withAudio();
+    EngineBuilder& withInput();
+    EngineBuilder& withAssets(std::string_view basePath);
+    EngineBuilder& withSave(std::string_view savePath);
+    EngineBuilder& withLevel();
+    EngineBuilder& withAI();
+    EngineBuilder& withCamera(Size viewportSize);
+    EngineBuilder& withGAS();
+    EngineBuilder& withBlueprints();
+
+    // Build the engine
+    std::expected<Engine, std::string> build();
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+//==========================================================================
+// Engine
+//==========================================================================
+
+class Engine {
+public:
+    Engine();
+    ~Engine();
+
+    // Move-only
+    Engine(Engine&&) noexcept;
+    Engine& operator=(Engine&&) noexcept;
+    Engine(const Engine&) = delete;
+    Engine& operator=(const Engine&) = delete;
+
+    // Get the engine aggregate (all systems)
+    JFrameEngine& systems();
+    const JFrameEngine& systems() const;
+
+    // Game loop control
+    void run(class Application& app);
+    void quit();
+    bool isRunning() const;
+
+private:
+    friend class EngineBuilder;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+//==========================================================================
 // Application Base
 //==========================================================================
 
@@ -176,38 +256,11 @@ public:
     Application(const Application&) = delete;
     Application& operator=(const Application&) = delete;
 
-    void run() {
-        if (!initialize()) {
-            logError("Failed to initialize application");
-            return;
-        }
-
-        running_ = true;
-        FrameTimer frameTimer;
-
-        while (running_) {
-            DeltaTime dt = frameTimer.tick();
-            update(dt);
-            render();
-        }
-
-        shutdown();
-    }
-
-    void quit() { running_ = false; }
-    bool isRunning() const { return running_; }
-
-protected:
-    virtual bool initialize() = 0;
-    virtual void update(DeltaTime dt) = 0;
-    virtual void render() = 0;
+    // Lifecycle hooks (called by Engine)
+    virtual bool initialize(Engine& engine) = 0;
+    virtual void updateFixed(DeltaTime dt) = 0;
+    virtual void render(float alpha) = 0;
     virtual void shutdown() = 0;
-
-    JFrameEngine& engine() { return engine_; }
-
-private:
-    JFrameEngine engine_;
-    bool running_ = false;
 };
 
 //==========================================================================

@@ -72,9 +72,77 @@ bool LevelSystem::parseLevelLua(const std::string& luaCode, LoadedLevel& level) 
         // Note: We don't spawn entities here, just store the definitions
         // The game code will spawn entities using these definitions
         if (levelTable["entities"].valid()) {
-            sol::table entitiesTable = levelTable["entities"];
-            // TODO: Store entity definitions for later spawning by game code
-            // For now, we just validate that the table exists
+            sol::object entitiesObj = levelTable["entities"];
+            sol::table entitiesTable;
+
+            // Support callable functions that generate entity tables
+            if (entitiesObj.get_type() == sol::type::function) {
+                sol::protected_function generator = entitiesObj;
+                sol::protected_function_result genResult = generator();
+                if (genResult.valid()) {
+                    entitiesTable = genResult;
+                } else {
+                    return false;  // Generator function failed
+                }
+            } else if (entitiesObj.get_type() == sol::type::table) {
+                entitiesTable = entitiesObj;
+            } else {
+                return false;  // Invalid entities type
+            }
+
+            // Iterate through all entities in the array
+            for (size_t i = 1; i <= entitiesTable.size(); ++i) {
+                sol::table entityTable = entitiesTable[i];
+
+                EntityDef entityDef;
+
+                // Get entity type (required)
+                sol::optional<std::string> type = entityTable["type"];
+                if (!type) {
+                    continue; // Skip entities without type
+                }
+                entityDef.type = *type;
+
+                // Get transform properties
+                sol::optional<float> x = entityTable["x"];
+                sol::optional<float> y = entityTable["y"];
+                sol::optional<float> rotation = entityTable["rotation"];
+                sol::optional<float> scaleX = entityTable["scaleX"];
+                sol::optional<float> scaleY = entityTable["scaleY"];
+
+                if (x) entityDef.transform.x = *x;
+                if (y) entityDef.transform.y = *y;
+                if (rotation) entityDef.transform.rotation = *rotation;
+                if (scaleX) entityDef.transform.scaleX = *scaleX;
+                if (scaleY) entityDef.transform.scaleY = *scaleY;
+
+                // Parse all other properties as custom properties
+                for (const auto& pair : entityTable) {
+                    std::string key = pair.first.as<std::string>();
+
+                    // Skip the properties we've already handled
+                    if (key == "type" || key == "x" || key == "y" ||
+                        key == "rotation" || key == "scaleX" || key == "scaleY") {
+                        continue;
+                    }
+
+                    // Store the property value
+                    sol::object value = pair.second;
+                    sol::type valueType = value.get_type();
+
+                    if (valueType == sol::type::boolean) {
+                        entityDef.properties[key] = value.as<bool>();
+                    } else if (valueType == sol::type::string) {
+                        entityDef.properties[key] = value.as<std::string>();
+                    } else if (valueType == sol::type::number) {
+                        // Lua numbers are stored as doubles
+                        entityDef.properties[key] = value.as<double>();
+                    }
+                    // Note: More complex types (tables, functions) are not supported
+                }
+
+                level.entityDefs.push_back(std::move(entityDef));
+            }
         }
 
         return true;

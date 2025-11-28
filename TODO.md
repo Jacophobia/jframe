@@ -1,18 +1,18 @@
 # JFrame TODO
 
-> Last Updated: 2025-11-25
+> Last Updated: 2025-11-27
 
 ## High Priority
 
 ### AI System - Recast/Detour Integration
-- [ ] Add Recast/Detour to vcpkg.json or build from source
-- [ ] Implement `loadNavMesh()` to parse binary navmesh format
-- [ ] Implement `findPath()` with actual Detour pathfinding
-- [ ] Implement `isPointOnNavMesh()` with proper navmesh query
-- [ ] Implement `getClosestPointOnNavMesh()` with Detour projection
+- [x] Add Recast/Detour to vcpkg.json or build from source
+- [x] Implement `loadNavMesh()` to parse binary navmesh format
+- [x] Implement `findPath()` with actual Detour pathfinding
+- [x] Implement `isPointOnNavMesh()` with proper navmesh query
+- [x] Implement `getClosestPointOnNavMesh()` with Detour projection
 
 <details>
-<summary>Action Plan (3-5 days)</summary>
+<summary>Action Plan</summary>
 
 **Prerequisites:**
 - ✅ recastnavigation already in vcpkg.json (line 26)
@@ -49,12 +49,12 @@ struct NavMeshFileHeader {
 </details>
 
 ### AI System - Physics Integration
-- [ ] Connect `hasLineOfSight()` to `IPhysicsSystem::raycast()`
-- [ ] Connect `findEntitiesInRadius()` to physics AABB queries
-- [ ] Connect `findClosestEntity()` to physics spatial queries
+- [x] Connect `hasLineOfSight()` to `IPhysicsSystem::raycast()`
+- [x] Connect `findEntitiesInRadius()` to physics AABB queries
+- [x] Connect `findClosestEntity()` to physics spatial queries
 
 <details>
-<summary>Action Plan (2-3 hours)</summary>
+<summary>Action Plan</summary>
 
 **Prerequisites:**
 - ✅ Physics System is 95% complete and functional
@@ -108,12 +108,12 @@ bool AISystem::hasLineOfSight(Vec2 from, Vec2 to, CollisionMask mask) const {
 ## Medium Priority
 
 ### Core Engine
-- [ ] Implement Application composition root with Fruit DI
-- [ ] Create main game loop with proper frame timing
-- [ ] Wire up all systems with dependency injection
+- [x] Implement Application composition root (EngineBuilder pattern)
+- [x] Create main game loop with proper frame timing
+- [x] Wire up all systems with dependency injection
 
 <details>
-<summary>Action Plan (3-4 days)</summary>
+<summary>Action Plan</summary>
 
 **Decision: Skip Fruit DI, Use Manual Builder Pattern**
 - Fruit DI is NOT in vcpkg.json currently
@@ -174,18 +174,16 @@ while (running_) {
 }
 ```
 
-**Estimated Effort:** 28 hours (~3.5 days)
-
 </details>
 
 ### Platformer Example
-- [ ] Implement player movement system
-- [ ] Implement camera follow system
-- [ ] Load levels from Lua files
-- [ ] Create basic gameplay loop
+- [x] Implement player movement system
+- [x] Implement camera follow system
+- [x] Load levels from Lua files (hardcoded for now)
+- [x] Create basic gameplay loop
 
 <details>
-<summary>Action Plan (3-4 days)</summary>
+<summary>Action Plan</summary>
 
 **Prerequisites:**
 - ✅ All systems implemented (Entity, Physics, Graphics, etc.)
@@ -235,8 +233,6 @@ examples/platformer/
 - Invincibility frames after damage
 - Hot reload support (levels, blueprints)
 
-**Estimated Effort:** 28 hours (~3.5 days)
-
 **Blockers:**
 - ⚠️ Asset System blueprint instantiation (critical)
 - ⚠️ Level System Lua parsing (critical)
@@ -244,11 +240,11 @@ examples/platformer/
 </details>
 
 ### Audio-Asset Integration
-- [ ] Connect audio system to asset system for path resolution
-- [ ] Support AssetHandle-based audio loading
+- [x] Connect audio system to asset system for path resolution
+- [x] Support AssetHandle-based audio loading
 
 <details>
-<summary>Action Plan (~3 hours)</summary>
+<summary>Action Plan</summary>
 
 **Current Problem:**
 - Audio system manually tracks asset-to-path mapping
@@ -329,13 +325,11 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 - Memory efficient (FMOD sounds cached and shared)
 - Centralized asset management
 
-**Estimated Effort:** 3 hours (2h coding, 30m testing, 30m docs)
-
 </details>
 
 ## Low Priority
 
-### Enhancements
+### Minor Enhancements
 - [ ] Audio: FMOD fade-out using DSP
 - [ ] Graphics: Custom font loading via AssetSystem
 - [ ] Level: Store entity definitions for spawning
@@ -343,17 +337,98 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 - [ ] Save: Track playtime in metadata
 - [ ] Save: Track completion percentage
 
+## Planned Engine Enhancements
+
+> These enhancements were identified from the ability-demo analysis to reduce boilerplate in future games.
+> See `docs/systems/` for detailed implementation plans.
+
+### Entity Query System (High Impact) ✅
+Automatic entity tracking by component type - eliminates manual `std::vector<Entity>` collections.
+
+- [x] Add `groupCount<T>()` for entity count queries
+- [x] Add `hasAny<T>()` for existence check
+- [x] Add `first<T>()` and `single<T>()` for singleton queries
+- [x] Add `collect<T>()` for safe iteration during modification
+- [x] Add exclusion support: `collectExcluding<Include..., Exclude...>()`
+- [ ] Write comprehensive tests
+
+**Impact:** Eliminates 12+ manual entity vectors per game (~100 lines saved)
+**Documentation:** [docs/systems/Entity-Queries.md](docs/systems/Entity-Queries.md)
+
+### Sprite Renderer System (High Impact) ✅
+Automatic batch rendering for entities with visual components.
+
+- [x] Add `DebugRect` component for non-textured entities
+- [x] Add `DebugCircle` component
+- [x] Add `DebugLine` component
+- [x] Implement `graphics->renderEntities(entities)` method
+- [x] Add RenderLayers namespace with preset layers
+- [x] Implement viewport culling
+- [ ] Add sprite batching for performance (future)
+- [ ] Write comprehensive tests
+
+**Impact:** Eliminates 500+ lines of rendering code per game
+**Documentation:** [docs/systems/Sprite-Renderer.md](docs/systems/Sprite-Renderer.md)
+
+### Blueprint Factory System (High Impact) ✅
+Data-driven entity creation from Lua templates.
+
+- [x] Create `jframe-blueprints` module
+- [x] Define IBlueprintFactory interface
+- [x] Implement Lua blueprint parsing
+- [x] Add component registry for runtime component creation
+- [x] Implement blueprint inheritance
+- [x] Add property override support
+- [ ] Integrate with Level System (future)
+- [x] Add `.withBlueprints()` to EngineBuilder
+- [x] Add hot reload support
+- [ ] Write comprehensive tests
+
+**Impact:** Eliminates 15+ factory methods per game (~300 lines saved)
+**Documentation:** [docs/systems/Blueprint-Factory.md](docs/systems/Blueprint-Factory.md)
+
+### EngineBuilder Integrations (Medium Impact) ✅
+Integrate standalone systems into EngineBuilder for automatic lifecycle management.
+
+- [x] Add `.withGAS()` - GAS system
+- [x] Add `.withCamera(viewportSize)` - Camera system
+- [x] Add `.withBlueprints()` - Blueprint factory
+
+**Impact:** Reduces setup boilerplate, ensures proper update ordering
+**Documentation:** See individual system docs
+
+### Input Mapping Builder (Low Impact)
+Chainable API for input registration.
+
+- [ ] Create `InputMappingBuilder` class
+- [ ] Support keyboard, mouse, gamepad mappings
+- [ ] Add Lua-based input configuration
+
+**Impact:** Cleaner input setup, data-driven configuration
+**Estimated:** ~50 lines saved per game
+
+### Physics Body Factory (Low Impact)
+Helper methods for common physics body patterns.
+
+- [ ] Add `createStaticBody()` helper
+- [ ] Add `createDynamicBody()` helper
+- [ ] Add `createSensorBody()` helper
+- [ ] Add collision layer presets
+
+**Impact:** Reduces physics setup code
+**Estimated:** ~30 lines saved per game
+
 ### Dev Tools (jframe-dev)
-- [ ] Hot reload file watcher (efsw)
-- [ ] Debug overlay (ImGui backend)
-- [ ] Profiler integration (Tracy)
+- [x] Hot reload file watcher (efsw)
+- [x] Debug overlay (ImGui backend)
+- [ ] Profiler integration (Tracy) - documentation only
 
 <details>
-<summary>Action Plan (~27 hours / 3.5 days)</summary>
+<summary>Action Plan</summary>
 
 **Current State:** 40% complete (file watching exists, ImGui structure only)
 
-**Critical Missing Piece:** ImGui Backend Integration (4 hours)
+**Critical Missing Piece:** ImGui Backend Integration
 
 **Key Components:**
 1. **ImGui Backend** - GLFW + OpenGL3 initialization
@@ -364,12 +439,12 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 6. **Component Registry** - Introspection system for entity inspection
 
 **Implementation Order:**
-1. ImGui Backend (4h) - Unblocks all UI work
-2. Component Registry (4h) - Enables entity inspection
-3. Enhanced DevOverlay (3h) - Performance graphs
-4. Enhanced EntityInspector (4h) - Component display
-5. Hot Reload Integration (4h) - Asset system connection
-6. Tracy Setup (2h) - Documentation
+1. ImGui Backend - Unblocks all UI work
+2. Component Registry - Enables entity inspection
+3. Enhanced DevOverlay - Performance graphs
+4. Enhanced EntityInspector - Component display
+5. Hot Reload Integration - Asset system connection
+6. Tracy Setup - Documentation
 
 **Key Files:**
 - `/Users/jaaaacob/Documents/GameDev/jframe/jframe-dev/src/ImGuiBackend.cpp` (NEW)
@@ -412,8 +487,6 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 - Optional Tracy profiling integration
 - Clipboard export of entity data
 
-**Estimated Effort:** 27 hours (~3.5 days)
-
 </details>
 
 ## Completed
@@ -427,11 +500,14 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 - [x] Assets System (100% - all 9 types)
 - [x] Save System (100%)
 - [x] Level System (100%)
-- [x] AI System (95% - navmesh stubbed)
+- [x] AI System (100% - full Recast/Detour integration)
+- [x] Core Engine (100% - EngineBuilder + fixed timestep)
+- [x] Audio-Asset Integration (100%)
+- [x] Dev Tools (95% - Tracy docs pending)
+- [x] Platformer Example (100% - basic demo)
 
 ## Notes
 
 - Graphics tests are disabled (require display context)
-- AI navmesh uses distance-based heuristics as fallback
-- All 378 enabled tests pass (100% pass rate)
-- Action plans extracted from `/tmp/jframe-plan-*.md` files
+- All 382 enabled tests pass (100% pass rate)
+- Platformer builds and runs with all systems integrated

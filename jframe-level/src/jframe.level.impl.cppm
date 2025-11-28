@@ -46,11 +46,15 @@ public:
     // Level queries
     std::vector<Entity> getLevelEntities(LevelId levelId) const override;
 
+    // Entity definitions
+    std::vector<EntityDef> getEntityDefs(LevelId levelId) const override;
+
 private:
     struct LoadedLevel {
         LevelMetadata metadata;
         std::vector<Entity> entities;
         std::unordered_map<std::string, Transform2D> spawnPoints;
+        std::vector<EntityDef> entityDefs;
     };
 
     UUID generateLevelId();

@@ -1,7 +1,6 @@
 add_executable(platformer
     src/main.cpp
     src/Game.cpp
-    src/systems/PlayerMovementSystem.cpp
 )
 target_use_std_module(platformer)
 

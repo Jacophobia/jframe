@@ -97,6 +97,57 @@ struct Camera {
 };
 
 //==========================================================================
+// Render Layer Presets
+//==========================================================================
+
+namespace RenderLayers {
+    inline constexpr RenderLayer Background = -100;
+    inline constexpr RenderLayer BackgroundDecor = -50;
+    inline constexpr RenderLayer Platforms = 0;
+    inline constexpr RenderLayer Items = 10;
+    inline constexpr RenderLayer Enemies = 20;
+    inline constexpr RenderLayer Player = 30;
+    inline constexpr RenderLayer Effects = 40;
+    inline constexpr RenderLayer Foreground = 50;
+    inline constexpr RenderLayer UI = 100;
+    inline constexpr RenderLayer Debug = 1000;
+}
+
+//==========================================================================
+// Debug Visual Components (for entities without textures)
+//==========================================================================
+
+/// Debug rectangle component for prototyping and visualization
+/// Automatically rendered by graphics system when attached to an entity with Transform2D
+struct DebugRect {
+    Vec2 size{32.0f, 32.0f};             // Width and height in pixels
+    Color fillColor{128, 128, 128, 255}; // Interior color
+    Color outlineColor{0, 0, 0, 0};      // Border color (transparent = no outline)
+    float outlineWidth{0.0f};            // Border thickness (0 = no outline)
+    RenderLayer layer{0};                // Render order
+    bool filled{true};                   // Fill interior or outline only
+};
+
+/// Debug circle component for prototyping and visualization
+struct DebugCircle {
+    float radius{16.0f};                 // Radius in pixels
+    Color fillColor{128, 128, 128, 255}; // Interior color
+    Color outlineColor{0, 0, 0, 0};      // Border color
+    float outlineWidth{0.0f};            // Border thickness
+    RenderLayer layer{0};                // Render order
+    bool filled{true};                   // Fill interior or outline only
+    int segments{32};                    // Circle smoothness
+};
+
+/// Debug line component for visualization
+struct DebugLine {
+    Vec2 endOffset{32.0f, 0.0f};         // End point relative to transform
+    Color color{255, 255, 255, 255};     // Line color
+    float thickness{1.0f};               // Line thickness
+    RenderLayer layer{0};                // Render order
+};
+
+//==========================================================================
 // Asset Types
 //==========================================================================
 
@@ -133,6 +184,90 @@ struct AssetHandle {
 struct AssetHandleHash {
     std::size_t operator()(const AssetHandle& h) const noexcept {
         return std::hash<UUID>{}(h.uuid);
+    }
+};
+
+//==========================================================================
+// Sprite Sheet & Animation Types
+//==========================================================================
+
+struct SpriteSheet {
+    AssetHandle texture;
+    int frameWidth = 32;
+    int frameHeight = 32;
+    int columns = 1;
+    int rows = 1;
+    int padding = 0;  // Pixels between frames
+
+    Canvas getFrameRect(int frameIndex) const {
+        int col = frameIndex % columns;
+        int row = frameIndex / columns;
+        return Canvas{
+            .origin = {col * (frameWidth + padding), row * (frameHeight + padding)},
+            .size = {frameWidth, frameHeight}
+        };
+    }
+};
+
+struct AnimationFrame {
+    int frameIndex;
+    float duration;  // Seconds this frame is shown
+};
+
+struct Animation {
+    std::string name;
+    std::vector<AnimationFrame> frames;
+    bool looping = true;
+};
+
+struct AnimatedSprite {
+    SpriteSheet sheet;
+    std::unordered_map<std::string, Animation> animations;
+    std::string currentAnimation;
+    int currentFrameIndex = 0;
+    float frameTimer = 0.0f;
+    bool playing = true;
+
+    void play(const std::string& animName) {
+        if (currentAnimation != animName) {
+            currentAnimation = animName;
+            currentFrameIndex = 0;
+            frameTimer = 0.0f;
+        }
+    }
+
+    void update(float dt) {
+        if (!playing || currentAnimation.empty()) return;
+
+        auto it = animations.find(currentAnimation);
+        if (it == animations.end() || it->second.frames.empty()) return;
+
+        const Animation& anim = it->second;
+        frameTimer += dt;
+
+        const AnimationFrame& frame = anim.frames[currentFrameIndex];
+        if (frameTimer >= frame.duration) {
+            frameTimer -= frame.duration;
+            currentFrameIndex++;
+
+            if (currentFrameIndex >= static_cast<int>(anim.frames.size())) {
+                if (anim.looping) {
+                    currentFrameIndex = 0;
+                } else {
+                    currentFrameIndex = static_cast<int>(anim.frames.size()) - 1;
+                    playing = false;
+                }
+            }
+        }
+    }
+
+    int getCurrentFrame() const {
+        if (currentAnimation.empty()) return 0;
+
+        auto it = animations.find(currentAnimation);
+        if (it == animations.end() || it->second.frames.empty()) return 0;
+
+        return it->second.frames[currentFrameIndex].frameIndex;
     }
 };
 
@@ -224,12 +359,14 @@ enum class BodyType : std::uint8_t {
 struct PhysicsBodyDef {
     BodyType type = BodyType::Dynamic;
     Transform2D transform;
+    Vec2 size = {32.0f, 32.0f};  // Collision box size in pixels
     bool fixedRotation = true;
     float linearDamping = 0.0f;
     float angularDamping = 0.0f;
     float density = 1.0f;
     float friction = 0.3f;
     float restitution = 0.0f;
+    bool isSensor = false;  // Detects overlap but no collision response
 };
 
 using CollisionLayer = std::uint16_t;
@@ -241,6 +378,30 @@ struct CollisionEvent {
     Vec2 contactPoint;
     Vec2 normal;
     float impulse;
+};
+
+struct TriggerEvent {
+    Entity entityA;
+    Entity entityB;
+    Vec2 contactPoint;
+};
+
+//==========================================================================
+// Ground Check Types
+//==========================================================================
+
+struct GroundCheckParams {
+    float rayDistance = 5.0f;          // How far below to check (pixels)
+    float slopeToleranceDeg = 60.0f;   // Max slope angle considered "ground"
+    CollisionMask groundMask = 0xFFFF; // Which layers count as ground
+};
+
+struct GroundCheckResult {
+    bool grounded = false;
+    Entity groundEntity{};              // What we're standing on (if any)
+    Vec2 contactPoint{};                // Where we're touching
+    Vec2 surfaceNormal{0.0f, -1.0f};    // Surface orientation (default: pointing up)
+    float slopeAngle = 0.0f;            // Angle in degrees from vertical
 };
 
 //==========================================================================
@@ -278,6 +439,12 @@ struct LevelTransition {
     bool unloadPrevious = true;
 };
 
+struct EntityDef {
+    std::string type;  // "platform", "enemy", "collectible", etc.
+    Transform2D transform;
+    std::unordered_map<std::string, std::any> properties;  // Custom properties
+};
+
 //==========================================================================
 // Event Types
 //==========================================================================
@@ -301,6 +468,7 @@ using EventData = std::variant<
     DamageEventData,
     LevelEventData,
     CollisionEvent,
+    TriggerEvent,
     std::any
 >;
 

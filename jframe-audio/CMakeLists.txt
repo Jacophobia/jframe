@@ -11,6 +11,8 @@ target_sources(jframe-audio
 target_link_libraries(jframe-audio
     PUBLIC
         jframe-contract
+    PRIVATE
+        jframe-assets
 )
 
 # FMOD is manually linked if available

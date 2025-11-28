@@ -1,1 +1,4 @@
 add_subdirectory(platformer)
+add_subdirectory(platformer-demo)
+add_subdirectory(endless-runner)
+add_subdirectory(ability-demo)

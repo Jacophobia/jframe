@@ -3,18 +3,25 @@
 
 module;
 
+#include <DetourNavMesh.h>
+#include <DetourNavMeshQuery.h>
+#include <DetourStatus.h>
+
 export module jframe.ai.impl;
 
 import std;
 import jframe.ai;
+import jframe.assets;
+import jframe.assets.impl;
+import jframe.physics;
 import jframe.types;
 
 export namespace jframe {
 
 class AISystem : public IAISystem {
 public:
-    AISystem() = default;
-    ~AISystem() override = default;
+    explicit AISystem(IPhysicsSystem* physicsSystem, IAssetSystem* assetSystem);
+    ~AISystem() override;
 
     bool initialize();
 
@@ -44,6 +51,11 @@ public:
     void setMaxSpeed(Entity entity, float speed) override;
     void setMaxAcceleration(Entity entity, float acceleration) override;
 
+    // Patrol behavior
+    void setPatrolBehavior(Entity entity, const PatrolBehavior& patrol) override;
+    void clearPatrolBehavior(Entity entity) override;
+    std::optional<PatrolBehavior> getPatrolBehavior(Entity entity) const override;
+
     // Spatial queries
     std::vector<Entity> findEntitiesInRadius(Vec2 center, float radius,
                                               CollisionMask mask = 0xFFFF) const override;
@@ -59,16 +71,23 @@ private:
         std::optional<Vec2> navigationTarget;
         float maxSpeed = 100.0f;
         float maxAcceleration = 500.0f;
+        std::optional<PatrolBehavior> patrol;
     };
 
+    IPhysicsSystem* physicsSystem_;
+    IAssetSystem* assetSystem_;
     std::unordered_map<std::uint32_t, AIComponent> aiComponents_;
     AssetHandle navMeshAsset_;
     bool hasNavMesh_ = false;
+
+    // Detour navigation
+    dtNavMesh* navMesh_ = nullptr;
+    dtNavMeshQuery* navQuery_ = nullptr;
 };
 
 // Factory function (exported via namespace)
-inline std::unique_ptr<IAISystem> createAISystem() {
-    return std::make_unique<AISystem>();
+inline std::unique_ptr<IAISystem> createAISystem(IPhysicsSystem* physicsSystem, IAssetSystem* assetSystem) {
+    return std::make_unique<AISystem>(physicsSystem, assetSystem);
 }
 
 }  // namespace jframe

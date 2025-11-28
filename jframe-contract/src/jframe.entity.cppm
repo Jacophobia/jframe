@@ -109,6 +109,77 @@ public:
     }
 
     //======================================================================
+    // Entity Groups - Convenient Query Methods
+    //======================================================================
+
+    /// Get count of entities with specified components (O(n) iteration)
+    template<typename... Components>
+    std::size_t groupCount() const {
+        std::size_t count = 0;
+        for ([[maybe_unused]] auto entity : getRegistry().view<Components...>()) {
+            ++count;
+        }
+        return count;
+    }
+
+    /// Check if any entities exist with specified components
+    template<typename... Components>
+    bool hasAny() const {
+        auto v = getRegistry().view<Components...>();
+        return v.begin() != v.end();
+    }
+
+    /// Get first entity with specified components, or nullopt if none
+    template<typename... Components>
+    std::optional<Entity> first() const {
+        auto v = getRegistry().view<Components...>();
+        auto it = v.begin();
+        if (it != v.end()) {
+            return *it;
+        }
+        return std::nullopt;
+    }
+
+    /// Get the single entity with specified components
+    /// Returns nullopt if zero entities, the entity if exactly one
+    /// Note: Does not throw - returns nullopt for 0 or 2+ entities
+    template<typename... Components>
+    std::optional<Entity> single() const {
+        auto v = getRegistry().view<Components...>();
+        auto it = v.begin();
+        if (it == v.end()) {
+            return std::nullopt;  // No entities
+        }
+        Entity result = *it;
+        ++it;
+        if (it != v.end()) {
+            return std::nullopt;  // More than one entity
+        }
+        return result;
+    }
+
+    /// Collect all entities with specified components into a vector
+    /// Use this when you need to modify entities during iteration
+    template<typename... Components>
+    std::vector<Entity> collect() const {
+        std::vector<Entity> result;
+        for (auto entity : getRegistry().view<Components...>()) {
+            result.push_back(entity);
+        }
+        return result;
+    }
+
+    /// Collect entities with exclusion filter
+    template<typename... Include, typename... Exclude>
+    std::vector<Entity> collectExcluding() const {
+        std::vector<Entity> result;
+        for (auto entity : getRegistry().view<Include...>(entt::exclude<Exclude...>)) {
+            result.push_back(entity);
+        }
+        return result;
+    }
+
+    //======================================================================
     // Registry Access
     //======================================================================
 

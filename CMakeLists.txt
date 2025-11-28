@@ -39,6 +39,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Add subdirectories
 add_subdirectory(jframe-contract)
+add_subdirectory(jframe-components)
 add_subdirectory(jframe-core)
 add_subdirectory(jframe-entity)
 add_subdirectory(jframe-graphics)
@@ -50,6 +51,10 @@ add_subdirectory(jframe-level)
 add_subdirectory(jframe-events)
 add_subdirectory(jframe-physics)
 add_subdirectory(jframe-ai)
+add_subdirectory(jframe-camera)
+add_subdirectory(jframe-config)
+add_subdirectory(jframe-gas)
+add_subdirectory(jframe-blueprints)
 
 # Development tools (only in debug builds)
 if(JFRAME_DEV_TOOLS)

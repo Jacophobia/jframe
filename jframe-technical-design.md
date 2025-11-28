@@ -18,6 +18,7 @@
 8. [System Overviews](#8-system-overviews)
 9. [Data Formats](#9-data-formats)
 10. [Build Configuration](#10-build-configuration)
+11. [Feature Roadmap](#11-feature-roadmap)
 
 ---
 
@@ -2703,9 +2704,10 @@ for (auto [entity, transform, health] : entities->view<TransformComponent, Healt
 **Key Responsibilities:**
 - Window management
 - Sprite batching and rendering
+- Sprite animation system
 - Text rendering (MSDF fonts)
 - Debug drawing (primitives)
-- Camera management
+- Camera management (see Camera System)
 
 **Data Ownership:**
 - Window handle
@@ -2713,6 +2715,7 @@ for (auto [entity, transform, health] : entities->view<TransformComponent, Healt
 - Render state
 - Shader programs
 - Vertex buffers
+- Animation state tracking
 
 **Dependencies:**
 - GLFW
@@ -2729,6 +2732,93 @@ for (auto [entity, transform, health] : entities->view<TransformComponent, Healt
 5. ImGui rendering  - Debug UI
 6. endFrame()       - Submit batches, swap buffers
 ```
+
+**Sprite Rendering:**
+
+```cpp
+// Load a spritesheet
+AssetHandle playerSheet = assets->registerAsset(AssetType::Texture, "sprites/player.png");
+
+// Define spritesheet layout
+SpriteSheet sheet{
+    .texture = playerSheet,
+    .frameWidth = 32,
+    .frameHeight = 32,
+    .columns = 8,
+    .rows = 4
+};
+
+// Render a specific frame
+graphics->drawSprite(sheet, frameIndex, position, size, rotation, tint);
+
+// Render with automatic batching
+graphics->drawSprite(sheet, 0, {100, 200}, {32, 32});
+graphics->drawSprite(sheet, 1, {150, 200}, {32, 32});
+graphics->drawSprite(sheet, 2, {200, 200}, {32, 32});
+// All batched into single draw call
+```
+
+**Animation System:**
+
+```cpp
+// Define animations
+Animation idleAnim{
+    .name = "idle",
+    .frames = {0, 1, 2, 3},
+    .frameDuration = 0.15f,
+    .looping = true
+};
+
+Animation runAnim{
+    .name = "run",
+    .frames = {8, 9, 10, 11, 12, 13},
+    .frameDuration = 0.08f,
+    .looping = true
+};
+
+// Component-based approach
+struct AnimatedSprite {
+    SpriteSheet* sheet;
+    std::string currentAnimation;
+    int currentFrame = 0;
+    float frameTimer = 0.0f;
+    std::unordered_map<std::string, Animation> animations;
+};
+
+// Game code
+auto& sprite = entities->getComponent<AnimatedSprite>(player);
+sprite.currentAnimation = "run";
+
+// In render system
+graphics->updateAnimations(dt);  // Updates all AnimatedSprite components
+graphics->renderAnimatedSprites();  // Batched rendering
+```
+
+**Text Rendering:**
+
+```cpp
+// Load font
+AssetHandle font = assets->registerAsset(AssetType::Font, "fonts/roboto.ttf");
+
+// Render text
+graphics->drawText("Score: 1000", {10, 10}, font, 24, Color::white());
+graphics->drawTextCentered("GAME OVER", {400, 300}, font, 48, Color::red());
+
+// Measure text for layout
+Vec2 size = graphics->measureText("Press SPACE", font, 32);
+Vec2 centeredPos = {screenWidth/2 - size.x/2, screenHeight - 50};
+graphics->drawText("Press SPACE", centeredPos, font, 32);
+```
+
+**Sprite Batching:**
+
+The graphics system automatically batches sprites that share:
+- Same texture/spritesheet
+- Same shader
+- Same blend mode
+- Consecutive draw calls
+
+This reduces draw calls from potentially thousands to dozens per frame.
 
 ---
 
@@ -2924,13 +3014,14 @@ while (SDL_PollEvent(&event)) {
 
 ### 8.7 Level System
 
-**Purpose:** Manages level loading, unloading, and transitions.
+**Purpose:** Manages level loading, unloading, transitions, and entity spawning.
 
-**Implementation:** Lua-based level definitions with sol2 integration.
+**Implementation:** Lua-based level definitions with sol2 integration and blueprint-based entity spawning.
 
 **Key Responsibilities:**
 - Execute Lua level files in sandboxed environment
 - Entity spawning from level data (supports loops, patterns, conditionals)
+- Blueprint reference resolution
 - Level transitions
 - Spawn point management
 - Level state tracking
@@ -2942,11 +3033,14 @@ while (SDL_PollEvent(&event)) {
 - Spawn point registry
 - Transition queue
 - Lua state for level execution
+- Entity spawn definitions
 
 **Dependencies:**
 - Lua 5.4
 - sol2
-- Entity Factory (game-side)
+- Entity System
+- Physics System (for entity creation)
+- Blueprint System (for entity templates)
 
 **Level Lifecycle:**
 ```
@@ -2960,6 +3054,73 @@ Hot Reload:
 FileChanged → Re-execute Lua → Diff entities → Update changed → Ready
 ```
 
+**Entity Spawning:**
+
+The LevelSystem can spawn entities directly from level files using blueprints:
+
+```cpp
+// Level file format (Lua)
+entities = {
+    -- Spawn from blueprint
+    { blueprint = "player", spawnPoint = "player_start" },
+
+    -- Spawn with blueprint and custom properties
+    {
+        blueprint = "enemy_walker",
+        spawnPoint = "enemy1",
+        properties = { patrolRange = 200, speed = 50 }
+    },
+
+    -- Direct entity definition (for simple static objects)
+    {
+        type = "platform",
+        x = 100, y = 500,
+        width = 400, height = 32,
+        texture = "tiles/grass_platform"
+    },
+
+    -- Procedural spawning with loops
+    H.map(H.range(0, 10), function(i)
+        return {
+            blueprint = "coin",
+            x = 100 + i * 50,
+            y = 200
+        }
+    end)
+}
+
+spawnPoints = {
+    player_start = { x = 100, y = 200 },
+    enemy1 = { x = 500, y = 200 },
+    checkpoint1 = { x = 1000, y = 200 }
+}
+
+// C++ API
+std::vector<Entity> LevelSystem::spawnEntities(
+    LevelId levelId,
+    IEntitySystem& entities,
+    IPhysicsSystem& physics
+);
+
+// Usage
+auto spawnedEntities = level->spawnEntities(currentLevel, *entities, *physics);
+```
+
+**Blueprint Integration:**
+
+```cpp
+// Level references blueprint by ID
+{ blueprint = "enemies/slime", x = 300, y = 200 }
+
+// LevelSystem resolves blueprint
+auto blueprint = blueprints->getBlueprint("enemies/slime");
+
+// Creates entity with blueprint components + level overrides
+Entity enemy = entities->createEntity();
+blueprint->applyTo(enemy, entities);  // Apply blueprint
+applyLevelOverrides(enemy, levelDef); // Apply level-specific values
+```
+
 **Why Lua for Levels:**
 - Loops for repetitive placement (coins, enemies, platforms)
 - Variables for consistent positioning (`local GROUND_Y = 100`)
@@ -2967,6 +3128,7 @@ FileChanged → Re-execute Lua → Diff entities → Update changed → Ready
 - Conditionals for debug/release content
 - Math for procedural placement (`math.sin`, `math.random`)
 - Imports for shared helpers (`require("levels.helpers")`)
+- Blueprint references for entity templates
 
 ---
 
@@ -3010,11 +3172,13 @@ FileChanged → Re-execute Lua → Diff entities → Update changed → Ready
 - Collision filtering (layers/masks)
 - Spatial queries (AABB, circle, raycast)
 - Physics-based movement
+- Sensor/trigger bodies for overlap detection
 
 **Data Ownership:**
 - Box2D world
 - Body-to-entity mapping
 - Collision callback
+- Trigger event callbacks
 
 **Dependencies:**
 - Box2D 3.0
@@ -3029,6 +3193,50 @@ namespace CollisionLayers {
     constexpr CollisionLayer Trigger    = 0x0010;
     constexpr CollisionLayer Collectible= 0x0020;
 }
+```
+
+**Sensor Bodies (Triggers):**
+
+Sensor bodies detect overlap without physical collision response, ideal for collectibles, triggers, and detection zones.
+
+```cpp
+// Create a sensor body
+PhysicsBodyDef coinDef{
+    .type = BodyType::Static,
+    .transform = {.x = 100, .y = 200},
+    .isSensor = true,  // No collision response, only overlap detection
+    .layers = {
+        .category = CollisionLayers::Collectible,
+        .mask = CollisionLayers::Player
+    }
+};
+physics->createBody(coinEntity, coinDef);
+
+// Subscribe to trigger events
+events->subscribe(Events::TriggerEnter, [this](const EventData& data) {
+    auto& trigger = std::get<TriggerEvent>(data);
+    if (entities->hasComponent<Coin>(trigger.sensorEntity)) {
+        collectCoin(trigger.sensorEntity);
+    }
+});
+
+events->subscribe(Events::TriggerExit, [this](const EventData& data) {
+    auto& trigger = std::get<TriggerEvent>(data);
+    // Handle entity leaving trigger zone
+});
+```
+
+**Trigger Event Types:**
+```cpp
+namespace Events {
+    inline constexpr EventType TriggerEnter = "trigger_enter";
+    inline constexpr EventType TriggerExit = "trigger_exit";
+}
+
+struct TriggerEvent {
+    Entity sensorEntity;   // The sensor body (trigger/collectible)
+    Entity otherEntity;    // The entity that entered/exited
+};
 ```
 
 ---
@@ -3070,6 +3278,520 @@ namespace CollisionLayers {
   </Fallback>
 </BehaviorTree>
 ```
+
+---
+
+### 8.11 Camera System
+
+**Purpose:** Manages 2D camera behavior and viewport transformations.
+
+**Implementation:** Standalone camera system with common platformer behaviors.
+
+**Key Responsibilities:**
+- Camera follow with smoothing
+- Deadzone-based following
+- Camera bounds enforcement
+- Camera shake effects
+- Viewport to world coordinate conversion
+- Integration with GraphicsSystem
+
+**Data Ownership:**
+- Camera transform (position, zoom, rotation)
+- Follow target entity
+- Deadzone configuration
+- Bounds limits
+- Shake state
+
+**Dependencies:**
+- Entity System (for target tracking)
+- glm (for matrix math)
+
+**Camera Behaviors:**
+
+```cpp
+// Basic follow
+camera->setTarget(playerEntity);
+camera->setFollowSmoothing(0.1f);  // Smooth lerp factor
+
+// Deadzone (only moves camera when target leaves deadzone)
+camera->setDeadzone({100, 60});  // Center deadzone in pixels
+
+// Camera bounds (prevent showing outside level)
+camera->setBounds(0, levelWidth, 0, levelHeight);
+
+// Camera shake
+camera->shake(0.5f, 0.3f);  // intensity, duration
+
+// Each frame
+camera->update(dt);
+Camera currentCam = camera->getCamera();
+graphics->setCamera(currentCam);
+```
+
+**Camera Structure:**
+
+```cpp
+struct Camera {
+    Vec2 position;
+    float zoom = 1.0f;
+    float rotation = 0.0f;  // In radians
+
+    // Conversion utilities
+    Vec2 screenToWorld(Vec2 screenPos) const;
+    Vec2 worldToScreen(Vec2 worldPos) const;
+};
+```
+
+**Common Patterns:**
+
+```cpp
+// Smooth follow
+Vec2 targetPos = entities->getComponent<Transform>(target).position;
+Vec2 desired = targetPos - viewport.size / 2.0f;
+camera.position = lerp(camera.position, desired, smoothing * dt);
+
+// Deadzone follow
+Vec2 targetScreenPos = camera.worldToScreen(targetPos);
+Vec2 deadZoneMin = viewport.size / 2.0f - deadzone / 2.0f;
+Vec2 deadZoneMax = viewport.size / 2.0f + deadzone / 2.0f;
+if (targetScreenPos.x < deadZoneMin.x) {
+    camera.position.x -= (deadZoneMin.x - targetScreenPos.x);
+}
+// ... similar for other edges
+
+// Bounds clamping
+camera.position.x = std::clamp(camera.position.x, minX, maxX);
+camera.position.y = std::clamp(camera.position.y, minY, maxY);
+
+// Shake
+float shakeOffset = sin(shakeTime * 30.0f) * shakeIntensity;
+camera.position += {shakeOffset, shakeOffset};
+```
+
+---
+
+### 8.12 Components Library
+
+**Purpose:** Provides common, reusable components for typical game mechanics.
+
+**Implementation:** Optional header-only component definitions.
+
+**Key Responsibilities:**
+- Standard component definitions
+- Common gameplay patterns
+- Reduce boilerplate in game code
+
+**Component Categories:**
+
+**Movement Components:**
+```cpp
+struct Velocity {
+    Vec2 linear{0, 0};
+    float angular = 0.0f;
+};
+
+struct Acceleration {
+    Vec2 value{0, 0};
+};
+
+struct MaxSpeed {
+    float linear = 300.0f;
+    float angular = 180.0f;
+};
+```
+
+**Combat Components:**
+```cpp
+struct Health {
+    int current;
+    int maximum;
+    float invincibilityTimer = 0.0f;
+
+    bool isDead() const { return current <= 0; }
+    void damage(int amount) {
+        if (invincibilityTimer <= 0.0f) {
+            current = std::max(0, current - amount);
+        }
+    }
+};
+
+struct Damage {
+    int amount;
+    DamageType type = DamageType::Physical;
+    Entity source = Entity::null();
+};
+```
+
+**Gameplay Components:**
+```cpp
+struct Timer {
+    float remaining;
+    float duration;
+    bool repeating = false;
+    std::function<void()> onComplete;
+
+    void update(float dt) {
+        remaining -= dt;
+        if (remaining <= 0.0f) {
+            if (onComplete) onComplete();
+            if (repeating) remaining = duration;
+        }
+    }
+};
+
+struct Lifetime {
+    float remaining;
+
+    bool expired() const { return remaining <= 0.0f; }
+};
+```
+
+**Physics Helper Components:**
+```cpp
+struct GroundDetector {
+    bool isGrounded = false;
+    float coyoteTime = 0.0f;  // Remaining coyote time
+    static constexpr float MAX_COYOTE_TIME = 0.15f;
+
+    void update(float dt, bool touching) {
+        if (touching) {
+            isGrounded = true;
+            coyoteTime = MAX_COYOTE_TIME;
+        } else {
+            isGrounded = false;
+            coyoteTime = std::max(0.0f, coyoteTime - dt);
+        }
+    }
+
+    bool canJump() const { return coyoteTime > 0.0f; }
+};
+```
+
+**Usage Example:**
+
+```cpp
+// Create player with common components
+Entity player = entities->createEntity();
+entities->emplace<Transform>(player, Vec2{100, 200});
+entities->emplace<Velocity>(player);
+entities->emplace<Health>(player, 100, 100);
+entities->emplace<GroundDetector>(player);
+
+// Update system
+void updateMovement(DeltaTime dt) {
+    auto view = entities->view<Transform, Velocity>();
+    for (auto entity : view) {
+        auto& transform = view.get<Transform>(entity);
+        auto& velocity = view.get<Velocity>(entity);
+        transform.position += velocity.linear * dt;
+    }
+}
+
+void updateTimers(DeltaTime dt) {
+    auto view = entities->view<Timer>();
+    for (auto entity : view) {
+        auto& timer = view.get<Timer>(entity);
+        timer.update(dt);
+    }
+}
+```
+
+---
+
+### 8.13 Config System
+
+**Purpose:** Manages game configuration through Lua files with type-safe access, hot-reloading, and change notifications.
+
+**Implementation:** Sandboxed Lua execution with sol2 integration for runtime configuration management.
+
+**Key Responsibilities:**
+- Load and parse Lua configuration files
+- Provide type-safe value access (float, int, bool, string)
+- Support array/list access for collections
+- Runtime value modification without file rewrite
+- Hot-reload configuration files during development
+- Notify subscribers of configuration changes
+- Hierarchical key access with dot notation
+
+**Data Ownership:**
+- Lua state with configuration tables
+- Loaded configuration values
+- File modification timestamps
+- Change notification subscribers
+- Hot-reload watch state
+
+**Dependencies:**
+- Lua 5.4
+- sol2
+- spdlog
+
+**Security (Sandboxing):**
+
+The Config System executes Lua in a restricted sandbox environment:
+
+```cpp
+// Allowed libraries: base, math, table, string
+lua_.open_libraries(sol::lib::base, sol::lib::math,
+                    sol::lib::table, sol::lib::string);
+
+// Removed functions (security):
+os, io, loadfile, dofile, load, loadstring,
+require, package, debug, rawget, rawset
+```
+
+This prevents configuration files from:
+- Accessing the file system
+- Loading external code
+- Modifying Lua internals
+- Executing system commands
+
+**Configuration File Format (Lua):**
+
+```lua
+-- data/config/game.lua
+
+-- Physics configuration
+physics = {
+    gravity = 980.0,
+    velocityIterations = 8,
+    positionIterations = 3
+}
+
+-- Player configuration
+player = {
+    physics = {
+        size = { width = 28, height = 52 },
+        speed = 200.0,
+        jumpForce = 450.0
+    },
+    jump = {
+        maxJumps = 2,
+        coyoteTime = 0.15,
+        jumpBufferTime = 0.1
+    },
+    combat = {
+        maxHealth = 100,
+        invincibilityTime = 1.0
+    }
+}
+
+-- Animation configuration
+animations = {
+    player = {
+        idle = {
+            frameIds = {0, 1, 2, 3},
+            frameDuration = 0.15,
+            looping = true
+        },
+        run = {
+            frameIds = {8, 9, 10, 11, 12, 13},
+            frameDuration = 0.08,
+            looping = true
+        }
+    }
+}
+
+-- Computed values (why Lua > JSON)
+local BASE_SPEED = 200
+debug_mode = {
+    enabled = true,
+    playerSpeed = BASE_SPEED * 2,  -- Can use variables and math
+    showColliders = true
+}
+```
+
+**Type-Safe Access:**
+
+```cpp
+// Load configuration
+auto& config = engine.config();
+config->loadConfig("data/config/game.lua");
+
+// Access with defaults (recommended)
+float gravity = config->getFloatOr("physics.gravity", 980.0f);
+int maxJumps = config->getIntOr("player.jump.maxJumps", 2);
+bool debugMode = config->getBoolOr("debug_mode.enabled", false);
+std::string title = config->getStringOr("game.title", "Untitled Game");
+
+// Access without defaults (returns std::optional)
+if (auto speed = config->getFloat("player.physics.speed")) {
+    playerSpeed = *speed;
+}
+
+// Array access
+auto idleFrames = config->getIntArray("animations.player.idle.frameIds");
+// Returns: {0, 1, 2, 3}
+
+auto enemyTypes = config->getStringArray("levels.world1.enemyTypes");
+// Returns: {"slime", "bat", "skeleton"}
+```
+
+**Runtime Modification:**
+
+```cpp
+// Modify values at runtime (doesn't change file)
+config->setFloat("player.physics.speed", 300.0f);
+config->setInt("player.jump.maxJumps", 3);
+config->setBool("debug_mode.showColliders", false);
+
+// New value immediately available
+float newSpeed = config->getFloatOr("player.physics.speed", 200.0f);
+// Returns: 300.0f
+```
+
+**Hot Reload (Development):**
+
+```cpp
+// Enable hot reload - checks for file changes every update
+config->enableHotReload(true);
+
+// Update loop
+void Game::update(DeltaTime dt) {
+    config->update(dt);  // Checks for file modifications
+    // If file changed, automatically reloads
+}
+
+// Subscribe to reload notifications
+config->onConfigChanged([this](const ConfigKey& key) {
+    spdlog::info("Config changed: {}", key);
+    applyConfigChanges();
+});
+
+// Subscribe to specific key changes
+config->onKeyChanged("player.physics", [this](const ConfigKey& key) {
+    spdlog::info("Player physics config changed: {}", key);
+    updatePlayerPhysics();
+});
+```
+
+**Change Notifications:**
+
+```cpp
+// Global config change notification
+auto id = config->onConfigChanged([](const ConfigKey& key) {
+    spdlog::info("Config key changed: {}", key);
+});
+
+// Prefix-based notifications (only for keys starting with prefix)
+auto playerId = config->onKeyChanged("player.", [this](const ConfigKey& key) {
+    // Called only when player.* keys change
+    reloadPlayerConfig();
+});
+
+// Unsubscribe
+config->unsubscribe(id);
+config->unsubscribe(playerId);
+```
+
+**Hierarchical Key Access:**
+
+```cpp
+// Dot notation traverses nested tables
+config->getFloat("player.physics.speed")        // ✓ player.physics.speed
+config->getInt("animations.player.idle.frameIds")  // ✓ animations.player.idle.frameIds
+config->getBool("debug_mode.showColliders")     // ✓ debug_mode.showColliders
+
+// Key existence check
+if (config->hasKey("player.physics.jumpForce")) {
+    // Key exists
+}
+
+// Get all keys with prefix
+auto playerKeys = config->getKeysWithPrefix("player.");
+// Returns: ["player.physics.size.width", "player.physics.size.height",
+//           "player.physics.speed", "player.jump.maxJumps", ...]
+```
+
+**Multiple Configuration Files:**
+
+```cpp
+// Load multiple configs (values merge into same namespace)
+config->loadConfig("data/config/game.lua");
+config->loadConfig("data/config/player.lua");
+config->loadConfig("data/config/enemies.lua");
+
+// Reload specific file
+config->reloadConfig("data/config/player.lua");
+
+// Reload all loaded files
+config->reloadAll();
+
+// Query loaded files
+auto files = config->getLoadedConfigs();
+// Returns: ["data/config/game.lua", "data/config/player.lua", ...]
+
+// Get file metadata
+auto metadata = config->getMetadata("data/config/game.lua");
+// Returns: { sourcePath, loadTime, isDirty }
+```
+
+**Common Patterns:**
+
+```cpp
+// Pattern 1: Load-once configuration
+void Game::initialize() {
+    config->loadConfig("data/config/game.lua");
+
+    // Extract commonly-used values into member variables
+    physicsGravity_ = config->getFloatOr("physics.gravity", 980.0f);
+    playerMaxHealth_ = config->getIntOr("player.combat.maxHealth", 100);
+}
+
+// Pattern 2: Development with hot reload
+void Game::initializeDev() {
+    config->loadConfig("data/config/game.lua");
+    config->enableHotReload(true);
+
+    // Re-apply config when changed
+    config->onConfigChanged([this](const ConfigKey&) {
+        applyGameConfig();
+    });
+}
+
+// Pattern 3: Per-system config with notifications
+class PlayerSystem {
+    void initialize(IConfigSystem* config) {
+        // Subscribe to player config changes only
+        configSub_ = config->onKeyChanged("player.", [this](const ConfigKey& key) {
+            loadPlayerConfig();
+        });
+
+        loadPlayerConfig();
+    }
+
+    void loadPlayerConfig() {
+        maxSpeed_ = config_->getFloatOr("player.physics.speed", 200.0f);
+        jumpForce_ = config_->getFloatOr("player.physics.jumpForce", 450.0f);
+        maxJumps_ = config_->getIntOr("player.jump.maxJumps", 2);
+    }
+
+    SubscriptionId configSub_;
+};
+```
+
+**Integration with Asset System:**
+
+```cpp
+// Load config from asset handle (for packaged builds)
+AssetHandle configAsset = assets->registerAsset(
+    AssetType::Data,
+    "configs/game.lua"
+);
+
+config->loadConfigAsset(configAsset);
+```
+
+**Why Lua for Configuration:**
+
+| Feature | Lua | JSON | Benefit |
+|---------|-----|------|---------|
+| Comments | ✓ | ✗ | Document config values |
+| Trailing commas | ✓ | ✗ | Less merge conflicts |
+| Variables | ✓ | ✗ | `local SPEED = 200; fast = SPEED * 2` |
+| Math | ✓ | ✗ | `gravity = 9.8 * 100` |
+| Conditionals | ✓ | ✗ | `debug and {...} or {...}` |
+| Arrays | ✓ | ✓ | Both support lists |
+| Nested tables | ✓ | ✓ | Both support hierarchy |
 
 ---
 
@@ -4017,6 +4739,193 @@ H.wave("platforms/cloud", 100, 400, 10, 80, 50, 0.5, "cloud")
 -- Conditional debug content
 H.ifDebug({ { id = "warp", blueprint = "debug/warp", x = 50, y = 50 } })
 ```
+
+---
+
+## 11. Feature Roadmap
+
+### 11.1 Current Status
+
+JFrame is in active development with core systems implemented and enhanced features planned.
+
+**Completed Systems:**
+- Event System - Fully functional publish/subscribe
+- Entity System - EnTT-based ECS
+- Physics System - Box2D integration with collision detection
+- Asset System - Async loading with hot reload
+- Save System - Binary serialization with cereal
+- Input System - GLFW keyboard/mouse + SDL2 gamepad
+- Audio System - FMOD-based 3D positional audio
+- Level System - Lua-based level loading with metadata parsing
+
+**In Progress:**
+- Graphics System - Basic rendering functional, sprites/animation/text planned
+- Camera System - Planned
+- Components Library - Planned
+- Dev Tools - Hot reload implemented, inspector/overlay planned
+
+### 11.2 Feature Gap Closure Plan
+
+Based on the platformer example requirements, the following features are being added to make JFrame production-ready.
+
+#### Phase 1: Critical Rendering Features
+
+**Status:** Planned
+**Timeline:** Priority 1
+
+- **Sprite Rendering**
+  - SpriteSheet support with frame indexing
+  - Automatic sprite batching for performance
+  - Texture atlas support
+  - Z-order/layer sorting
+
+- **Text Rendering**
+  - TrueType font loading via FreeType
+  - Multi-size font rendering
+  - Text alignment (left, center, right)
+  - Text measurement for layout
+
+- **Physics Triggers**
+  - Sensor body support (`isSensor` flag)
+  - TriggerEnter/TriggerExit events
+  - Integration with Event System
+  - Use cases: collectibles, damage zones, level transitions
+
+**Files Modified:**
+- `jframe-contract/src/jframe.types.cppm` - Add SpriteSheet, Animation types
+- `jframe-contract/src/jframe.graphics.cppm` - Add sprite/text methods
+- `jframe-contract/src/jframe.physics.cppm` - Add trigger callbacks
+- `jframe-graphics/src/GraphicsSystem.cpp` - Implement rendering
+- `jframe-physics/src/Box2DPhysicsSystem.cpp` - Implement sensors
+
+#### Phase 2: Animation & Camera
+
+**Status:** Planned
+**Timeline:** Priority 2
+
+- **Animation System**
+  - Animation definition (frame sequences, durations, looping)
+  - AnimatedSprite component
+  - Automatic frame advancement
+  - Animation blending/transitions
+  - Event callbacks (onComplete, onFrame)
+
+- **Camera System**
+  - Target following with smoothing
+  - Deadzone-based follow
+  - Camera bounds/constraints
+  - Camera shake effects
+  - Screen-to-world coordinate conversion
+  - Zoom support
+
+**New Files:**
+- `jframe-contract/src/jframe.camera.cppm` - ICameraSystem interface
+- `jframe-camera/src/CameraSystem.cpp` - Implementation
+- `jframe-camera/CMakeLists.txt` - Build config
+
+**Files Modified:**
+- `jframe-contract/src/jframe.types.cppm` - Add Animation, Camera types
+- `jframe-graphics/src/GraphicsSystem.cpp` - Animation update/rendering
+
+#### Phase 3: Level System Enhancements
+
+**Status:** Planned
+**Timeline:** Priority 2
+
+- **Entity Spawning**
+  - Parse entity definitions from Lua level files
+  - Resolve blueprint references
+  - Apply level-specific property overrides
+  - `spawnEntities()` method for automatic entity creation
+  - Spawn point management
+
+- **Blueprint System Integration**
+  - Blueprint registry
+  - Component application from blueprints
+  - Blueprint inheritance (planned)
+
+**Files Modified:**
+- `jframe-contract/src/jframe.level.cppm` - Add spawn methods
+- `jframe-level/src/LevelSystem.cpp` - Implement entity spawning
+- `jframe-level/src/jframe.level.impl.cppm` - Add EntitySpawnDef
+
+#### Phase 4: Components Library
+
+**Status:** Planned
+**Timeline:** Priority 3
+
+- **Common Components**
+  - Movement: Velocity, Acceleration, MaxSpeed
+  - Combat: Health, Damage, Invincibility
+  - Gameplay: Timer, Lifetime
+  - Physics: GroundDetector (coyote time support)
+  - Visual: Sprite, AnimatedSprite
+  - Audio: SoundEmitter
+
+- **Component Utilities**
+  - Standard update patterns
+  - Common helper functions
+  - Documentation and examples
+
+**New Files:**
+- `jframe-components/src/jframe.components.cppm` - Component definitions
+- `jframe-components/CMakeLists.txt` - Build config
+
+#### Phase 5: Dev Tools Enhancement
+
+**Status:** Partially Complete
+**Timeline:** Ongoing
+
+- **Completed:**
+  - Hot reload for Lua files
+  - Asset hot reload
+
+- **Planned:**
+  - Entity inspector overlay
+  - Performance profiler display
+  - Console/logging overlay
+  - Camera debug visualization
+  - Physics debug rendering (shapes, contact points)
+
+### 11.3 Example Game Requirements
+
+The platformer example will demonstrate all features:
+
+- Animated player character (idle, run, jump, fall, hurt)
+- Animated enemies with AI behaviors
+- Parallax scrolling backgrounds
+- HUD with health bar, score, timer
+- Sound effects (jump, land, hurt, collect, death)
+- Background music with transitions
+- Multiple levels with save/load
+- Checkpoints and respawning
+- Collectibles (coins, gems)
+- Triggers (level transitions, hazards)
+- Camera following with smoothing
+- Particle effects
+
+### 11.4 Platform Roadmap
+
+**Current:** macOS, Windows, Linux
+**Planned:** Nintendo Switch
+
+**Switch Requirements:**
+- Vulkan renderer migration (replace OpenGL)
+- Controller-only input support
+- Optimized asset loading for limited memory
+- Save system Nintendo SDK integration
+
+### 11.5 Success Criteria
+
+JFrame will be considered feature-complete when:
+
+1. All systems have complete implementations (no stubs)
+2. Platformer example runs with full visual/audio polish
+3. No manual Lua parsing required in game code
+4. Common platformer mechanics work out-of-box
+5. Game code focuses on game logic (90%+ ratio)
+6. All unit tests passing
+7. Documentation complete for all systems
 
 ---
 

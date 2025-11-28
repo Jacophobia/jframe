@@ -9,6 +9,8 @@ module;
 export module jframe.graphics;
 
 import jframe.types;
+import jframe.assets;  // For IAssetSystem forward reference
+import jframe.entity;  // For IEntitySystem in renderEntities
 
 export namespace jframe {
 
@@ -30,6 +32,11 @@ public:
     virtual void draw(const Sprite& sprite) = 0;
     virtual void drawBatch(std::span<const Sprite> sprites) = 0;
 
+    virtual void drawSprite(const SpriteSheet& sheet, int frameIndex,
+                           const Transform2D& transform, Color tint = Color::white()) = 0;
+    virtual void drawAnimatedSprite(AnimatedSprite& sprite,
+                                   const Transform2D& transform, Color tint = Color::white()) = 0;
+
     //======================================================================
     // Primitive Rendering (Debug)
     //======================================================================
@@ -50,6 +57,9 @@ public:
     virtual void drawText(const std::string& text, Vec2 position,
                           AssetHandle fontHandle, float size,
                           const Color& color = Color::white()) = 0;
+    virtual void drawTextCentered(const std::string& text, Vec2 position,
+                                   AssetHandle fontHandle, float size,
+                                   const Color& color = Color::white()) = 0;
     virtual Vec2 measureText(const std::string& text, AssetHandle fontHandle,
                              float size) const = 0;
 
@@ -80,6 +90,29 @@ public:
 
     virtual void setClearColor(const Color& color) = 0;
     virtual void setVSync(bool enabled) = 0;
+
+    //======================================================================
+    // Asset System Integration
+    //======================================================================
+
+    virtual void setAssetSystem(IAssetSystem* assets) = 0;
+
+    //======================================================================
+    // Automatic Entity Rendering
+    //======================================================================
+
+    /// Render all entities with visual components (Sprite, DebugRect, etc.)
+    /// Entities must have Transform2D plus a visual component
+    /// Respects RenderLayer for draw order
+    virtual void renderEntities(IEntitySystem& entities) = 0;
+
+    /// Render entities within a specific layer range
+    virtual void renderEntities(IEntitySystem& entities,
+                                RenderLayer minLayer, RenderLayer maxLayer) = 0;
+
+    /// Enable/disable viewport culling for renderEntities
+    virtual void setViewportCulling(bool enabled) = 0;
+    virtual bool isViewportCullingEnabled() const = 0;
 };
 
 }  // namespace jframe

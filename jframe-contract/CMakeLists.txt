@@ -13,6 +13,10 @@ target_sources(jframe-contract
         src/jframe.events.cppm
         src/jframe.physics.cppm
         src/jframe.ai.cppm
+        src/jframe.camera.cppm
+        src/jframe.config.cppm
+        src/jframe.gas.cppm
+        src/jframe.blueprints.cppm
         src/jframe.cppm
 )
 

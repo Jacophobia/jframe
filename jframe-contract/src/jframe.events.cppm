@@ -46,6 +46,8 @@ public:
 // Common event type constants
 namespace Events {
     inline constexpr const char* Collision = "collision";
+    inline constexpr const char* TriggerEnter = "trigger_enter";
+    inline constexpr const char* TriggerExit = "trigger_exit";
     inline constexpr const char* LevelLoaded = "level_loaded";
     inline constexpr const char* LevelUnloaded = "level_unloaded";
     inline constexpr const char* EntityDamaged = "entity_damaged";

@@ -5,6 +5,8 @@ target_sources(jframe-dev
     PUBLIC FILE_SET CXX_MODULES FILES
         src/jframe.dev.cppm
     PRIVATE
+        src/ImGuiBackend.cpp
+        src/ComponentRegistry.cpp
         src/HotReloadManager.cpp
         src/DevOverlay.cpp
         src/EntityInspector.cpp
@@ -16,6 +18,8 @@ target_link_libraries(jframe-dev
         jframe-core
         imgui::imgui
         efsw::efsw
+        glfw
+        glad::glad
         ${LUA_LIBRARIES}
         sol2::sol2
 )

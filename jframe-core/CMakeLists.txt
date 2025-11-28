@@ -6,6 +6,8 @@ target_sources(jframe-core
         src/jframe.core.cppm
     PRIVATE
         src/Application.cpp
+        src/Engine.cpp
+        src/EngineBuilder.cpp
         src/JobSystem.cpp
         src/Easing.cpp
         src/Timer.cpp
@@ -16,6 +18,20 @@ target_link_libraries(jframe-core
         jframe-contract
         spdlog::spdlog
         Taskflow::Taskflow
+    PRIVATE
+        jframe-events
+        jframe-entity
+        jframe-physics
+        jframe-graphics
+        jframe-audio
+        jframe-input
+        jframe-assets
+        jframe-save
+        jframe-level
+        jframe-ai
+        jframe-camera
+        jframe-gas
+        jframe-blueprints
 )
 
 if(JFRAME_ENABLE_TRACY)

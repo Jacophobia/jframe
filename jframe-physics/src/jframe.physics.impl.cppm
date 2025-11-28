@@ -38,6 +38,7 @@ public:
     Vec2 getVelocity(Entity entity) const override;
     void setAngularVelocity(Entity entity, float velocity) override;
     float getAngularVelocity(Entity entity) const override;
+    Vec2 getBodySize(Entity entity) const override;
 
     // Forces
     void applyForce(Entity entity, Vec2 force, Vec2 point = {0, 0}) override;
@@ -66,6 +67,16 @@ public:
     // Collision callbacks
     void setCollisionCallback(CollisionCallback callback) override;
 
+    // Trigger callbacks
+    using TriggerCallback = std::function<void(const TriggerEvent&)>;
+    void setTriggerEnterCallback(TriggerCallback callback);
+    void setTriggerExitCallback(TriggerCallback callback);
+
+    // Ground detection
+    GroundCheckResult checkGrounded(Entity entity,
+                                    const GroundCheckParams& params = {}) const override;
+    CollisionLayer getCollisionLayer(Entity entity) const override;
+
 private:
     void processContactEvents();
 
@@ -80,8 +91,10 @@ private:
     b2WorldId worldId_;
     std::unordered_map<std::uint32_t, b2BodyId> entityToBody_;
     std::unordered_map<std::uint64_t, BodyMeta> bodyToMeta_;  // b2BodyId uses index1 which fits in uint64
-    Vec2 gravity_{0.0f, -9.8f};  // Default gravity (Box2D uses meters)
+    Vec2 gravity_{0.0f, 980.0f};  // Default gravity in pixels/s² (positive Y = down in screen coords)
     CollisionCallback collisionCallback_;
+    TriggerCallback triggerEnterCallback_;
+    TriggerCallback triggerExitCallback_;
     bool initialized_ = false;
 
     // Physics scale: pixels per meter (Box2D works in meters)

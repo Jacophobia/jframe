@@ -13,6 +13,8 @@ target_sources(jframe-ai
 target_link_libraries(jframe-ai
     PUBLIC
         jframe-contract
+        jframe-assets
+        jframe-physics
         RecastNavigation::Recast
         RecastNavigation::Detour
 )

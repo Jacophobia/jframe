@@ -69,6 +69,12 @@ public:
     //======================================================================
 
     virtual std::vector<Entity> getLevelEntities(LevelId levelId) const = 0;
+
+    //======================================================================
+    // Entity Definitions
+    //======================================================================
+
+    virtual std::vector<EntityDef> getEntityDefs(LevelId levelId) const = 0;
 };
 
 }  // namespace jframe

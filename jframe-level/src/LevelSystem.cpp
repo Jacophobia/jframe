@@ -154,4 +154,11 @@ std::vector<Entity> LevelSystem::getLevelEntities(LevelId levelId) const {
     return {};
 }
 
+std::vector<EntityDef> LevelSystem::getEntityDefs(LevelId levelId) const {
+    if (auto it = levels_.find(levelId); it != levels_.end()) {
+        return it->second.entityDefs;
+    }
+    return {};
+}
+
 }  // namespace jframe

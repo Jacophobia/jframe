@@ -11,13 +11,14 @@ export module jframe.audio.impl;
 
 import std;
 import jframe.audio;
+import jframe.assets;
 import jframe.types;
 
 export namespace jframe {
 
 class FMODAudioSystem : public IAudioSystem {
 public:
-    FMODAudioSystem() = default;
+    explicit FMODAudioSystem(IAssetSystem* assetSystem = nullptr);
     ~FMODAudioSystem() override;
 
     bool initialize();
@@ -56,11 +57,8 @@ public:
     void setGroupVolume(const std::string& group, Volume volume) override;
     void assignChannelToGroup(Channel channel, const std::string& group) override;
 
-    // Asset registration (temporary until asset system integration)
-    // TODO(agent): Remove when asset system provides path lookup
-    void registerAudioAsset(AssetHandle handle, const std::string& filepath) {
-        assetPaths_[handle] = filepath;
-    }
+    // Hot reload support
+    void invalidateSoundCache();
 
 private:
     struct ChannelData {
@@ -68,7 +66,6 @@ private:
         std::string group;
 #ifdef JFRAME_HAS_FMOD
         FMOD_CHANNEL* fmodChannel = nullptr;
-        FMOD_SOUND* fmodSound = nullptr;
 #endif
     };
 
@@ -76,23 +73,29 @@ private:
         Vec3 position;
 #ifdef JFRAME_HAS_FMOD
         FMOD_CHANNEL* fmodChannel = nullptr;
-        FMOD_SOUND* fmodSound = nullptr;
 #endif
     };
 
+#ifdef JFRAME_HAS_FMOD
+    // Helper to get or create FMOD sound from asset system
+    FMOD_SOUND* getOrCreateSound(AssetHandle handle, FMOD_MODE mode);
+#endif
+
     std::unordered_map<Channel, ChannelData> channels_;
     std::unordered_map<SoundHandle, PositionalSoundData> positionalSounds_;
-    std::unordered_map<AssetHandle, std::string, AssetHandleHash> assetPaths_;
+    std::unordered_map<AssetHandle, std::string, AssetHandleHash> assetPaths_;  // Fallback for file paths
     AudioListener listener_;
     Volume masterVolume_ = 1.0f;
     std::unordered_map<std::string, Volume> groupVolumes_;
     SoundHandle nextSoundHandle_ = 1;
     bool isPaused_ = false;
+    IAssetSystem* assetSystem_ = nullptr;
 
 #ifdef JFRAME_HAS_FMOD
     FMOD_SYSTEM* fmodSystem_ = nullptr;
     FMOD_CHANNELGROUP* masterGroup_ = nullptr;
     std::unordered_map<std::string, FMOD_CHANNELGROUP*> fmodGroups_;
+    std::unordered_map<AssetHandle, FMOD_SOUND*, AssetHandleHash> soundCache_;  // Cached FMOD sounds
 #endif
 };
 

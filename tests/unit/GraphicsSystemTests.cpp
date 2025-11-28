@@ -542,4 +542,20 @@ TEST_F(GraphicsSystemTest, DISABLED_MeasureEmptyString) {
     EXPECT_GE(size.y, 0.0f);
 }
 
+TEST_F(GraphicsSystemTest, DISABLED_DrawTextCenteredDoesNotCrash) {
+    AssetHandle fontHandle;
+
+    graphics_->beginFrame();
+    graphics_->drawTextCentered("Centered Text", Vec2{400.0f, 300.0f}, fontHandle, 24.0f, Color::white());
+    graphics_->endFrame();
+}
+
+TEST_F(GraphicsSystemTest, DISABLED_MeasureTextReturnsPositiveSize) {
+    AssetHandle fontHandle;
+    Vec2 size = graphics_->measureText("Test String", fontHandle, 16.0f);
+
+    EXPECT_GT(size.x, 0.0f);
+    EXPECT_GT(size.y, 0.0f);
+}
+
 }  // namespace jframe::tests

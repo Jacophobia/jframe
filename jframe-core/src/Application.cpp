@@ -3,5 +3,7 @@
 
 module jframe.core;
 
-// Application implementation is in the module interface
+// Application is now managed by Engine class
+// Game loop is implemented in Engine.cpp using fixed timestep
+// Application subclasses implement: initialize(), updateFixed(), render(), shutdown()
 // This file exists for potential non-inline implementations

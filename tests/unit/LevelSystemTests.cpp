@@ -739,4 +739,125 @@ TEST_F(LevelSystemLuaTest, LoadBasicLevel) {
     EXPECT_TRUE(spawnNames.empty());
 }
 
+//==============================================================================
+// Entity Definition Tests
+//==============================================================================
+
+TEST_F(LevelSystemTest, GetEntityDefsForNonExistentLevel) {
+    auto entityDefs = levelSystem_->getEntityDefs(999999);
+    EXPECT_TRUE(entityDefs.empty());
+}
+
+TEST_F(LevelSystemTest, GetEntityDefsReturnsEmptyForNewLevel) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+
+    auto entityDefs = levelSystem_->getEntityDefs(result.value());
+    EXPECT_TRUE(entityDefs.empty());
+}
+
+TEST_F(LevelSystemLuaTest, LoadLevelWithEntityDefinitions) {
+    // Register and load the test level asset with entities
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_entities.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    // Load the level through the level system
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Verify entity definitions were parsed
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_EQ(entityDefs.size(), 5);
+
+    // Check platform entity
+    const auto& platform = entityDefs[0];
+    EXPECT_EQ(platform.type, "platform");
+    EXPECT_FLOAT_EQ(platform.transform.x, 0.0f);
+    EXPECT_FLOAT_EQ(platform.transform.y, 550.0f);
+    // Lua stores all numbers as doubles
+    EXPECT_NEAR(std::any_cast<double>(platform.properties.at("width")), 800.0, 0.01);
+    EXPECT_NEAR(std::any_cast<double>(platform.properties.at("height")), 50.0, 0.01);
+
+    // Check enemy entity
+    const auto& enemy = entityDefs[1];
+    EXPECT_EQ(enemy.type, "enemy");
+    EXPECT_FLOAT_EQ(enemy.transform.x, 400.0f);
+    EXPECT_FLOAT_EQ(enemy.transform.y, 500.0f);
+    EXPECT_NEAR(std::any_cast<double>(enemy.properties.at("patrolRange")), 100.0, 0.01);
+    EXPECT_NEAR(std::any_cast<double>(enemy.properties.at("speed")), 50.0, 0.01);
+    EXPECT_EQ(std::any_cast<bool>(enemy.properties.at("hostile")), true);
+
+    // Check collectible entity
+    const auto& collectible = entityDefs[2];
+    EXPECT_EQ(collectible.type, "collectible");
+    EXPECT_FLOAT_EQ(collectible.transform.x, 200.0f);
+    EXPECT_FLOAT_EQ(collectible.transform.y, 450.0f);
+    EXPECT_NEAR(std::any_cast<double>(collectible.properties.at("value")), 10.0, 0.01);
+    EXPECT_EQ(std::any_cast<std::string>(collectible.properties.at("collectType")), "coin");
+
+    // Check rotating platform with transform properties
+    const auto& rotatingPlatform = entityDefs[3];
+    EXPECT_EQ(rotatingPlatform.type, "rotating_platform");
+    EXPECT_FLOAT_EQ(rotatingPlatform.transform.x, 600.0f);
+    EXPECT_FLOAT_EQ(rotatingPlatform.transform.y, 300.0f);
+    EXPECT_FLOAT_EQ(rotatingPlatform.transform.rotation, 45.0f);
+    EXPECT_FLOAT_EQ(rotatingPlatform.transform.scaleX, 2.0f);
+    EXPECT_FLOAT_EQ(rotatingPlatform.transform.scaleY, 1.5f);
+
+    // Check trigger entity with various property types
+    const auto& trigger = entityDefs[4];
+    EXPECT_EQ(trigger.type, "trigger");
+    EXPECT_FLOAT_EQ(trigger.transform.x, 800.0f);
+    EXPECT_FLOAT_EQ(trigger.transform.y, 400.0f);
+
+    // Verify various property types
+    EXPECT_NEAR(std::any_cast<double>(trigger.properties.at("radius")), 50.5, 0.01);
+    EXPECT_EQ(std::any_cast<bool>(trigger.properties.at("active")), true);
+    EXPECT_EQ(std::any_cast<std::string>(trigger.properties.at("message")), "You found a secret!");
+    EXPECT_NEAR(std::any_cast<double>(trigger.properties.at("triggerCount")), 1.0, 0.01);
+}
+
+TEST_F(LevelSystemLuaTest, EntityDefinitionsFromSpawnLevel) {
+    // Test the existing test_level_with_spawns.lua which also has an entity
+    AssetHandle handle = assetSystem_->registerAsset(
+        AssetType::Level,
+        "../../../tests/testdata/test_level_with_spawns.lua"
+    );
+    assetSystem_->loadAsset(handle);
+    ASSERT_TRUE(assetSystem_->isLoaded(handle));
+
+    auto result = levelSystem_->loadLevel(handle);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    // Should have 1 entity (the platform)
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_EQ(entityDefs.size(), 1);
+
+    if (!entityDefs.empty()) {
+        const auto& entity = entityDefs[0];
+        EXPECT_EQ(entity.type, "platform");
+        EXPECT_FLOAT_EQ(entity.transform.x, 0.0f);
+        EXPECT_FLOAT_EQ(entity.transform.y, 1000.0f);
+    }
+}
+
+TEST_F(LevelSystemTest, GetEntityDefsAfterUnload) {
+    auto asset = createMockAsset(1);
+    auto result = levelSystem_->loadLevel(asset);
+    ASSERT_TRUE(result.has_value());
+    LevelId levelId = result.value();
+
+    levelSystem_->unloadLevel(levelId);
+
+    auto entityDefs = levelSystem_->getEntityDefs(levelId);
+    EXPECT_TRUE(entityDefs.empty());
+}
+
 }  // namespace jframe::tests

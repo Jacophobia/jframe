@@ -13,13 +13,7 @@ import jframe.types;
 
 export namespace jframe {
 
-// Texture data structure for loaded textures
-struct TextureData {
-    std::vector<unsigned char> pixels;
-    int width = 0;
-    int height = 0;
-    int channels = 0;
-};
+// Note: TextureData is now in jframe.assets contract module
 
 // Data asset structure for JSON and text files
 struct DataAsset {
@@ -35,12 +29,7 @@ struct SoundData {
     size_t fileSize = 0;
 };
 
-// Font data structure - stores raw font file bytes for FreeType to process later
-struct FontData {
-    std::vector<unsigned char> fileData;  // Raw TTF/OTF bytes
-    std::string path;
-    size_t fileSize = 0;
-};
+// Note: FontData is now defined in jframe.assets contract module
 
 // Shader data structure - stores shader source code
 struct ShaderData {

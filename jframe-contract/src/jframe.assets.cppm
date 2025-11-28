@@ -16,6 +16,21 @@ import jframe.types;
 
 export namespace jframe {
 
+// Texture data structure - exported so consumers can access loaded texture data
+struct TextureData {
+    std::vector<unsigned char> pixels;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+};
+
+// Font data structure - stores raw font file bytes for stb_truetype to process
+struct FontData {
+    std::vector<unsigned char> fileData;  // Raw TTF/OTF bytes
+    std::string path;
+    std::size_t fileSize = 0;
+};
+
 struct AssetMetadata {
     AssetHandle handle;
     std::filesystem::path sourcePath;
