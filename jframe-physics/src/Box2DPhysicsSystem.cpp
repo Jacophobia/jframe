@@ -60,9 +60,11 @@ bool Box2DPhysicsSystem::initialize() {
 
     b2WorldDef worldDef = b2DefaultWorldDef();
     // Convert from pixels/s² to meters/s² for Box2D
-    // NOTE: JFrame uses Y-down screen coordinates but Box2D uses Y-up physics coordinates.
-    // By negating gravity's Y component, we make Box2D's world behave as if Y-down.
-    worldDef.gravity = {gravity_.x / PIXELS_PER_METER, -gravity_.y / PIXELS_PER_METER};
+    // JFrame uses Y-down screen coordinates (positive Y = down on screen)
+    // Box2D uses Y-up coordinates (negative Y = down in physics)
+    // So we pass gravity directly - JFrame's positive Y gravity becomes Box2D's positive Y
+    // which we then negate when converting positions back to screen space in syncTransforms()
+    worldDef.gravity = {gravity_.x / PIXELS_PER_METER, gravity_.y / PIXELS_PER_METER};
 
     // Set hit event threshold to 0 to ensure all collisions generate events
     worldDef.hitEventThreshold = 0.0f;
@@ -355,8 +357,9 @@ void Box2DPhysicsSystem::setVelocity(Entity entity, Vec2 velocity) {
     auto it = entityToBody_.find(entityKey);
     if (it == entityToBody_.end()) return;
 
-    // Negate Y to convert from JFrame Y-down to Box2D Y-up
-    b2Vec2 vel = {velocity.x / PIXELS_PER_METER, -velocity.y / PIXELS_PER_METER};
+    // No Y negation - we use consistent Y-down coordinates (positive Y = down)
+    // This matches gravity which also uses positive Y = down
+    b2Vec2 vel = {velocity.x / PIXELS_PER_METER, velocity.y / PIXELS_PER_METER};
     b2Body_SetLinearVelocity(it->second, vel);
 }
 
@@ -366,8 +369,8 @@ Vec2 Box2DPhysicsSystem::getVelocity(Entity entity) const {
     if (it == entityToBody_.end()) return {0, 0};
 
     b2Vec2 vel = b2Body_GetLinearVelocity(it->second);
-    // Negate Y to convert from Box2D Y-up to JFrame Y-down
-    return {vel.x * PIXELS_PER_METER, -vel.y * PIXELS_PER_METER};
+    // No Y negation - we use consistent Y-down coordinates
+    return {vel.x * PIXELS_PER_METER, vel.y * PIXELS_PER_METER};
 }
 
 void Box2DPhysicsSystem::setAngularVelocity(Entity entity, float velocity) {
@@ -677,8 +680,8 @@ void Box2DPhysicsSystem::setGravity(Vec2 gravity) {
     gravity_ = gravity;
     if (initialized_) {
         // Convert from pixels/s² to meters/s² for Box2D
-        // NOTE: Negate Y to account for JFrame Y-down vs Box2D Y-up coordinates
-        b2World_SetGravity(worldId_, {gravity.x / PIXELS_PER_METER, -gravity.y / PIXELS_PER_METER});
+        // Since we don't flip Y for positions, we don't flip Y for gravity either
+        b2World_SetGravity(worldId_, {gravity.x / PIXELS_PER_METER, gravity.y / PIXELS_PER_METER});
     }
 }
 
@@ -722,16 +725,15 @@ GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
     b2AABB aabb = b2Shape_GetAABB(shapes[0]);
     float halfHeight = (aabb.upperBound.y - aabb.lowerBound.y) / 2.0f;
 
-    // Raycast from body CENTER going down, extending past the bottom
-    // NOTE: Box2D uses Y-up coordinates, but we simulate Y-down by negating gravity.
-    // Since positions aren't flipped, positive Y still means "down" in our world.
-    // BUT raycasts need to go in the negative Y direction in Box2D's Y-up coordinate system.
+    // Raycast from body CENTER going down (positive Y in our Y-down coordinate system)
+    // We use positive gravity (downward), so "down" is positive Y in Box2D too
     float rayStartY = pos.y;  // Body center
     // Ray needs to travel: halfHeight (to reach bottom) + rayDistance (to detect ground below)
     float rayLength = halfHeight + params.rayDistance / PIXELS_PER_METER;
 
     b2Vec2 origin = {pos.x, rayStartY};
-    b2Vec2 translation = {0.0f, -rayLength};  // Cast downward (negative Y in Box2D Y-up coords)
+    // Cast downward - in our coordinate system with positive gravity, down is positive Y
+    b2Vec2 translation = {0.0f, rayLength};  // Positive Y = down
 
     // Use default filter to hit all shapes - we'll filter by layer ourselves
     // This is more reliable than relying on Box2D's categoryBits matching
@@ -755,11 +757,11 @@ GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
             bool layerMatches = (metaIt->second.layer & params.groundMask) != 0;
 
             if (layerMatches) {
-                // Check slope angle - in Box2D Y-up coords, flat floor normal points up (positive Y)
-                // The raycast returns the normal pointing toward the ray origin
-                // For a flat floor with ray going down (negative Y), the normal points up (positive Y)
-                // For flat ground, normalY should be ≈ +1 (no flip needed)
-                float normalY = rayResult.normal.y;  // Box2D Y-up: flat floor has positive Y normal
+                // Check slope angle - with our Y-down coordinate system:
+                // - Ray goes positive Y (down)
+                // - Flat floor normal points negative Y (up toward ray origin)
+                // - So normalY should be ≈ -1 for flat ground
+                float normalY = -rayResult.normal.y;  // Negate because up is negative Y in our coords
                 float slopeAngle = std::acos(std::clamp(normalY, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
 
                 if (slopeAngle <= params.slopeToleranceDeg) {

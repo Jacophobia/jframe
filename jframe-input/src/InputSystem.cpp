@@ -191,23 +191,31 @@ void InputSystem::updateControllerState() {
 }
 
 void InputSystem::updateActionStates() {
+    // First, save previous states and reset current values
+    std::unordered_map<Action, bool> wasActiveMap;
+    for (auto& [action, state] : actionStates_) {
+        wasActiveMap[action] = state.active;
+        state.value = 0.0f;
+        state.active = false;
+    }
+
+    // Accumulate values from all mappings
     for (const auto& mapping : mappings_) {
         auto& state = actionStates_[mapping.action];
         state.action = mapping.action;
 
-        bool wasActive = state.active;
-        float newValue = 0.0f;
+        float bindingValue = 0.0f;
 
         switch (mapping.binding.deviceType) {
             case InputDeviceType::Keyboard:
                 if (window_ && glfwGetKey(window_, mapping.binding.keyCode) == GLFW_PRESS) {
-                    newValue = mapping.binding.scale;
+                    bindingValue = mapping.binding.scale;
                 }
                 break;
 
             case InputDeviceType::Mouse:
                 if (window_ && mapping.binding.keyCode < 8 && mouseButtons_[mapping.binding.keyCode]) {
-                    newValue = mapping.binding.scale;
+                    bindingValue = mapping.binding.scale;
                 }
                 break;
 
@@ -219,7 +227,7 @@ void InputSystem::updateActionStates() {
                     if (mapping.binding.keyCode < SDL_CONTROLLER_BUTTON_MAX) {
                         if (SDL_GameControllerGetButton(controller,
                                 static_cast<SDL_GameControllerButton>(mapping.binding.keyCode))) {
-                            newValue = mapping.binding.scale;
+                            bindingValue = mapping.binding.scale;
                         }
                     } else {
                         int axis = mapping.binding.keyCode - SDL_CONTROLLER_BUTTON_MAX;
@@ -227,7 +235,7 @@ void InputSystem::updateActionStates() {
                             float axisValue = SDL_GameControllerGetAxis(controller,
                                 static_cast<SDL_GameControllerAxis>(axis)) / 32767.0f;
                             if (std::abs(axisValue) > mapping.binding.deadzone) {
-                                newValue = axisValue * mapping.binding.scale;
+                                bindingValue = axisValue * mapping.binding.scale;
                             }
                         }
                     }
@@ -235,8 +243,17 @@ void InputSystem::updateActionStates() {
                 break;
         }
 
-        state.value = newValue;
-        state.active = std::abs(newValue) > 0.01f;
+        // Accumulate: use max absolute value to handle multiple bindings
+        // This allows multiple keys to contribute to the same action
+        if (std::abs(bindingValue) > std::abs(state.value)) {
+            state.value = bindingValue;
+        }
+    }
+
+    // Update active/pressed/released states
+    for (auto& [action, state] : actionStates_) {
+        bool wasActive = wasActiveMap.count(action) ? wasActiveMap[action] : false;
+        state.active = std::abs(state.value) > 0.01f;
         state.justPressed = state.active && !wasActive;
         state.justReleased = !state.active && wasActive;
     }

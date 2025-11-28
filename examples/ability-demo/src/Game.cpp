@@ -1059,28 +1059,17 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
         sys.physics->setVelocity(player_, {0.0f, 0.0f});  // Zero velocity during dash
     }
 
-    // Jump ability (works anywhere when grounded) - check while held for bunny hopping
+    // Jump ability - use GAS system for activation checks (stamina, grounded, tags)
     if (sys.input->isActionActive("jump")) {
-        // Check if player is grounded using physics check directly
-        auto groundResult = sys.physics->checkGrounded(player_);
+        if (gas_->canActivateAbility(player_, jumpAbility_)) {
+            gas_->tryActivateAbility(player_, jumpAbility_);
 
-        // Check for stun blocking jump
-        auto stunnedTag = gas_->findTag("State.Stunned");
-        bool isStunned = stunnedTag && gas_->hasTag(player_, *stunnedTag);
-
-        if (groundResult.grounded && !isStunned) {
-            // Apply jump force directly - bypass GAS ability check for basic jump
+            // Apply jump physics - negative Y velocity = up in our Y-down coordinate system
             jframe::Vec2 vel = sys.physics->getVelocity(player_);
-            vel.y = -playerJumpForce_;  // Use config value
+            vel.y = -playerJumpForce_;
             sys.physics->setVelocity(player_, vel);
 
-            // Try to use the GAS ability for costs/cooldown (but don't block if it fails)
-            if (gas_->canActivateAbility(player_, jumpAbility_)) {
-                gas_->tryActivateAbility(player_, jumpAbility_);
-                gas_->endAbility(player_, jumpAbility_);
-            }
-
-            jframe::core::logInfo("Jump!");
+            gas_->endAbility(player_, jumpAbility_);
             playSound("jump");
         }
     }
