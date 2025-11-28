@@ -1,71 +1,110 @@
 # cmake/StandardLibraryModules.cmake
-# Pre-compiles the C++ standard library module for LLVM 20
+# Configures C++ standard library module support for different compilers
+#
+# Supported compilers:
+#   - MSVC 19.38+ (Visual Studio 2022 17.8+): Native support via /std:c++latest
+#   - LLVM Clang 20+: Pre-compiled std.pcm from libc++
+#   - GCC 14+: Experimental (not yet production-ready)
 
-# Only run this for LLVM/Clang compilers
-if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    message(WARNING "Standard library module pre-compilation is only supported with Clang")
-    return()
-endif()
+# =============================================================================
+# MSVC Configuration (Windows)
+# =============================================================================
+if(MSVC)
+    message(STATUS "Configuring MSVC for C++23 modules with 'import std;' support")
 
-# Check if we're on macOS with Homebrew LLVM 20
-set(LLVM20_ROOT "/opt/homebrew/opt/llvm@20")
-set(LIBC++_STD_MODULE "${LLVM20_ROOT}/share/libc++/v1/std.cppm")
-
-if(NOT EXISTS "${LIBC++_STD_MODULE}")
-    message(WARNING "Could not find std.cppm at ${LIBC++_STD_MODULE}")
-    return()
-endif()
-
-# Directory for pre-compiled modules
-set(JFRAME_PCM_DIR "${CMAKE_BINARY_DIR}/pcm")
-file(MAKE_DIRECTORY "${JFRAME_PCM_DIR}")
-
-# Path to pre-compiled std module
-set(JFRAME_STD_PCM "${JFRAME_PCM_DIR}/std.pcm")
-
-# Get macOS sysroot for LLVM
-if(APPLE AND CMAKE_OSX_SYSROOT)
-    set(JFRAME_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
-else()
-    set(JFRAME_SYSROOT_FLAG "")
-endif()
-
-# Pre-compile std.cppm to std.pcm
-if(NOT EXISTS "${JFRAME_STD_PCM}")
-    message(STATUS "Pre-compiling C++ standard library module...")
-
-    execute_process(
-        COMMAND "${CMAKE_CXX_COMPILER}"
-            -std=c++23
-            -stdlib=libc++
-            ${JFRAME_SYSROOT_FLAG}
-            --precompile
-            "${LIBC++_STD_MODULE}"
-            -o "${JFRAME_STD_PCM}"
-        RESULT_VARIABLE STD_PCM_RESULT
-        OUTPUT_VARIABLE STD_PCM_OUTPUT
-        ERROR_VARIABLE STD_PCM_ERROR
-    )
-
-    if(NOT STD_PCM_RESULT EQUAL 0)
-        message(FATAL_ERROR "Failed to pre-compile std.cppm:\n${STD_PCM_ERROR}")
+    # Check MSVC version - need 19.38+ (VS 2022 17.8+)
+    if(MSVC_VERSION LESS 1938)
+        message(FATAL_ERROR
+            "MSVC ${MSVC_VERSION} does not support 'import std;'.\n"
+            "Please upgrade to Visual Studio 2022 version 17.8 or later (MSVC 19.38+).\n"
+            "Download from: https://visualstudio.microsoft.com/downloads/"
+        )
     endif()
 
-    message(STATUS "Pre-compiled std.pcm to ${JFRAME_STD_PCM}")
+    # Function to configure MSVC targets for std module support
+    function(target_use_std_module TARGET_NAME)
+        # Use /std:c++latest for full module support (includes import std;)
+        # /std:c++23 alone may not enable all module features
+        target_compile_options(${TARGET_NAME} PRIVATE
+            /std:c++latest
+            /experimental:module
+        )
+
+        # Enable standard library modules
+        # This tells MSVC to build and use the std module
+        set_target_properties(${TARGET_NAME} PROPERTIES
+            CXX_STANDARD 23
+            CXX_STANDARD_REQUIRED ON
+            CXX_EXTENSIONS OFF
+        )
+
+        message(STATUS "  Configured ${TARGET_NAME} for MSVC std module support")
+    endfunction()
+
+    return()
 endif()
 
-# Function to configure a target to use the pre-compiled std module
-function(target_use_std_module TARGET_NAME)
-    # Add the pre-built module path
-    target_compile_options(${TARGET_NAME} PRIVATE
-        -fprebuilt-module-path=${JFRAME_PCM_DIR}
+# =============================================================================
+# Clang Configuration (macOS / Linux)
+# =============================================================================
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    message(STATUS "Configuring Clang for C++23 modules with 'import std;' support")
+
+    # Try to find std.cppm in common locations
+    set(POSSIBLE_STD_MODULE_PATHS
+        # macOS Homebrew LLVM 20
+        "/opt/homebrew/opt/llvm@20/share/libc++/v1/std.cppm"
+        "/opt/homebrew/opt/llvm/share/libc++/v1/std.cppm"
+        # macOS Intel Homebrew
+        "/usr/local/opt/llvm@20/share/libc++/v1/std.cppm"
+        "/usr/local/opt/llvm/share/libc++/v1/std.cppm"
+        # Linux system paths
+        "/usr/lib/llvm-20/share/libc++/v1/std.cppm"
+        "/usr/lib/llvm-18/share/libc++/v1/std.cppm"
+        "/usr/lib/llvm-17/share/libc++/v1/std.cppm"
+        # Generic paths
+        "/usr/share/libc++/v1/std.cppm"
     )
 
-    # Make sure std.pcm is built before the target
-    # We do this by creating a custom target that depends on the std.pcm file
-    if(NOT TARGET jframe-std-module)
-        add_custom_command(
-            OUTPUT "${JFRAME_STD_PCM}"
+    set(LIBC++_STD_MODULE "")
+    foreach(PATH ${POSSIBLE_STD_MODULE_PATHS})
+        if(EXISTS "${PATH}")
+            set(LIBC++_STD_MODULE "${PATH}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT LIBC++_STD_MODULE)
+        message(FATAL_ERROR
+            "Could not find std.cppm for libc++.\n"
+            "Searched paths:\n"
+            "  ${POSSIBLE_STD_MODULE_PATHS}\n\n"
+            "On macOS: brew install llvm@20\n"
+            "On Linux: Install libc++ with module support from LLVM 17+"
+        )
+    endif()
+
+    message(STATUS "  Found std.cppm at: ${LIBC++_STD_MODULE}")
+
+    # Directory for pre-compiled modules
+    set(JFRAME_PCM_DIR "${CMAKE_BINARY_DIR}/pcm")
+    file(MAKE_DIRECTORY "${JFRAME_PCM_DIR}")
+
+    # Path to pre-compiled std module
+    set(JFRAME_STD_PCM "${JFRAME_PCM_DIR}/std.pcm")
+
+    # Get macOS sysroot for LLVM
+    if(APPLE AND CMAKE_OSX_SYSROOT)
+        set(JFRAME_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
+    else()
+        set(JFRAME_SYSROOT_FLAG "")
+    endif()
+
+    # Pre-compile std.cppm to std.pcm at configure time
+    if(NOT EXISTS "${JFRAME_STD_PCM}")
+        message(STATUS "  Pre-compiling C++ standard library module...")
+
+        execute_process(
             COMMAND "${CMAKE_CXX_COMPILER}"
                 -std=c++23
                 -stdlib=libc++
@@ -73,15 +112,94 @@ function(target_use_std_module TARGET_NAME)
                 --precompile
                 "${LIBC++_STD_MODULE}"
                 -o "${JFRAME_STD_PCM}"
-            DEPENDS "${LIBC++_STD_MODULE}"
-            COMMENT "Pre-compiling C++ standard library module"
-            VERBATIM
+            RESULT_VARIABLE STD_PCM_RESULT
+            OUTPUT_VARIABLE STD_PCM_OUTPUT
+            ERROR_VARIABLE STD_PCM_ERROR
         )
 
-        add_custom_target(jframe-std-module
-            DEPENDS "${JFRAME_STD_PCM}"
+        if(NOT STD_PCM_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to pre-compile std.cppm:\n${STD_PCM_ERROR}")
+        endif()
+
+        message(STATUS "  Pre-compiled std.pcm to ${JFRAME_STD_PCM}")
+    endif()
+
+    # Function to configure Clang targets for std module support
+    function(target_use_std_module TARGET_NAME)
+        # Add the pre-built module path
+        target_compile_options(${TARGET_NAME} PRIVATE
+            -fprebuilt-module-path=${JFRAME_PCM_DIR}
+        )
+
+        # Make sure std.pcm is built before the target
+        if(NOT TARGET jframe-std-module)
+            add_custom_command(
+                OUTPUT "${JFRAME_STD_PCM}"
+                COMMAND "${CMAKE_CXX_COMPILER}"
+                    -std=c++23
+                    -stdlib=libc++
+                    ${JFRAME_SYSROOT_FLAG}
+                    --precompile
+                    "${LIBC++_STD_MODULE}"
+                    -o "${JFRAME_STD_PCM}"
+                DEPENDS "${LIBC++_STD_MODULE}"
+                COMMENT "Pre-compiling C++ standard library module"
+                VERBATIM
+            )
+
+            add_custom_target(jframe-std-module
+                DEPENDS "${JFRAME_STD_PCM}"
+            )
+        endif()
+
+        add_dependencies(${TARGET_NAME} jframe-std-module)
+    endfunction()
+
+    return()
+endif()
+
+# =============================================================================
+# GCC Configuration (Linux - Experimental)
+# =============================================================================
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # Check GCC version
+    if(CMAKE_CXX_COMPILER_VERSION VERSION_LESS "14.0")
+        message(FATAL_ERROR
+            "GCC ${CMAKE_CXX_COMPILER_VERSION} has limited 'import std;' support.\n"
+            "Please upgrade to GCC 14+ or use Clang 17+ instead.\n"
+            "On Ubuntu/Debian: sudo apt install g++-14\n"
+            "Alternatively, install LLVM Clang for better module support."
         )
     endif()
 
-    add_dependencies(${TARGET_NAME} jframe-std-module)
-endfunction()
+    message(STATUS "Configuring GCC for C++23 modules (experimental)")
+    message(WARNING
+        "GCC's 'import std;' support is experimental and may have issues.\n"
+        "Consider using Clang 17+ or MSVC 19.38+ for better stability."
+    )
+
+    # Function for GCC - minimal configuration
+    function(target_use_std_module TARGET_NAME)
+        target_compile_options(${TARGET_NAME} PRIVATE
+            -fmodules-ts
+        )
+        set_target_properties(${TARGET_NAME} PROPERTIES
+            CXX_STANDARD 23
+            CXX_STANDARD_REQUIRED ON
+        )
+    endfunction()
+
+    return()
+endif()
+
+# =============================================================================
+# Unsupported Compiler
+# =============================================================================
+message(FATAL_ERROR
+    "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}\n\n"
+    "JFrame requires a C++23 compiler with 'import std;' support:\n"
+    "  - Windows: MSVC 19.38+ (Visual Studio 2022 17.8+)\n"
+    "  - macOS: LLVM Clang 20+ (brew install llvm@20)\n"
+    "  - Linux: Clang 17+ with libc++, or GCC 14+ (experimental)\n\n"
+    "Apple Clang (Xcode) does NOT support 'import std;'."
+)

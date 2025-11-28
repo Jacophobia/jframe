@@ -50,11 +50,12 @@
         {
             "name": "windows-debug",
             "inherits": "base",
-            "displayName": "Windows Debug",
+            "displayName": "Windows Debug (MSVC)",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
             },
             "condition": {
                 "type": "equals",
@@ -65,12 +66,29 @@
         {
             "name": "windows-release",
             "inherits": "base",
-            "displayName": "Windows Release",
+            "displayName": "Windows Release (MSVC)",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc",
                 "JFRAME_DEV_TOOLS": "OFF"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Windows"
+            }
+        },
+        {
+            "name": "windows-ninja-debug",
+            "inherits": "base",
+            "displayName": "Windows Debug (Ninja + MSVC)",
+            "description": "Faster builds using Ninja with MSVC compiler",
+            "generator": "Ninja",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
             },
             "condition": {
                 "type": "equals",
@@ -127,6 +145,10 @@
             "name": "windows-release",
             "configurePreset": "windows-release",
             "configuration": "Release"
+        },
+        {
+            "name": "windows-ninja-debug",
+            "configurePreset": "windows-ninja-debug"
         },
         {
             "name": "linux-debug",

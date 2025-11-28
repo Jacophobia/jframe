@@ -165,12 +165,17 @@ If all tests pass, you're ready to start developing!
 
 Download and install [Visual Studio 2022](https://visualstudio.microsoft.com/downloads/) (Community Edition is free).
 
+**IMPORTANT:** You need version **17.8 or later** for `import std;` support.
+
 During installation, select:
 - **Workload:** Desktop development with C++
-- **Individual Components:**
-  - MSVC v143 or later
+- **Individual Components (CRITICAL for `import std;`):**
+  - MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)
   - C++ CMake tools for Windows
-  - C++23 standard library modules (experimental)
+  - **C++ Modules for v143 build tools** - Required for `import std;`
+  - Windows 11 SDK (or Windows 10 SDK)
+
+![VS Installer Components](images/vs-installer-modules.png) *(if you have this image)*
 
 Verify installation:
 ```cmd
@@ -178,7 +183,12 @@ Verify installation:
 cl
 ```
 
-You should see the MSVC compiler version (19.38+).
+You should see the MSVC compiler version **19.38 or higher**:
+```
+Microsoft (R) C/C++ Optimizing Compiler Version 19.38.xxxxx for x64
+```
+
+If your version is lower, update Visual Studio via the Visual Studio Installer.
 
 ### Step 2: Install Git
 
@@ -614,12 +624,23 @@ cmake --build --preset macos-debug
 ```
 
 **Solution (Windows):**
+
+First, verify you have the C++ Modules component installed:
+1. Open Visual Studio Installer
+2. Click "Modify" on your VS 2022 installation
+3. Go to "Individual Components"
+4. Search for "C++ Modules"
+5. Ensure **"C++ Modules for v143 build tools"** is checked
+6. Click "Modify" to install if missing
+
+Then clean rebuild:
 ```cmd
-# Clean rebuild
 rmdir /s /q build
 cmake --preset windows-debug
 cmake --build --preset windows-debug
 ```
+
+If you still get errors, ensure you're using a **Developer Command Prompt for VS 2022** (not regular cmd or PowerShell).
 
 #### Error: "'time.h' file not found" (macOS only)
 
