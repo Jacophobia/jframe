@@ -12,6 +12,10 @@ Pillow>=10.0.0
 pixelmatch>=0.3.0  # Image comparison
 imagehash>=4.3.0   # Perceptual hashing for fuzzy comparison
 
+# Computer vision for texture detection
+opencv-python>=4.8.0  # Template matching, feature detection
+numpy>=1.24.0         # Required by OpenCV
+
 # Input simulation
 pyautogui>=0.9.54  # Cross-platform GUI automation
 pynput>=1.7.6      # Keyboard/mouse monitoring

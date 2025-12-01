@@ -142,6 +142,50 @@ def test_input(demo_runner, input_simulator):
     input_simulator.click()
 ```
 
+### `texture_finder`
+Find specific textures/images within screenshots using OpenCV.
+
+```python
+@pytest.mark.visual
+def test_player_visible(demo_runner, screenshot_capture, texture_finder):
+    demo_runner.start_demo("graphics-demo")
+    time.sleep(1.0)
+    screenshot = screenshot_capture.capture_window("graphics-demo", "test")
+
+    # Find a single texture
+    match = texture_finder.find_texture(screenshot, "assets/player.png", threshold=0.8)
+    assert match.found
+    print(f"Player at {match.center} with {match.confidence:.0%} confidence")
+
+    # Find multiple instances (e.g., coins)
+    matches = texture_finder.find_texture_multiple(screenshot, "assets/coin.png")
+    assert matches.count >= 5, f"Expected 5 coins, found {matches.count}"
+
+    # Find scaled texture (0.5x to 2x size)
+    match = texture_finder.find_texture_scaled(screenshot, "assets/enemy.png",
+                                                min_scale=0.5, max_scale=2.0)
+
+    # Find rotated/transformed texture using SIFT features
+    match = texture_finder.find_texture_rotated(screenshot, "assets/boss.png")
+
+    # Find colored regions (e.g., red health bar)
+    red_regions = texture_finder.find_color_region(screenshot,
+                                                    color_bgr=(0, 0, 255),  # BGR format
+                                                    tolerance=30)
+```
+
+**TextureFinder Methods:**
+
+| Method | Use Case |
+|--------|----------|
+| `find_texture()` | Exact match - texture appears at same size |
+| `find_texture_multiple()` | Find all instances of a texture |
+| `find_texture_scaled()` | Texture may be rendered at different scale |
+| `find_texture_rotated()` | Texture may be rotated (uses SIFT features) |
+| `find_color_region()` | Find UI elements by color |
+
+All methods save debug images showing matches to `test_output/`.
+
 ## Markers
 
 - `@pytest.mark.visual` - Tests that verify visual output
