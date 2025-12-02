@@ -48,18 +48,32 @@ jobs:
       # =========================================================================
       # macOS Setup
       # =========================================================================
-      - name: Install LLVM 20 (macOS)
+      - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm@20 ninja
-          # Handle both Apple Silicon and Intel paths
+          brew update
+          brew install llvm ninja cmake
+
+          # Find the installed LLVM version (prefer @20, fall back to latest)
           if [ -d "/opt/homebrew/opt/llvm@20" ]; then
-            echo "CC=/opt/homebrew/opt/llvm@20/bin/clang" >> $GITHUB_ENV
-            echo "CXX=/opt/homebrew/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
+            LLVM_PATH="/opt/homebrew/opt/llvm@20"
+          elif [ -d "/opt/homebrew/opt/llvm" ]; then
+            LLVM_PATH="/opt/homebrew/opt/llvm"
+          elif [ -d "/usr/local/opt/llvm@20" ]; then
+            LLVM_PATH="/usr/local/opt/llvm@20"
+          elif [ -d "/usr/local/opt/llvm" ]; then
+            LLVM_PATH="/usr/local/opt/llvm"
           else
-            echo "CC=/usr/local/opt/llvm@20/bin/clang" >> $GITHUB_ENV
-            echo "CXX=/usr/local/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
+            echo "Error: LLVM not found"
+            exit 1
           fi
+
+          echo "Using LLVM at: $LLVM_PATH"
+          echo "CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+
+          # Verify version
+          ${LLVM_PATH}/bin/clang++ --version
 
       # =========================================================================
       # Linux Setup
@@ -73,30 +87,67 @@ jobs:
             libgl1-mesa-dev libglu1-mesa-dev \
             libasound2-dev libpulse-dev \
             libwayland-dev libxkbcommon-dev \
-            ninja-build
+            ninja-build wget lsb-release software-properties-common gnupg
 
-      - name: Install LLVM 20 (Linux)
+      - name: Install LLVM (Linux)
         if: runner.os == 'Linux'
         run: |
+          # Add LLVM apt repository
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 20 all
-          echo "CC=clang-20" >> $GITHUB_ENV
-          echo "CXX=clang++-20" >> $GITHUB_ENV
+
+          # Try LLVM 20, fall back to 19, then 18
+          if sudo ./llvm.sh 20 all; then
+            echo "CC=clang-20" >> $GITHUB_ENV
+            echo "CXX=clang++-20" >> $GITHUB_ENV
+          elif sudo ./llvm.sh 19 all; then
+            echo "CC=clang-19" >> $GITHUB_ENV
+            echo "CXX=clang++-19" >> $GITHUB_ENV
+          elif sudo ./llvm.sh 18 all; then
+            echo "CC=clang-18" >> $GITHUB_ENV
+            echo "CXX=clang++-18" >> $GITHUB_ENV
+          else
+            echo "Error: Could not install LLVM"
+            exit 1
+          fi
+
+      - name: Verify LLVM (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          $CXX --version
 
       # =========================================================================
       # Windows Setup
       # =========================================================================
-      - name: Install LLVM 20 (Windows)
+      - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          choco install llvm --version=20.1.0 -y
-          echo "CC=C:\Program Files\LLVM\bin\clang.exe" >> $env:GITHUB_ENV
-          echo "CXX=C:\Program Files\LLVM\bin\clang++.exe" >> $env:GITHUB_ENV
+          # Download LLVM from GitHub releases
+          $llvmVersion = "18.1.8"
+          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvmVersion}/LLVM-${llvmVersion}-win64.exe"
+          $installerPath = "$env:TEMP\llvm-installer.exe"
+
+          Write-Host "Downloading LLVM ${llvmVersion}..."
+          Invoke-WebRequest -Uri $llvmUrl -OutFile $installerPath
+
+          Write-Host "Installing LLVM..."
+          Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
+
+          # Add to PATH and set environment variables
+          $llvmBin = "C:\Program Files\LLVM\bin"
+          echo "$llvmBin" >> $env:GITHUB_PATH
+          echo "CC=$llvmBin\clang.exe" >> $env:GITHUB_ENV
+          echo "CXX=$llvmBin\clang++.exe" >> $env:GITHUB_ENV
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         run: choco install ninja -y
+
+      - name: Verify LLVM (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          & "C:\Program Files\LLVM\bin\clang++.exe" --version
 
       # =========================================================================
       # vcpkg Setup
@@ -105,14 +156,23 @@ jobs:
         uses: lukka/run-vcpkg@v11
         with:
           vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
+          runVcpkgInstall: false
 
       # =========================================================================
       # Build Release
       # =========================================================================
-      - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
-        env:
-          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          cmake --preset ${{ matrix.preset }}
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
+          cmake --preset ${{ matrix.preset }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }} --parallel
