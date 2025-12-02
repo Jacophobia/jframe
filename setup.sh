@@ -482,6 +482,21 @@ build_jframe() {
     # Set VCPKG_ROOT for CMake
     export VCPKG_ROOT="${VCPKG_DIR}"
 
+    # Set CC/CXX for CMake to find the correct compiler
+    if [ "$(detect_os)" = "macos" ]; then
+        if [ "$(detect_arch)" = "arm64" ]; then
+            export CC="/opt/homebrew/opt/llvm@20/bin/clang"
+            export CXX="/opt/homebrew/opt/llvm@20/bin/clang++"
+        else
+            export CC="/usr/local/opt/llvm@20/bin/clang"
+            export CXX="/usr/local/opt/llvm@20/bin/clang++"
+        fi
+    elif [ "$(detect_os)" = "linux" ]; then
+        export CC="/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang"
+        export CXX="/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang++"
+    fi
+    print_info "Using compiler: ${CXX}"
+
     # Check for FMOD
     if [ ! -d "${SCRIPT_DIR}/external/fmod/core" ]; then
         print_warning "FMOD not found in external/fmod/core"

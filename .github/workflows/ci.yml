@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            preset: macos-debug
+            name: macOS (Apple Silicon)
+          - os: ubuntu-24.04
+            preset: linux-debug
+            name: Linux
+          - os: windows-2022
+            preset: windows-debug
+            name: Windows
+
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      # =========================================================================
+      # macOS Setup
+      # =========================================================================
+      - name: Install LLVM 20 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@20 ninja
+          echo "CC=/opt/homebrew/opt/llvm@20/bin/clang" >> $GITHUB_ENV
+          echo "CXX=/opt/homebrew/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
+
+      # =========================================================================
+      # Linux Setup
+      # =========================================================================
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev \
+            libwayland-dev libxkbcommon-dev \
+            ninja-build
+
+      - name: Install LLVM 20 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
+          echo "CC=clang-20" >> $GITHUB_ENV
+          echo "CXX=clang++-20" >> $GITHUB_ENV
+
+      # =========================================================================
+      # Windows Setup
+      # =========================================================================
+      - name: Install LLVM 20 (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install llvm --version=20.1.0 -y
+          echo "CC=C:\Program Files\LLVM\bin\clang.exe" >> $env:GITHUB_ENV
+          echo "CXX=C:\Program Files\LLVM\bin\clang++.exe" >> $env:GITHUB_ENV
+
+      - name: Install Ninja (Windows)
+        if: runner.os == 'Windows'
+        run: choco install ninja -y
+
+      # =========================================================================
+      # vcpkg Setup (all platforms)
+      # =========================================================================
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
+
+      # =========================================================================
+      # Build & Test
+      # =========================================================================
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+        env:
+          VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      # =========================================================================
+      # Upload artifacts
+      # =========================================================================
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-${{ matrix.os }}
+          path: |
+            build/${{ matrix.preset }}/lib
+            build/${{ matrix.preset }}/bin
+            build/${{ matrix.preset }}/compile_commands.json
+          retention-days: 7
