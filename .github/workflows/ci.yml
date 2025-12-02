@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [mainline, develop]
   pull_request:
-    branches: [main, develop]
+    branches: [mainline, develop]
 
 env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
