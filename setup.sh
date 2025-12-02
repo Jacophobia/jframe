@@ -108,11 +108,11 @@ Description:
     This script sets up a complete development environment for JFrame:
 
     1. Installs Homebrew (macOS/Linux) if not present
-    2. Installs required compilers (LLVM 20 on macOS, GCC 13+ on Linux)
+    2. Installs LLVM/Clang 20+ (required for C++23 'import std;')
     3. Installs CMake, Ninja, and other build tools
     4. Installs vcpkg package manager
     5. Installs system libraries (Linux only)
-    6. Configures and builds JFrame
+    6. Configures and builds JFrame with C++23
 
     The script is idempotent - running it multiple times is safe and will
     only install/update components that are missing or outdated.
@@ -379,13 +379,33 @@ setup_linux() {
     install_homebrew
     setup_homebrew_path
 
-    # Install GCC 13 via Homebrew (for consistent C++23 support)
-    print_info "Checking GCC..."
-    if ! brew list gcc@13 &>/dev/null; then
-        print_info "Installing GCC 13..."
-        brew install gcc@13
+    # LLVM path for Linux (Homebrew)
+    local LLVM_PATH="/home/linuxbrew/.linuxbrew/opt/llvm@20"
+
+    # Install LLVM 20 via Homebrew (required for import std;)
+    print_info "Checking LLVM 20..."
+    if [ ! -x "${LLVM_PATH}/bin/clang++" ]; then
+        print_info "Installing LLVM 20..."
+        brew install llvm@20
     fi
-    print_success "GCC 13 installed via Homebrew"
+
+    # Verify LLVM version
+    local LLVM_VERSION
+    LLVM_VERSION=$("${LLVM_PATH}/bin/clang++" --version 2>/dev/null | head -n1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    if [ -n "$LLVM_VERSION" ]; then
+        print_success "LLVM ${LLVM_VERSION} installed at ${LLVM_PATH}"
+    else
+        print_error "Failed to verify LLVM installation"
+        exit 1
+    fi
+
+    # Verify std.cppm exists
+    if [ ! -f "${LLVM_PATH}/share/libc++/v1/std.cppm" ]; then
+        print_error "std.cppm not found - LLVM may not have module support"
+        print_info "Try reinstalling: brew reinstall llvm@20"
+        exit 1
+    fi
+    print_success "std.cppm module found"
 
     # Install CMake and Ninja via Homebrew
     print_info "Installing build tools..."

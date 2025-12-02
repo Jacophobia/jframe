@@ -6,27 +6,18 @@
             "hidden": true,
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/install/${presetName}",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+            "generator": "Ninja",
             "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "23",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         },
         {
-            "name": "base-unix",
-            "hidden": true,
-            "inherits": "base",
-            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-        },
-        {
-            "name": "base-windows",
-            "hidden": true,
-            "inherits": "base",
-            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-        },
-        {
             "name": "macos-debug",
-            "inherits": "base-unix",
-            "displayName": "macOS Debug",
-            "generator": "Ninja",
+            "inherits": "base",
+            "displayName": "macOS Debug (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "JFRAME_ENABLE_ASAN": "ON",
@@ -42,9 +33,8 @@
         },
         {
             "name": "macos-release",
-            "inherits": "base-unix",
-            "displayName": "macOS Release",
-            "generator": "Ninja",
+            "inherits": "base",
+            "displayName": "macOS Release (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
@@ -60,13 +50,12 @@
         },
         {
             "name": "windows-debug",
-            "inherits": "base-windows",
-            "displayName": "Windows Debug (MSVC)",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
+            "inherits": "base",
+            "displayName": "Windows Debug (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
+                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang.exe",
+                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe"
             },
             "condition": {
                 "type": "equals",
@@ -76,30 +65,13 @@
         },
         {
             "name": "windows-release",
-            "inherits": "base-windows",
-            "displayName": "Windows Release (MSVC)",
-            "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
+            "inherits": "base",
+            "displayName": "Windows Release (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc",
-                "JFRAME_DEV_TOOLS": "OFF"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Windows"
-            }
-        },
-        {
-            "name": "windows-ninja-debug",
-            "inherits": "base-windows",
-            "displayName": "Windows Debug (Ninja + MSVC)",
-            "description": "Faster builds using Ninja with MSVC compiler",
-            "generator": "Ninja",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
+                "JFRAME_DEV_TOOLS": "OFF",
+                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang.exe",
+                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe"
             },
             "condition": {
                 "type": "equals",
@@ -109,12 +81,13 @@
         },
         {
             "name": "linux-debug",
-            "inherits": "base-unix",
-            "displayName": "Linux Debug",
-            "generator": "Ninja",
+            "inherits": "base",
+            "displayName": "Linux Debug (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "JFRAME_ENABLE_ASAN": "ON"
+                "JFRAME_ENABLE_ASAN": "ON",
+                "CMAKE_C_COMPILER": "/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang",
+                "CMAKE_CXX_COMPILER": "/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang++"
             },
             "condition": {
                 "type": "equals",
@@ -124,12 +97,13 @@
         },
         {
             "name": "linux-release",
-            "inherits": "base-unix",
-            "displayName": "Linux Release",
-            "generator": "Ninja",
+            "inherits": "base",
+            "displayName": "Linux Release (Clang)",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "JFRAME_DEV_TOOLS": "OFF"
+                "JFRAME_DEV_TOOLS": "OFF",
+                "CMAKE_C_COMPILER": "/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang",
+                "CMAKE_CXX_COMPILER": "/home/linuxbrew/.linuxbrew/opt/llvm@20/bin/clang++"
             },
             "condition": {
                 "type": "equals",
@@ -149,17 +123,11 @@
         },
         {
             "name": "windows-debug",
-            "configurePreset": "windows-debug",
-            "configuration": "Debug"
+            "configurePreset": "windows-debug"
         },
         {
             "name": "windows-release",
-            "configurePreset": "windows-release",
-            "configuration": "Release"
-        },
-        {
-            "name": "windows-ninja-debug",
-            "configurePreset": "windows-ninja-debug"
+            "configurePreset": "windows-release"
         },
         {
             "name": "linux-debug",
