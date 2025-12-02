@@ -6,14 +6,25 @@
             "hidden": true,
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/install/${presetName}",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         },
         {
-            "name": "macos-debug",
+            "name": "base-unix",
+            "hidden": true,
             "inherits": "base",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        },
+        {
+            "name": "base-windows",
+            "hidden": true,
+            "inherits": "base",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+        },
+        {
+            "name": "macos-debug",
+            "inherits": "base-unix",
             "displayName": "macOS Debug",
             "generator": "Ninja",
             "cacheVariables": {
@@ -31,7 +42,7 @@
         },
         {
             "name": "macos-release",
-            "inherits": "base",
+            "inherits": "base-unix",
             "displayName": "macOS Release",
             "generator": "Ninja",
             "cacheVariables": {
@@ -49,7 +60,7 @@
         },
         {
             "name": "windows-debug",
-            "inherits": "base",
+            "inherits": "base-windows",
             "displayName": "Windows Debug (MSVC)",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
@@ -65,7 +76,7 @@
         },
         {
             "name": "windows-release",
-            "inherits": "base",
+            "inherits": "base-windows",
             "displayName": "Windows Release (MSVC)",
             "generator": "Visual Studio 17 2022",
             "architecture": "x64",
@@ -82,7 +93,7 @@
         },
         {
             "name": "windows-ninja-debug",
-            "inherits": "base",
+            "inherits": "base-windows",
             "displayName": "Windows Debug (Ninja + MSVC)",
             "description": "Faster builds using Ninja with MSVC compiler",
             "generator": "Ninja",
@@ -98,7 +109,7 @@
         },
         {
             "name": "linux-debug",
-            "inherits": "base",
+            "inherits": "base-unix",
             "displayName": "Linux Debug",
             "generator": "Ninja",
             "cacheVariables": {
@@ -113,7 +124,7 @@
         },
         {
             "name": "linux-release",
-            "inherits": "base",
+            "inherits": "base-unix",
             "displayName": "Linux Release",
             "generator": "Ninja",
             "cacheVariables": {
