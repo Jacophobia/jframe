@@ -46,21 +46,25 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install llvm ninja cmake
+          brew install llvm@20 ninja cmake
 
-          # Find the installed LLVM version (prefer @20, fall back to latest)
+          # Determine Homebrew prefix (different on ARM vs Intel)
           if [ -d "/opt/homebrew/opt/llvm@20" ]; then
             LLVM_PATH="/opt/homebrew/opt/llvm@20"
-          elif [ -d "/opt/homebrew/opt/llvm" ]; then
-            LLVM_PATH="/opt/homebrew/opt/llvm"
+          elif [ -d "/usr/local/opt/llvm@20" ]; then
+            LLVM_PATH="/usr/local/opt/llvm@20"
           else
-            echo "Error: LLVM not found"
+            echo "Error: LLVM@20 not found"
             exit 1
           fi
 
           echo "Using LLVM at: $LLVM_PATH"
-          echo "CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
-          echo "CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+          echo "JFRAME_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "JFRAME_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+
+          # Set library paths for consistent libc++ usage
+          echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${LLVM_PATH}/include" >> $GITHUB_ENV
 
           # Verify version
           ${LLVM_PATH}/bin/clang++ --version
@@ -79,32 +83,17 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             ninja-build wget lsb-release software-properties-common gnupg
 
-      - name: Install LLVM (Linux)
+      - name: Install Clang (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Add LLVM apt repository
+          # Install LLVM 20 from LLVM apt repository
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
 
-          # Try LLVM 20, fall back to 19, then 18
-          if sudo ./llvm.sh 20 all; then
-            echo "CC=clang-20" >> $GITHUB_ENV
-            echo "CXX=clang++-20" >> $GITHUB_ENV
-          elif sudo ./llvm.sh 19 all; then
-            echo "CC=clang-19" >> $GITHUB_ENV
-            echo "CXX=clang++-19" >> $GITHUB_ENV
-          elif sudo ./llvm.sh 18 all; then
-            echo "CC=clang-18" >> $GITHUB_ENV
-            echo "CXX=clang++-18" >> $GITHUB_ENV
-          else
-            echo "Error: Could not install LLVM"
-            exit 1
-          fi
-
-      - name: Verify LLVM (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          $CXX --version
+          # Set for our project build (not for vcpkg)
+          echo "JFRAME_CC=clang-20" >> $GITHUB_ENV
+          echo "JFRAME_CXX=clang++-20" >> $GITHUB_ENV
 
       # =========================================================================
       # Windows Setup
@@ -113,8 +102,8 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Download LLVM from GitHub releases
-          $llvmVersion = "18.1.8"
+          # Download LLVM 20 from GitHub releases
+          $llvmVersion = "20.1.6"
           $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvmVersion}/LLVM-${llvmVersion}-win64.exe"
           $installerPath = "$env:TEMP\llvm-installer.exe"
 
@@ -124,20 +113,14 @@ jobs:
           Write-Host "Installing LLVM..."
           Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
 
-          # Add to PATH and set environment variables
+          # Set for our project build
           $llvmBin = "C:\Program Files\LLVM\bin"
-          echo "$llvmBin" >> $env:GITHUB_PATH
-          echo "CC=$llvmBin\clang.exe" >> $env:GITHUB_ENV
-          echo "CXX=$llvmBin\clang++.exe" >> $env:GITHUB_ENV
+          echo "JFRAME_CC=$llvmBin\clang.exe" >> $env:GITHUB_ENV
+          echo "JFRAME_CXX=$llvmBin\clang++.exe" >> $env:GITHUB_ENV
 
       - name: Install Ninja (Windows)
         if: runner.os == 'Windows'
         run: choco install ninja -y
-
-      - name: Verify LLVM (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          & "C:\Program Files\LLVM\bin\clang++.exe" --version
 
       # =========================================================================
       # vcpkg Setup (all platforms)
@@ -151,10 +134,20 @@ jobs:
       # =========================================================================
       # Build & Test
       # =========================================================================
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure (macOS)
+        if: runner.os == 'macOS'
         run: |
           export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          export CC=$JFRAME_CC
+          export CXX=$JFRAME_CXX
+          cmake --preset ${{ matrix.preset }}
+
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
+          export CC=$JFRAME_CC
+          export CXX=$JFRAME_CXX
           cmake --preset ${{ matrix.preset }}
 
       - name: Configure (Windows)
@@ -162,6 +155,8 @@ jobs:
         shell: pwsh
         run: |
           $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
+          $env:CC = $env:JFRAME_CC
+          $env:CXX = $env:JFRAME_CXX
           cmake --preset ${{ matrix.preset }}
 
       - name: Build
