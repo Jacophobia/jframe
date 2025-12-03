@@ -6,6 +6,7 @@ module;
 #include <algorithm>
 #include <cmath>
 #include <compare>
+#include <iterator>
 #include <random>
 
 #include <glm/glm.hpp>

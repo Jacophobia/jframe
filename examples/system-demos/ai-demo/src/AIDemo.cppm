@@ -3,16 +3,19 @@
 
 module;
 
-#include <entt/entt.hpp>
 #include <any>
 #include <cmath>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <print>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 export module ai.demo;
 import jframe.types;

@@ -6,6 +6,7 @@ module;
 #include <algorithm>
 #include <any>
 #include <compare>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>

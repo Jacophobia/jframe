@@ -3,11 +3,14 @@
 
 module;
 
-#include <entt/entt.hpp>
+#include <compare>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 export module jframe.entity.impl;
 import jframe.entity;

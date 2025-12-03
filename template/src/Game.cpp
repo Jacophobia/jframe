@@ -2,17 +2,20 @@
 // JFrame Template Game - Implementation
 // This file demonstrates how to use all JFrame systems together
 
-// EnTT must be included before standard library headers for iterator compatibility
-#include <entt/entt.hpp>
-
+// Standard library headers with iterator/comparison support must come before EnTT
+#include <algorithm>
+#include <any>
+#include <compare>
 #include <fstream>
+#include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
-#include <vector>
-#include <memory>
-#include <any>
-#include <algorithm>
 #include <utility>
+#include <vector>
+
+// EnTT after standard headers for MSVC C++23 module compatibility
+#include <entt/entt.hpp>
 import jframe;
 import jframe.core;
 import jframe.gas;

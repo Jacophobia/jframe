@@ -1,8 +1,10 @@
 // tests/unit/CameraSystemTests.cpp
 // Camera system unit tests
 
-#include <memory>
 #include <cmath>
+#include <compare>
+#include <iterator>
+#include <memory>
 
 #include <entt/entity/entity.hpp>
 #include <gtest/gtest.h>

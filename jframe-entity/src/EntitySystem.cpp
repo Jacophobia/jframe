@@ -4,6 +4,9 @@
 module;
 
 #include <compare>
+#include <iterator>
+
+#include <entt/entt.hpp>
 
 module jframe.entity.impl;
 

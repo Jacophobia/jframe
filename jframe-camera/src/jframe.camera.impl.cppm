@@ -3,9 +3,12 @@
 
 module;
 
+#include <compare>
+#include <iterator>
+#include <memory>
+
 #include <glm/glm.hpp>
 #include <entt/entity/fwd.hpp>
-#include <memory>
 
 export module jframe.camera.impl;
 

@@ -1,19 +1,22 @@
 // examples/ability-demo/src/Game.cpp
 // Gameplay Ability System demonstration implementation
 
-// EnTT must be included before import std for iterator compatibility
-#include <entt/entt.hpp>
-
+// Standard library headers with iterator/comparison support must come before EnTT
 #include <algorithm>
 #include <any>
 #include <cmath>
+#include <compare>
 #include <format>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+// EnTT after standard headers for MSVC C++23 module compatibility
+#include <entt/entt.hpp>
 
 import jframe;
 import jframe.core;

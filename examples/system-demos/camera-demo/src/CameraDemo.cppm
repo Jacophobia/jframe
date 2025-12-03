@@ -3,12 +3,15 @@
 
 module;
 
-#include <entt/entt.hpp>
 #include <cmath>
+#include <compare>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <print>
 #include <string>
+
+#include <entt/entt.hpp>
 
 export module camera.demo;
 import jframe.types;

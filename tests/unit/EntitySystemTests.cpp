@@ -1,7 +1,9 @@
 // tests/unit/EntitySystemTests.cpp
 // Entity system unit tests
 
+#include <compare>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <vector>
 

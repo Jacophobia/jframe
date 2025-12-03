@@ -3,13 +3,16 @@
 
 module;
 
-#include <entt/entt.hpp>
+#include <compare>
 #include <cstdint>
 #include <format>
+#include <iterator>
 #include <print>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <entt/entt.hpp>
 
 export module entity.demo;
 import jframe.types;

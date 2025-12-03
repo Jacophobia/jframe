@@ -3,8 +3,10 @@
 
 module;
 
+#include <compare>
 #include <cstddef>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <utility>
 #include <vector>
