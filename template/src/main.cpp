@@ -2,6 +2,9 @@
 // JFrame Template Game - Entry Point
 // This file shows how to build a JFrame engine with all systems enabled
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe;
 import jframe.core;

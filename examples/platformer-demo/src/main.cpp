@@ -1,6 +1,9 @@
 // examples/platformer-demo/src/main.cpp
 // Platformer demo showcasing all JFrame engine features
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe;
 import jframe.core;

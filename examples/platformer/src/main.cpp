@@ -1,6 +1,9 @@
 // examples/platformer/src/main.cpp
 // Platformer example entry point
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe;
 import jframe.core;

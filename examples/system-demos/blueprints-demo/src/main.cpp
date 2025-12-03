@@ -1,6 +1,9 @@
 // main.cpp
 // Blueprints System Demo - Comprehensive API demonstration
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe.types;
 import jframe.entity;

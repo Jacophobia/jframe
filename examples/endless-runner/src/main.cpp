@@ -1,6 +1,9 @@
 // examples/endless-runner/src/main.cpp
 // Endless runner demo showcasing procedural level generation
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe;
 import jframe.core;
