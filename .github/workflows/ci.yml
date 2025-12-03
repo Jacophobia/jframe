@@ -171,6 +171,16 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
+      # Cache vcpkg installed packages (more reliable than binary caching with custom triplets)
+      - name: Cache vcpkg installed packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+          restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
+
       # =========================================================================
       # Build & Test
       # =========================================================================
