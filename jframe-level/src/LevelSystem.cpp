@@ -5,6 +5,7 @@ module;
 #include <any>
 #include <compare>
 #include <cstdint>
+#include <expected>
 #include <optional>
 #include <string>
 #include <system_error>

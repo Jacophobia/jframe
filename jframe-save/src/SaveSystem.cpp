@@ -6,6 +6,7 @@ module;
 #include <algorithm>
 #include <chrono>
 #include <compare>
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <optional>
