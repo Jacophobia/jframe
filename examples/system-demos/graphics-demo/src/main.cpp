@@ -329,12 +329,12 @@ int main() {
         cam.viewportSize = windowSize;
         graphics->setCamera(cam);
 
-        // Main render loop - run for approximately 5 seconds
+        // Main render loop - run for approximately 60 seconds
         float time = 0.0f;
         const float targetFPS = 60.0f;
         const float frameTime = 1.0f / targetFPS;
         int frameCount = 0;
-        const int maxFrames = static_cast<int>(5.0f * targetFPS);  // 5 seconds
+        const int maxFrames = static_cast<int>(60.0f * targetFPS);  // 60 seconds
 
         std::println("Starting render loop ({} frames at {} FPS)...", maxFrames, targetFPS);
         std::println("");
