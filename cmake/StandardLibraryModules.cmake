@@ -45,7 +45,7 @@ if(MSVC)
 endif()
 
 # =============================================================================
-# Clang Configuration (macOS / Linux)
+# Clang Configuration (macOS / Linux / Windows with MSYS2)
 # =============================================================================
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Configuring Clang for C++23 modules with 'import std;' support")
@@ -71,6 +71,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         "/usr/lib/llvm-17/share/libc++/v1/std.cppm"
         # Generic paths
         "/usr/share/libc++/v1/std.cppm"
+        # Windows MSYS2 CLANG64 paths (CI uses D:\a\_temp\msys64)
+        "D:/a/_temp/msys64/clang64/share/libc++/v1/std.cppm"
+        "C:/msys64/clang64/share/libc++/v1/std.cppm"
+        # MSYS2 standard installation
+        "/clang64/share/libc++/v1/std.cppm"
     )
 
     message(STATUS "  Compiler: ${CMAKE_CXX_COMPILER}")

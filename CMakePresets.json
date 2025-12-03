@@ -55,12 +55,10 @@
         {
             "name": "windows-debug",
             "inherits": "base",
-            "displayName": "Windows Debug (Clang)",
-            "description": "Uses CC/CXX env vars if set, otherwise LLVM in Program Files",
+            "displayName": "Windows Debug (Clang via MSYS2)",
+            "description": "Uses MSYS2 CLANG64 for libc++ with import std support",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang.exe",
-                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe"
+                "CMAKE_BUILD_TYPE": "Debug"
             },
             "condition": {
                 "type": "equals",
@@ -71,15 +69,13 @@
         {
             "name": "windows-release",
             "inherits": "base",
-            "displayName": "Windows Release (Clang)",
-            "description": "Uses CC/CXX env vars if set, otherwise LLVM in Program Files",
+            "displayName": "Windows Release (Clang via MSYS2)",
+            "description": "Uses MSYS2 CLANG64 for libc++ with import std support",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
                 "JFRAME_BUILD_TESTS": "OFF",
-                "JFRAME_BUILD_EXAMPLES": "OFF",
-                "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang.exe",
-                "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe"
+                "JFRAME_BUILD_EXAMPLES": "OFF"
             },
             "condition": {
                 "type": "equals",

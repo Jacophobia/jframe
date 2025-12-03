@@ -81,7 +81,7 @@ jobs:
             libgl1-mesa-dev libglu1-mesa-dev \
             libasound2-dev libpulse-dev \
             libwayland-dev libxkbcommon-dev \
-            autoconf autoconf-archive automake libtool \
+            autoconf autoconf-archive automake libtool libltdl-dev \
             ninja-build wget lsb-release software-properties-common gnupg
 
       - name: Install Clang (Linux)
@@ -97,31 +97,59 @@ jobs:
           echo "JFRAME_CXX=clang++-20" >> $GITHUB_ENV
 
       # =========================================================================
-      # Windows Setup
+      # Windows Setup (MSYS2 CLANG64 for libc++ with import std support)
       # =========================================================================
-      - name: Install LLVM (Windows)
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-libc++
+            mingw-w64-clang-x86_64-lld
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-pkg-config
+            git
+            curl
+            zip
+            unzip
+            tar
+
+      - name: Set Windows compiler paths
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Download LLVM 20 from GitHub releases
-          $llvmVersion = "20.1.6"
-          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvmVersion}/LLVM-${llvmVersion}-win64.exe"
-          $installerPath = "$env:TEMP\llvm-installer.exe"
+          # MSYS2 CLANG64 paths
+          $msys2Path = "D:\a\_temp\msys64\clang64"
+          echo "JFRAME_CC=$msys2Path\bin\clang.exe" >> $env:GITHUB_ENV
+          echo "JFRAME_CXX=$msys2Path\bin\clang++.exe" >> $env:GITHUB_ENV
+          echo "MSYS2_PATH=$msys2Path" >> $env:GITHUB_ENV
 
-          Write-Host "Downloading LLVM ${llvmVersion}..."
-          Invoke-WebRequest -Uri $llvmUrl -OutFile $installerPath
+          # Add MSYS2 to PATH for DLLs
+          echo "$msys2Path\bin" >> $env:GITHUB_PATH
 
-          Write-Host "Installing LLVM..."
-          Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
-
-          # Set for our project build
-          $llvmBin = "C:\Program Files\LLVM\bin"
-          echo "JFRAME_CC=$llvmBin\clang.exe" >> $env:GITHUB_ENV
-          echo "JFRAME_CXX=$llvmBin\clang++.exe" >> $env:GITHUB_ENV
-
-      - name: Install Ninja (Windows)
+      - name: Verify MSYS2 Clang and check for std.cppm (Windows)
         if: runner.os == 'Windows'
-        run: choco install ninja -y
+        shell: msys2 {0}
+        run: |
+          echo "Clang version:"
+          clang++ --version
+
+          echo ""
+          echo "Checking for std.cppm..."
+          STDCPPM_PATH="/clang64/share/libc++/v1/std.cppm"
+          if [ -f "$STDCPPM_PATH" ]; then
+            echo "Found std.cppm at: $STDCPPM_PATH"
+          else
+            echo "std.cppm not found at expected location, searching..."
+            find /clang64 -name "std.cppm" 2>/dev/null || echo "std.cppm not found in MSYS2 installation"
+            echo ""
+            echo "Checking libc++ include path:"
+            ls -la /clang64/include/c++/v1/ | head -20
+          fi
 
       # =========================================================================
       # vcpkg Setup (all platforms)
@@ -160,16 +188,29 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $env:CC = $env:JFRAME_CC
-          $env:CXX = $env:JFRAME_CXX
+          export CC=$JFRAME_CC
+          export CXX=$JFRAME_CXX
+          # Use MSYS2 cmake from CLANG64
           cmake --preset ${{ matrix.preset }}
 
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
-      - name: Test
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
 
       # =========================================================================
