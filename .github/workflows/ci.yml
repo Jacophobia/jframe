@@ -21,9 +21,16 @@ jobs:
           - os: ubuntu-24.04
             preset: linux-debug
             name: Linux
-          - os: windows-2022
-            preset: windows-debug
-            name: Windows
+          # Windows disabled: EnTT has MSVC C++23 module compatibility issues
+          # Error: 'entt::internal::sparse_set_iterator' no operator "!=" matches
+          # This is an ADL issue when using 'import std;' with MSVC - operator!=
+          # from std::rel_ops or synthesized from operator== is not found.
+          # See: https://github.com/skypjack/entt/issues/1138
+          # Fixed: nlohmann/json and cereal compatibility (using std::any and PIMPL)
+          # Blocked: EnTT iterator operators with MSVC C++23 modules
+          # - os: windows-2022
+          #   preset: windows-debug
+          #   name: Windows
 
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
