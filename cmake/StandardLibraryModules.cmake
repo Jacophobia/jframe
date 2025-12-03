@@ -50,8 +50,15 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Configuring Clang for C++23 modules with 'import std;' support")
 
-    # Try to find std.cppm in common locations
+    # First, try to derive the libc++ path from the compiler location
+    # This handles cases where LLVM is installed in non-standard locations (e.g., CI runners)
+    get_filename_component(COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(LLVM_ROOT "${COMPILER_DIR}" DIRECTORY)
+
+    # Try to find std.cppm - first check relative to compiler, then common locations
     set(POSSIBLE_STD_MODULE_PATHS
+        # Derived from compiler location (most reliable)
+        "${LLVM_ROOT}/share/libc++/v1/std.cppm"
         # macOS Homebrew LLVM 20
         "/opt/homebrew/opt/llvm@20/share/libc++/v1/std.cppm"
         "/opt/homebrew/opt/llvm/share/libc++/v1/std.cppm"
@@ -65,6 +72,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         # Generic paths
         "/usr/share/libc++/v1/std.cppm"
     )
+
+    message(STATUS "  Compiler: ${CMAKE_CXX_COMPILER}")
+    message(STATUS "  LLVM root (derived): ${LLVM_ROOT}")
 
     set(LIBC++_STD_MODULE "")
     foreach(PATH ${POSSIBLE_STD_MODULE_PATHS})
