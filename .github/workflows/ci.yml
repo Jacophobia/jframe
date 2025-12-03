@@ -21,9 +21,15 @@ jobs:
           - os: ubuntu-24.04
             preset: linux-debug
             name: Linux
-          - os: windows-2022
-            preset: windows-debug
-            name: Windows
+          # TODO: Windows CI is temporarily disabled pending C++23 'import std;' support
+          # LLVM on Windows doesn't include libc++ modules. Options being explored:
+          # 1. MSYS2 CLANG64 with x64-mingw-dynamic triplet (vcpkg compatibility issues)
+          # 2. Wait for Clang 21+ with clang-cl MSVC STL module support
+          # 3. Build libc++ from source with module support
+          # See: https://github.com/llvm/llvm-project/issues/93722
+          # - os: windows-2022
+          #   preset: windows-debug
+          #   name: Windows
 
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -97,61 +103,6 @@ jobs:
           echo "JFRAME_CXX=clang++-20" >> $GITHUB_ENV
 
       # =========================================================================
-      # Windows Setup (MSYS2 CLANG64 for libc++ with import std support)
-      # =========================================================================
-      - name: Setup MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: CLANG64
-          update: true
-          install: >-
-            mingw-w64-clang-x86_64-clang
-            mingw-w64-clang-x86_64-libc++
-            mingw-w64-clang-x86_64-lld
-            mingw-w64-clang-x86_64-cmake
-            mingw-w64-clang-x86_64-ninja
-            mingw-w64-clang-x86_64-pkg-config
-            git
-            curl
-            zip
-            unzip
-            tar
-
-      - name: Set Windows compiler paths
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # MSYS2 CLANG64 paths
-          $msys2Path = "D:\a\_temp\msys64\clang64"
-          echo "JFRAME_CC=$msys2Path\bin\clang.exe" >> $env:GITHUB_ENV
-          echo "JFRAME_CXX=$msys2Path\bin\clang++.exe" >> $env:GITHUB_ENV
-          echo "MSYS2_PATH=$msys2Path" >> $env:GITHUB_ENV
-
-          # Add MSYS2 to PATH for DLLs
-          echo "$msys2Path\bin" >> $env:GITHUB_PATH
-
-      - name: Verify MSYS2 Clang and check for std.cppm (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          echo "Clang version:"
-          clang++ --version
-
-          echo ""
-          echo "Checking for std.cppm..."
-          STDCPPM_PATH="/clang64/share/libc++/v1/std.cppm"
-          if [ -f "$STDCPPM_PATH" ]; then
-            echo "Found std.cppm at: $STDCPPM_PATH"
-          else
-            echo "std.cppm not found at expected location, searching..."
-            find /clang64 -name "std.cppm" 2>/dev/null || echo "std.cppm not found in MSYS2 installation"
-            echo ""
-            echo "Checking libc++ include path:"
-            ls -la /clang64/include/c++/v1/ | head -20
-          fi
-
-      # =========================================================================
       # vcpkg Setup (all platforms)
       # =========================================================================
       - name: Setup vcpkg
@@ -160,57 +111,22 @@ jobs:
           vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
           runVcpkgInstall: false
 
-      - name: Set VCPKG_ROOT (Unix)
-        if: runner.os != 'Windows'
+      - name: Set VCPKG_ROOT
         run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
-
-      - name: Set VCPKG_ROOT (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
 
       # =========================================================================
       # Build & Test
       # =========================================================================
-      - name: Configure (macOS)
-        if: runner.os == 'macOS'
+      - name: Configure
         run: |
           export CC=$JFRAME_CC
           export CXX=$JFRAME_CXX
           cmake --preset ${{ matrix.preset }}
 
-      - name: Configure (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          export CC=$JFRAME_CC
-          export CXX=$JFRAME_CXX
-          cmake --preset ${{ matrix.preset }}
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          export CC=$JFRAME_CC
-          export CXX=$JFRAME_CXX
-          # Use MSYS2 cmake from CLANG64
-          cmake --preset ${{ matrix.preset }}
-
-      - name: Build (Unix)
-        if: runner.os != 'Windows'
+      - name: Build
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: cmake --build --preset ${{ matrix.preset }} --parallel
-
-      - name: Test (Unix)
-        if: runner.os != 'Windows'
-        run: ctest --preset ${{ matrix.preset }} --output-on-failure
-
-      - name: Test (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
+      - name: Test
         run: ctest --preset ${{ matrix.preset }} --output-on-failure
 
       # =========================================================================
