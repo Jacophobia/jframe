@@ -4,6 +4,7 @@ add_executable(platformer
 )
 target_use_std_module(platformer)
 
+# Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(platformer
     PRIVATE
         jframe-contract
@@ -18,6 +19,8 @@ target_link_libraries(platformer
         jframe-events
         jframe-physics
         jframe-ai
+        lua
+        sol2::sol2
 )
 
 if(JFRAME_DEV_TOOLS)

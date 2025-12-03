@@ -4,6 +4,7 @@ add_executable(endless-runner
 )
 target_use_std_module(endless-runner)
 
+# Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(endless-runner
     PRIVATE
         jframe-contract
@@ -21,6 +22,8 @@ target_link_libraries(endless-runner
         jframe-camera
         jframe-components
         jframe-config
+        lua
+        sol2::sol2
 )
 
 if(JFRAME_DEV_TOOLS)
