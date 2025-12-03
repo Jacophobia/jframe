@@ -30,6 +30,9 @@ include(StaticAnalysis)
 include(Dependencies)
 include(StandardLibraryModules)
 
+# Add project-wide include directory (for compatibility headers)
+include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
+
 # Find dependencies
 find_dependencies()
 
