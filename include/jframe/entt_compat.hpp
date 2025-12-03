@@ -26,8 +26,6 @@ using entt::internal::operator<;
 using entt::internal::operator>;
 using entt::internal::operator<=;
 using entt::internal::operator>=;
-using entt::internal::operator+;
-using entt::internal::operator-;
 
 } // namespace jframe::entt_compat
 
@@ -38,8 +36,6 @@ using jframe::entt_compat::operator<;
 using jframe::entt_compat::operator>;
 using jframe::entt_compat::operator<=;
 using jframe::entt_compat::operator>=;
-using jframe::entt_compat::operator+;
-using jframe::entt_compat::operator-;
 
 #endif // _MSC_VER
 
