@@ -49,11 +49,30 @@ jobs:
       # =========================================================================
       # macOS Setup
       # =========================================================================
+      - name: Cache Homebrew packages (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        id: homebrew-cache
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/llvm@20
+            /opt/homebrew/opt/llvm@20
+          key: homebrew-macos-14-llvm20-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            homebrew-macos-14-llvm20-
+
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew update
-          brew install llvm@20 ninja cmake
+          # Only update if cache miss or llvm@20 not found
+          if [ ! -d "/opt/homebrew/opt/llvm@20" ]; then
+            brew update
+            brew install llvm@20
+          fi
+          # ninja and cmake are usually pre-installed on GitHub runners
+          brew list ninja &>/dev/null || brew install ninja
+          brew list cmake &>/dev/null || brew install cmake
 
           # Determine Homebrew prefix (different on ARM vs Intel)
           if [ -d "/opt/homebrew/opt/llvm@20" ]; then
@@ -79,25 +98,45 @@ jobs:
       # =========================================================================
       # Linux Setup
       # =========================================================================
-      - name: Install system libraries (Linux)
+      - name: Cache apt packages (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libgl1-mesa-dev libglu1-mesa-dev \
-            libasound2-dev libpulse-dev \
-            libwayland-dev libxkbcommon-dev \
-            autoconf autoconf-archive automake libtool libltdl-dev \
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >-
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libgl1-mesa-dev libglu1-mesa-dev
+            libasound2-dev libpulse-dev
+            libwayland-dev libxkbcommon-dev
+            autoconf autoconf-archive automake libtool libltdl-dev
             ninja-build wget lsb-release software-properties-common gnupg
+          version: 1.0
+
+      - name: Cache LLVM 20 (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        id: llvm-cache
+        with:
+          path: |
+            /usr/lib/llvm-20
+            /usr/bin/clang-20
+            /usr/bin/clang++-20
+            /usr/bin/llvm-*-20
+          key: llvm-20-ubuntu-24.04-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            llvm-20-ubuntu-24.04-
 
       - name: Install Clang (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Install LLVM 20 from LLVM apt repository
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 20 all
+          # Only install LLVM if not cached
+          if [ ! -f "/usr/bin/clang-20" ]; then
+            echo "LLVM 20 not found in cache, installing..."
+            wget https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            sudo ./llvm.sh 20 all
+          else
+            echo "LLVM 20 found in cache, skipping installation"
+          fi
 
           # Set compiler paths
           echo "JFRAME_CC=/usr/bin/clang-20" >> $GITHUB_ENV
