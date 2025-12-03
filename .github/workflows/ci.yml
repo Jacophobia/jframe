@@ -131,13 +131,21 @@ jobs:
           vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
           runVcpkgInstall: false
 
+      - name: Set VCPKG_ROOT (Unix)
+        if: runner.os != 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
+      - name: Set VCPKG_ROOT (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: echo "VCPKG_ROOT=${{ github.workspace }}\vcpkg" >> $env:GITHUB_ENV
+
       # =========================================================================
       # Build & Test
       # =========================================================================
       - name: Configure (macOS)
         if: runner.os == 'macOS'
         run: |
-          export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
           export CC=$JFRAME_CC
           export CXX=$JFRAME_CXX
           cmake --preset ${{ matrix.preset }}
@@ -145,7 +153,6 @@ jobs:
       - name: Configure (Linux)
         if: runner.os == 'Linux'
         run: |
-          export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
           export CC=$JFRAME_CC
           export CXX=$JFRAME_CXX
           cmake --preset ${{ matrix.preset }}
@@ -154,7 +161,6 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
           $env:CC = $env:JFRAME_CC
           $env:CXX = $env:JFRAME_CXX
           cmake --preset ${{ matrix.preset }}

@@ -6,6 +6,7 @@
             "hidden": true,
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/install/${presetName}",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "generator": "Ninja",
             "cacheVariables": {
                 "CMAKE_CXX_STANDARD": "23",
@@ -18,7 +19,6 @@
             "inherits": "base",
             "displayName": "macOS Debug (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise Homebrew LLVM 20",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "JFRAME_ENABLE_ASAN": "ON",
@@ -37,7 +37,6 @@
             "inherits": "base",
             "displayName": "macOS Release (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise Homebrew LLVM 20",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
@@ -58,7 +57,6 @@
             "inherits": "base",
             "displayName": "Windows Debug (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise LLVM in Program Files",
-            "toolchainFile": "$env{USERPROFILE}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "C:/Program Files/LLVM/bin/clang.exe",
@@ -75,7 +73,6 @@
             "inherits": "base",
             "displayName": "Windows Release (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise LLVM in Program Files",
-            "toolchainFile": "$env{USERPROFILE}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
@@ -95,7 +92,6 @@
             "inherits": "base",
             "displayName": "Linux Debug (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise /usr/local LLVM 20",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "JFRAME_ENABLE_ASAN": "ON",
@@ -113,7 +109,6 @@
             "inherits": "base",
             "displayName": "Linux Release (Clang)",
             "description": "Uses CC/CXX env vars if set, otherwise /usr/local LLVM 20",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
