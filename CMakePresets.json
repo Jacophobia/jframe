@@ -6,22 +6,24 @@
             "hidden": true,
             "binaryDir": "${sourceDir}/build/${presetName}",
             "installDir": "${sourceDir}/install/${presetName}",
-            "toolchainFile": "$env{HOME}/vcpkg/scripts/buildsystems/vcpkg.cmake",
+            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+            "generator": "Ninja",
             "cacheVariables": {
+                "CMAKE_CXX_STANDARD": "23",
+                "CMAKE_CXX_STANDARD_REQUIRED": "ON",
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
             }
         },
         {
             "name": "macos-debug",
             "inherits": "base",
-            "displayName": "macOS Debug",
-            "generator": "Ninja",
+            "displayName": "macOS Debug (Clang)",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses LLVM triplet for ABI compatibility.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "JFRAME_ENABLE_ASAN": "ON",
-                "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang",
-                "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
-                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm"
             },
             "condition": {
                 "type": "equals",
@@ -32,14 +34,16 @@
         {
             "name": "macos-release",
             "inherits": "base",
-            "displayName": "macOS Release",
-            "generator": "Ninja",
+            "displayName": "macOS Release (Clang)",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses LLVM triplet for ABI compatibility.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
-                "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang",
-                "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
-                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+                "JFRAME_BUILD_TESTS": "OFF",
+                "JFRAME_BUILD_EXAMPLES": "OFF",
+                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm"
             },
             "condition": {
                 "type": "equals",
@@ -51,11 +55,14 @@
             "name": "windows-debug",
             "inherits": "base",
             "displayName": "Windows Debug (MSVC)",
+            "description": "Uses MSVC 19.38+ for native C++23 import std support",
             "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            },
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
+                "CMAKE_BUILD_TYPE": "Debug"
             },
             "condition": {
                 "type": "equals",
@@ -67,28 +74,17 @@
             "name": "windows-release",
             "inherits": "base",
             "displayName": "Windows Release (MSVC)",
+            "description": "Uses MSVC 19.38+ for native C++23 import std support",
             "generator": "Visual Studio 17 2022",
-            "architecture": "x64",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc",
-                "JFRAME_DEV_TOOLS": "OFF"
-            },
-            "condition": {
-                "type": "equals",
-                "lhs": "${hostSystemName}",
-                "rhs": "Windows"
-            }
-        },
-        {
-            "name": "windows-ninja-debug",
-            "inherits": "base",
-            "displayName": "Windows Debug (Ninja + MSVC)",
-            "description": "Faster builds using Ninja with MSVC compiler",
-            "generator": "Ninja",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_CXX_FLAGS": "/std:c++latest /EHsc"
+                "JFRAME_DEV_TOOLS": "OFF",
+                "JFRAME_BUILD_TESTS": "OFF",
+                "JFRAME_BUILD_EXAMPLES": "OFF"
             },
             "condition": {
                 "type": "equals",
@@ -99,11 +95,12 @@
         {
             "name": "linux-debug",
             "inherits": "base",
-            "displayName": "Linux Debug",
-            "generator": "Ninja",
+            "displayName": "Linux Debug (Clang)",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "JFRAME_ENABLE_ASAN": "ON"
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
             },
             "condition": {
                 "type": "equals",
@@ -114,11 +111,15 @@
         {
             "name": "linux-release",
             "inherits": "base",
-            "displayName": "Linux Release",
-            "generator": "Ninja",
+            "displayName": "Linux Release (Clang)",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "JFRAME_DEV_TOOLS": "OFF"
+                "JFRAME_DEV_TOOLS": "OFF",
+                "JFRAME_BUILD_TESTS": "OFF",
+                "JFRAME_BUILD_EXAMPLES": "OFF",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
             },
             "condition": {
                 "type": "equals",
@@ -138,17 +139,11 @@
         },
         {
             "name": "windows-debug",
-            "configurePreset": "windows-debug",
-            "configuration": "Debug"
+            "configurePreset": "windows-debug"
         },
         {
             "name": "windows-release",
-            "configurePreset": "windows-release",
-            "configuration": "Release"
-        },
-        {
-            "name": "windows-ninja-debug",
-            "configurePreset": "windows-ninja-debug"
+            "configurePreset": "windows-release"
         },
         {
             "name": "linux-debug",

@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  push:
+    branches: [mainline, develop]
+  pull_request:
+    branches: [mainline, develop]
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            preset: macos-debug
+            name: macOS (Apple Silicon)
+          - os: ubuntu-24.04
+            preset: linux-debug
+            name: Linux
+          # TODO: Windows CI temporarily disabled - MSVC C++23 'import std;' has issues
+          # with third-party headers (nlohmann/json, cereal) in global module fragment
+          # - os: windows-2022
+          #   preset: windows-debug
+          #   name: Windows
+
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      # =========================================================================
+      # macOS Setup
+      # =========================================================================
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install llvm@20 ninja cmake
+
+          # Determine Homebrew prefix (different on ARM vs Intel)
+          if [ -d "/opt/homebrew/opt/llvm@20" ]; then
+            LLVM_PATH="/opt/homebrew/opt/llvm@20"
+          elif [ -d "/usr/local/opt/llvm@20" ]; then
+            LLVM_PATH="/usr/local/opt/llvm@20"
+          else
+            echo "Error: LLVM@20 not found"
+            exit 1
+          fi
+
+          echo "Using LLVM at: $LLVM_PATH"
+          echo "JFRAME_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "JFRAME_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+
+          # Set library paths for consistent libc++ usage
+          echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${LLVM_PATH}/include" >> $GITHUB_ENV
+
+          # Verify version
+          ${LLVM_PATH}/bin/clang++ --version
+
+      # =========================================================================
+      # Linux Setup
+      # =========================================================================
+      - name: Install system libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev \
+            libwayland-dev libxkbcommon-dev \
+            autoconf autoconf-archive automake libtool libltdl-dev \
+            ninja-build wget lsb-release software-properties-common gnupg
+
+      - name: Install Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # Install LLVM 20 from LLVM apt repository
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 20 all
+
+          # Set compiler paths
+          echo "JFRAME_CC=/usr/bin/clang-20" >> $GITHUB_ENV
+          echo "JFRAME_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
+
+          # Use custom triplet with libc++ for ABI compatibility
+          echo "VCPKG_DEFAULT_TRIPLET=x64-linux-libcxx" >> $GITHUB_ENV
+          echo "VCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/triplets" >> $GITHUB_ENV
+
+          # Verify libc++ is available
+          echo "Checking for libc++..."
+          ls -la /usr/lib/llvm-20/lib/libc++* || echo "libc++ libs not found in expected location"
+          ls -la /usr/lib/llvm-20/share/libc++/v1/std.cppm || echo "std.cppm not found"
+
+          # Verify compiler version
+          /usr/bin/clang++-20 --version
+
+      # =========================================================================
+      # vcpkg Setup (all platforms)
+      # =========================================================================
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
+          runVcpkgInstall: false
+
+      - name: Set VCPKG_ROOT (Unix)
+        if: runner.os != 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
+      - name: Set VCPKG_ROOT (Windows)
+        if: runner.os == 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
+
+      # =========================================================================
+      # Build & Test
+      # =========================================================================
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Pass compiler paths directly to CMake to ensure they're used
+          cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER=$JFRAME_CC \
+            -DCMAKE_CXX_COMPILER=$JFRAME_CXX
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --config Debug --parallel
+
+      - name: Test (Unix)
+        if: runner.os != 'Windows'
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        run: ctest --preset ${{ matrix.preset }} --build-config Debug --output-on-failure
+
+      # =========================================================================
+      # Upload artifacts
+      # =========================================================================
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-${{ matrix.os }}
+          path: |
+            build/${{ matrix.preset }}/lib
+            build/${{ matrix.preset }}/bin
+            build/${{ matrix.preset }}/compile_commands.json
+          retention-days: 7

@@ -333,7 +333,8 @@ void Game::loadLevel() {
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
 
         // Execute the level Lua file
-        auto result = lua.safe_script(dataAsset.rawText);
+        // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
+        auto result = lua.safe_script(dataAsset.rawText, sol::script_pass_on_error);
         if (!result.valid()) {
             jframe::core::logError("Failed to parse level Lua");
             return;
@@ -421,7 +422,8 @@ void Game::spawnEnemies(jframe::LevelId levelId) {
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
 
-        auto result = lua.safe_script(dataAsset.rawText);
+        // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
+        auto result = lua.safe_script(dataAsset.rawText, sol::script_pass_on_error);
         if (!result.valid()) return;
 
         sol::table levelTable = result;
@@ -480,7 +482,8 @@ void Game::spawnCollectibles(jframe::LevelId levelId) {
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
 
-        auto result = lua.safe_script(dataAsset.rawText);
+        // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
+        auto result = lua.safe_script(dataAsset.rawText, sol::script_pass_on_error);
         if (!result.valid()) return;
 
         sol::table levelTable = result;

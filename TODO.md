@@ -329,6 +329,15 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 
 ## Low Priority
 
+### Fruit DI Integration for Demos and Examples
+- [ ] Update all system demos to use Fruit dependency injection
+- [ ] Update examples (platformer, etc.) to use Fruit for system wiring
+- [ ] Update tutorials to demonstrate Fruit-based system injection
+- [ ] Document how users can register their own game-specific systems with Fruit
+- [ ] Provide example of custom system registration and injection
+
+**Goal:** Users should be able to inject JFrame systems into their application for easy access and use. They should also be able to build their own game-specific systems that can be registered with Fruit and injected alongside the engine systems.
+
 ### Minor Enhancements
 - [ ] Audio: FMOD fade-out using DSP
 - [ ] Graphics: Custom font loading via AssetSystem
