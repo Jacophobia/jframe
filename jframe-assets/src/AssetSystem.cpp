@@ -113,6 +113,7 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
 
                 // Try to parse as JSON - use accept() first to avoid exceptions
                 if (nlohmann::json::accept(fileContents)) {
+                    // Store parsed JSON in std::any for MSVC module compatibility
                     dataAsset.jsonData = nlohmann::json::parse(fileContents);
                     dataAsset.isJson = true;
                 } else {
@@ -306,6 +307,7 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
 
                 // Try to parse as JSON - use accept() first to avoid exceptions
                 if (nlohmann::json::accept(fileContents)) {
+                    // Store parsed JSON in std::any for MSVC module compatibility
                     btData.treeData = nlohmann::json::parse(fileContents);
                     btData.isJson = true;
                 } else {
@@ -509,6 +511,46 @@ void AssetSystem::checkForReloads() {
 void AssetSystem::reloadAsset(AssetHandle handle) {
     unloadAsset(handle);
     loadAsset(handle);
+}
+
+//==========================================================================
+// Helper functions for JSON access (MSVC C++23 module compatibility)
+//==========================================================================
+// These functions provide type-safe access to JSON data stored as std::any,
+// allowing the nlohmann/json header to be confined to .cpp files only.
+
+void setDataAssetJson(DataAsset& asset, const std::string& jsonText) {
+    if (nlohmann::json::accept(jsonText)) {
+        asset.jsonData = nlohmann::json::parse(jsonText);
+        asset.isJson = true;
+    } else {
+        asset.isJson = false;
+    }
+}
+
+bool hasDataAssetJson(const DataAsset& asset) {
+    return asset.isJson && asset.jsonData.has_value();
+}
+
+const std::any& getDataAssetJsonAny(const DataAsset& asset) {
+    return asset.jsonData;
+}
+
+void setBehaviorTreeJson(BehaviorTreeData& data, const std::string& jsonText) {
+    if (nlohmann::json::accept(jsonText)) {
+        data.treeData = nlohmann::json::parse(jsonText);
+        data.isJson = true;
+    } else {
+        data.isJson = false;
+    }
+}
+
+bool hasBehaviorTreeJson(const BehaviorTreeData& data) {
+    return data.isJson && data.treeData.has_value();
+}
+
+const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data) {
+    return data.treeData;
 }
 
 }  // namespace jframe

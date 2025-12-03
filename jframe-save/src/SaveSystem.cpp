@@ -12,6 +12,8 @@ module;
 #include <fstream>
 #include <sstream>
 #include <nlohmann/json.hpp>
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/string.hpp>
 
 module jframe.save.impl;
 
@@ -62,14 +64,17 @@ Result<void, SaveError> SaveSystem::save(SaveSlot slot, const std::string& saveN
         // Create save archive and serialize all registered saveables
         CerealSaveArchive archive(saveFile);
 
+        // Get the underlying cereal archive for direct serialization
+        auto& cerealArchive = *static_cast<cereal::BinaryOutputArchive*>(archive.getArchivePtr());
+
         // Write number of saveables directly to cereal archive
         std::uint32_t saveableCount = static_cast<std::uint32_t>(saveables_.size());
-        archive.getArchive()(saveableCount);
+        cerealArchive(saveableCount);
 
         // Serialize each saveable with its key
         for (auto* saveable : saveables_) {
             std::string key = saveable->getSaveKey();
-            archive.getArchive()(key);
+            cerealArchive(key);
             saveable->serialize(archive);
         }
 
@@ -135,9 +140,12 @@ Result<void, SaveError> SaveSystem::load(SaveSlot slot) {
         // Create load archive
         CerealLoadArchive archive(saveFile);
 
+        // Get the underlying cereal archive for direct deserialization
+        auto& cerealArchive = *static_cast<cereal::BinaryInputArchive*>(archive.getArchivePtr());
+
         // Read number of saveables from cereal archive
         std::uint32_t saveableCount = 0;
-        archive.getArchive()(saveableCount);
+        cerealArchive(saveableCount);
 
         // Create a map of saveables by their keys for fast lookup
         std::map<std::string, ISaveable*> saveableMap;
@@ -148,7 +156,7 @@ Result<void, SaveError> SaveSystem::load(SaveSlot slot) {
         // Deserialize each saved component
         for (std::uint32_t i = 0; i < saveableCount; ++i) {
             std::string key;
-            archive.getArchive()(key);
+            cerealArchive(key);
 
             // Find the corresponding saveable
             auto it = saveableMap.find(key);
