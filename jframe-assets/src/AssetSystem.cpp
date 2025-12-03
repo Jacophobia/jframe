@@ -115,8 +115,8 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 try {
                     dataAsset.jsonData = nlohmann::json::parse(fileContents);
                     dataAsset.isJson = true;
-                } catch (const nlohmann::json::parse_error&) {
-                    // Not JSON, keep as raw text
+                } catch (...) {
+                    // Not JSON or parse error, keep as raw text
                     dataAsset.isJson = false;
                 }
 
@@ -308,8 +308,8 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 try {
                     btData.treeData = nlohmann::json::parse(fileContents);
                     btData.isJson = true;
-                } catch (const nlohmann::json::parse_error&) {
-                    // Not JSON, keep as raw text only
+                } catch (...) {
+                    // Not JSON or parse error, keep as raw text only
                     btData.isJson = false;
                 }
 

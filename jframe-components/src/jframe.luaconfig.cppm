@@ -144,8 +144,8 @@ public:
                     }
                 }
             }
-        } catch (const sol::error&) {
-            // Return empty on error
+        } catch (...) {
+            // Return empty on any error
         }
 
         return result;
@@ -303,8 +303,8 @@ public:
                     result[bodyName] = cfg;
                 }
             }
-        } catch (const sol::error&) {
-            // Return empty on error
+        } catch (...) {
+            // Return empty on any error
         }
 
         return result;

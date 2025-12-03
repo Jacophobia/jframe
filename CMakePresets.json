@@ -50,8 +50,13 @@
         {
             "name": "windows-debug",
             "inherits": "base",
-            "displayName": "Windows Debug (Clang via MSYS2)",
-            "description": "Uses MSYS2 CLANG64 for libc++ with import std support",
+            "displayName": "Windows Debug (MSVC)",
+            "description": "Uses MSVC 19.38+ for native C++23 import std support",
+            "generator": "Visual Studio 17 2022",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug"
             },
@@ -64,8 +69,13 @@
         {
             "name": "windows-release",
             "inherits": "base",
-            "displayName": "Windows Release (Clang via MSYS2)",
-            "description": "Uses MSYS2 CLANG64 for libc++ with import std support",
+            "displayName": "Windows Release (MSVC)",
+            "description": "Uses MSVC 19.38+ for native C++23 import std support",
+            "generator": "Visual Studio 17 2022",
+            "architecture": {
+                "value": "x64",
+                "strategy": "set"
+            },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
@@ -82,9 +92,11 @@
             "name": "linux-debug",
             "inherits": "base",
             "displayName": "Linux Debug (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
+                "CMAKE_BUILD_TYPE": "Debug",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
             },
             "condition": {
                 "type": "equals",
@@ -96,12 +108,14 @@
             "name": "linux-release",
             "inherits": "base",
             "displayName": "Linux Release (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX",
+            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "JFRAME_DEV_TOOLS": "OFF",
                 "JFRAME_BUILD_TESTS": "OFF",
-                "JFRAME_BUILD_EXAMPLES": "OFF"
+                "JFRAME_BUILD_EXAMPLES": "OFF",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
             },
             "condition": {
                 "type": "equals",

@@ -280,7 +280,7 @@ bool GASSystem::loadDefinitionsFromLua(const std::string& luaSource) {
 
         return true;
 
-    } catch (const sol::error& e) {
+    } catch (...) {
         return false;
     }
 }

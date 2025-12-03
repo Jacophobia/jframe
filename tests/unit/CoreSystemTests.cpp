@@ -598,12 +598,13 @@ TEST_F(FrameTimerTest, MultipleTicks) {
 
 TEST_F(FrameTimerTest, DeltaTimeConsistency) {
     core::FrameTimer timer;
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     float dt1 = timer.tick();
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
     float dt2 = timer.tick();
-    // Both should be around 20ms = 0.02s
-    EXPECT_NEAR(dt1, dt2, 0.01f);
+    // Both should be around 50ms = 0.05s
+    // Use higher tolerance (25ms) for CI environments where timing may vary
+    EXPECT_NEAR(dt1, dt2, 0.025f);
 }
 
 //==========================================================================
