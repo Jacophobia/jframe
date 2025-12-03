@@ -759,12 +759,12 @@ TEST_F(PhysicsSystemTest, CollisionCallbackIsInvokedOnCollision) {
 
     PhysicsBodyDef def1{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start above entity2
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start above entity2 (lower Y = higher on screen)
         .size = {32.0f, 32.0f}  // Explicit size for collision
     };
     PhysicsBodyDef def2{
         .type = BodyType::Static,
-        .transform = {.x = 100.0f, .y = 50.0f},  // Ground below entity1
+        .transform = {.x = 100.0f, .y = 150.0f},  // Ground below entity1 (higher Y = lower on screen)
         .size = {100.0f, 32.0f}  // Wide platform
     };
 
@@ -883,10 +883,11 @@ TEST_F(PhysicsSystemTest, SensorBodiesDoNotCausePhysicalCollision) {
     physics->createBody(sensor, sensorDef);
 
     // Create a dynamic body that will fall through the sensor
+    // Lower Y = higher on screen, gravity is positive (downward in screen coords)
     Entity dynamic = static_cast<Entity>(50);
     PhysicsBodyDef dynamicDef{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start above sensor
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start above sensor (lower Y = higher)
         .size = {32.0f, 32.0f}  // Explicit size
     };
     physics->createBody(dynamic, dynamicDef);
@@ -902,7 +903,7 @@ TEST_F(PhysicsSystemTest, SensorBodiesDoNotCausePhysicalCollision) {
 
     // Dynamic body should have fallen through (not stopped by sensor)
     Vec2 finalPos = physics->getPosition(dynamic);
-    EXPECT_LT(finalPos.y, 100.0f) << "Body should have fallen through sensor (y < 100)";
+    EXPECT_GT(finalPos.y, 100.0f) << "Body should have fallen through sensor (y > 100 = below sensor)";
 }
 
 TEST_F(PhysicsSystemTest, TriggerEnterCallbackIsInvokedWhenEnteringSensor) {
@@ -931,11 +932,11 @@ TEST_F(PhysicsSystemTest, TriggerEnterCallbackIsInvokedWhenEnteringSensor) {
     };
     physics->createBody(sensor, sensorDef);
 
-    // Create a dynamic body above the sensor
+    // Create a dynamic body above the sensor (lower Y = higher on screen)
     Entity dynamic = static_cast<Entity>(52);
     PhysicsBodyDef dynamicDef{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start above sensor
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start above sensor (lower Y = higher)
         .size = {32.0f, 32.0f}  // Explicit size
     };
     physics->createBody(dynamic, dynamicDef);
@@ -973,11 +974,11 @@ TEST_F(PhysicsSystemTest, TriggerExitCallbackIsInvokedWhenLeavingSensor) {
     };
     physics->createBody(sensor, sensorDef);
 
-    // Create a dynamic body above the sensor
+    // Create a dynamic body above the sensor (lower Y = higher on screen)
     Entity dynamic = static_cast<Entity>(54);
     PhysicsBodyDef dynamicDef{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start above sensor
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start above sensor (lower Y = higher)
         .size = {32.0f, 32.0f}  // Explicit size
     };
     physics->createBody(dynamic, dynamicDef);
@@ -1207,20 +1208,21 @@ TEST_F(PhysicsSystemTest, GetCollisionLayerWorksWithMultipleLayers) {
 
 TEST_F(PhysicsSystemTest, CheckGroundedReturnsTrueWhenStandingOnGround) {
     // Create ground (static body with Ground layer)
+    // Higher Y = lower on screen (ground is below)
     Entity ground = static_cast<Entity>(67);
     PhysicsBodyDef groundDef{
         .type = BodyType::Static,
-        .transform = {.x = 100.0f, .y = 50.0f},
+        .transform = {.x = 100.0f, .y = 150.0f},  // Ground below player
         .size = {200.0f, 32.0f}  // Thick platform
     };
     physics->createBody(ground, groundDef);
     physics->setCollisionLayer(ground, CollisionLayers::Ground);
 
-    // Create player above ground
+    // Create player above ground (lower Y = higher on screen)
     Entity player = static_cast<Entity>(68);
     PhysicsBodyDef playerDef{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start higher
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start higher (lower Y = higher on screen)
         .size = {32.0f, 40.0f}  // Reasonable player size
     };
     physics->createBody(player, playerDef);
@@ -1314,10 +1316,11 @@ TEST_F(PhysicsSystemTest, CheckGroundedRespectsSlopeTolerance) {
 
 TEST_F(PhysicsSystemTest, CheckGroundedRespectsGroundMask) {
     // Create two platforms with different layers
+    // Higher Y = lower on screen (ground platforms are below player)
     Entity groundPlatform = static_cast<Entity>(73);
     PhysicsBodyDef groundDef{
         .type = BodyType::Static,
-        .transform = {.x = 100.0f, .y = 50.0f},
+        .transform = {.x = 100.0f, .y = 150.0f},  // Ground platform below player
         .size = {200.0f, 32.0f}  // Thick platform
     };
     physics->createBody(groundPlatform, groundDef);
@@ -1326,17 +1329,17 @@ TEST_F(PhysicsSystemTest, CheckGroundedRespectsGroundMask) {
     Entity terrainPlatform = static_cast<Entity>(74);
     PhysicsBodyDef terrainDef{
         .type = BodyType::Static,
-        .transform = {.x = 100.0f, .y = 42.0f},  // Slightly above ground platform
+        .transform = {.x = 100.0f, .y = 142.0f},  // Slightly above ground platform (lower Y = higher)
         .size = {200.0f, 32.0f}  // Thick platform
     };
     physics->createBody(terrainPlatform, terrainDef);
     physics->setCollisionLayer(terrainPlatform, CollisionLayers::Terrain);
 
-    // Create player above platforms
+    // Create player above platforms (lower Y = higher on screen)
     Entity player = static_cast<Entity>(75);
     PhysicsBodyDef playerDef{
         .type = BodyType::Dynamic,
-        .transform = {.x = 100.0f, .y = 150.0f},  // Start higher
+        .transform = {.x = 100.0f, .y = 50.0f},  // Start higher (lower Y = higher on screen)
         .size = {32.0f, 40.0f}  // Reasonable size
     };
     physics->createBody(player, playerDef);
