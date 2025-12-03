@@ -98,9 +98,17 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh 20 all
 
-          # Set for our project build (not for vcpkg)
-          echo "JFRAME_CC=clang-20" >> $GITHUB_ENV
-          echo "JFRAME_CXX=clang++-20" >> $GITHUB_ENV
+          # Set compiler paths
+          echo "JFRAME_CC=/usr/bin/clang-20" >> $GITHUB_ENV
+          echo "JFRAME_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
+
+          # Verify libc++ is available
+          echo "Checking for libc++..."
+          ls -la /usr/lib/llvm-20/lib/libc++* || echo "libc++ libs not found in expected location"
+          ls -la /usr/lib/llvm-20/share/libc++/v1/std.cppm || echo "std.cppm not found"
+
+          # Verify compiler version
+          /usr/bin/clang++-20 --version
 
       # =========================================================================
       # vcpkg Setup (all platforms)
@@ -119,9 +127,10 @@ jobs:
       # =========================================================================
       - name: Configure
         run: |
-          export CC=$JFRAME_CC
-          export CXX=$JFRAME_CXX
-          cmake --preset ${{ matrix.preset }}
+          # Pass compiler paths directly to CMake to ensure they're used
+          cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER=$JFRAME_CC \
+            -DCMAKE_CXX_COMPILER=$JFRAME_CXX
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }} --parallel

@@ -50,6 +50,30 @@ endif()
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Configuring Clang for C++23 modules with 'import std;' support")
 
+    # Use libc++ for all Clang builds (required for import std)
+    # This must be set globally before any targets are defined
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+
+    # On Linux, we may need to add the libc++ library path
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # Find libc++ library path
+        get_filename_component(COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        get_filename_component(COMPILER_ROOT "${COMPILER_BIN_DIR}" DIRECTORY)
+
+        # Check common libc++ library locations
+        if(EXISTS "${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
+            link_directories("${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
+        elseif(EXISTS "${COMPILER_ROOT}/lib")
+            link_directories("${COMPILER_ROOT}/lib")
+        endif()
+
+        # Also try /usr/lib/llvm-20 for apt-installed LLVM
+        if(EXISTS "/usr/lib/llvm-20/lib")
+            link_directories("/usr/lib/llvm-20/lib")
+        endif()
+    endif()
+
     # First, try to derive the libc++ path from the compiler location
     # This handles cases where LLVM is installed in non-standard locations (e.g., CI runners)
     get_filename_component(COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
