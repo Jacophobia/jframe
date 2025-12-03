@@ -16,6 +16,7 @@ target_sources(jframe-core
 target_link_libraries(jframe-core
     PUBLIC
         jframe-contract
+        jframe-metrics
         spdlog::spdlog
         Taskflow::Taskflow
     PRIVATE

@@ -39,6 +39,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Add subdirectories
 add_subdirectory(jframe-contract)
+add_subdirectory(jframe-metrics)
 add_subdirectory(jframe-components)
 add_subdirectory(jframe-core)
 add_subdirectory(jframe-entity)
