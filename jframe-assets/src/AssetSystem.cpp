@@ -111,12 +111,12 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 DataAsset dataAsset;
                 dataAsset.rawText = fileContents;
 
-                // Try to parse as JSON
-                try {
+                // Try to parse as JSON - use accept() first to avoid exceptions
+                if (nlohmann::json::accept(fileContents)) {
                     dataAsset.jsonData = nlohmann::json::parse(fileContents);
                     dataAsset.isJson = true;
-                } catch (...) {
-                    // Not JSON or parse error, keep as raw text
+                } else {
+                    // Not valid JSON, keep as raw text only
                     dataAsset.isJson = false;
                 }
 
@@ -304,12 +304,12 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 btData.path = sourcePath.string();
                 btData.rawText = fileContents;
 
-                // Try to parse as JSON
-                try {
+                // Try to parse as JSON - use accept() first to avoid exceptions
+                if (nlohmann::json::accept(fileContents)) {
                     btData.treeData = nlohmann::json::parse(fileContents);
                     btData.isJson = true;
-                } catch (...) {
-                    // Not JSON or parse error, keep as raw text only
+                } else {
+                    // Not valid JSON, keep as raw text only
                     btData.isJson = false;
                 }
 
