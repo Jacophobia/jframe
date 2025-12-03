@@ -1,7 +1,13 @@
 // GAS System Demo - Comprehensive demonstration of IGASSystem interface
 // This demo exercises every method and type in the Gameplay Ability System
 
-import std;
+#include <cstdint>
+#include <exception>
+#include <format>
+#include <iostream>
+#include <print>
+#include <string>
+
 import jframe.types;
 import jframe.gas;
 import jframe.gas.impl;

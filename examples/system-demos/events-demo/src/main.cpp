@@ -26,7 +26,14 @@
 // - TriggerEvent
 // - std::any for custom data
 
-import std;
+#include <any>
+#include <format>
+#include <iostream>
+#include <iterator>
+#include <ranges>
+#include <string>
+#include <variant>
+
 import jframe.events;
 import jframe.events.impl;
 import jframe.types;

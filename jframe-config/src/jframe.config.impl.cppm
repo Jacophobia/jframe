@@ -5,10 +5,15 @@ module;
 
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
+#include <any>
+#include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.config.impl;
-
-import std;
 import jframe.types;
 import jframe.config;
 

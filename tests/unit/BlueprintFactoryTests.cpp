@@ -3,6 +3,13 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
+#include <string>
+#include <vector>
+#include <any>
+#include <optional>
+#include <algorithm>
+
 import jframe.blueprints;
 import jframe.blueprints.impl;
 import jframe.entity;
@@ -10,7 +17,6 @@ import jframe.entity.impl;
 import jframe.physics;
 import jframe.physics.impl;
 import jframe.types;
-import std;
 
 namespace jframe::tests {
 

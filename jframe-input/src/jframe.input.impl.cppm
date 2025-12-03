@@ -5,10 +5,14 @@ module;
 
 #include <GLFW/glfw3.h>
 #include <SDL.h>
+#include <array>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.input.impl;
-
-import std;
 import jframe.input;
 import jframe.types;
 

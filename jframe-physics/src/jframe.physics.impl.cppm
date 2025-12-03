@@ -4,10 +4,14 @@
 module;
 
 #include <box2d/box2d.h>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.physics.impl;
-
-import std;
 import jframe.physics;
 import jframe.types;
 

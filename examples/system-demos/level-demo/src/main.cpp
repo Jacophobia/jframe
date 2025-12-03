@@ -1,7 +1,15 @@
 // Level System Demo - Comprehensive API Testing
 // Demonstrates all ILevelSystem methods and types
 
-import std;
+#include <any>
+#include <format>
+#include <iostream>
+#include <iterator>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 import jframe.types;
 import jframe.level;
 

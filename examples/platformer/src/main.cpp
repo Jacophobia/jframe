@@ -1,7 +1,8 @@
 // examples/platformer/src/main.cpp
 // Platformer example entry point
 
-import std;
+#include <string>
+
 import jframe;
 import jframe.core;
 

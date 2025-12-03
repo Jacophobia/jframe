@@ -1,7 +1,13 @@
 // assets-demo/src/main.cpp
 // Comprehensive demonstration of the IAssetSystem interface
 
-import std;
+#include <filesystem>
+#include <format>
+#include <optional>
+#include <print>
+#include <string_view>
+#include <vector>
+
 import jframe.types;
 import jframe.assets;
 

@@ -7,10 +7,13 @@ module;
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <memory>
+#include <span>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.graphics.impl;
-
-import std;
 import jframe.graphics;
 import jframe.types;
 import jframe.assets;  // For IAssetSystem

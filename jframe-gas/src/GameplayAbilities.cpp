@@ -3,7 +3,10 @@
 
 module jframe.gas.impl;
 
-import std;
+#include <algorithm>
+#include <optional>
+#include <string>
+
 import jframe.gas;
 import jframe.types;
 

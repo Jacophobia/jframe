@@ -8,10 +8,17 @@ module;
 // The actual nlohmann/json include is in AssetSystem.cpp.
 
 #include <cstddef>  // For size_t
+#include <any>
+#include <filesystem>
+#include <future>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.assets.impl;
-
-import std;
 import jframe.assets;
 import jframe.types;
 

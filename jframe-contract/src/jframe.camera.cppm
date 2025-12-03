@@ -6,7 +6,6 @@ module;
 export module jframe.camera;
 
 import jframe.types;
-import std;
 
 export namespace jframe {
 

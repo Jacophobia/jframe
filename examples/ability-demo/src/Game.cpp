@@ -4,11 +4,17 @@
 // EnTT must be included before import std for iterator compatibility
 #include <entt/entt.hpp>
 
-#include <fstream>
-#include <sstream>
+#include <algorithm>
+#include <any>
 #include <cmath>
+#include <format>
+#include <fstream>
+#include <memory>
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
-import std;
 import jframe;
 import jframe.core;
 import jframe.gas;

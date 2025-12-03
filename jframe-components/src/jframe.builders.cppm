@@ -3,9 +3,11 @@
 
 module;
 
+#include <string>
+#include <vector>
+
 export module jframe.builders;
 
-import std;
 import jframe.types;
 import jframe.input;
 import jframe.physics;

@@ -1,7 +1,14 @@
 // examples/system-demos/input-demo/src/main.cpp
 // Comprehensive Input System API demonstration
 
-import std;
+#include <chrono>
+#include <iostream>
+#include <map>
+#include <ranges>
+#include <string>
+#include <thread>
+#include <vector>
+
 import jframe.types;
 import jframe.input;
 import jframe.input.impl;

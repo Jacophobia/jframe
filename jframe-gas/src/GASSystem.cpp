@@ -7,7 +7,11 @@ module;
 
 module jframe.gas.impl;
 
-import std;
+#include <cmath>
+#include <cstdint>
+#include <limits>
+#include <utility>
+
 import jframe.gas;
 import jframe.types;
 

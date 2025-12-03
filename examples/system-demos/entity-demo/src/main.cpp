@@ -1,7 +1,9 @@
 // main.cpp
 // Entity System Demo - Entry point
 
-import std;
+#include <exception>
+#include <print>
+
 import jframe.types;
 import jframe.entity;
 import jframe.entity.impl;

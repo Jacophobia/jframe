@@ -1,7 +1,8 @@
 // examples/ability-demo/src/main.cpp
 // Gameplay Ability System graphical demonstration
 
-import std;
+#include <string>
+
 import jframe;
 import jframe.core;
 

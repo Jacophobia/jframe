@@ -4,10 +4,14 @@
 module;
 
 #include <sol/sol.hpp>
+#include <memory>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.level.impl;
-
-import std;
 import jframe.level;
 import jframe.types;
 import jframe.assets;

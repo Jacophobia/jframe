@@ -2,13 +2,17 @@
 // JFrame Template Game - Implementation
 // This file demonstrates how to use all JFrame systems together
 
-// EnTT must be included before import std for iterator compatibility
+// EnTT must be included before standard library headers for iterator compatibility
 #include <entt/entt.hpp>
 
 #include <fstream>
 #include <sstream>
-
-import std;
+#include <string>
+#include <vector>
+#include <memory>
+#include <any>
+#include <algorithm>
+#include <utility>
 import jframe;
 import jframe.core;
 import jframe.gas;

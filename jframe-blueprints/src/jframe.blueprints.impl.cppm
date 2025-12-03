@@ -4,10 +4,14 @@
 module;
 
 #include <sol/sol.hpp>
+#include <any>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.blueprints.impl;
-
-import std;
 import jframe.types;
 import jframe.blueprints;
 import jframe.entity;

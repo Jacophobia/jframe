@@ -1,7 +1,14 @@
 // config-demo/src/main.cpp
 // Comprehensive demonstration of JFrame Config System API
 
-import std;
+#include <any>
+#include <exception>
+#include <iostream>
+#include <optional>
+#include <print>
+#include <string>
+#include <vector>
+
 import jframe.types;
 import jframe.config;
 import jframe.config.impl;

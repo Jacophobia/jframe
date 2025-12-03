@@ -4,7 +4,15 @@
 // Include traditional headers before module imports to avoid conflicts
 #include <sol/sol.hpp>
 
-import std;
+#include <any>
+#include <algorithm>
+#include <cmath>
+#include <exception>
+#include <format>
+#include <optional>
+#include <string>
+#include <variant>
+
 import jframe;
 import jframe.core;
 import jframe.assets.impl;  // For DataAsset

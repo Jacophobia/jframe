@@ -1,7 +1,6 @@
 // examples/platformer/src/systems/PlayerMovementSystem.cpp
 // Player movement system
 
-import std;
 import jframe;
 
 namespace platformer {

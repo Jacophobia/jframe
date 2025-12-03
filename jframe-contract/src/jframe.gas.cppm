@@ -3,13 +3,18 @@
 
 module;
 
+#include <algorithm>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 export module jframe.gas;
 
-import std;
 import jframe.types;
 
 export namespace jframe {

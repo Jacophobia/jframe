@@ -1,7 +1,13 @@
 // examples/platformer-demo/src/Game.cpp
 // Complete platformer demo showcasing JFrame features
 
-import std;
+#include <algorithm>
+#include <any>
+#include <cmath>
+#include <memory>
+#include <string>
+#include <vector>
+
 import jframe;
 import jframe.core;
 import jframe.camera.impl;

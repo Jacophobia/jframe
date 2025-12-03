@@ -4,10 +4,13 @@
 module;
 
 #include <entt/entt.hpp>
+#include <cmath>
+#include <cstdint>
+#include <format>
+#include <print>
+#include <string>
 
 export module camera.demo;
-
-import std;
 import jframe.types;
 import jframe.camera;
 import jframe.entity;

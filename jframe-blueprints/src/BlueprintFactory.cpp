@@ -8,7 +8,13 @@ module;
 
 module jframe.blueprints.impl;
 
-import std;
+#include <algorithm>
+#include <any>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
+
 import jframe.types;
 import jframe.blueprints;
 import jframe.entity;

@@ -1,7 +1,17 @@
 // audio-demo/src/main.cpp
 // Comprehensive demonstration of IAudioSystem interface
 
-import std;
+#include <cstdint>
+#include <exception>
+#include <filesystem>
+#include <format>
+#include <iostream>
+#include <memory>
+#include <optional>
+#include <print>
+#include <string>
+#include <vector>
+
 import jframe.types;
 import jframe.audio;
 import jframe.assets;

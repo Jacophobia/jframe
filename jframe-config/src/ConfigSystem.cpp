@@ -8,7 +8,14 @@ module;
 
 module jframe.config.impl;
 
-import std;
+#include <algorithm>
+#include <any>
+#include <filesystem>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace jframe {
 

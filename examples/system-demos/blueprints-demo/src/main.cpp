@@ -1,7 +1,16 @@
 // main.cpp
 // Blueprints System Demo - Comprehensive API demonstration
 
-import std;
+#include <any>
+#include <cstddef>
+#include <exception>
+#include <format>
+#include <fstream>
+#include <print>
+#include <sstream>
+#include <string>
+#include <vector>
+
 import jframe.types;
 import jframe.entity;
 import jframe.entity.impl;

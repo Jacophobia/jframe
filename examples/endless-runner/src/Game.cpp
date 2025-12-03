@@ -1,7 +1,14 @@
 // examples/endless-runner/src/Game.cpp
 // Endless runner demo - auto-run, procedural generation, despawn
 
-import std;
+#include <algorithm>
+#include <any>
+#include <cmath>
+#include <cstdlib>
+#include <memory>
+#include <string>
+#include <vector>
+
 import jframe;
 import jframe.core;
 import jframe.camera.impl;

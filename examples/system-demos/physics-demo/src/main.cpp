@@ -1,7 +1,9 @@
 // main.cpp
 // Physics System Demo - Entry point
 
-import std;
+#include <exception>
+#include <print>
+
 import jframe.types;
 import jframe.physics;
 import jframe.physics.impl;

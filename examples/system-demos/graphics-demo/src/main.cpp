@@ -2,7 +2,14 @@
 // Comprehensive demonstration of the JFrame Graphics System API
 // This demo exercises EVERY method in IGraphicsSystem interface WITH ACTUAL RENDERING
 
-import std;
+#include <cmath>
+#include <cstdint>
+#include <exception>
+#include <format>
+#include <memory>
+#include <print>
+#include <vector>
+
 import jframe;
 import jframe.graphics;
 import jframe.graphics.impl;

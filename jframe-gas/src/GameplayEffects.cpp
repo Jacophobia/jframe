@@ -3,7 +3,12 @@
 
 module jframe.gas.impl;
 
-import std;
+#include <cmath>
+#include <limits>
+#include <optional>
+#include <string>
+#include <vector>
+
 import jframe.gas;
 import jframe.types;
 

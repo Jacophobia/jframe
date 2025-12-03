@@ -12,9 +12,17 @@ module;
 #include <spdlog/spdlog.h>
 #include <taskflow/taskflow.hpp>
 
-export module jframe.core;
+#include <chrono>
+#include <cmath>
+#include <expected>
+#include <memory>
+#include <numbers>
+#include <random>
+#include <span>
+#include <string>
+#include <utility>
 
-import std;
+export module jframe.core;
 import jframe;
 
 export namespace jframe::core {

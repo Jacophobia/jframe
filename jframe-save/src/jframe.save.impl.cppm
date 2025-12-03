@@ -7,11 +7,17 @@
 
 module;
 
-// No third-party headers in global module fragment for MSVC compatibility
+#include <chrono>
+#include <cstdint>
+#include <filesystem>
+#include <istream>
+#include <memory>
+#include <optional>
+#include <ostream>
+#include <string>
+#include <vector>
 
 export module jframe.save.impl;
-
-import std;
 import jframe.save;
 import jframe.types;
 

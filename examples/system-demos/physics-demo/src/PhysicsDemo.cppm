@@ -1,9 +1,17 @@
 // PhysicsDemo.cppm
 // Comprehensive demonstration of the JFrame Physics System API
 
-export module physics.demo;
+module;
 
-import std;
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <print>
+#include <string>
+#include <vector>
+
+export module physics.demo;
 import jframe.types;
 import jframe.physics;
 

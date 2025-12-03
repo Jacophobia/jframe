@@ -4,10 +4,14 @@
 module;
 
 #include <entt/entt.hpp>
+#include <cstdint>
+#include <format>
+#include <print>
+#include <string>
+#include <utility>
+#include <vector>
 
 export module entity.demo;
-
-import std;
 import jframe.types;
 import jframe.entity;
 

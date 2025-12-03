@@ -1,9 +1,11 @@
 module;
 
+#include <algorithm>
+#include <functional>
+
 export module jframe.components;
 
 import jframe.types;
-import std;
 
 export namespace jframe::components {
 

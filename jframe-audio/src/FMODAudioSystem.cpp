@@ -10,7 +10,13 @@ module;
 
 module jframe.audio.impl;
 
-import std;
+#include <algorithm>
+#include <iostream>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 import jframe.assets;
 
 namespace jframe {

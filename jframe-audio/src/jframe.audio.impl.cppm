@@ -7,9 +7,11 @@ module;
 #include <fmod.h>
 #endif
 
-export module jframe.audio.impl;
+#include <memory>
+#include <string>
+#include <unordered_map>
 
-import std;
+export module jframe.audio.impl;
 import jframe.audio;
 import jframe.assets;
 import jframe.types;

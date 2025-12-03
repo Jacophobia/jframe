@@ -2,7 +2,8 @@
 // JFrame Template Game - Entry Point
 // This file shows how to build a JFrame engine with all systems enabled
 
-import std;
+#include <string>
+
 import jframe;
 import jframe.core;
 

@@ -4,10 +4,17 @@
 module;
 
 #include <entt/entt.hpp>
+#include <any>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <format>
+#include <print>
+#include <string>
+#include <utility>
+#include <vector>
 
 export module ai.demo;
-
-import std;
 import jframe.types;
 import jframe.ai;
 import jframe.entity;

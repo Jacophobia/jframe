@@ -1,7 +1,8 @@
 // examples/platformer-demo/src/main.cpp
 // Platformer demo showcasing all JFrame engine features
 
-import std;
+#include <string>
+
 import jframe;
 import jframe.core;
 

@@ -5,12 +5,12 @@ module;
 
 #include <glm/glm.hpp>
 #include <entt/entity/fwd.hpp>
+#include <memory>
 
 export module jframe.camera.impl;
 
 import jframe.types;
 import jframe.camera;
-import std;
 
 export namespace jframe {
 

@@ -5,10 +5,12 @@
 module;
 
 #include <sol/sol.hpp>
+#include <cstddef>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.luaconfig;
-
-import std;
 import jframe.types;
 
 export namespace jframe {

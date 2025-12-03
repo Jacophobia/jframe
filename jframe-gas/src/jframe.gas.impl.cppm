@@ -4,10 +4,14 @@
 module;
 
 #include <sol/sol.hpp>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.gas.impl;
-
-import std;
 import jframe.gas;
 import jframe.types;
 

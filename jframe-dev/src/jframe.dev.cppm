@@ -4,10 +4,15 @@
 module;
 
 #include <imgui.h>
+#include <chrono>
+#include <cstddef>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
 
 export module jframe.dev;
-
-import std;
 import jframe;
 import jframe.core;
 

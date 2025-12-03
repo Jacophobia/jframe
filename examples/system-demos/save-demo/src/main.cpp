@@ -1,7 +1,18 @@
 // save-demo/src/main.cpp
 // Comprehensive demonstration of the JFrame Save System API
 
-import std;
+#include <any>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <ctime>
+#include <exception>
+#include <optional>
+#include <print>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 import jframe.types;
 import jframe.save;
 import jframe.save.impl;

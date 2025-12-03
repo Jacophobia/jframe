@@ -4,10 +4,12 @@
 module;
 
 #include <entt/entt.hpp>
+#include <cstddef>
+#include <functional>
+#include <memory>
+#include <vector>
 
 export module jframe.entity.impl;
-
-import std;
 import jframe.entity;
 import jframe.types;
 

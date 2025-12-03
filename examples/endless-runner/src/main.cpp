@@ -1,7 +1,8 @@
 // examples/endless-runner/src/main.cpp
 // Endless runner demo showcasing procedural level generation
 
-import std;
+#include <string>
+
 import jframe;
 import jframe.core;
 

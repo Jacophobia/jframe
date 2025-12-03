@@ -1,7 +1,9 @@
 // main.cpp
 // Camera System Demo - Entry point
 
-import std;
+#include <exception>
+#include <print>
+
 import jframe.types;
 import jframe.camera;
 import jframe.camera.impl;

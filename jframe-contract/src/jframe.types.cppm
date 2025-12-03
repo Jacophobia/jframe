@@ -6,10 +6,19 @@ module;
 #include <entt/entity/fwd.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <any>
+#include <compare>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <optional>
+#include <string>
+#include <system_error>
+#include <unordered_map>
+#include <variant>
+#include <vector>
 
 export module jframe.types;
-
-import std;
 
 export namespace jframe {
 

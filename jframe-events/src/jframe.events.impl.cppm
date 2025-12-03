@@ -3,9 +3,16 @@
 
 module;
 
+#include <map>
+#include <memory>
+#include <mutex>
+#include <queue>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 export module jframe.events.impl;
 
-import std;
 import jframe.events;
 import jframe.types;
 

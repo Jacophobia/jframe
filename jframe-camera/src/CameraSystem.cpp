@@ -8,7 +8,9 @@ module;
 
 module jframe.camera.impl;
 
-import std;
+#include <algorithm>
+#include <cmath>
+#include <random>
 
 namespace jframe {
 

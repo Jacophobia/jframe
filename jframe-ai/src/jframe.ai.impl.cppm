@@ -6,10 +6,15 @@ module;
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
 #include <DetourStatus.h>
+#include <any>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 export module jframe.ai.impl;
-
-import std;
 import jframe.ai;
 import jframe.assets;
 import jframe.assets.impl;
