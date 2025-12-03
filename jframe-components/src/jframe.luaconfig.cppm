@@ -93,7 +93,8 @@ public:
         lua["load"] = sol::nil;
 
         try {
-            sol::protected_function_result execResult = lua.safe_script(luaCode);
+            // Use sol::script_pass_on_error to avoid throwing exceptions on syntax errors
+            sol::protected_function_result execResult = lua.safe_script(luaCode, sol::script_pass_on_error);
             if (!execResult.valid()) {
                 return result;
             }
@@ -198,7 +199,8 @@ public:
         lua["load"] = sol::nil;
 
         try {
-            sol::protected_function_result execResult = lua.safe_script(luaCode);
+            // Use sol::script_pass_on_error to avoid throwing exceptions on syntax errors
+            sol::protected_function_result execResult = lua.safe_script(luaCode, sol::script_pass_on_error);
             if (!execResult.valid()) {
                 return result;
             }

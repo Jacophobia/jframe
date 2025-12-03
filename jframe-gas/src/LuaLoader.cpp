@@ -48,7 +48,8 @@ bool GASSystem::loadDefinitionsFromLua(const std::string& luaSource) {
     }
 
     try {
-        sol::protected_function_result result = lua_.safe_script(luaSource);
+        // Use sol::script_pass_on_error to avoid throwing exceptions on syntax errors
+        sol::protected_function_result result = lua_.safe_script(luaSource, sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
             return false;
