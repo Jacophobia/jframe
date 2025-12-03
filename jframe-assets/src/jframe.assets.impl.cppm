@@ -3,7 +3,11 @@
 
 module;
 
-#include <nlohmann/json.hpp>
+// Note: nlohmann/json is NOT included here due to MSVC C++23 module compatibility issues.
+// JSON data is stored as std::any and accessed via getJson()/setJson() helper functions.
+// The actual nlohmann/json include is in AssetSystem.cpp.
+
+#include <cstddef>  // For size_t
 
 export module jframe.assets.impl;
 
@@ -16,11 +20,27 @@ export namespace jframe {
 // Note: TextureData is now in jframe.assets contract module
 
 // Data asset structure for JSON and text files
+// Note: JSON data is stored as std::any for MSVC C++23 module compatibility.
+// Use getJson() and setJson() helper functions to access the parsed JSON.
 struct DataAsset {
-    nlohmann::json jsonData;  // Parsed JSON
+    std::any jsonData;        // Holds nlohmann::json when isJson=true (type-erased for MSVC compatibility)
     std::string rawText;      // Original text (for non-JSON or Lua)
     bool isJson = false;
 };
+
+// Helper function declarations for JSON access (defined in AssetSystem.cpp)
+// These provide type-safe access to the type-erased JSON data.
+void setDataAssetJson(DataAsset& asset, const std::string& jsonText);
+bool hasDataAssetJson(const DataAsset& asset);
+
+// Template to get JSON value - returns default if not JSON or key doesn't exist
+// Usage: auto name = getJsonValue<std::string>(dataAsset, "name", "default");
+template<typename T>
+T getJsonValue(const DataAsset& asset, const std::string& key, const T& defaultValue);
+
+// Get raw JSON object - only call if hasDataAssetJson returns true
+// Returns a reference to the underlying nlohmann::json stored in std::any
+const std::any& getDataAssetJsonAny(const DataAsset& asset);
 
 // Note: SoundData is now defined in jframe.assets contract module
 
@@ -42,12 +62,18 @@ struct NavMeshData {
 };
 
 // BehaviorTree data structure - stores tree definition for AI system
+// Note: JSON data is stored as std::any for MSVC C++23 module compatibility.
 struct BehaviorTreeData {
-    nlohmann::json treeData;  // Parsed JSON tree definition
+    std::any treeData;        // Holds nlohmann::json when isJson=true (type-erased for MSVC compatibility)
     std::string rawText;      // Original file content
     std::string path;
     bool isJson = false;
 };
+
+// Helper function declarations for BehaviorTreeData JSON access
+void setBehaviorTreeJson(BehaviorTreeData& data, const std::string& jsonText);
+bool hasBehaviorTreeJson(const BehaviorTreeData& data);
+const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
 class AssetSystem : public IAssetSystem {
 public:
