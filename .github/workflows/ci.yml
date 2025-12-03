@@ -81,6 +81,7 @@ jobs:
             libgl1-mesa-dev libglu1-mesa-dev \
             libasound2-dev libpulse-dev \
             libwayland-dev libxkbcommon-dev \
+            autoconf autoconf-archive automake libtool \
             ninja-build wget lsb-release software-properties-common gnupg
 
       - name: Install Clang (Linux)
