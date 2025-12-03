@@ -13,8 +13,7 @@ namespace jframe {
 
 bool LevelSystem::parseLevelLua(const std::string& luaCode, LoadedLevel& level) {
     try {
-        // Execute the Lua code - use script_pass_on_error to avoid throwing exceptions
-        sol::protected_function_result result = lua_.safe_script(luaCode, sol::script_pass_on_error);
+        sol::protected_function_result result = lua_.safe_script(luaCode);
 
         if (!result.valid()) {
             sol::error err = result;
