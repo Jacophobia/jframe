@@ -4,8 +4,11 @@
 import std;
 import jframe.types;
 import jframe.gas;
+import jframe.gas.impl;
 import jframe.entity;
+import jframe.entity.impl;
 import jframe.events;
+import jframe.events.impl;
 
 using namespace jframe;
 
@@ -38,17 +41,15 @@ int main() {
     std::println("=================================================================");
     std::println("");
 
-    // Create systems (in a real application, these would come from DI)
-    auto eventSystem = std::make_unique<IEventSystem>(/* implementation */);
-    auto entitySystem = std::make_unique<IEntitySystem>(/* implementation */);
-    auto gasSystem = std::make_unique<IGASSystem>(/* implementation */);
+    // Create concrete system implementations
+    auto eventSystem = std::make_unique<EventSystem>();
+    auto entitySystem = std::make_unique<EntitySystem>();
+    auto gasSystem = std::make_unique<GASSystem>();
 
-    // Note: Since we don't have concrete implementations here, this demo shows
-    // the expected usage patterns. In a real application with actual implementations,
-    // all these calls would work.
+    // Initialize GAS system
+    gasSystem->initialize();
 
     printInfo("This demo shows comprehensive usage of all GAS System APIs");
-    printInfo("In production, you would have concrete implementations of these interfaces");
     std::println("");
 
     // Demonstrate all API sections
