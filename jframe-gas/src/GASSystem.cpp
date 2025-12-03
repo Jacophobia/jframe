@@ -10,6 +10,7 @@ module;
 #include <utility>
 
 #include <sol/sol.hpp>
+#include <sol/types.hpp>
 
 module jframe.gas.impl;
 

@@ -13,7 +13,7 @@ module;
 #include <vector>
 
 #include <sol/sol.hpp>
-#include <entt/entity/entity.hpp>
+#include <entt/entt.hpp>
 
 module jframe.blueprints.impl;
 
