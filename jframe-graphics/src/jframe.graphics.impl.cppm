@@ -3,15 +3,17 @@
 
 module;
 
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
+#include <compare>
 #include <memory>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 export module jframe.graphics.impl;
 import jframe.graphics;

@@ -5,6 +5,7 @@ module;
 #include <any>
 #include <cassert>
 #include <cmath>
+#include <compare>
 #include <cstdint>
 #include <optional>
 #include <string>

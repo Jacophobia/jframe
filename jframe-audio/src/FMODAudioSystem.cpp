@@ -3,19 +3,20 @@
 
 module;
 
+#include <algorithm>
+#include <compare>
+#include <iostream>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #ifdef JFRAME_HAS_FMOD
 #include <fmod.h>
 #include <fmod_errors.h>
 #endif
 
 module jframe.audio.impl;
-
-#include <algorithm>
-#include <iostream>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <vector>
 
 import jframe.assets;
 

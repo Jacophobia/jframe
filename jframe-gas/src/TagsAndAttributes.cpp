@@ -1,11 +1,14 @@
 // jframe-gas/src/TagsAndAttributes.cpp
 // Tag and attribute operations for GAS
 
-module jframe.gas.impl;
+module;
 
+#include <compare>
 #include <limits>
 #include <optional>
 #include <string>
+
+module jframe.gas.impl;
 
 import jframe.gas;
 import jframe.types;

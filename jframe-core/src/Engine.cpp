@@ -1,6 +1,10 @@
 // jframe-core/src/Engine.cpp
 // Engine implementation with fixed-timestep game loop
 
+module;
+
+#include <compare>
+
 module jframe.core;
 
 import jframe.events.impl;

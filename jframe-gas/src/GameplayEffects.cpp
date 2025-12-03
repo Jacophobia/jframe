@@ -1,13 +1,16 @@
 // jframe-gas/src/GameplayEffects.cpp
 // Gameplay effect implementation
 
-module jframe.gas.impl;
+module;
 
 #include <cmath>
+#include <compare>
 #include <limits>
 #include <optional>
 #include <string>
 #include <vector>
+
+module jframe.gas.impl;
 
 import jframe.gas;
 import jframe.types;

@@ -1,6 +1,10 @@
 // jframe-core/src/Application.cpp
 // Application base class implementation
 
+module;
+
+#include <compare>
+
 module jframe.core;
 
 // Application is now managed by Engine class

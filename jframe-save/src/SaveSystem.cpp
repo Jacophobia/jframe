@@ -5,12 +5,14 @@ module;
 
 #include <algorithm>
 #include <chrono>
+#include <compare>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
-#include <fstream>
-#include <sstream>
+
 #include <nlohmann/json.hpp>
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>

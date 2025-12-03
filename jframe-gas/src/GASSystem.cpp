@@ -3,14 +3,15 @@
 
 module;
 
-#include <sol/sol.hpp>
-
-module jframe.gas.impl;
-
 #include <cmath>
+#include <compare>
 #include <cstdint>
 #include <limits>
 #include <utility>
+
+#include <sol/sol.hpp>
+
+module jframe.gas.impl;
 
 import jframe.gas;
 import jframe.types;

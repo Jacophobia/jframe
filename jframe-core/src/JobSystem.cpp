@@ -2,4 +2,8 @@
 // Job system - implementation is now inline in the module interface
 // This file kept for build system compatibility
 
+module;
+
+#include <compare>
+
 module jframe.core;

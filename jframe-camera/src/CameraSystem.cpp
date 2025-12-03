@@ -3,14 +3,15 @@
 
 module;
 
+#include <algorithm>
+#include <cmath>
+#include <compare>
+#include <random>
+
 #include <glm/glm.hpp>
 #include <entt/entity/entity.hpp>
 
 module jframe.camera.impl;
-
-#include <algorithm>
-#include <cmath>
-#include <random>
 
 namespace jframe {
 

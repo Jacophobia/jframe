@@ -1,11 +1,14 @@
 // jframe-gas/src/GameplayAbilities.cpp
 // Gameplay ability implementation
 
-module jframe.gas.impl;
+module;
 
 #include <algorithm>
+#include <compare>
 #include <optional>
 #include <string>
+
+module jframe.gas.impl;
 
 import jframe.gas;
 import jframe.types;

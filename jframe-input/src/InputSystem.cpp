@@ -4,6 +4,7 @@
 module;
 
 #include <array>
+#include <compare>
 #include <optional>
 #include <string>
 #include <unordered_map>

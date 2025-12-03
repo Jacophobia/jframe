@@ -3,11 +3,6 @@
 
 module;
 
-#include <sol/sol.hpp>
-#include <spdlog/spdlog.h>
-
-module jframe.config.impl;
-
 #include <algorithm>
 #include <any>
 #include <filesystem>
@@ -16,6 +11,11 @@ module jframe.config.impl;
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include <sol/sol.hpp>
+#include <spdlog/spdlog.h>
+
+module jframe.config.impl;
 
 namespace jframe {
 

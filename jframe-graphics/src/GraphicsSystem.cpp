@@ -6,10 +6,11 @@ module;
 #include <algorithm>
 #include <any>
 #include <cmath>
+#include <compare>
+#include <cstring>
 #include <span>
 #include <string>
 #include <vector>
-#include <cstring>
 
 #include <glad/glad.h>
 #include <glm/glm.hpp>

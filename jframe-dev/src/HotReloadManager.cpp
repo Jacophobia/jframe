@@ -3,6 +3,7 @@
 
 module;
 
+#include <compare>
 #include <filesystem>
 #include <functional>
 #include <memory>

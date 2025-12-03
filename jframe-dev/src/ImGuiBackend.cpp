@@ -3,6 +3,8 @@
 
 module;
 
+#include <compare>
+
 #include <imgui.h>
 
 #ifdef __APPLE__

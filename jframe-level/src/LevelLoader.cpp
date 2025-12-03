@@ -1,6 +1,8 @@
 // jframe-level/src/LevelLoader.cpp
 module;
 
+#include <compare>
+
 #include <sol/sol.hpp>
 
 module jframe.level.impl;

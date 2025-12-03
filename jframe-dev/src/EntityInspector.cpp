@@ -3,6 +3,7 @@
 
 module;
 
+#include <compare>
 #include <optional>
 #include <string>
 #include <vector>

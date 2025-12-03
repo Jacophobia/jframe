@@ -3,6 +3,8 @@
 
 module;
 
+#include <compare>
+
 #include <GLFW/glfw3.h>
 
 module jframe.core;

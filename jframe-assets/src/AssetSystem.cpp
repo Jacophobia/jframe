@@ -4,6 +4,7 @@
 module;
 
 #include <any>
+#include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -12,13 +13,14 @@ module;
 #include <future>
 #include <memory>
 #include <mutex>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+#include <nlohmann/json.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>

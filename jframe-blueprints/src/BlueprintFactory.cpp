@@ -3,17 +3,18 @@
 
 module;
 
-#include <sol/sol.hpp>
-#include <entt/entity/entity.hpp>
-
-module jframe.blueprints.impl;
-
 #include <algorithm>
 #include <any>
+#include <compare>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <sol/sol.hpp>
+#include <entt/entity/entity.hpp>
+
+module jframe.blueprints.impl;
 
 import jframe.types;
 import jframe.blueprints;
