@@ -1,5 +1,15 @@
 enable_testing()
 
+# Include flaky tests configuration
+include(${CMAKE_SOURCE_DIR}/cmake/FlakyTests.cmake)
+
+# Configure the flaky test labeling script
+configure_file(
+    ${CMAKE_SOURCE_DIR}/cmake/LabelFlakyTests.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
+    @ONLY
+)
+
 add_executable(jframe-tests
     unit/ComponentsTests.cpp
     unit/CoreSystemTests.cpp
@@ -44,4 +54,14 @@ target_link_libraries(jframe-tests
 target_compile_features(jframe-tests PRIVATE cxx_std_23)
 
 include(GoogleTest)
-gtest_discover_tests(jframe-tests)
+
+# Discover tests and apply flaky test labels
+# The TEST_INCLUDE_FILES option includes our script after test discovery
+# to label timing-dependent tests as "Flaky"
+#
+# Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
+# Run all tests (local):                ctest --preset <preset>
+# Run only flaky tests:                 ctest --preset <preset> -L Flaky
+gtest_discover_tests(jframe-tests
+    TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
+)

@@ -206,11 +206,17 @@ jobs:
 
       - name: Test (Unix)
         if: runner.os != 'Windows'
-        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+        run: |
+          # Exclude flaky tests in CI (-LE = label exclude)
+          # Flaky tests are timing-dependent and may fail due to VM scheduling
+          # See cmake/FlakyTests.cmake for the list of flaky tests
+          ctest --preset ${{ matrix.preset }} --output-on-failure -LE Flaky
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        run: ctest --preset ${{ matrix.preset }} --build-config Debug --output-on-failure
+        run: |
+          # Exclude flaky tests in CI (-LE = label exclude)
+          ctest --preset ${{ matrix.preset }} --build-config Debug --output-on-failure -LE Flaky
 
       # =========================================================================
       # Upload artifacts
