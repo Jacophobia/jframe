@@ -4,12 +4,17 @@
     JFrame Development Environment Setup Script for Windows
 
 .DESCRIPTION
-    This script sets up a complete development environment for JFrame on Windows:
+    This script sets up a complete development environment for JFrame on Windows
+    with ZERO prerequisites. Everything is installed via package managers (winget)
+    for easy global updates.
 
-    1. Verifies/installs Visual Studio 2022 with C++ workload
-    2. Installs CMake, Ninja, and Git via winget
-    3. Installs vcpkg package manager
-    4. Configures and builds JFrame with C++23
+    Steps:
+    1. Installs winget (if not present)
+    2. Verifies/installs Visual Studio 2022 with C++ workload
+    3. Installs CMake, Ninja, Git via winget
+    4. Installs vcpkg package manager
+    5. Prompts for FMOD installation (optional, for audio)
+    6. Configures and builds JFrame with C++23
 
     The script is idempotent - running it multiple times is safe and will
     only install/update components that are missing or outdated.
@@ -19,16 +24,23 @@
 .PARAMETER NoBuild
     Setup environment only, skip building JFrame
 
+.PARAMETER CI
+    Non-interactive CI mode (no prompts, implies -NoBuild)
+
 .PARAMETER Help
     Show this help message
 
 .EXAMPLE
     .\setup.ps1
-    # Full setup and build
+    # Full interactive setup and build
 
 .EXAMPLE
     .\setup.ps1 -NoBuild
     # Setup only, skip build
+
+.EXAMPLE
+    .\setup.ps1 -CI
+    # CI mode (non-interactive, no build)
 
 .NOTES
     FMOD Core API must be downloaded manually from https://fmod.com/download
@@ -38,6 +50,7 @@
 [CmdletBinding()]
 param(
     [switch]$NoBuild,
+    [switch]$CI,
     [switch]$Help
 )
 
@@ -49,6 +62,11 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VcpkgDir = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { "C:\vcpkg" }
 $BuildPreset = "windows-debug"
+
+# CI mode implies NoBuild
+if ($CI) {
+    $NoBuild = $true
+}
 
 # =============================================================================
 # Helper Functions
@@ -108,6 +126,46 @@ function Refresh-Path {
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
 }
 
+function Wait-ForUser {
+    param([string]$Message)
+
+    if ($CI) {
+        Write-Info "CI mode: skipping prompt - $Message"
+        return
+    }
+
+    Write-Host ""
+    Write-Host $Message -ForegroundColor Yellow
+    Write-Host ""
+    Read-Host "Press Enter when ready to continue (or Ctrl+C to abort)"
+    Write-Host ""
+}
+
+function Ask-YesNo {
+    param(
+        [string]$Question,
+        [string]$Default = "y"
+    )
+
+    if ($CI) {
+        return $true  # Always yes in CI mode
+    }
+
+    if ($Default -eq "y") {
+        $prompt = "$Question [Y/n]"
+    } else {
+        $prompt = "$Question [y/N]"
+    }
+
+    $response = Read-Host $prompt
+
+    if ([string]::IsNullOrEmpty($response)) {
+        return ($Default -eq "y")
+    }
+
+    return ($response -match "^[yY]")
+}
+
 function Show-HelpMessage {
     Get-Help $MyInvocation.ScriptName -Detailed
 }
@@ -124,10 +182,16 @@ function Install-Winget {
         return
     }
 
+    Write-Info "winget is not installed."
+    Write-Info "winget is the Windows package manager and will install VS2022, CMake, etc."
+
+    if (-not (Ask-YesNo "Install winget now?")) {
+        Write-Error "winget is required. Please install App Installer from the Microsoft Store."
+        exit 1
+    }
+
     Write-Info "Installing winget..."
 
-    # winget is included with App Installer from Microsoft Store
-    # For automated installation, we can use the GitHub release
     try {
         $progressPreference = 'silentlyContinue'
 
@@ -153,9 +217,13 @@ function Install-Winget {
         Write-Warning "Failed to install winget automatically"
         Write-Info "Please install App Installer from the Microsoft Store:"
         Write-Info "  https://www.microsoft.com/p/app-installer/9nblggh4nns1"
-        Write-Host ""
-        Write-Info "After installation, re-run this script."
-        exit 1
+
+        Wait-ForUser "Install App Installer from Microsoft Store, then continue"
+
+        if (-not (Test-CommandExists "winget")) {
+            Write-Error "winget still not found. Please install it and try again."
+            exit 1
+        }
     }
 }
 
@@ -171,14 +239,14 @@ function Test-VisualStudio {
         return $false
     }
 
-    # Check for VS2022 with C++ Desktop workload
-    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    # Check for VS2022 with C++ Desktop workload or Build Tools
+    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
 
     if ([string]::IsNullOrEmpty($vsPath)) {
         return $false
     }
 
-    # Verify cl.exe exists and check version
+    # Verify cl.exe exists
     $clPath = Join-Path $vsPath "VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
     $clExe = Get-ChildItem -Path $clPath -ErrorAction SilentlyContinue | Sort-Object -Descending | Select-Object -First 1
 
@@ -196,7 +264,7 @@ function Get-MSVCVersion {
         return $null
     }
 
-    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2>$null
 
     if ([string]::IsNullOrEmpty($vsPath)) {
         return $null
@@ -218,7 +286,7 @@ function Install-VisualStudio {
 
     if (Test-VisualStudio) {
         $msvcVersion = Get-MSVCVersion
-        Write-Success "Visual Studio 2022 with C++ workload is installed (MSVC $msvcVersion)"
+        Write-Success "Visual Studio 2022 with C++ tools is installed (MSVC $msvcVersion)"
 
         # Check MSVC version for C++23 module support (need 19.38+)
         if ($null -ne $msvcVersion) {
@@ -233,28 +301,68 @@ function Install-VisualStudio {
         return
     }
 
-    Write-Info "Visual Studio 2022 with C++ workload is required but not found"
-    Write-Host ""
-    Write-Host "Please install Visual Studio 2022 with the following options:" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "  Option 1: Visual Studio Installer" -ForegroundColor Cyan
-    Write-Host "    1. Download Visual Studio 2022 from: https://visualstudio.microsoft.com/downloads/"
-    Write-Host "    2. Run the installer"
-    Write-Host "    3. Select 'Desktop development with C++' workload"
-    Write-Host "    4. Complete installation and re-run this script"
-    Write-Host ""
-    Write-Host "  Option 2: winget (Command Line)" -ForegroundColor Cyan
-    Write-Host "    Run the following command as Administrator:"
-    Write-Host ""
-    Write-Host "    winget install Microsoft.VisualStudio.2022.Community --override `"--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive`"" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  Option 3: Build Tools Only (No IDE)" -ForegroundColor Cyan
-    Write-Host "    Run the following command as Administrator:"
-    Write-Host ""
-    Write-Host "    winget install Microsoft.VisualStudio.2022.BuildTools --override `"--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive`"" -ForegroundColor White
+    Write-Info "Visual Studio 2022 with C++ tools is required but not found."
+    Write-Info "This provides MSVC compiler with C++23 module support."
     Write-Host ""
 
-    exit 1
+    if ($CI) {
+        Write-Error "CI mode: Visual Studio 2022 must be pre-installed"
+        exit 1
+    }
+
+    Write-Host "Installation Options:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Option 1: Visual Studio Community (Free, includes IDE)" -ForegroundColor Cyan
+    Write-Host "    winget install Microsoft.VisualStudio.2022.Community --override `"--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive`""
+    Write-Host ""
+    Write-Host "  Option 2: Build Tools Only (Smaller, no IDE)" -ForegroundColor Cyan
+    Write-Host "    winget install Microsoft.VisualStudio.2022.BuildTools --override `"--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive`""
+    Write-Host ""
+    Write-Host "  Option 3: Visual Studio Installer (GUI)" -ForegroundColor Cyan
+    Write-Host "    Download from: https://visualstudio.microsoft.com/downloads/"
+    Write-Host "    Select 'Desktop development with C++' workload"
+    Write-Host ""
+
+    $choice = Read-Host "Enter option (1/2/3) or press Enter to install Build Tools"
+
+    switch ($choice) {
+        "1" {
+            Write-Info "Installing Visual Studio 2022 Community via winget..."
+            Write-Info "This may take 10-20 minutes..."
+            $result = winget install Microsoft.VisualStudio.2022.Community --override "--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive" --accept-package-agreements --accept-source-agreements 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Installation may have failed. Please verify manually."
+            }
+        }
+        "3" {
+            Start-Process "https://visualstudio.microsoft.com/downloads/"
+            Wait-ForUser "Please install Visual Studio 2022 with 'Desktop development with C++' workload"
+        }
+        default {
+            Write-Info "Installing Visual Studio 2022 Build Tools via winget..."
+            Write-Info "This may take 5-15 minutes..."
+            $result = winget install Microsoft.VisualStudio.2022.BuildTools --override "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive" --accept-package-agreements --accept-source-agreements 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "Installation may have failed. Please verify manually."
+            }
+        }
+    }
+
+    # Verify installation
+    Refresh-Path
+
+    if (Test-VisualStudio) {
+        $msvcVersion = Get-MSVCVersion
+        Write-Success "Visual Studio 2022 installed (MSVC $msvcVersion)"
+    } else {
+        Write-Warning "Visual Studio 2022 installation not detected."
+        Wait-ForUser "Please complete Visual Studio installation and restart this script if needed"
+
+        if (-not (Test-VisualStudio)) {
+            Write-Error "Visual Studio 2022 with C++ tools is required."
+            exit 1
+        }
+    }
 }
 
 # =============================================================================
@@ -273,15 +381,16 @@ function Install-CMake {
     }
 
     if ($null -ne $cmakeVersion -and (Compare-Version $cmakeVersion "3.28.0") -ge 0) {
-        Write-Success "CMake $cmakeVersion is installed"
+        Write-Success "CMake $cmakeVersion already installed"
         return
     }
 
     if ($null -ne $cmakeVersion) {
-        Write-Info "CMake $cmakeVersion is too old. Need 3.28+"
+        Write-Info "CMake $cmakeVersion is too old, upgrading..."
+    } else {
+        Write-Info "Installing CMake via winget..."
     }
 
-    Write-Info "Installing CMake..."
     try {
         winget install --id Kitware.CMake --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
         Write-Success "CMake installed"
@@ -289,7 +398,17 @@ function Install-CMake {
     }
     catch {
         Write-Warning "Failed to install CMake via winget"
-        Write-Info "Please install CMake manually from: https://cmake.org/download/"
+        Write-Info "Please install CMake 3.28+ from: https://cmake.org/download/"
+        Wait-ForUser "Install CMake and add it to PATH"
+    }
+
+    # Verify
+    Refresh-Path
+    if (Test-CommandExists "cmake") {
+        $versionOutput = cmake --version 2>$null | Select-Object -First 1
+        if ($versionOutput -match "(\d+\.\d+\.\d+)") {
+            Write-Success "CMake $($Matches[1]) verified"
+        }
     }
 }
 
@@ -297,11 +416,11 @@ function Install-Ninja {
     Write-Header "Checking Ninja"
 
     if (Test-CommandExists "ninja") {
-        Write-Success "Ninja is already installed"
+        Write-Success "Ninja already installed"
         return
     }
 
-    Write-Info "Installing Ninja..."
+    Write-Info "Installing Ninja via winget..."
     try {
         winget install --id Ninja-build.Ninja --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
         Write-Success "Ninja installed"
@@ -309,7 +428,7 @@ function Install-Ninja {
     }
     catch {
         Write-Warning "Failed to install Ninja via winget"
-        Write-Info "Please install Ninja manually"
+        Write-Info "Ninja is optional but recommended for faster builds"
     }
 }
 
@@ -317,11 +436,11 @@ function Install-Git {
     Write-Header "Checking Git"
 
     if (Test-CommandExists "git") {
-        Write-Success "Git is already installed"
+        Write-Success "Git already installed"
         return
     }
 
-    Write-Info "Installing Git..."
+    Write-Info "Installing Git via winget..."
     try {
         winget install --id Git.Git --silent --accept-package-agreements --accept-source-agreements 2>&1 | Out-Null
         Write-Success "Git installed"
@@ -329,7 +448,15 @@ function Install-Git {
     }
     catch {
         Write-Warning "Failed to install Git via winget"
-        Write-Info "Please install Git manually from: https://git-scm.com/download/win"
+        Write-Info "Please install Git from: https://git-scm.com/download/win"
+        Wait-ForUser "Install Git and add it to PATH"
+    }
+
+    # Verify
+    Refresh-Path
+    if (-not (Test-CommandExists "git")) {
+        Write-Error "Git is required but not found"
+        exit 1
     }
 }
 
@@ -343,26 +470,35 @@ function Install-Vcpkg {
     if (Test-Path "$VcpkgDir\vcpkg.exe") {
         Write-Success "vcpkg already installed at $VcpkgDir"
 
-        # Update vcpkg
-        Write-Info "Updating vcpkg..."
-        Push-Location $VcpkgDir
-        try {
-            git pull --quiet 2>$null
-            & .\bootstrap-vcpkg.bat -disableMetrics 2>$null | Out-Null
+        # Update vcpkg (skip in CI for speed)
+        if (-not $CI) {
+            Write-Info "Updating vcpkg..."
+            Push-Location $VcpkgDir
+            try {
+                git pull --quiet 2>$null
+                & .\bootstrap-vcpkg.bat -disableMetrics 2>$null | Out-Null
+            }
+            catch {
+                Write-Warning "Failed to update vcpkg (non-fatal)"
+            }
+            Pop-Location
         }
-        catch {
-            Write-Warning "Failed to update vcpkg (non-fatal)"
-        }
-        Pop-Location
         return
     }
 
-    Write-Info "Installing vcpkg to $VcpkgDir..."
+    Write-Info "vcpkg is a C++ package manager that will install project dependencies."
+    Write-Info "It will be installed to: $VcpkgDir"
+    Write-Info "Update it anytime with: cd $VcpkgDir; git pull; .\bootstrap-vcpkg.bat"
 
-    # Clone vcpkg
+    if (-not (Ask-YesNo "Install vcpkg now?")) {
+        Write-Error "vcpkg is required for building JFrame."
+        exit 1
+    }
+
+    Write-Info "Cloning vcpkg..."
     git clone https://github.com/microsoft/vcpkg.git $VcpkgDir
 
-    # Bootstrap vcpkg
+    Write-Info "Bootstrapping vcpkg..."
     Push-Location $VcpkgDir
     & .\bootstrap-vcpkg.bat -disableMetrics
     Pop-Location
@@ -373,11 +509,50 @@ function Install-Vcpkg {
     Write-Info "Setting VCPKG_ROOT environment variable..."
     [System.Environment]::SetEnvironmentVariable("VCPKG_ROOT", $VcpkgDir, "User")
     $env:VCPKG_ROOT = $VcpkgDir
+}
 
-    Write-Info "Consider adding vcpkg to your PATH:"
+# =============================================================================
+# FMOD Setup (Optional)
+# =============================================================================
+
+function Install-Fmod {
+    Write-Header "FMOD Audio Library (Optional)"
+
+    if (Test-Path "$ScriptDir\external\fmod\core") {
+        Write-Success "FMOD already installed at external\fmod\core"
+        return
+    }
+
+    Write-Info "FMOD is required for audio features but is NOT installed."
+    Write-Info "FMOD is proprietary and must be downloaded manually from:"
     Write-Host ""
-    Write-Host "  [System.Environment]::SetEnvironmentVariable('Path', `$env:Path + ';$VcpkgDir', 'User')"
+    Write-Host "    https://fmod.com/download" -ForegroundColor White
     Write-Host ""
+    Write-Info "After downloading:"
+    Write-Host "    1. Extract the FMOD Core API archive"
+    Write-Host "    2. Copy the contents to: $ScriptDir\external\fmod\core\"
+    Write-Host ""
+
+    if ($CI) {
+        Write-Warning "CI mode: Skipping FMOD (audio features will be disabled)"
+        return
+    }
+
+    if (Ask-YesNo "Would you like to install FMOD now?" "n") {
+        Write-Info "Opening FMOD download page..."
+        Start-Process "https://fmod.com/download"
+
+        Wait-ForUser "Please download and extract FMOD Core API to: $ScriptDir\external\fmod\core\"
+
+        if (Test-Path "$ScriptDir\external\fmod\core") {
+            Write-Success "FMOD installation detected"
+        } else {
+            Write-Warning "FMOD not detected. Audio features will be disabled."
+        }
+    } else {
+        Write-Warning "Skipping FMOD. Audio features will be disabled."
+        Write-Info "You can install FMOD later and re-run this script."
+    }
 }
 
 # =============================================================================
@@ -392,15 +567,6 @@ function Build-JFrame {
     # Set environment variables
     $env:VCPKG_ROOT = $VcpkgDir
 
-    # Check for FMOD
-    if (-not (Test-Path "$ScriptDir\external\fmod\core")) {
-        Write-Warning "FMOD not found in external\fmod\core"
-        Write-Info "Audio features will not work without FMOD."
-        Write-Info "Download FMOD Core API from: https://fmod.com/download"
-        Write-Info "See docs\Installation.md for setup instructions."
-        Write-Host ""
-    }
-
     # Clean incompatible cache
     $cacheFile = "$ScriptDir\build\$BuildPreset\CMakeCache.txt"
     if (Test-Path $cacheFile) {
@@ -414,6 +580,7 @@ function Build-JFrame {
     # Configure
     Write-Info "Configuring with preset: $BuildPreset"
     Write-Info "Using MSVC (Visual Studio 2022)"
+    Write-Info "This will download and build vcpkg dependencies (may take several minutes on first run)..."
 
     $configResult = cmake --preset $BuildPreset 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -426,7 +593,7 @@ function Build-JFrame {
     }
     Write-Success "Configuration complete"
 
-    # Build (note: --config Debug is required for multi-config generators like Visual Studio)
+    # Build (--config Debug required for multi-config generators)
     Write-Info "Building JFrame..."
     $buildResult = cmake --build --preset $BuildPreset --config Debug --parallel 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -439,7 +606,6 @@ function Build-JFrame {
 
     # Run tests
     Write-Info "Running tests..."
-    # Calculate parallel jobs
     $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
     Write-Info "Running tests with $jobs parallel jobs"
     $testResult = ctest --preset $BuildPreset --build-config Debug -j $jobs 2>&1
@@ -463,22 +629,20 @@ function Show-PostSetup {
     Write-Host "Your JFrame development environment is ready."
     Write-Host ""
     Write-Host "Compiler: MSVC (Visual Studio 2022) with C++23 module support"
+    Write-Host "  Update with: Visual Studio Installer -> Update"
     Write-Host ""
 
     if (-not (Test-Path "$ScriptDir\external\fmod\core")) {
-        Write-Host "IMPORTANT: FMOD is not installed" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "To enable audio features:"
-        Write-Host "  1. Download FMOD Core API from: https://fmod.com/download"
-        Write-Host "  2. Extract and copy to: external\fmod\core\"
-        Write-Host "  3. Re-run this script or rebuild manually"
+        Write-Host "NOTE: FMOD is not installed (audio features disabled)" -ForegroundColor Yellow
+        Write-Host "  Install from: https://fmod.com/download"
+        Write-Host "  Extract to: external\fmod\core\"
         Write-Host ""
     }
 
     Write-Host "Useful commands:"
     Write-Host ""
     Write-Host "  # Rebuild"
-    Write-Host "  cmake --build --preset $BuildPreset --config Debug"
+    Write-Host "  cmake --build --preset $BuildPreset --config Debug --parallel"
     Write-Host ""
     Write-Host "  # Run tests"
     Write-Host "  ctest --preset $BuildPreset --build-config Debug"
@@ -488,9 +652,9 @@ function Show-PostSetup {
     Write-Host "  cmake --preset $BuildPreset"
     Write-Host "  cmake --build --preset $BuildPreset --config Debug"
     Write-Host ""
-    Write-Host "For more information, see:"
-    Write-Host "  - docs\Installation.md"
-    Write-Host "  - docs\Getting-Started.md"
+    Write-Host "  # Update dependencies"
+    Write-Host "  winget upgrade --all                # Update winget packages"
+    Write-Host "  cd $VcpkgDir; git pull              # Update vcpkg"
     Write-Host ""
 }
 
@@ -510,6 +674,11 @@ function Main {
     Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
     Write-Host "Script Directory: $ScriptDir"
     Write-Host "vcpkg Directory: $VcpkgDir"
+    if ($CI) {
+        Write-Host "Mode: CI (non-interactive)"
+    } else {
+        Write-Host "Mode: Interactive"
+    }
     Write-Host ""
 
     # Check admin for some installations
@@ -526,12 +695,13 @@ function Main {
     Install-CMake
     Install-Ninja
     Install-Vcpkg
+    Install-Fmod
 
     # Build
     if (-not $NoBuild) {
         Build-JFrame
     } else {
-        Write-Info "Skipping build (-NoBuild specified)"
+        Write-Info "Skipping build (-NoBuild or -CI specified)"
     }
 
     Show-PostSetup
