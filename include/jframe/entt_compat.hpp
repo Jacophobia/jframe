@@ -92,6 +92,32 @@ template bool force_view_iterator_ne<ViewIteratorType, false, 3, 0>(
     const view_iterator<ViewIteratorType, false, 3, 0>&,
     const view_iterator<ViewIteratorType, false, 3, 0>&) noexcept;
 
+// Force instantiation for sparse_set_iterator operators used when iterating sparse sets
+// The template parameter is the container type, typically std::vector<entity>
+template<typename Container>
+[[maybe_unused]] inline bool force_sparse_set_iterator_eq(
+    const sparse_set_iterator<Container>& a,
+    const sparse_set_iterator<Container>& b) noexcept {
+    return a == b;
+}
+
+template<typename Container>
+[[maybe_unused]] inline bool force_sparse_set_iterator_ne(
+    const sparse_set_iterator<Container>& a,
+    const sparse_set_iterator<Container>& b) noexcept {
+    return a != b;
+}
+
+// Instantiate for common sparse_set_iterator configurations
+// sparse_set_iterator uses a reference container (std::vector<entity>&) wrapper
+using SparseSetContainer = std::vector<entt::entity, std::allocator<entt::entity>>;
+template bool force_sparse_set_iterator_eq<SparseSetContainer>(
+    const sparse_set_iterator<SparseSetContainer>&,
+    const sparse_set_iterator<SparseSetContainer>&) noexcept;
+template bool force_sparse_set_iterator_ne<SparseSetContainer>(
+    const sparse_set_iterator<SparseSetContainer>&,
+    const sparse_set_iterator<SparseSetContainer>&) noexcept;
+
 } // namespace entt::internal
 
 #endif // _MSC_VER
