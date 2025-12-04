@@ -21,8 +21,10 @@ target_link_libraries(jframe-metrics
 )
 
 # Tracy integration
+# Link PRIVATE since Tracy is statically compiled in and its include paths
+# are in the build directory (not relocatable for installation)
 if(JFRAME_ENABLE_TRACY)
-    target_link_libraries(jframe-metrics PUBLIC tracy)
+    target_link_libraries(jframe-metrics PRIVATE tracy)
     target_compile_definitions(jframe-metrics PUBLIC TRACY_ENABLE)
 endif()
 

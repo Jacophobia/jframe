@@ -110,9 +110,8 @@ if(JFRAME_DEV_TOOLS)
     list(APPEND JFRAME_LIBRARY_TARGETS jframe-dev)
 endif()
 
-if(JFRAME_ENABLE_TRACY)
-    list(APPEND JFRAME_LIBRARY_TARGETS tracy)
-endif()
+# Note: Tracy is NOT exported - it's statically linked into jframe-metrics
+# and its include paths point to the build directory (FetchContent)
 
 # Install library targets
 install(TARGETS ${JFRAME_LIBRARY_TARGETS}
