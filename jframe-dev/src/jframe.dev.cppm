@@ -5,14 +5,18 @@ module;
 
 #include <imgui.h>
 
+// Include GLFW header for GLFWwindow - forward declaration causes type
+// mismatch with MSVC C++23 modules when implementation includes full header
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION
+#endif
+#include <GLFW/glfw3.h>
+
 export module jframe.dev;
 
 import std;
 import jframe;
 import jframe.core;
-
-// Forward declare GLFWwindow
-struct GLFWwindow;
 
 export namespace jframe::dev {
 
