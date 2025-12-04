@@ -6,16 +6,15 @@
 .DESCRIPTION
     This script sets up a complete development environment for JFrame on Windows:
 
-    1. Installs winget (if not present)
-    2. Installs LLVM/Clang 20+ (required for C++23 'import std;')
-    3. Installs CMake, Ninja, and Git
-    4. Installs vcpkg package manager
-    5. Configures and builds JFrame with C++23
+    1. Verifies/installs Visual Studio 2022 with C++ workload
+    2. Installs CMake, Ninja, and Git via winget
+    3. Installs vcpkg package manager
+    4. Configures and builds JFrame with C++23
 
     The script is idempotent - running it multiple times is safe and will
     only install/update components that are missing or outdated.
 
-    NOTE: This script does NOT use MSVC. All compilation is done with LLVM Clang.
+    NOTE: Windows builds use MSVC (Visual Studio 2022) with native C++23 module support.
 
 .PARAMETER NoBuild
     Setup environment only, skip building JFrame
@@ -49,7 +48,6 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VcpkgDir = if ($env:VCPKG_ROOT) { $env:VCPKG_ROOT } else { "C:\vcpkg" }
-$LLVMDir = "C:\Program Files\LLVM"
 $BuildPreset = "windows-debug"
 
 # =============================================================================
@@ -162,70 +160,101 @@ function Install-Winget {
 }
 
 # =============================================================================
-# LLVM/Clang Installation
+# Visual Studio Installation
 # =============================================================================
 
-function Install-LLVM {
-    Write-Header "Checking LLVM/Clang"
+function Test-VisualStudio {
+    # Check for Visual Studio 2022 with C++ workload
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 
-    $clangPath = "$LLVMDir\bin\clang++.exe"
+    if (-not (Test-Path $vswhere)) {
+        return $false
+    }
 
-    # Check if LLVM is already installed
-    if (Test-Path $clangPath) {
-        $versionOutput = & $clangPath --version 2>$null | Select-Object -First 1
-        if ($versionOutput -match "(\d+)\.\d+\.\d+") {
-            $majorVersion = [int]$Matches[1]
-            if ($majorVersion -ge 20) {
-                Write-Success "LLVM $versionOutput is installed"
+    # Check for VS2022 with C++ Desktop workload
+    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
 
-                # Verify std module support
-                $stdCppm = "$LLVMDir\share\libc++\v1\std.cppm"
-                if (Test-Path $stdCppm) {
-                    Write-Success "std.cppm module found"
-                    return
-                } else {
-                    Write-Warning "std.cppm not found at $stdCppm"
-                    Write-Info "LLVM may not have full module support"
-                }
-                return
+    if ([string]::IsNullOrEmpty($vsPath)) {
+        return $false
+    }
+
+    # Verify cl.exe exists and check version
+    $clPath = Join-Path $vsPath "VC\Tools\MSVC\*\bin\Hostx64\x64\cl.exe"
+    $clExe = Get-ChildItem -Path $clPath -ErrorAction SilentlyContinue | Sort-Object -Descending | Select-Object -First 1
+
+    if ($null -eq $clExe) {
+        return $false
+    }
+
+    return $true
+}
+
+function Get-MSVCVersion {
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+    if (-not (Test-Path $vswhere)) {
+        return $null
+    }
+
+    $vsPath = & $vswhere -version "[17.0,18.0)" -requires Microsoft.VisualStudio.Workload.NativeDesktop -property installationPath 2>$null
+
+    if ([string]::IsNullOrEmpty($vsPath)) {
+        return $null
+    }
+
+    # Get MSVC version from directory name
+    $msvcPath = Join-Path $vsPath "VC\Tools\MSVC"
+    $msvcVersions = Get-ChildItem -Path $msvcPath -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+
+    if ($msvcVersions.Count -gt 0) {
+        return $msvcVersions[0].Name
+    }
+
+    return $null
+}
+
+function Install-VisualStudio {
+    Write-Header "Checking Visual Studio 2022"
+
+    if (Test-VisualStudio) {
+        $msvcVersion = Get-MSVCVersion
+        Write-Success "Visual Studio 2022 with C++ workload is installed (MSVC $msvcVersion)"
+
+        # Check MSVC version for C++23 module support (need 19.38+)
+        if ($null -ne $msvcVersion) {
+            $majorMinor = $msvcVersion.Split('.')[0..1] -join '.'
+            if ([double]$majorMinor -ge 14.38) {
+                Write-Success "MSVC version supports C++23 modules (import std;)"
             } else {
-                Write-Info "LLVM version $majorVersion is too old. Need 20+"
+                Write-Warning "MSVC version $msvcVersion may not fully support C++23 modules"
+                Write-Info "Consider updating Visual Studio for best compatibility"
             }
         }
+        return
     }
 
-    Write-Info "Installing LLVM 20..."
-    Write-Info "This may take a while..."
+    Write-Info "Visual Studio 2022 with C++ workload is required but not found"
+    Write-Host ""
+    Write-Host "Please install Visual Studio 2022 with the following options:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Option 1: Visual Studio Installer" -ForegroundColor Cyan
+    Write-Host "    1. Download Visual Studio 2022 from: https://visualstudio.microsoft.com/downloads/"
+    Write-Host "    2. Run the installer"
+    Write-Host "    3. Select 'Desktop development with C++' workload"
+    Write-Host "    4. Complete installation and re-run this script"
+    Write-Host ""
+    Write-Host "  Option 2: winget (Command Line)" -ForegroundColor Cyan
+    Write-Host "    Run the following command as Administrator:"
+    Write-Host ""
+    Write-Host "    winget install Microsoft.VisualStudio.2022.Community --override `"--add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive`"" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Option 3: Build Tools Only (No IDE)" -ForegroundColor Cyan
+    Write-Host "    Run the following command as Administrator:"
+    Write-Host ""
+    Write-Host "    winget install Microsoft.VisualStudio.2022.BuildTools --override `"--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --passive`"" -ForegroundColor White
+    Write-Host ""
 
-    try {
-        # Install LLVM via winget
-        $result = winget install --id LLVM.LLVM --version 20.1.0 --silent --accept-package-agreements --accept-source-agreements 2>&1
-
-        if ($LASTEXITCODE -eq 0 -or $result -match "already installed") {
-            Write-Success "LLVM installed"
-            Refresh-Path
-        } else {
-            throw "winget returned exit code $LASTEXITCODE"
-        }
-    }
-    catch {
-        Write-Warning "Failed to install LLVM via winget"
-        Write-Info "Please install LLVM manually from: https://github.com/llvm/llvm-project/releases"
-        Write-Info "Download: LLVM-20.x.x-win64.exe"
-        Write-Info "During installation, select 'Add LLVM to the system PATH'"
-        exit 1
-    }
-
-    # Verify installation
-    Refresh-Path
-    if (Test-Path $clangPath) {
-        $versionOutput = & $clangPath --version 2>$null | Select-Object -First 1
-        Write-Success "LLVM installed: $versionOutput"
-    } else {
-        Write-Error "LLVM installation verification failed"
-        Write-Info "Please ensure LLVM is installed at: $LLVMDir"
-        exit 1
-    }
+    exit 1
 }
 
 # =============================================================================
@@ -362,8 +391,6 @@ function Build-JFrame {
 
     # Set environment variables
     $env:VCPKG_ROOT = $VcpkgDir
-    $env:CC = "$LLVMDir\bin\clang.exe"
-    $env:CXX = "$LLVMDir\bin\clang++.exe"
 
     # Check for FMOD
     if (-not (Test-Path "$ScriptDir\external\fmod\core")) {
@@ -386,7 +413,7 @@ function Build-JFrame {
 
     # Configure
     Write-Info "Configuring with preset: $BuildPreset"
-    Write-Info "Using Clang: $env:CXX"
+    Write-Info "Using MSVC (Visual Studio 2022)"
 
     $configResult = cmake --preset $BuildPreset 2>&1
     if ($LASTEXITCODE -ne 0) {
@@ -399,9 +426,9 @@ function Build-JFrame {
     }
     Write-Success "Configuration complete"
 
-    # Build
+    # Build (note: --config Debug is required for multi-config generators like Visual Studio)
     Write-Info "Building JFrame..."
-    $buildResult = cmake --build --preset $BuildPreset 2>&1
+    $buildResult = cmake --build --preset $BuildPreset --config Debug --parallel 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host $buildResult
         Write-Error "Build failed"
@@ -412,7 +439,10 @@ function Build-JFrame {
 
     # Run tests
     Write-Info "Running tests..."
-    $testResult = ctest --preset $BuildPreset --output-on-failure 2>&1
+    # Calculate parallel jobs
+    $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
+    Write-Info "Running tests with $jobs parallel jobs"
+    $testResult = ctest --preset $BuildPreset --build-config Debug -j $jobs 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Success "All tests passed"
     } else {
@@ -432,7 +462,7 @@ function Show-PostSetup {
 
     Write-Host "Your JFrame development environment is ready."
     Write-Host ""
-    Write-Host "Compiler: LLVM Clang (C++23 with 'import std;')"
+    Write-Host "Compiler: MSVC (Visual Studio 2022) with C++23 module support"
     Write-Host ""
 
     if (-not (Test-Path "$ScriptDir\external\fmod\core")) {
@@ -448,15 +478,15 @@ function Show-PostSetup {
     Write-Host "Useful commands:"
     Write-Host ""
     Write-Host "  # Rebuild"
-    Write-Host "  cmake --build --preset $BuildPreset"
+    Write-Host "  cmake --build --preset $BuildPreset --config Debug"
     Write-Host ""
     Write-Host "  # Run tests"
-    Write-Host "  ctest --preset $BuildPreset"
+    Write-Host "  ctest --preset $BuildPreset --build-config Debug"
     Write-Host ""
     Write-Host "  # Clean rebuild"
     Write-Host "  Remove-Item -Recurse -Force build\$BuildPreset"
     Write-Host "  cmake --preset $BuildPreset"
-    Write-Host "  cmake --build --preset $BuildPreset"
+    Write-Host "  cmake --build --preset $BuildPreset --config Debug"
     Write-Host ""
     Write-Host "For more information, see:"
     Write-Host "  - docs\Installation.md"
@@ -480,7 +510,6 @@ function Main {
     Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
     Write-Host "Script Directory: $ScriptDir"
     Write-Host "vcpkg Directory: $VcpkgDir"
-    Write-Host "LLVM Directory: $LLVMDir"
     Write-Host ""
 
     # Check admin for some installations
@@ -493,7 +522,7 @@ function Main {
     # Install components
     Install-Winget
     Install-Git
-    Install-LLVM
+    Install-VisualStudio
     Install-CMake
     Install-Ninja
     Install-Vcpkg
