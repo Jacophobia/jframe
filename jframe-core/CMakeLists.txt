@@ -16,6 +16,7 @@ target_sources(jframe-core
 target_link_libraries(jframe-core
     PUBLIC
         jframe-contract
+        jframe-metrics
         spdlog::spdlog
         Taskflow::Taskflow
     PRIVATE
@@ -34,9 +35,7 @@ target_link_libraries(jframe-core
         jframe-blueprints
 )
 
-if(JFRAME_ENABLE_TRACY)
-    target_link_libraries(jframe-core PUBLIC tracy)
-    target_compile_definitions(jframe-core PUBLIC TRACY_ENABLE)
-endif()
+# Tracy is already linked via jframe-metrics (PRIVATE), and TRACY_ENABLE
+# definition propagates through jframe-metrics (PUBLIC)
 
 target_compile_features(jframe-core PUBLIC cxx_std_23)

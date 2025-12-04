@@ -21,6 +21,7 @@ import jframe.ai.impl;
 import jframe.camera.impl;
 import jframe.gas.impl;
 import jframe.blueprints.impl;
+import jframe.metrics;
 
 namespace jframe::core {
 
@@ -93,7 +94,13 @@ void Engine::run(Application& app) {
     Timer frameTimer;
     float accumulator = 0.0f;
 
+    // Get metrics collector reference
+    auto& metricsCollector = metrics::MetricsCollector::instance();
+
     while (impl_->running) {
+        // Begin frame metrics collection
+        metricsCollector.beginFrame();
+
         // Measure frame time
         float frameTime = frameTimer.elapsedSeconds();
         frameTimer.reset();
@@ -108,6 +115,7 @@ void Engine::run(Application& app) {
 
         // Process input events (once per frame)
         if (impl_->input) {
+            metrics::ScopedSystemTimer inputTimer(metrics::SystemId::Input);
             impl_->input->update();
         }
 
@@ -121,14 +129,19 @@ void Engine::run(Application& app) {
         while (accumulator >= FIXED_DT) {
             // Update physics
             if (impl_->physics) {
+                metrics::ScopedSystemTimer physicsTimer(metrics::SystemId::Physics);
                 impl_->physics->update(FIXED_DT);
             }
 
             // Update game logic
-            app.updateFixed(FIXED_DT);
+            {
+                metrics::ScopedSystemTimer appTimer(metrics::SystemId::Application);
+                app.updateFixed(FIXED_DT);
+            }
 
             // Process queued events
             if (impl_->events) {
+                metrics::ScopedSystemTimer eventsTimer(metrics::SystemId::Events);
                 impl_->events->processQueue();
             }
 
@@ -140,14 +153,22 @@ void Engine::run(Application& app) {
         float alpha = accumulator / FIXED_DT;
 
         if (impl_->graphics) {
+            metrics::ScopedSystemTimer graphicsTimer(metrics::SystemId::Graphics);
             impl_->graphics->beginFrame();
             app.render(alpha);
             impl_->graphics->endFrame();
         } else {
             // No graphics system, just render without frame management
+            metrics::ScopedSystemTimer appTimer(metrics::SystemId::Application);
             app.render(alpha);
         }
+
+        // End frame metrics collection
+        metricsCollector.endFrame();
     }
+
+    // Log final metrics summary
+    logInfo(metrics::getMetricsSummary());
 
     // Cleanup
     app.shutdown();

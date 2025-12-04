@@ -42,6 +42,7 @@ set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Add subdirectories
 add_subdirectory(jframe-contract)
+add_subdirectory(jframe-metrics)
 add_subdirectory(jframe-components)
 add_subdirectory(jframe-core)
 add_subdirectory(jframe-entity)
@@ -86,6 +87,7 @@ include(CMakePackageConfigHelpers)
 # List of all JFrame library targets
 set(JFRAME_LIBRARY_TARGETS
     jframe-contract
+    jframe-metrics
     jframe-components
     jframe-core
     jframe-entity
@@ -107,6 +109,9 @@ set(JFRAME_LIBRARY_TARGETS
 if(JFRAME_DEV_TOOLS)
     list(APPEND JFRAME_LIBRARY_TARGETS jframe-dev)
 endif()
+
+# Note: Tracy is NOT exported - it's statically linked into jframe-metrics
+# and its include paths point to the build directory (FetchContent)
 
 # Install library targets
 install(TARGETS ${JFRAME_LIBRARY_TARGETS}

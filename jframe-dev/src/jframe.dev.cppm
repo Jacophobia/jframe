@@ -20,6 +20,7 @@ export module jframe.dev;
 import std;
 import jframe;
 import jframe.core;
+import jframe.metrics;
 
 export namespace jframe::dev {
 
@@ -86,6 +87,12 @@ public:
     void setLastReload(const std::string& file);
 
 private:
+    // Tab rendering methods
+    void renderPerformanceTab();
+    void renderSystemsTab();
+    void renderCodePathsTab();
+    void renderExportTab();
+
     bool visible_ = true;
     float fps_ = 0.0f;
     std::size_t entityCount_ = 0;

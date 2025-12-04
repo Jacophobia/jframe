@@ -16,6 +16,7 @@ target_link_libraries(jframe-dev
     PUBLIC
         jframe-contract
         jframe-core
+        jframe-metrics
         imgui::imgui
         efsw::efsw
         glfw
