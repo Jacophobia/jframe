@@ -28,7 +28,12 @@
 #include <cstdio>
 #include <string>
 
-// Include sol2's dependencies for error_handler.hpp BEFORE we define the guard
+// Define sol2's include guards BEFORE including any sol headers
+// This prevents sol from defining its constexpr variables with internal linkage
+#define SOL_IN_PLACE_HPP
+#define SOL_ERROR_HANDLER_HPP
+
+// Include sol2's dependencies for error_handler.hpp
 #include <sol/config.hpp>
 #include <sol/types.hpp>
 #include <sol/demangle.hpp>
@@ -200,10 +205,6 @@ namespace sol {
         type_assert(L, index, expected, actual);
     }
 } // namespace sol
-
-// Define sol2's include guards so it doesn't redefine these
-#define SOL_IN_PLACE_HPP
-#define SOL_ERROR_HANDLER_HPP
 
 #endif // _MSC_VER
 
