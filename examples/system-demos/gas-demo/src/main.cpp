@@ -1,6 +1,9 @@
 // GAS System Demo - Comprehensive demonstration of IGASSystem interface
 // This demo exercises every method and type in the Gameplay Ability System
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe.types;
 import jframe.gas;

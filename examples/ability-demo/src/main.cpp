@@ -1,6 +1,10 @@
 // examples/ability-demo/src/main.cpp
 // Gameplay Ability System graphical demonstration
 
+// MSVC C++23 module compatibility for EnTT iterators and sol2 globals
+#include <jframe/entt_compat.hpp>
+#include <jframe/sol2_compat.hpp>
+
 import std;
 import jframe;
 import jframe.core;

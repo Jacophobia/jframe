@@ -3,7 +3,8 @@
 
 module;
 
-#include <entt/entt.hpp>
+// Use compatibility header for MSVC C++23 module support
+#include <jframe/entt_compat.hpp>
 
 export module entity.demo;
 

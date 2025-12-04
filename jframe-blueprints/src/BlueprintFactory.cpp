@@ -3,8 +3,9 @@
 
 module;
 
-#include <sol/sol.hpp>
-#include <entt/entity/entity.hpp>
+// MSVC C++23 module compatibility - include full EnTT before import std
+#include <jframe/entt_compat.hpp>
+#include <jframe/sol2_compat.hpp>
 
 module jframe.blueprints.impl;
 

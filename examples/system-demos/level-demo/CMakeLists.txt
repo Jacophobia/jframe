@@ -12,6 +12,7 @@ add_executable(level-demo
 # Enable std module support
 target_use_std_module(level-demo)
 
+# Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(level-demo
     PRIVATE
         jframe-contract
@@ -19,6 +20,8 @@ target_link_libraries(level-demo
         jframe-entity
         jframe-assets
         jframe-events
+        lua
+        sol2::sol2
 )
 
 # Set output directory

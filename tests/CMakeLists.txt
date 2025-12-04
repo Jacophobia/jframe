@@ -43,5 +43,10 @@ target_link_libraries(jframe-tests
 
 target_compile_features(jframe-tests PRIVATE cxx_std_23)
 
+# MSVC workaround: force include entt_compat.hpp to fix ADL issues with C++23 modules
+if(MSVC)
+    target_compile_options(jframe-tests PRIVATE /FI"jframe/entt_compat.hpp")
+endif()
+
 include(GoogleTest)
 gtest_discover_tests(jframe-tests)

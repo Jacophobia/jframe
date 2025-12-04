@@ -4,7 +4,8 @@
 module;
 
 #include <glm/glm.hpp>
-#include <entt/entity/entity.hpp>
+// MSVC C++23 module compatibility - use full EnTT header
+#include <jframe/entt_compat.hpp>
 
 module jframe.camera.impl;
 

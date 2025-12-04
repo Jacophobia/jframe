@@ -1195,11 +1195,11 @@ TEST_F(AudioSystemTest, PlayPositionalWithAllParameters) {
     PositionalSound sound{
         .asset = testSound,
         .position = Vec3{10.0f, 20.0f, 30.0f},
-        .velocity = Vec3{1.0f, 2.0f, 3.0f},
         .volume = 0.8f,
         .pitch = 1.1f,
         .minDistance = 5.0f,
-        .maxDistance = 100.0f
+        .maxDistance = 100.0f,
+        .velocity = Vec3{1.0f, 2.0f, 3.0f}
     };
 
     SoundHandle handle = audio_->playPositional(sound);

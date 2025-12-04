@@ -23,6 +23,7 @@ target_link_libraries(blueprints-demo
         jframe-events
         jframe-blueprints
         ${LUA_LIBRARIES}
+        sol2::sol2
 )
 
 # Set output directory

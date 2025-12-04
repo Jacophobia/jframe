@@ -3,7 +3,8 @@
 
 module;
 
-#include <entt/entity/fwd.hpp>
+// MSVC C++23 module compatibility - use full EnTT header
+#include <jframe/entt_compat.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 

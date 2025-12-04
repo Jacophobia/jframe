@@ -21,16 +21,12 @@ jobs:
           - os: ubuntu-24.04
             preset: linux-debug
             name: Linux
-          # Windows disabled: EnTT has MSVC C++23 module compatibility issues
-          # Error: 'entt::internal::sparse_set_iterator' no operator "!=" matches
-          # This is an ADL issue when using 'import std;' with MSVC - operator!=
-          # from std::rel_ops or synthesized from operator== is not found.
-          # See: https://github.com/skypjack/entt/issues/1138
-          # Fixed: nlohmann/json and cereal compatibility (using std::any and PIMPL)
-          # Blocked: EnTT iterator operators with MSVC C++23 modules
-          # - os: windows-2022
-          #   preset: windows-debug
-          #   name: Windows
+          # Windows re-enabled: Added jframe/entt_compat.hpp header that brings
+          # EnTT internal comparison operators into scope for MSVC C++23 modules.
+          # See include/jframe/entt_compat.hpp for details.
+          - os: windows-2022
+            preset: windows-debug
+            name: Windows
 
     name: Build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
@@ -171,9 +167,10 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
-      # Cache vcpkg installed packages (more reliable than binary caching with custom triplets)
-      - name: Cache vcpkg installed packages
-        uses: actions/cache@v4
+      # Restore vcpkg installed packages from cache (separate restore/save for early caching)
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             build/${{ matrix.preset }}/vcpkg_installed
@@ -195,6 +192,16 @@ jobs:
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         run: cmake --preset ${{ matrix.preset }}
+
+      # Save vcpkg cache immediately after configure (before build might fail)
+      # This ensures expensive vcpkg installs are cached even if compilation fails
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
 
       - name: Build (Unix)
         if: runner.os != 'Windows'

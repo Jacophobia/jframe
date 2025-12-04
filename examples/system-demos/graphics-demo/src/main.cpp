@@ -2,6 +2,9 @@
 // Comprehensive demonstration of the JFrame Graphics System API
 // This demo exercises EVERY method in IGraphicsSystem interface WITH ACTUAL RENDERING
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe;
 import jframe.graphics;
