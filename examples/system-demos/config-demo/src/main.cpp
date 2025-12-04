@@ -1,6 +1,9 @@
 // config-demo/src/main.cpp
 // Comprehensive demonstration of JFrame Config System API
 
+// MSVC C++23 module compatibility for sol2 globals
+#include <jframe/sol2_compat.hpp>
+
 import std;
 import jframe.types;
 import jframe.config;

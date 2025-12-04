@@ -1,8 +1,9 @@
 // main.cpp
 // Blueprints System Demo - Comprehensive API demonstration
 
-// MSVC C++23 module compatibility for EnTT iterators
+// MSVC C++23 module compatibility for EnTT iterators and sol2 globals
 #include <jframe/entt_compat.hpp>
+#include <jframe/sol2_compat.hpp>
 
 import std;
 import jframe.types;

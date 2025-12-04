@@ -1,6 +1,9 @@
 // Level System Demo - Comprehensive API Testing
 // Demonstrates all ILevelSystem methods and types
 
+// MSVC C++23 module compatibility for sol2 globals
+#include <jframe/sol2_compat.hpp>
+
 import std;
 import jframe.types;
 import jframe.level;
