@@ -31,10 +31,12 @@ function(find_dependencies)
     endif()
 
     # Tracy profiler (optional) - automatically fetched via FetchContent
+    # We don't create a separate tracy target to avoid CMake export issues.
+    # Instead, we set variables that jframe-metrics uses to compile Tracy directly.
     if(JFRAME_ENABLE_TRACY)
         # Check if Tracy is already available locally
         if(EXISTS "${CMAKE_SOURCE_DIR}/external/tracy/public/TracyClient.cpp")
-            set(TRACY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/external/tracy")
+            set(TRACY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/external/tracy" CACHE PATH "Tracy source directory")
             message(STATUS "Tracy profiler: using local copy at ${TRACY_SOURCE_DIR}")
         else()
             # Fetch Tracy from GitHub
@@ -46,27 +48,16 @@ function(find_dependencies)
                 GIT_PROGRESS TRUE
             )
             FetchContent_MakeAvailable(tracy)
-            set(TRACY_SOURCE_DIR "${tracy_SOURCE_DIR}")
+            set(TRACY_SOURCE_DIR "${tracy_SOURCE_DIR}" CACHE PATH "Tracy source directory")
             message(STATUS "Tracy profiler: fetched from GitHub to ${TRACY_SOURCE_DIR}")
         endif()
 
-        # Create Tracy library target
-        add_library(tracy STATIC
-            "${TRACY_SOURCE_DIR}/public/TracyClient.cpp"
-        )
-        target_include_directories(tracy PUBLIC
-            "${TRACY_SOURCE_DIR}/public"
-        )
-        target_compile_definitions(tracy PUBLIC TRACY_ENABLE)
+        # Set variables for jframe-metrics to use (no separate target to avoid export issues)
+        set(TRACY_CLIENT_SOURCE "${TRACY_SOURCE_DIR}/public/TracyClient.cpp" CACHE FILEPATH "Tracy client source")
+        set(TRACY_INCLUDE_DIR "${TRACY_SOURCE_DIR}/public" CACHE PATH "Tracy include directory")
 
         # Tracy requires threading support
         find_package(Threads REQUIRED)
-        target_link_libraries(tracy PUBLIC Threads::Threads)
-
-        # Platform-specific libraries for Tracy
-        if(UNIX AND NOT APPLE)
-            target_link_libraries(tracy PUBLIC dl)
-        endif()
 
         message(STATUS "Tracy profiler enabled (v0.11.1)")
     endif()
