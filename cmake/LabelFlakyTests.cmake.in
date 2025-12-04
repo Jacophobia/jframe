@@ -1,0 +1,18 @@
+# cmake/LabelFlakyTests.cmake.in
+# This file is configured by CMake and included during test discovery
+# to label flaky tests with the "Flaky" label.
+#
+# Generated from: cmake/LabelFlakyTests.cmake.in
+# Flaky tests defined in: cmake/FlakyTests.cmake
+
+# List of flaky test patterns (configured from FlakyTests.cmake)
+set(_FLAKY_TESTS "@JFRAME_FLAKY_TESTS@")
+
+# Label each flaky test
+foreach(_flaky_pattern IN LISTS _FLAKY_TESTS)
+    # Try to set properties on tests matching this pattern
+    # The test name format from gtest_discover_tests is: TestSuiteName.TestName
+    if(TEST "${_flaky_pattern}")
+        set_tests_properties("${_flaky_pattern}" PROPERTIES LABELS "Flaky")
+    endif()
+endforeach()

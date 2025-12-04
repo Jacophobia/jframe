@@ -1,6 +1,8 @@
 # Dependencies.cmake
 # Finds and configures all third-party dependencies
 
+include(FetchContent)
+
 function(find_dependencies)
     # vcpkg dependencies
     find_package(glfw3 CONFIG REQUIRED)
@@ -28,22 +30,36 @@ function(find_dependencies)
         find_package(efsw CONFIG REQUIRED)
     endif()
 
-    # Tracy profiler (optional)
+    # Tracy profiler (optional) - automatically fetched via FetchContent
+    # We don't create a separate tracy target to avoid CMake export issues.
+    # Instead, we set variables that jframe-metrics uses to compile Tracy directly.
     if(JFRAME_ENABLE_TRACY)
-        # Tracy is typically included as a submodule
+        # Check if Tracy is already available locally
         if(EXISTS "${CMAKE_SOURCE_DIR}/external/tracy/public/TracyClient.cpp")
-            add_library(tracy STATIC
-                "${CMAKE_SOURCE_DIR}/external/tracy/public/TracyClient.cpp"
-            )
-            target_include_directories(tracy PUBLIC
-                "${CMAKE_SOURCE_DIR}/external/tracy/public"
-            )
-            target_compile_definitions(tracy PUBLIC TRACY_ENABLE)
-            message(STATUS "Tracy profiler enabled")
+            set(TRACY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/external/tracy" CACHE PATH "Tracy source directory")
+            message(STATUS "Tracy profiler: using local copy at ${TRACY_SOURCE_DIR}")
         else()
-            message(WARNING "Tracy enabled but not found in external/tracy")
-            set(JFRAME_ENABLE_TRACY OFF PARENT_SCOPE)
+            # Fetch Tracy from GitHub
+            FetchContent_Declare(
+                tracy
+                GIT_REPOSITORY https://github.com/wolfpld/tracy.git
+                GIT_TAG v0.11.1  # Pin to specific version for reproducibility
+                GIT_SHALLOW TRUE
+                GIT_PROGRESS TRUE
+            )
+            FetchContent_MakeAvailable(tracy)
+            set(TRACY_SOURCE_DIR "${tracy_SOURCE_DIR}" CACHE PATH "Tracy source directory")
+            message(STATUS "Tracy profiler: fetched from GitHub to ${TRACY_SOURCE_DIR}")
         endif()
+
+        # Set variables for jframe-metrics to use (no separate target to avoid export issues)
+        set(TRACY_CLIENT_SOURCE "${TRACY_SOURCE_DIR}/public/TracyClient.cpp" CACHE FILEPATH "Tracy client source")
+        set(TRACY_INCLUDE_DIR "${TRACY_SOURCE_DIR}/public" CACHE PATH "Tracy include directory")
+
+        # Tracy requires threading support
+        find_package(Threads REQUIRED)
+
+        message(STATUS "Tracy profiler enabled (v0.11.1)")
     endif()
 
     # FMOD (manual setup required)
