@@ -4,7 +4,8 @@
 #include <memory>
 #include <cmath>
 
-#include <entt/entity/entity.hpp>
+// MSVC C++23 module compatibility - use full EnTT header
+#include <jframe/entt_compat.hpp>
 #include <gtest/gtest.h>
 
 import jframe.camera;

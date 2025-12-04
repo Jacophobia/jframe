@@ -5,15 +5,22 @@ module;
 
 #include <imgui.h>
 
+// MSVC C++23 module compatibility - include full EnTT before import std
+#include <jframe/entt_compat.hpp>
+
+// Include GLFW header for GLFWwindow - forward declaration causes type
+// mismatch with MSVC C++23 modules when implementation includes full header
+#ifdef __APPLE__
+#define GL_SILENCE_DEPRECATION
+#endif
+#include <GLFW/glfw3.h>
+
 export module jframe.dev;
 
 import std;
 import jframe;
 import jframe.core;
 import jframe.metrics;
-
-// Forward declare GLFWwindow
-struct GLFWwindow;
 
 export namespace jframe::dev {
 

@@ -6,6 +6,7 @@ add_executable(ability-demo
 )
 target_use_std_module(ability-demo)
 
+# Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(ability-demo
     PRIVATE
         jframe-contract
@@ -23,6 +24,8 @@ target_link_libraries(ability-demo
         jframe-camera
         jframe-blueprints
         jframe-components
+        lua
+        sol2::sol2
 )
 
 target_compile_features(ability-demo PRIVATE cxx_std_23)

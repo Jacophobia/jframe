@@ -1,6 +1,11 @@
 // jframe-core/src/Engine.cpp
 // Engine implementation with fixed-timestep game loop
 
+module;
+
+// MSVC C++23 module compatibility - include full EnTT before import std
+#include <jframe/entt_compat.hpp>
+
 module jframe.core;
 
 import jframe.events.impl;

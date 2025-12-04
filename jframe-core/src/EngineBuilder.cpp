@@ -4,6 +4,8 @@
 module;
 
 #include <GLFW/glfw3.h>
+// MSVC C++23 module compatibility - include full EnTT before import std
+#include <jframe/entt_compat.hpp>
 
 module jframe.core;
 

@@ -1,13 +1,13 @@
 // jframe-save/src/jframe.save.impl.cppm
 // Save system implementation
+//
+// Note: cereal and nlohmann/json headers are NOT included here due to MSVC C++23
+// module compatibility issues. All cereal/JSON usage is confined to SaveSystem.cpp
+// using the PIMPL pattern for archive classes.
 
 module;
 
-#include <cereal/archives/binary.hpp>
-#include <cereal/types/string.hpp>
-#include <cereal/types/vector.hpp>
-#include <cereal/types/map.hpp>
-#include <nlohmann/json.hpp>
+// No third-party headers in global module fragment for MSVC compatibility
 
 export module jframe.save.impl;
 
@@ -17,92 +17,62 @@ import jframe.types;
 
 export namespace jframe {
 
+// Forward declaration for PIMPL
+struct CerealSaveArchiveImpl;
+struct CerealLoadArchiveImpl;
+
 // Concrete SaveArchive implementing ISaveArchive
+// Uses PIMPL to hide cereal types from module interface (MSVC C++23 compatibility)
 class CerealSaveArchive : public ISaveArchive {
 public:
-    explicit CerealSaveArchive(std::ostream& stream)
-        : archive_(stream) {}
+    explicit CerealSaveArchive(std::ostream& stream);
+    ~CerealSaveArchive() override;
 
-    void writeInt(const std::string& key, int value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
+    // Non-copyable, movable
+    CerealSaveArchive(const CerealSaveArchive&) = delete;
+    CerealSaveArchive& operator=(const CerealSaveArchive&) = delete;
+    CerealSaveArchive(CerealSaveArchive&&) noexcept;
+    CerealSaveArchive& operator=(CerealSaveArchive&&) noexcept;
 
-    void writeFloat(const std::string& key, float value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
+    void writeInt(const std::string& key, int value) override;
+    void writeFloat(const std::string& key, float value) override;
+    void writeDouble(const std::string& key, double value) override;
+    void writeString(const std::string& key, const std::string& value) override;
+    void writeBool(const std::string& key, bool value) override;
+    void writeBytes(const std::string& key, const std::vector<std::uint8_t>& value) override;
 
-    void writeDouble(const std::string& key, double value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
-
-    void writeString(const std::string& key, const std::string& value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
-
-    void writeBool(const std::string& key, bool value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
-
-    void writeBytes(const std::string& key, const std::vector<std::uint8_t>& value) override {
-        archive_(cereal::make_nvp(key.c_str(), value));
-    }
-
-    // Direct access for internal use
-    cereal::BinaryOutputArchive& getArchive() { return archive_; }
+    // Direct access for internal use (returns opaque pointer, cast in .cpp)
+    void* getArchivePtr();
 
 private:
-    cereal::BinaryOutputArchive archive_;
+    std::unique_ptr<CerealSaveArchiveImpl> impl_;
 };
 
 // Concrete LoadArchive implementing ILoadArchive
+// Uses PIMPL to hide cereal types from module interface (MSVC C++23 compatibility)
 class CerealLoadArchive : public ILoadArchive {
 public:
-    explicit CerealLoadArchive(std::istream& stream)
-        : archive_(stream) {}
+    explicit CerealLoadArchive(std::istream& stream);
+    ~CerealLoadArchive() override;
 
-    int readInt(const std::string& key) const override {
-        int value = 0;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
+    // Non-copyable, movable
+    CerealLoadArchive(const CerealLoadArchive&) = delete;
+    CerealLoadArchive& operator=(const CerealLoadArchive&) = delete;
+    CerealLoadArchive(CerealLoadArchive&&) noexcept;
+    CerealLoadArchive& operator=(CerealLoadArchive&&) noexcept;
 
-    float readFloat(const std::string& key) const override {
-        float value = 0.0f;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
+    int readInt(const std::string& key) const override;
+    float readFloat(const std::string& key) const override;
+    double readDouble(const std::string& key) const override;
+    std::string readString(const std::string& key) const override;
+    bool readBool(const std::string& key) const override;
+    std::vector<std::uint8_t> readBytes(const std::string& key) const override;
 
-    double readDouble(const std::string& key) const override {
-        double value = 0.0;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
-
-    std::string readString(const std::string& key) const override {
-        std::string value;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
-
-    bool readBool(const std::string& key) const override {
-        bool value = false;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
-
-    std::vector<std::uint8_t> readBytes(const std::string& key) const override {
-        std::vector<std::uint8_t> value;
-        const_cast<cereal::BinaryInputArchive&>(archive_)(cereal::make_nvp(key.c_str(), value));
-        return value;
-    }
-
-    // Direct access for internal use
-    cereal::BinaryInputArchive& getArchive() const {
-        return const_cast<cereal::BinaryInputArchive&>(archive_);
-    }
+    // Direct access for internal use (returns opaque pointer, cast in .cpp)
+    void* getArchivePtr() const;
 
 private:
-    cereal::BinaryInputArchive archive_;
+    std::unique_ptr<CerealLoadArchiveImpl> impl_;
 };
 
 class SaveSystem : public ISaveSystem {

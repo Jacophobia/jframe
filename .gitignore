@@ -18,6 +18,7 @@ cmake_install.cmake
 Makefile
 *.cmake
 !cmake/*.cmake
+!triplets/*.cmake
 
 # Compiled files
 *.o

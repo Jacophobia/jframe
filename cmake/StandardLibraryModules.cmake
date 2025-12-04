@@ -45,13 +45,44 @@ if(MSVC)
 endif()
 
 # =============================================================================
-# Clang Configuration (macOS / Linux)
+# Clang Configuration (macOS / Linux / Windows with MSYS2)
 # =============================================================================
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "Configuring Clang for C++23 modules with 'import std;' support")
 
-    # Try to find std.cppm in common locations
+    # Use libc++ for all Clang builds (required for import std)
+    # This must be set globally before any targets are defined
+    add_compile_options(-stdlib=libc++)
+    add_link_options(-stdlib=libc++)
+
+    # On Linux, we may need to add the libc++ library path
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # Find libc++ library path
+        get_filename_component(COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        get_filename_component(COMPILER_ROOT "${COMPILER_BIN_DIR}" DIRECTORY)
+
+        # Check common libc++ library locations
+        if(EXISTS "${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
+            link_directories("${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
+        elseif(EXISTS "${COMPILER_ROOT}/lib")
+            link_directories("${COMPILER_ROOT}/lib")
+        endif()
+
+        # Also try /usr/lib/llvm-20 for apt-installed LLVM
+        if(EXISTS "/usr/lib/llvm-20/lib")
+            link_directories("/usr/lib/llvm-20/lib")
+        endif()
+    endif()
+
+    # First, try to derive the libc++ path from the compiler location
+    # This handles cases where LLVM is installed in non-standard locations (e.g., CI runners)
+    get_filename_component(COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(LLVM_ROOT "${COMPILER_DIR}" DIRECTORY)
+
+    # Try to find std.cppm - first check relative to compiler, then common locations
     set(POSSIBLE_STD_MODULE_PATHS
+        # Derived from compiler location (most reliable)
+        "${LLVM_ROOT}/share/libc++/v1/std.cppm"
         # macOS Homebrew LLVM 20
         "/opt/homebrew/opt/llvm@20/share/libc++/v1/std.cppm"
         "/opt/homebrew/opt/llvm/share/libc++/v1/std.cppm"
@@ -64,7 +95,15 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         "/usr/lib/llvm-17/share/libc++/v1/std.cppm"
         # Generic paths
         "/usr/share/libc++/v1/std.cppm"
+        # Windows MSYS2 CLANG64 paths (CI uses D:\a\_temp\msys64)
+        "D:/a/_temp/msys64/clang64/share/libc++/v1/std.cppm"
+        "C:/msys64/clang64/share/libc++/v1/std.cppm"
+        # MSYS2 standard installation
+        "/clang64/share/libc++/v1/std.cppm"
     )
+
+    message(STATUS "  Compiler: ${CMAKE_CXX_COMPILER}")
+    message(STATUS "  LLVM root (derived): ${LLVM_ROOT}")
 
     set(LIBC++_STD_MODULE "")
     foreach(PATH ${POSSIBLE_STD_MODULE_PATHS})

@@ -1,11 +1,17 @@
 // GAS System Demo - Comprehensive demonstration of IGASSystem interface
 // This demo exercises every method and type in the Gameplay Ability System
 
+// MSVC C++23 module compatibility for EnTT iterators
+#include <jframe/entt_compat.hpp>
+
 import std;
 import jframe.types;
 import jframe.gas;
+import jframe.gas.impl;
 import jframe.entity;
+import jframe.entity.impl;
 import jframe.events;
+import jframe.events.impl;
 
 using namespace jframe;
 
@@ -38,17 +44,15 @@ int main() {
     std::println("=================================================================");
     std::println("");
 
-    // Create systems (in a real application, these would come from DI)
-    auto eventSystem = std::make_unique<IEventSystem>(/* implementation */);
-    auto entitySystem = std::make_unique<IEntitySystem>(/* implementation */);
-    auto gasSystem = std::make_unique<IGASSystem>(/* implementation */);
+    // Create concrete system implementations
+    auto eventSystem = std::make_unique<EventSystem>();
+    auto entitySystem = std::make_unique<EntitySystem>();
+    auto gasSystem = std::make_unique<GASSystem>();
 
-    // Note: Since we don't have concrete implementations here, this demo shows
-    // the expected usage patterns. In a real application with actual implementations,
-    // all these calls would work.
+    // Initialize GAS system
+    gasSystem->initialize();
 
     printInfo("This demo shows comprehensive usage of all GAS System APIs");
-    printInfo("In production, you would have concrete implementations of these interfaces");
     std::println("");
 
     // Demonstrate all API sections
@@ -93,7 +97,7 @@ int main() {
         printSuccess("All GAS System API demonstrations completed successfully!");
 
     } catch (const std::exception& e) {
-        std::println(stderr, "Error: {}", e.what());
+        std::println("Error: {}", e.what());
         return 1;
     }
 
@@ -855,10 +859,10 @@ void demoCallbacks(IGASSystem& gas, Entity entity) {
 
     printSubSection("setAttributeChangeCallback()");
     gas.setAttributeChangeCallback([](const AttributeChangeEvent& event) {
-        std::println("  [CALLBACK] Attribute changed on entity {}", static_cast<uint32_t>(event.entity));
-        std::println("             Attribute ID: {}", event.attribute);
-        std::println("             Old value: {} -> New value: {}", event.oldValue, event.newValue);
-        std::println("             Delta: {}", event.newValue - event.oldValue);
+        std::cout << std::format("  [CALLBACK] Attribute changed on entity {}\n", static_cast<std::uint32_t>(event.entity));
+        std::cout << std::format("             Attribute ID: {}\n", event.attribute);
+        std::cout << std::format("             Old value: {} -> New value: {}\n", event.oldValue, event.newValue);
+        std::cout << std::format("             Delta: {}\n", event.newValue - event.oldValue);
     });
     printSuccess("Registered attribute change callback");
 
@@ -867,10 +871,10 @@ void demoCallbacks(IGASSystem& gas, Entity entity) {
 
     printSubSection("setEffectAppliedCallback()");
     gas.setEffectAppliedCallback([](const EffectAppliedEvent& event) {
-        std::println("  [CALLBACK] Effect applied!");
-        std::println("             Target: {}", static_cast<uint32_t>(event.target));
-        std::println("             Source: {}", static_cast<uint32_t>(event.source));
-        std::println("             Effect ID: {}", event.effect);
+        std::cout << "  [CALLBACK] Effect applied!\n";
+        std::cout << std::format("             Target: {}\n", static_cast<std::uint32_t>(event.target));
+        std::cout << std::format("             Source: {}\n", static_cast<std::uint32_t>(event.source));
+        std::cout << std::format("             Effect ID: {}\n", event.effect);
     });
     printSuccess("Registered effect applied callback");
 
@@ -880,9 +884,9 @@ void demoCallbacks(IGASSystem& gas, Entity entity) {
 
     printSubSection("setAbilityActivatedCallback()");
     gas.setAbilityActivatedCallback([](const AbilityActivatedEvent& event) {
-        std::println("  [CALLBACK] Ability activated!");
-        std::println("             Entity: {}", static_cast<uint32_t>(event.entity));
-        std::println("             Ability ID: {}", event.ability);
+        std::cout << "  [CALLBACK] Ability activated!\n";
+        std::cout << std::format("             Entity: {}\n", static_cast<std::uint32_t>(event.entity));
+        std::cout << std::format("             Ability ID: {}\n", event.ability);
     });
     printSuccess("Registered ability activated callback");
 

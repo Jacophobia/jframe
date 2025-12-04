@@ -1,6 +1,7 @@
 // tests/unit/AssetSystemTests.cpp
 // Asset system unit tests
 
+#include <any>
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
@@ -11,6 +12,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>  // For accessing JSON data stored in std::any
 
 import jframe.assets;
 import jframe.assets.impl;
@@ -912,11 +914,13 @@ TEST_F(AssetSystemTest, LoadDataAssetJSON) {
     EXPECT_TRUE(dataAsset.isJson);
     EXPECT_FALSE(dataAsset.rawText.empty());
 
-    // Verify JSON was parsed correctly
-    EXPECT_TRUE(dataAsset.jsonData.contains("name"));
-    EXPECT_EQ(dataAsset.jsonData["name"], "TestGame");
-    EXPECT_TRUE(dataAsset.jsonData.contains("settings"));
-    EXPECT_EQ(dataAsset.jsonData["settings"]["windowWidth"], 1920);
+    // Verify JSON was parsed correctly - use std::any_cast to access the JSON
+    ASSERT_TRUE(dataAsset.jsonData.has_value());
+    const auto& json = std::any_cast<const nlohmann::json&>(dataAsset.jsonData);
+    EXPECT_TRUE(json.contains("name"));
+    EXPECT_EQ(json["name"], "TestGame");
+    EXPECT_TRUE(json.contains("settings"));
+    EXPECT_EQ(json["settings"]["windowWidth"], 1920);
 }
 
 TEST_F(AssetSystemTest, LoadDataAssetNonJSON) {
@@ -1349,11 +1353,13 @@ TEST_F(AssetSystemTest, LoadBehaviorTreeAssetJSON) {
     EXPECT_FALSE(btData.rawText.empty());
     EXPECT_EQ(btData.path, "../../../tests/testdata/test_behaviortree.json");
 
-    // Verify JSON was parsed correctly
-    EXPECT_TRUE(btData.treeData.contains("name"));
-    EXPECT_EQ(btData.treeData["name"], "TestBehaviorTree");
-    EXPECT_TRUE(btData.treeData.contains("root"));
-    EXPECT_EQ(btData.treeData["root"]["type"], "Selector");
+    // Verify JSON was parsed correctly - use std::any_cast to access the JSON
+    ASSERT_TRUE(btData.treeData.has_value());
+    const auto& json = std::any_cast<const nlohmann::json&>(btData.treeData);
+    EXPECT_TRUE(json.contains("name"));
+    EXPECT_EQ(json["name"], "TestBehaviorTree");
+    EXPECT_TRUE(json.contains("root"));
+    EXPECT_EQ(json["root"]["type"], "Selector");
 }
 
 TEST_F(AssetSystemTest, LoadBehaviorTreeAssetNonJSON) {
@@ -1416,7 +1422,8 @@ TEST_F(AssetSystemTest, ReloadBehaviorTreeAsset) {
     auto* anyData = static_cast<std::any*>(rawData);
     const BehaviorTreeData& btData = std::any_cast<const BehaviorTreeData&>(*anyData);
     EXPECT_TRUE(btData.isJson);
-    EXPECT_EQ(btData.treeData["name"], "TestBehaviorTree");
+    const auto& json = std::any_cast<const nlohmann::json&>(btData.treeData);
+    EXPECT_EQ(json["name"], "TestBehaviorTree");
 }
 
 //==========================================================================
@@ -1433,7 +1440,8 @@ TEST_F(AssetSystemTest, GetAssetTemplateDataAsset) {
 
     const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*data);
     EXPECT_TRUE(dataAsset.isJson);
-    EXPECT_EQ(dataAsset.jsonData["name"], "TestGame");
+    const auto& json = std::any_cast<const nlohmann::json&>(dataAsset.jsonData);
+    EXPECT_EQ(json["name"], "TestGame");
 }
 
 TEST_F(AssetSystemTest, GetAssetTemplateConstVersion) {

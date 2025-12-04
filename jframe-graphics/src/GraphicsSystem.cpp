@@ -21,6 +21,9 @@ module;
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
 
+// MSVC C++23 module compatibility for EnTT iterators used in renderEntities()
+#include <jframe/entt_compat.hpp>
+
 module jframe.graphics.impl;
 
 import jframe.assets;  // For IAssetSystem interface, TextureData, and FontData types

@@ -13,6 +13,7 @@ add_executable(template-game
 target_use_std_module(template-game)
 
 # Link all JFrame systems
+# Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(template-game
     PRIVATE
         jframe-contract
@@ -30,6 +31,8 @@ target_link_libraries(template-game
         jframe-camera
         jframe-blueprints
         jframe-components
+        lua
+        sol2::sol2
 )
 
 target_compile_features(template-game PRIVATE cxx_std_23)

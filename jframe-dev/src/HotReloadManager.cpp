@@ -11,7 +11,7 @@ module;
 #include <string>
 
 #include <efsw/efsw.hpp>
-#include <sol/sol.hpp>
+#include <jframe/sol2_compat.hpp>
 
 module jframe.dev;
 

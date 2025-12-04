@@ -3,7 +3,8 @@
 
 module;
 
-#include <entt/entity/fwd.hpp>
+// MSVC C++23 module compatibility - use full EnTT header
+#include <jframe/entt_compat.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
 
@@ -349,6 +350,30 @@ struct InputMapping {
 //==========================================================================
 // Physics Types
 //==========================================================================
+
+/// Direction constants for screen coordinate system
+/// In JFrame, the Y-axis points downward (positive Y = down, negative Y = up)
+/// This matches typical screen/window coordinates
+namespace Direction {
+    /// Upward on screen (negative Y)
+    inline constexpr Vec2 Up{0.0f, -1.0f};
+    /// Downward on screen (positive Y)
+    inline constexpr Vec2 Down{0.0f, 1.0f};
+    /// Leftward on screen (negative X)
+    inline constexpr Vec2 Left{-1.0f, 0.0f};
+    /// Rightward on screen (positive X)
+    inline constexpr Vec2 Right{1.0f, 0.0f};
+    /// No direction (zero vector)
+    inline constexpr Vec2 Zero{0.0f, 0.0f};
+}
+
+/// Default gravity for 2D platformer physics (980 pixels/s² downward)
+/// This is 9.8 m/s² scaled by PIXELS_PER_METER (100)
+namespace PhysicsDefaults {
+    inline constexpr float GravityMagnitude = 980.0f;
+    inline constexpr Vec2 Gravity{0.0f, GravityMagnitude};  // Points down (+Y)
+    inline constexpr float PixelsPerMeter = 100.0f;
+}
 
 enum class BodyType : std::uint8_t {
     Static,

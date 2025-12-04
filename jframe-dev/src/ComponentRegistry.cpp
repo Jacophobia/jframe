@@ -8,6 +8,9 @@ module;
 #include <unordered_map>
 #include <vector>
 
+// MSVC C++23 module compatibility - include full EnTT before import std
+#include <jframe/entt_compat.hpp>
+
 module jframe.dev;
 
 import jframe;

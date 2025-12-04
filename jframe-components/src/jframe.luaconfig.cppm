@@ -4,7 +4,7 @@
 
 module;
 
-#include <sol/sol.hpp>
+#include <jframe/sol2_compat.hpp>
 
 export module jframe.luaconfig;
 
@@ -93,7 +93,8 @@ public:
         lua["load"] = sol::nil;
 
         try {
-            sol::protected_function_result execResult = lua.safe_script(luaCode);
+            // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
+            sol::protected_function_result execResult = lua.safe_script(luaCode, sol::script_pass_on_error);
             if (!execResult.valid()) {
                 return result;
             }
@@ -144,8 +145,8 @@ public:
                     }
                 }
             }
-        } catch (const sol::error&) {
-            // Return empty on error
+        } catch (...) {
+            // Return empty on any error
         }
 
         return result;
@@ -198,7 +199,8 @@ public:
         lua["load"] = sol::nil;
 
         try {
-            sol::protected_function_result execResult = lua.safe_script(luaCode);
+            // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
+            sol::protected_function_result execResult = lua.safe_script(luaCode, sol::script_pass_on_error);
             if (!execResult.valid()) {
                 return result;
             }
@@ -303,8 +305,8 @@ public:
                     result[bodyName] = cfg;
                 }
             }
-        } catch (const sol::error&) {
-            // Return empty on error
+        } catch (...) {
+            // Return empty on any error
         }
 
         return result;
