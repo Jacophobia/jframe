@@ -87,6 +87,7 @@ include(CMakePackageConfigHelpers)
 # List of all JFrame library targets
 set(JFRAME_LIBRARY_TARGETS
     jframe-contract
+    jframe-metrics
     jframe-components
     jframe-core
     jframe-entity
@@ -107,6 +108,10 @@ set(JFRAME_LIBRARY_TARGETS
 
 if(JFRAME_DEV_TOOLS)
     list(APPEND JFRAME_LIBRARY_TARGETS jframe-dev)
+endif()
+
+if(JFRAME_ENABLE_TRACY)
+    list(APPEND JFRAME_LIBRARY_TARGETS tracy)
 endif()
 
 # Install library targets
