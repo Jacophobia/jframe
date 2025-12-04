@@ -22,23 +22,16 @@
 // sol2's own definitions.
 #if defined(_MSC_VER)
 
-// Include required standard headers
+// Include required standard headers FIRST
 #include <cstddef>
 #include <utility>
 #include <cstdio>
 #include <string>
 
-// Define sol2's include guards BEFORE including any sol headers
-// This prevents sol from defining its constexpr variables with internal linkage
+// Define sol2's include guard for in_place.hpp BEFORE including anything from sol
 #define SOL_IN_PLACE_HPP
-#define SOL_ERROR_HANDLER_HPP
 
-// Include sol2's dependencies for error_handler.hpp
-#include <sol/config.hpp>
-#include <sol/types.hpp>
-#include <sol/demangle.hpp>
-
-// Pre-declare sol namespace with inline constexpr definitions for external linkage
+// Define sol::in_place_t etc. BEFORE including sol headers that use them
 namespace sol {
     // in_place variables from sol/in_place.hpp
     using in_place_t = std::in_place_t;
@@ -54,7 +47,18 @@ namespace sol {
     using in_place_index_t = std::in_place_index_t<I>;
     template <size_t I>
     inline constexpr in_place_index_t<I> in_place_index {};
+}
 
+// Now define error_handler guard and include its dependencies
+#define SOL_ERROR_HANDLER_HPP
+
+// Include sol2's dependencies for error_handler.hpp
+#include <sol/config.hpp>
+#include <sol/types.hpp>
+#include <sol/demangle.hpp>
+
+// Provide sol::detail error strings and error_handler.hpp functions
+namespace sol {
     // Error message strings from sol/error_handler.hpp
     // These need inline constexpr for external linkage with MSVC modules
     namespace detail {
