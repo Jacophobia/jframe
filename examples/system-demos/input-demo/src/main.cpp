@@ -3,6 +3,11 @@
 
 // Third-party headers MUST come BEFORE 'import std;' for MSVC C++23 module compatibility.
 // On Windows, mixing 'import std;' with CRT headers causes type redefinition errors.
+
+// Prevent SDL from redefining main to SDL_main on Windows
+// (we're using GLFW for window management, SDL only for controller input)
+#define SDL_MAIN_HANDLED
+
 #include <GLFW/glfw3.h>
 #include <SDL.h>
 

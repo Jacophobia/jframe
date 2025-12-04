@@ -42,6 +42,26 @@ namespace sol {
     using in_place_index_t = std::in_place_index_t<I>;
     template <size_t I>
     inline constexpr in_place_index_t<I> in_place_index {};
+
+    // Error message strings from sol/error_handler.hpp
+    // These need inline constexpr for external linkage with MSVC modules
+    namespace detail {
+        inline constexpr const char* not_a_number = "not a numeric type";
+        inline constexpr const char* not_a_number_or_number_string = "not a numeric type or numeric string";
+        inline constexpr const char* not_a_number_integral = "not a numeric type that fits exactly an integer (number maybe has significant decimals)";
+        inline constexpr const char* not_a_number_or_number_string_integral
+             = "not a numeric type or a numeric string that fits exactly an integer (e.g. number maybe has significant decimals)";
+
+        inline constexpr const char* not_enough_stack_space = "not enough space left on Lua stack";
+        inline constexpr const char* not_enough_stack_space_floating = "not enough space left on Lua stack for a floating point number";
+        inline constexpr const char* not_enough_stack_space_integral = "not enough space left on Lua stack for an integral number";
+        inline constexpr const char* not_enough_stack_space_string = "not enough space left on Lua stack for a string";
+        inline constexpr const char* not_enough_stack_space_meta_function_name = "not enough space left on Lua stack for the name of a meta_function";
+        inline constexpr const char* not_enough_stack_space_userdata = "not enough space left on Lua stack to create a sol2 userdata";
+        inline constexpr const char* not_enough_stack_space_generic = "not enough space left on Lua stack to push valuees";
+        inline constexpr const char* not_enough_stack_space_environment = "not enough space left on Lua stack to retrieve environment";
+        inline constexpr const char* protected_function_error = "caught (...) unknown error during protected_function call";
+    }
 }
 
 // Define sol2's include guard so it doesn't redefine in_place variables
