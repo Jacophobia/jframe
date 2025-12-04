@@ -42,33 +42,14 @@ namespace sol {
     using in_place_index_t = std::in_place_index_t<I>;
     template <size_t I>
     inline constexpr in_place_index_t<I> in_place_index {};
-
-    namespace detail {
-        // Error strings from sol/error_handler.hpp
-        inline constexpr const char* not_enough_stack_space = "not enough space left on Lua stack";
-        inline constexpr const char* not_enough_stack_space_floating = "not enough space left on Lua stack for a floating point number";
-        inline constexpr const char* not_enough_stack_space_integral = "not enough space left on Lua stack for an integral number";
-        inline constexpr const char* not_enough_stack_space_string = "not enough space left on Lua stack for a string";
-        inline constexpr const char* not_enough_stack_space_meta_function_name = "not enough space left on Lua stack for the name of a meta_function";
-        inline constexpr const char* not_enough_stack_space_userdata = "not enough space left on Lua stack to create a sol2 userdata";
-        inline constexpr const char* not_enough_stack_space_generic = "not enough space left on Lua stack to push valuees";
-        inline constexpr const char* not_enough_stack_space_environment = "not enough space left on Lua stack to retrieve environment";
-        inline constexpr const char* protected_function_error = "caught (...) unknown error during protected_function call";
-    }
 }
 
-// Define sol2's include guards so it doesn't redefine these
+// Define sol2's include guard so it doesn't redefine in_place variables
 #define SOL_IN_PLACE_HPP
-#define SOL_ERROR_HANDLER_HPP
-
-// We still need error_handler functionality, just not the constexpr strings
-// Include what error_handler.hpp would include
-#include <exception>
-#include <cstdio>
 
 #endif // _MSC_VER
 
-// Now include sol2 - on MSVC it will skip the problematic headers
+// Now include sol2 - on MSVC it will skip sol/in_place.hpp
 #include <sol/sol.hpp>
 
 #endif // JFRAME_SOL2_COMPAT_HPP
