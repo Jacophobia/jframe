@@ -1,7 +1,8 @@
 // examples/platformer/src/Game.cpp
 // Platformer game implementation - Showcases ALL 10 JFrame Engine Systems
 
-// Include traditional headers before module imports to avoid conflicts
+// Include compatibility headers before module imports to avoid MSVC C++23 module issues
+#include <jframe/entt_compat.hpp>
 #include <sol/sol.hpp>
 
 import std;

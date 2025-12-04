@@ -14,6 +14,9 @@
 // MSVC with C++23 modules has ADL issues finding EnTT's iterator operators.
 // The operators are template functions in entt::internal namespace, but when
 // using 'import std;', ADL doesn't find them across module boundaries.
+//
+// Additionally, template operators may not be instantiated properly across
+// module boundaries, causing LNK2019 unresolved external symbol errors.
 #if defined(_MSC_VER)
 
 // Bring EnTT internal iterator operators into scope for ADL
@@ -38,26 +41,58 @@ using jframe::entt_compat::operator>;
 using jframe::entt_compat::operator<=;
 using jframe::entt_compat::operator>=;
 
-// Force instantiation of EnTT iterator comparison operators by actually using them.
-// This ensures the template definitions are generated in translation units that
-// include this header.
-namespace jframe::entt_compat::force_instantiation {
+// Explicit template instantiation declarations/definitions for EnTT iterator operators.
+// MSVC C++23 modules don't properly instantiate these template operators across
+// module boundaries, causing LNK2019 errors. We force explicit instantiation here.
+namespace entt::internal {
 
-// Force instantiation of sparse_set_iterator operators
-template<typename Container>
-inline void force_sparse_set_operators() {
-    using Iterator = entt::internal::sparse_set_iterator<Container>;
-    Iterator it1{}, it2{};
-    (void)(it1 == it2);
-    (void)(it1 != it2);
+// Explicit instantiation for view_iterator operators used by basic_view
+// The template parameters are: Type, Checked, Get, Exclude
+// For single-component views: basic_sparse_set<entity>, false, 1, 0
+using ViewIteratorType = entt::basic_sparse_set<entt::entity, std::allocator<entt::entity>>;
+
+// Force instantiation by providing inline wrapper functions that use the operators
+// This ensures the template code is compiled in every translation unit that includes this header
+template<typename T, bool C, std::size_t G, std::size_t E>
+[[maybe_unused]] inline bool force_view_iterator_eq(
+    const view_iterator<T, C, G, E>& a,
+    const view_iterator<T, C, G, E>& b) noexcept {
+    return a == b;
 }
 
-// Force instantiation for common entity types
-[[maybe_unused]] inline void instantiate_all() {
-    force_sparse_set_operators<std::vector<entt::entity>>();
+template<typename T, bool C, std::size_t G, std::size_t E>
+[[maybe_unused]] inline bool force_view_iterator_ne(
+    const view_iterator<T, C, G, E>& a,
+    const view_iterator<T, C, G, E>& b) noexcept {
+    return a != b;
 }
 
-} // namespace jframe::entt_compat::force_instantiation
+// Instantiate for common view configurations
+// Single component view: <basic_sparse_set<entity>, false, 1, 0>
+template bool force_view_iterator_eq<ViewIteratorType, false, 1, 0>(
+    const view_iterator<ViewIteratorType, false, 1, 0>&,
+    const view_iterator<ViewIteratorType, false, 1, 0>&) noexcept;
+template bool force_view_iterator_ne<ViewIteratorType, false, 1, 0>(
+    const view_iterator<ViewIteratorType, false, 1, 0>&,
+    const view_iterator<ViewIteratorType, false, 1, 0>&) noexcept;
+
+// Multi-component view: <basic_sparse_set<entity>, false, 2, 0>
+template bool force_view_iterator_eq<ViewIteratorType, false, 2, 0>(
+    const view_iterator<ViewIteratorType, false, 2, 0>&,
+    const view_iterator<ViewIteratorType, false, 2, 0>&) noexcept;
+template bool force_view_iterator_ne<ViewIteratorType, false, 2, 0>(
+    const view_iterator<ViewIteratorType, false, 2, 0>&,
+    const view_iterator<ViewIteratorType, false, 2, 0>&) noexcept;
+
+// Three-component view: <basic_sparse_set<entity>, false, 3, 0>
+template bool force_view_iterator_eq<ViewIteratorType, false, 3, 0>(
+    const view_iterator<ViewIteratorType, false, 3, 0>&,
+    const view_iterator<ViewIteratorType, false, 3, 0>&) noexcept;
+template bool force_view_iterator_ne<ViewIteratorType, false, 3, 0>(
+    const view_iterator<ViewIteratorType, false, 3, 0>&,
+    const view_iterator<ViewIteratorType, false, 3, 0>&) noexcept;
+
+} // namespace entt::internal
 
 #endif // _MSC_VER
 
