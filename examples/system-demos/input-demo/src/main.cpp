@@ -1,13 +1,15 @@
 // examples/system-demos/input-demo/src/main.cpp
 // Comprehensive Input System API demonstration
 
+// Third-party headers MUST come BEFORE 'import std;' for MSVC C++23 module compatibility.
+// On Windows, mixing 'import std;' with CRT headers causes type redefinition errors.
+#include <GLFW/glfw3.h>
+#include <SDL.h>
+
 import std;
 import jframe.types;
 import jframe.input;
 import jframe.input.impl;
-
-#include <GLFW/glfw3.h>
-#include <SDL.h>
 
 using namespace jframe;
 

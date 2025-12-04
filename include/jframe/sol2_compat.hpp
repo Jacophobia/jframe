@@ -19,19 +19,28 @@
 // On MSVC with C++23 modules, ensure sol2 globals are properly instantiated
 #if defined(_MSC_VER)
 
-// Force instantiation of sol2 global constants that may not be exported
-// properly through C++23 modules. These are inline variables in sol2 but
-// the module system may not propagate them correctly.
-namespace jframe::sol2_compat {
+// MSVC C++23 modules have issues with constexpr variables from headers.
+// The sol2 library defines these as constexpr which gives them internal linkage,
+// but when modules reference them, MSVC generates extern references that don't
+// link properly.
+//
+// Solution: Provide inline constexpr definitions. The 'inline' keyword in C++17
+// gives variables external linkage and ensures there's exactly one definition
+// across all translation units.
 
-// Reference sol2 globals to ensure they're instantiated in this TU
-[[maybe_unused]] static const auto& ensure_in_place = sol::in_place;
-[[maybe_unused]] static const auto& ensure_not_enough_stack_space_generic =
-    sol::detail::not_enough_stack_space_generic;
-[[maybe_unused]] static const auto& ensure_not_enough_stack_space_string =
-    sol::detail::not_enough_stack_space_string;
+namespace sol {
+    // Provide inline constexpr definitions for sol2 globals
+    // These match the declarations in sol/in_place.hpp but with inline for external linkage
+    inline constexpr std::in_place_t in_place {};
 
-} // namespace jframe::sol2_compat
+    namespace detail {
+        // These match the declarations in sol/error_handler.hpp
+        inline constexpr const char* not_enough_stack_space_generic =
+            "not enough space left on Lua stack to push valuees";
+        inline constexpr const char* not_enough_stack_space_string =
+            "not enough space left on Lua stack for a string";
+    }
+}
 
 #endif // _MSC_VER
 
