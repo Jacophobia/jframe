@@ -214,16 +214,28 @@ jobs:
       - name: Test (Unix)
         if: runner.os != 'Windows'
         run: |
+          # Run tests in parallel using (cpu_count - 1) jobs, minimum 1
+          if [ "$(uname)" = "Darwin" ]; then
+            CPU_COUNT=$(sysctl -n hw.ncpu)
+          else
+            CPU_COUNT=$(nproc)
+          fi
+          JOBS=$(( CPU_COUNT - 1 ))
+          [ $JOBS -lt 1 ] && JOBS=1
+          echo "Running tests with $JOBS parallel jobs (detected $CPU_COUNT CPUs)"
           # Exclude flaky tests in CI (-LE = label exclude)
           # Flaky tests are timing-dependent and may fail due to VM scheduling
           # See cmake/FlakyTests.cmake for the list of flaky tests
-          ctest --preset ${{ matrix.preset }} --output-on-failure -LE Flaky
+          ctest --preset ${{ matrix.preset }} -j $JOBS -LE Flaky
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
         run: |
+          # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
+          $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
+          Write-Host "Running tests with $jobs parallel jobs"
           # Exclude flaky tests in CI (-LE = label exclude)
-          ctest --preset ${{ matrix.preset }} --build-config Debug --output-on-failure -LE Flaky
+          ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs -LE Flaky
 
       # =========================================================================
       # Upload artifacts

@@ -156,19 +156,28 @@
     ],
     "testPresets": [
         {
+            "name": "base-test",
+            "hidden": true,
+            "output": {"outputOnFailure": true},
+            "execution": {
+                "jobs": 0,
+                "stopOnFailure": false
+            }
+        },
+        {
             "name": "macos-debug",
-            "configurePreset": "macos-debug",
-            "output": {"outputOnFailure": true}
+            "inherits": "base-test",
+            "configurePreset": "macos-debug"
         },
         {
             "name": "windows-debug",
-            "configurePreset": "windows-debug",
-            "output": {"outputOnFailure": true}
+            "inherits": "base-test",
+            "configurePreset": "windows-debug"
         },
         {
             "name": "linux-debug",
-            "configurePreset": "linux-debug",
-            "output": {"outputOnFailure": true}
+            "inherits": "base-test",
+            "configurePreset": "linux-debug"
         }
     ]
 }
