@@ -10,7 +10,7 @@ module;
 #include <unordered_map>
 #include <vector>
 
-#include <sol/sol.hpp>
+#include <jframe/sol2_compat.hpp>
 #include <sol/types.hpp>
 
 module jframe.level.impl;

@@ -2,36 +2,49 @@
 // sol2 compatibility header for MSVC C++23 modules
 //
 // When using 'import std;' with MSVC and C++23 modules, sol2's global constants
-// (sol::in_place, sol::detail::not_enough_stack_space_*, etc.) may not be
-// instantiated properly. Including this header in executables that use sol2
-// through JFrame modules ensures these symbols are defined.
+// (sol::in_place, sol::detail::not_enough_stack_space_*, etc.) have internal
+// linkage (constexpr), but MSVC modules incorrectly generate external references.
 //
-// Include this header in the global module fragment of main.cpp files that
-// import modules using sol2 (jframe.config, jframe.level, jframe.blueprints, etc.)
+// KNOWN MSVC BUG: C++23 modules with 'import std;' cause linker errors for
+// constexpr variables from third-party headers included in the global fragment.
+//
+// WORKAROUND: Use sol2_compat.hpp instead of <sol/sol.hpp> in ALL files that
+// need sol2, including module global fragments. This header provides workarounds
+// for MSVC while being transparent on other compilers.
 
 #ifndef JFRAME_SOL2_COMPAT_HPP
 #define JFRAME_SOL2_COMPAT_HPP
 
-// On MSVC with C++23 modules, we need to ensure sol2 globals have external linkage.
-// The sol2 library defines constexpr variables which have internal linkage by default,
-// but when modules reference them, MSVC generates extern references that don't link.
-//
-// Solution: Define these variables with external linkage BEFORE including sol2,
-// then skip sol2's own definitions by defining guards.
+#define SOL_ALL_SAFETIES_ON 1
+
+// On MSVC, we redefine the problematic constexpr variables with inline constexpr
+// for external linkage BEFORE sol2 includes them, using include guards to skip
+// sol2's own definitions.
 #if defined(_MSC_VER)
 
-// Provide external linkage definitions for sol2 globals BEFORE sol2 defines them
-#include <utility>  // for std::in_place_t
+// Include required standard headers
+#include <cstddef>
+#include <utility>
 
-// Pre-define the sol2 namespace with inline constexpr versions
+// Pre-declare sol namespace with inline constexpr definitions for external linkage
 namespace sol {
-    // Provide external linkage version of in_place
-    // The inline keyword gives external linkage in C++17+
+    // in_place variables from sol/in_place.hpp
+    using in_place_t = std::in_place_t;
     inline constexpr std::in_place_t in_place {};
     inline constexpr std::in_place_t in_place_of {};
 
+    template <typename T>
+    using in_place_type_t = std::in_place_type_t<T>;
+    template <typename T>
+    inline constexpr std::in_place_type_t<T> in_place_type {};
+
+    template <size_t I>
+    using in_place_index_t = std::in_place_index_t<I>;
+    template <size_t I>
+    inline constexpr in_place_index_t<I> in_place_index {};
+
     namespace detail {
-        // Error message strings from sol2's error_handler.hpp
+        // Error strings from sol/error_handler.hpp
         inline constexpr const char* not_enough_stack_space = "not enough space left on Lua stack";
         inline constexpr const char* not_enough_stack_space_floating = "not enough space left on Lua stack for a floating point number";
         inline constexpr const char* not_enough_stack_space_integral = "not enough space left on Lua stack for an integral number";
@@ -44,13 +57,18 @@ namespace sol {
     }
 }
 
-// Tell sol2 to skip its own in_place definition since we've provided one
+// Define sol2's include guards so it doesn't redefine these
 #define SOL_IN_PLACE_HPP
+#define SOL_ERROR_HANDLER_HPP
+
+// We still need error_handler functionality, just not the constexpr strings
+// Include what error_handler.hpp would include
+#include <exception>
+#include <cstdio>
 
 #endif // _MSC_VER
 
-// Now include sol2
-#define SOL_ALL_SAFETIES_ON 1
+// Now include sol2 - on MSVC it will skip the problematic headers
 #include <sol/sol.hpp>
 
 #endif // JFRAME_SOL2_COMPAT_HPP

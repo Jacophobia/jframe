@@ -3,7 +3,7 @@
 
 // Include compatibility headers before module imports to avoid MSVC C++23 module issues
 #include <jframe/entt_compat.hpp>
-#include <sol/sol.hpp>
+#include <jframe/sol2_compat.hpp>
 
 import std;
 import jframe;

@@ -3,7 +3,7 @@
 
 module;
 
-#include <sol/sol.hpp>
+#include <jframe/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 
 export module jframe.config.impl;
