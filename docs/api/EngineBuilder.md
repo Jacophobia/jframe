@@ -1,11 +1,11 @@
 # EngineBuilder API
 
-The `EngineBuilder` provides a fluent interface for configuring and building a JFrame engine instance.
+The `EngineBuilder` provides a fluent interface for configuring and building a Bestow engine instance.
 
 ## Overview
 
 ```cpp
-import jframe.core;
+import bestow.core;
 
 auto engineResult = EngineBuilder()
     .withEvents()
@@ -81,7 +81,7 @@ Enable the physics system (Box2D-based).
 struct GraphicsConfig {
     int width = 1280;
     int height = 720;
-    std::string title = "JFrame Application";
+    std::string title = "Bestow Application";
     bool vsync = true;
     Color clearColor = Color{26, 26, 26, 255};  // Dark gray
 };
@@ -268,8 +268,8 @@ Once built, the `Engine` manages all systems and the game loop.
 ### systems()
 
 ```cpp
-JFrameEngine& systems();
-const JFrameEngine& systems() const;
+BestowEngine& systems();
+const BestowEngine& systems() const;
 ```
 
 Access the engine aggregate containing all initialized systems.
@@ -418,14 +418,14 @@ Called once after the game loop exits.
 ## Complete Example
 
 ```cpp
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-class PlatformerGame : public jframe::core::Application {
-    jframe::core::Engine* engine_ = nullptr;
+class PlatformerGame : public bestow::core::Application {
+    bestow::core::Engine* engine_ = nullptr;
 
 public:
-    bool initialize(jframe::core::Engine& engine) override {
+    bool initialize(bestow::core::Engine& engine) override {
         engine_ = &engine;
         auto& sys = engine.systems();
 
@@ -462,7 +462,7 @@ public:
 };
 
 int main() {
-    using namespace jframe::core;
+    using namespace bestow::core;
 
     auto engineResult = EngineBuilder()
         .withEvents()
@@ -489,12 +489,12 @@ int main() {
 }
 ```
 
-## JFrameEngine Aggregate
+## BestowEngine Aggregate
 
-The `JFrameEngine` struct provides raw pointers to all initialized systems:
+The `BestowEngine` struct provides raw pointers to all initialized systems:
 
 ```cpp
-struct JFrameEngine {
+struct BestowEngine {
     IEventSystem* events = nullptr;
     IAssetSystem* assets = nullptr;
     IEntitySystem* entities = nullptr;

@@ -1,12 +1,12 @@
-# JFrame Template Game
+# Bestow Template Game
 
-A complete template project demonstrating all JFrame systems. Copy this to start your own game!
+A complete template project demonstrating all Bestow systems. Copy this to start your own game!
 
 ## What's Included
 
 This template demonstrates:
 
-- **All JFrame Systems**: Events, Entity, Input, Physics, Audio, Graphics, Assets, Save, Level, AI, Config, Camera, GAS (Gameplay Ability System), Blueprints, Components
+- **All Bestow Systems**: Events, Entity, Input, Physics, Audio, Graphics, Assets, Save, Level, AI, Config, Camera, GAS (Gameplay Ability System), Blueprints, Components
 - **Data-Driven Design**: All game data defined in Lua files (blueprints, levels, config, input bindings)
 - **Minimal but Complete**: Clean code showing how each system integrates without overwhelming complexity
 - **Ready to Run**: Compiles and runs immediately showing a simple playable demo
@@ -234,7 +234,7 @@ sys.audio->playOnChannel(MUSIC_CHANNEL, {
 
 ```cpp
 // Initialize camera
-camera_ = jframe::createCameraSystem(jframe::Size{800, 600});
+camera_ = bestow::createCameraSystem(bestow::Size{800, 600});
 camera_->setTarget(player);
 camera_->setFollowSmoothing(0.1f);  // 0.0 = instant, 0.9 = very smooth
 camera_->setOffset({0.0f, -50.0f}); // Camera looks slightly ahead
@@ -249,7 +249,7 @@ sys.graphics->setCamera(camera_->getCamera());
 ## Tips
 
 - **Hot Reload**: In debug builds, Lua files reload automatically when modified
-- **Console Logging**: Use `jframe::core::logInfo()`, `logWarn()`, `logError()`
+- **Console Logging**: Use `bestow::core::logInfo()`, `logWarn()`, `logError()`
 - **Entity Queries**: Use `sys.entities->view<ComponentType>()` to iterate entities efficiently
 - **Data First**: Always define content in Lua files, not C++ - easier to iterate and balance
 - **Test Incrementally**: Build and test after each change to catch errors early
@@ -258,11 +258,11 @@ sys.graphics->setCamera(camera_->getCamera());
 
 For more detailed information, see:
 
-- `/docs/Getting-Started.md` - JFrame overview and setup
+- `/docs/Getting-Started.md` - Bestow overview and setup
 - `/docs/Data-Driven-Design.md` - Data-driven development guide
 - `/CLAUDE.md` - Development guidelines and best practices
 - `/docs/systems/` - Individual system documentation
 
 ## License
 
-Your game code is yours. JFrame is licensed separately (see main project README).
+Your game code is yours. Bestow is licensed separately (see main project README).

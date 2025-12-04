@@ -13,12 +13,12 @@ add_executable(gas-demo
 target_use_std_module(gas-demo)
 target_compile_features(gas-demo PRIVATE cxx_std_23)
 
-# Link against jframe libraries
+# Link against bestow libraries
 target_link_libraries(gas-demo PRIVATE
-    jframe-contract
-    jframe-gas
-    jframe-entity
-    jframe-events
+    bestow-contract
+    bestow-gas
+    bestow-entity
+    bestow-events
 )
 
 # Enable warnings

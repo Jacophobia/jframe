@@ -1,8 +1,8 @@
-# JFrame Assets System
+# Bestow Assets System
 
 ## Overview
 
-The Assets System is JFrame's resource management subsystem responsible for loading, caching, and hot-reloading game assets. It provides a unified interface for managing textures, sounds, music, fonts, levels, data files, shaders, navigation meshes, and behavior trees.
+The Assets System is Bestow's resource management subsystem responsible for loading, caching, and hot-reloading game assets. It provides a unified interface for managing textures, sounds, music, fonts, levels, data files, shaders, navigation meshes, and behavior trees.
 
 **Key Features:**
 - Unified asset registration and loading API
@@ -14,8 +14,8 @@ The Assets System is JFrame's resource management subsystem responsible for load
 - Bulk operations (load all, unload all)
 - Error handling with detailed diagnostics
 
-**Module:** `jframe.assets`
-**Implementation Module:** `jframe.assets.impl`
+**Module:** `bestow.assets`
+**Implementation Module:** `bestow.assets.impl`
 **Interface:** `IAssetSystem`
 
 ---
@@ -181,7 +181,7 @@ Before loading an asset, you must register it to obtain a handle.
 
 ```cpp
 #include <filesystem>
-import jframe;
+import bestow;
 
 // Register a texture
 AssetHandle playerTexture = assets->registerAsset(
@@ -420,7 +420,7 @@ if (rawData) {
 ### Complete Example: Using Loaded Assets
 
 ```cpp
-import jframe;
+import bestow;
 
 class Game {
 public:
@@ -513,7 +513,7 @@ Hot reload automatically detects when asset files change on disk and reloads the
 
 **Enabling Hot Reload:**
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
     // Enable only in debug builds
     assets->enableHotReload(true);
 #endif
@@ -543,7 +543,7 @@ assets->reloadAsset(playerTexture);
 ### Hot Reload Example
 
 ```cpp
-import jframe;
+import bestow;
 
 class Editor {
 public:
@@ -673,7 +673,7 @@ Result<TextureData*, std::string> loadTexture(IAssetSystem* assets,
 ### Example 1: Loading Game Assets
 
 ```cpp
-import jframe;
+import bestow;
 import std;
 
 struct GameAssets {
@@ -763,7 +763,7 @@ private:
 ### Example 2: Texture Atlas System
 
 ```cpp
-import jframe;
+import bestow;
 
 class TextureAtlas {
 public:
@@ -804,7 +804,7 @@ private:
 ### Example 3: Localization System
 
 ```cpp
-import jframe;
+import bestow;
 
 class LocalizationManager {
 public:
@@ -843,7 +843,7 @@ private:
 ### Example 4: Shader Manager with Hot Reload
 
 ```cpp
-import jframe;
+import bestow;
 
 class ShaderManager {
 public:
@@ -1071,7 +1071,7 @@ if (levelData) {
 
 4. **Enable Hot Reload in Development Only**
    ```cpp
-   #if defined(JFRAME_DEV_TOOLS)
+   #if defined(BESTOW_DEV_TOOLS)
        assets->enableHotReload(true);
    #endif
    ```
@@ -1262,5 +1262,5 @@ A: Load as Music type. The AudioSystem should stream from disk rather than loadi
 - [Graphics System Documentation](./Graphics-System.md) - Texture upload and rendering
 - [Audio System Documentation](./Audio-System.md) - Sound playback
 - [Level System Documentation](./Level-System.md) - Level loading from Lua
-- [JFrame Technical Design](../jframe-technical-design.md) - Overall architecture
+- [Bestow Technical Design](../bestow-technical-design.md) - Overall architecture
 - [Project Status](../PROJECT-STATUS.md) - Implementation progress

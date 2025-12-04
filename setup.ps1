@@ -1,16 +1,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    JFrame Development Environment Setup Script for Windows
+    Bestow Development Environment Setup Script for Windows
 
 .DESCRIPTION
-    This script sets up a complete development environment for JFrame on Windows:
+    This script sets up a complete development environment for Bestow on Windows:
 
     1. Installs winget (if not present)
     2. Installs LLVM/Clang 20+ (required for C++23 'import std;')
     3. Installs CMake, Ninja, and Git
     4. Installs vcpkg package manager
-    5. Configures and builds JFrame with C++23
+    5. Configures and builds Bestow with C++23
 
     The script is idempotent - running it multiple times is safe and will
     only install/update components that are missing or outdated.
@@ -18,7 +18,7 @@
     NOTE: This script does NOT use MSVC. All compilation is done with LLVM Clang.
 
 .PARAMETER NoBuild
-    Setup environment only, skip building JFrame
+    Setup environment only, skip building Bestow
 
 .PARAMETER Help
     Show this help message
@@ -352,11 +352,11 @@ function Install-Vcpkg {
 }
 
 # =============================================================================
-# Build JFrame
+# Build Bestow
 # =============================================================================
 
-function Build-JFrame {
-    Write-Header "Building JFrame"
+function Build-Bestow {
+    Write-Header "Building Bestow"
 
     Push-Location $ScriptDir
 
@@ -400,7 +400,7 @@ function Build-JFrame {
     Write-Success "Configuration complete"
 
     # Build
-    Write-Info "Building JFrame..."
+    Write-Info "Building Bestow..."
     $buildResult = cmake --build --preset $BuildPreset 2>&1
     if ($LASTEXITCODE -ne 0) {
         Write-Host $buildResult
@@ -430,7 +430,7 @@ function Build-JFrame {
 function Show-PostSetup {
     Write-Header "Setup Complete!"
 
-    Write-Host "Your JFrame development environment is ready."
+    Write-Host "Your Bestow development environment is ready."
     Write-Host ""
     Write-Host "Compiler: LLVM Clang (C++23 with 'import std;')"
     Write-Host ""
@@ -474,7 +474,7 @@ function Main {
         exit 0
     }
 
-    Write-Header "JFrame Development Environment Setup"
+    Write-Header "Bestow Development Environment Setup"
 
     Write-Host "Operating System: Windows $([System.Environment]::OSVersion.Version)"
     Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
@@ -500,7 +500,7 @@ function Main {
 
     # Build
     if (-not $NoBuild) {
-        Build-JFrame
+        Build-Bestow
     } else {
         Write-Info "Skipping build (-NoBuild specified)"
     }

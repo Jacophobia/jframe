@@ -1,8 +1,8 @@
-# JFrame Audio System
+# Bestow Audio System
 
 ## Overview
 
-The JFrame Audio System provides comprehensive audio playback capabilities through FMOD integration, supporting both channel-based audio management and positional 3D sound effects. The system is designed for game audio needs including music playback, sound effects, UI audio, and spatial audio for immersive gameplay.
+The Bestow Audio System provides comprehensive audio playback capabilities through FMOD integration, supporting both channel-based audio management and positional 3D sound effects. The system is designed for game audio needs including music playback, sound effects, UI audio, and spatial audio for immersive gameplay.
 
 ### Key Features
 
@@ -20,8 +20,8 @@ The JFrame Audio System provides comprehensive audio playback capabilities throu
 The Audio System follows the interface-based design pattern:
 
 ```cpp
-jframe.audio           // Interface module (IAudioSystem)
-jframe.audio.impl      // FMOD implementation (FMODAudioSystem)
+bestow.audio           // Interface module (IAudioSystem)
+bestow.audio.impl      // FMOD implementation (FMODAudioSystem)
 ```
 
 The system integrates with:
@@ -33,8 +33,8 @@ The system integrates with:
 ### Initialization
 
 ```cpp
-import jframe;
-import jframe.audio.impl;
+import bestow;
+import bestow.audio.impl;
 
 // Create and initialize the audio system
 auto audio = createAudioSystem();
@@ -842,7 +842,7 @@ public:
 The system works in stub mode when FMOD is not available:
 
 ```cpp
-#ifndef JFRAME_HAS_FMOD
+#ifndef BESTOW_HAS_FMOD
     // Code runs without audio hardware or FMOD library
     // State tracking still works for testing
 #endif
@@ -907,8 +907,8 @@ The system works in stub mode when FMOD is not available:
 
 ## References
 
-- Interface: `/Users/jaaaacob/Documents/GameDev/jframe/jframe-contract/src/jframe.audio.cppm`
-- Implementation: `/Users/jaaaacob/Documents/GameDev/jframe/jframe-audio/src/FMODAudioSystem.cpp`
-- Tests: `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/AudioSystemTests.cpp`
-- Types: `/Users/jaaaacob/Documents/GameDev/jframe/jframe-contract/src/jframe.types.cppm`
+- Interface: `/Users/jaaaacob/Documents/GameDev/bestow/bestow-contract/src/bestow.audio.cppm`
+- Implementation: `/Users/jaaaacob/Documents/GameDev/bestow/bestow-audio/src/FMODAudioSystem.cpp`
+- Tests: `/Users/jaaaacob/Documents/GameDev/bestow/tests/unit/AudioSystemTests.cpp`
+- Types: `/Users/jaaaacob/Documents/GameDev/bestow/bestow-contract/src/bestow.types.cppm`
 - [FMOD Core API Documentation](https://www.fmod.com/docs/2.02/api/core-api.html)

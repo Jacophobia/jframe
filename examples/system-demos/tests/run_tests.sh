@@ -1,5 +1,5 @@
 #!/bin/bash
-# JFrame System Demos Test Runner
+# Bestow System Demos Test Runner
 #
 # Usage:
 #   ./run_tests.sh              # Run all non-interactive tests
@@ -19,7 +19,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}JFrame System Demos Test Runner${NC}"
+echo -e "${GREEN}Bestow System Demos Test Runner${NC}"
 echo "=================================="
 echo ""
 

@@ -1,17 +1,17 @@
 // CameraDemo.cppm
-// Comprehensive demonstration of the JFrame Camera System API
+// Comprehensive demonstration of the Bestow Camera System API
 
 module;
 
 // Use compatibility header for MSVC C++23 module support
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 export module camera.demo;
 
 import std;
-import jframe.types;
-import jframe.camera;
-import jframe.entity;
+import bestow.types;
+import bestow.camera;
+import bestow.entity;
 
 export namespace demo {
 
@@ -21,11 +21,11 @@ export namespace demo {
 
 class CameraDemo {
 public:
-    explicit CameraDemo(jframe::ICameraSystem& cameraSystem, jframe::IEntitySystem& entitySystem)
+    explicit CameraDemo(bestow::ICameraSystem& cameraSystem, bestow::IEntitySystem& entitySystem)
         : camera_(cameraSystem), entities_(entitySystem) {}
 
     void run() {
-        printHeader("JFRAME CAMERA SYSTEM COMPREHENSIVE DEMO");
+        printHeader("BESTOW CAMERA SYSTEM COMPREHENSIVE DEMO");
 
         demoBasicCameraState();
         demoTargetFollowing();
@@ -43,8 +43,8 @@ public:
     }
 
 private:
-    jframe::ICameraSystem& camera_;
-    jframe::IEntitySystem& entities_;
+    bestow::ICameraSystem& camera_;
+    bestow::IEntitySystem& entities_;
 
     //==========================================================================
     // Demo Sections
@@ -77,7 +77,7 @@ private:
         // Create a target entity
         std::println("Creating target entity...");
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 100.0f, 200.0f);
+        entities_.emplace<bestow::Transform2D>(target, 100.0f, 200.0f);
         std::println("  Target entity created with ID: {}", static_cast<std::uint32_t>(target));
 
         // setTarget()
@@ -97,7 +97,7 @@ private:
 
         // Update camera to follow target
         std::println("\nUpdating camera to follow target position...");
-        auto& targetTransform = entities_.get<jframe::Transform2D>(target);
+        auto& targetTransform = entities_.get<bestow::Transform2D>(target);
         camera_.update(0.016f, targetTransform.position());
         auto camPos = camera_.getPosition();
         std::println("  Target at: ({}, {})", targetTransform.x, targetTransform.y);
@@ -119,7 +119,7 @@ private:
 
         // Create target
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 0.0f, 0.0f);
+        entities_.emplace<bestow::Transform2D>(target, 0.0f, 0.0f);
         camera_.setTarget(target);
 
         std::println("Testing different smoothing values...\n");
@@ -127,7 +127,7 @@ private:
         // Test 1: No smoothing (instant follow)
         std::println("Test 1: No Smoothing (0.0)");
         camera_.setFollowSmoothing(0.0f);
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         transform.x = 100.0f;
         transform.y = 50.0f;
         camera_.update(0.016f, transform.position());
@@ -171,7 +171,7 @@ private:
 
         // Create target
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 200.0f, 150.0f);
+        entities_.emplace<bestow::Transform2D>(target, 200.0f, 150.0f);
         camera_.setTarget(target);
         camera_.setFollowSmoothing(0.0f); // Instant for clearer demonstration
 
@@ -179,8 +179,8 @@ private:
 
         // No offset
         std::println("Test 1: No Offset");
-        camera_.setOffset(jframe::Vec2{0.0f, 0.0f});
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        camera_.setOffset(bestow::Vec2{0.0f, 0.0f});
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         camera_.update(0.016f, transform.position());
         auto pos1 = camera_.getPosition();
         std::println("  Offset: (0, 0)");
@@ -189,7 +189,7 @@ private:
 
         // Right offset (look-ahead to the right)
         std::println("\nTest 2: Right Look-Ahead");
-        camera_.setOffset(jframe::Vec2{50.0f, 0.0f});
+        camera_.setOffset(bestow::Vec2{50.0f, 0.0f});
         camera_.update(0.016f, transform.position());
         auto pos2 = camera_.getPosition();
         std::println("  Offset: (50, 0)");
@@ -199,7 +199,7 @@ private:
 
         // Up-right diagonal offset
         std::println("\nTest 3: Diagonal Look-Ahead");
-        camera_.setOffset(jframe::Vec2{30.0f, -40.0f});
+        camera_.setOffset(bestow::Vec2{30.0f, -40.0f});
         camera_.update(0.016f, transform.position());
         auto pos3 = camera_.getPosition();
         std::println("  Offset: (30, -40)");
@@ -208,7 +208,7 @@ private:
         std::println("  (Camera offset by +30 right, -40 up)");
 
         // Reset offset
-        camera_.setOffset(jframe::Vec2{0.0f, 0.0f});
+        camera_.setOffset(bestow::Vec2{0.0f, 0.0f});
         entities_.destroyEntity(target);
     }
 
@@ -217,12 +217,12 @@ private:
 
         // Create target
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 200.0f, 150.0f);
+        entities_.emplace<bestow::Transform2D>(target, 200.0f, 150.0f);
         camera_.setTarget(target);
         camera_.setFollowSmoothing(0.0f);
 
         // Initial camera position
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         camera_.update(0.016f, transform.position());
         auto initialPos = camera_.getPosition();
 
@@ -233,7 +233,7 @@ private:
 
         // Set deadzone
         std::println("\nSetting deadzone to 50x50...");
-        camera_.setDeadzone(jframe::Vec2{50.0f, 50.0f});
+        camera_.setDeadzone(bestow::Vec2{50.0f, 50.0f});
 
         // Small movement within deadzone
         std::println("\nTest 1: Small movement (within deadzone)");
@@ -256,7 +256,7 @@ private:
 
         // Clear deadzone
         std::println("\nClearing deadzone...");
-        camera_.setDeadzone(jframe::Vec2{0.0f, 0.0f});
+        camera_.setDeadzone(bestow::Vec2{0.0f, 0.0f});
         std::println("  Deadzone cleared (set to 0x0)");
 
         entities_.destroyEntity(target);
@@ -267,7 +267,7 @@ private:
 
         // Create target
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 0.0f, 0.0f);
+        entities_.emplace<bestow::Transform2D>(target, 0.0f, 0.0f);
         camera_.setTarget(target);
         camera_.setFollowSmoothing(0.0f);
 
@@ -279,7 +279,7 @@ private:
 
         // Test 1: Target at world center (within bounds)
         std::println("\nTest 1: Target at world center");
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         transform.x = 400.0f;
         transform.y = 300.0f;
         camera_.update(0.016f, transform.position());
@@ -424,11 +424,11 @@ private:
 
         // Set known camera state
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 400.0f, 300.0f);
+        entities_.emplace<bestow::Transform2D>(target, 400.0f, 300.0f);
         camera_.setTarget(target);
         camera_.setFollowSmoothing(0.0f);
         camera_.setZoom(1.0f);
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         camera_.update(0.016f, transform.position());
 
         auto camPos = camera_.getPosition();
@@ -439,32 +439,32 @@ private:
         // screenToWorld()
         std::println("\nConverting screen coordinates to world coordinates:");
 
-        jframe::Vec2 screenCenter{400.0f, 300.0f};
+        bestow::Vec2 screenCenter{400.0f, 300.0f};
         auto worldCenter = camera_.screenToWorld(screenCenter);
         std::println("  Screen (400, 300) -> World ({}, {})", worldCenter.x, worldCenter.y);
 
-        jframe::Vec2 screenTopLeft{0.0f, 0.0f};
+        bestow::Vec2 screenTopLeft{0.0f, 0.0f};
         auto worldTopLeft = camera_.screenToWorld(screenTopLeft);
         std::println("  Screen (0, 0) -> World ({}, {})", worldTopLeft.x, worldTopLeft.y);
 
-        jframe::Vec2 screenBottomRight{800.0f, 600.0f};
+        bestow::Vec2 screenBottomRight{800.0f, 600.0f};
         auto worldBottomRight = camera_.screenToWorld(screenBottomRight);
         std::println("  Screen (800, 600) -> World ({}, {})", worldBottomRight.x, worldBottomRight.y);
 
         // worldToScreen()
         std::println("\nConverting world coordinates to screen coordinates:");
 
-        jframe::Vec2 worldOrigin{0.0f, 0.0f};
+        bestow::Vec2 worldOrigin{0.0f, 0.0f};
         auto screenOrigin = camera_.worldToScreen(worldOrigin);
         std::println("  World (0, 0) -> Screen ({}, {})", screenOrigin.x, screenOrigin.y);
 
-        jframe::Vec2 worldTarget{400.0f, 300.0f};
+        bestow::Vec2 worldTarget{400.0f, 300.0f};
         auto screenTarget = camera_.worldToScreen(worldTarget);
         std::println("  World (400, 300) -> Screen ({}, {})", screenTarget.x, screenTarget.y);
 
         // Round-trip test
         std::println("\nRound-trip conversion test:");
-        jframe::Vec2 originalScreen{123.0f, 456.0f};
+        bestow::Vec2 originalScreen{123.0f, 456.0f};
         auto world = camera_.screenToWorld(originalScreen);
         auto backToScreen = camera_.worldToScreen(world);
         std::println("  Original screen: ({}, {})", originalScreen.x, originalScreen.y);
@@ -484,14 +484,14 @@ private:
 
         // Create moving target
         auto target = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(target, 0.0f, 0.0f);
+        entities_.emplace<bestow::Transform2D>(target, 0.0f, 0.0f);
         camera_.setTarget(target);
         camera_.setFollowSmoothing(0.3f);
 
         std::println("Simulating 10 frames of a moving target:");
         std::println("  (Target moving right at 50 pixels/second)\n");
 
-        auto& transform = entities_.get<jframe::Transform2D>(target);
+        auto& transform = entities_.get<bestow::Transform2D>(target);
         constexpr float velocity = 50.0f; // pixels per second
         constexpr float dt = 0.016f; // 60 FPS
 
@@ -521,7 +521,7 @@ private:
 
         // Create player entity
         auto player = entities_.createEntity();
-        entities_.emplace<jframe::Transform2D>(player, 100.0f, 400.0f);
+        entities_.emplace<bestow::Transform2D>(player, 100.0f, 400.0f);
 
         std::println("Setting up platformer camera:");
         std::println("  - Smooth following");
@@ -533,8 +533,8 @@ private:
         // Configure camera for platformer
         camera_.setTarget(player);
         camera_.setFollowSmoothing(0.2f);
-        camera_.setOffset(jframe::Vec2{80.0f, 0.0f}); // Look ahead to the right
-        camera_.setDeadzone(jframe::Vec2{40.0f, 60.0f}); // Wider horizontal deadzone
+        camera_.setOffset(bestow::Vec2{80.0f, 0.0f}); // Look ahead to the right
+        camera_.setDeadzone(bestow::Vec2{40.0f, 60.0f}); // Wider horizontal deadzone
         camera_.setBounds(0.0f, 2000.0f, 0.0f, 1200.0f);
         camera_.setZoom(1.0f);
 
@@ -545,7 +545,7 @@ private:
         std::println("  Bounds: [0, 2000] x [0, 1200]");
         std::println();
 
-        auto& playerTransform = entities_.get<jframe::Transform2D>(player);
+        auto& playerTransform = entities_.get<bestow::Transform2D>(player);
 
         // Simulate player movement
         std::println("Simulating player movement:\n");
@@ -606,7 +606,7 @@ private:
 
         // Coordinate conversion example
         std::println("\nCoordinate conversion for UI cursor:");
-        jframe::Vec2 cursorScreen{400.0f, 300.0f};
+        bestow::Vec2 cursorScreen{400.0f, 300.0f};
         auto cursorWorld = camera_.screenToWorld(cursorScreen);
         std::println("  Cursor at screen ({}, {}) -> world ({:.1f}, {:.1f})",
                      cursorScreen.x, cursorScreen.y, cursorWorld.x, cursorWorld.y);

@@ -1,6 +1,6 @@
 # Tutorial 1: Your First Game
 
-Welcome to JFrame! This tutorial will guide you through creating your first game from scratch. You'll learn the basic structure of a JFrame game, how to build and run it, and make simple modifications.
+Welcome to Bestow! This tutorial will guide you through creating your first game from scratch. You'll learn the basic structure of a Bestow game, how to build and run it, and make simple modifications.
 
 ## Prerequisites
 
@@ -12,7 +12,7 @@ Before starting, make sure you have:
 
 ## Step 1: Create Your Game Project
 
-JFrame games follow a simple structure. Let's create a new game called "MyFirstGame".
+Bestow games follow a simple structure. Let's create a new game called "MyFirstGame".
 
 ```bash
 cd examples
@@ -48,8 +48,8 @@ add_executable(my-first-game
 )
 
 target_link_libraries(my-first-game PRIVATE
-    jframe-contract
-    jframe-core
+    bestow-contract
+    bestow-core
 )
 
 target_compile_features(my-first-game PRIVATE cxx_std_23)
@@ -69,20 +69,20 @@ Create `src/main.cpp`:
 ```cpp
 // src/main.cpp
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting My First Game!");
+    bestow::core::logInfo("Starting My First Game!");
 
     // Build the engine
-    auto engineResult = jframe::core::EngineBuilder()
+    auto engineResult = bestow::core::EngineBuilder()
         .withEvents()
         .withEntities()
         .withPhysics()
-        .withGraphics(jframe::core::GraphicsConfig{
+        .withGraphics(bestow::core::GraphicsConfig{
             .width = 800,
             .height = 600,
             .title = "My First Game",
@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
         .build();
 
     if (!engineResult) {
-        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        bestow::core::logError("Failed to build engine: " + engineResult.error());
         return 1;
     }
 
@@ -113,22 +113,22 @@ Create `src/Game.h`:
 // src/Game.h
 #pragma once
 
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-class MyFirstGame : public jframe::core::Application {
+class MyFirstGame : public bestow::core::Application {
 public:
     MyFirstGame() = default;
     ~MyFirstGame() override = default;
 
-    bool initialize(jframe::core::Engine& engine) override;
-    void updateFixed(jframe::DeltaTime dt) override;
+    bool initialize(bestow::core::Engine& engine) override;
+    void updateFixed(bestow::DeltaTime dt) override;
     void render(float alpha) override;
     void shutdown() override;
 
 private:
-    jframe::core::Engine* engine_ = nullptr;
-    jframe::Entity player_;
+    bestow::core::Engine* engine_ = nullptr;
+    bestow::Entity player_;
 };
 ```
 
@@ -139,13 +139,13 @@ Create `src/Game.cpp`:
 ```cpp
 // src/Game.cpp
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
-bool MyFirstGame::initialize(jframe::core::Engine& engine) {
-    jframe::core::logInfo("Initializing game...");
+bool MyFirstGame::initialize(bestow::core::Engine& engine) {
+    bestow::core::logInfo("Initializing game...");
 
     engine_ = &engine;
     auto& sys = engine.systems();
@@ -154,8 +154,8 @@ bool MyFirstGame::initialize(jframe::core::Engine& engine) {
     player_ = sys.entities->createEntity();
 
     // Create a physics body for the player
-    jframe::PhysicsBodyDef playerDef{
-        .type = jframe::BodyType::Dynamic,
+    bestow::PhysicsBodyDef playerDef{
+        .type = bestow::BodyType::Dynamic,
         .transform = {.x = 400.0f, .y = 300.0f},
         .size = {32.0f, 32.0f},
         .fixedRotation = true
@@ -163,9 +163,9 @@ bool MyFirstGame::initialize(jframe::core::Engine& engine) {
     sys.physics->createBody(player_, playerDef);
 
     // Create a ground platform
-    jframe::Entity ground = sys.entities->createEntity();
-    jframe::PhysicsBodyDef groundDef{
-        .type = jframe::BodyType::Static,
+    bestow::Entity ground = sys.entities->createEntity();
+    bestow::PhysicsBodyDef groundDef{
+        .type = bestow::BodyType::Static,
         .transform = {.x = 400.0f, .y = 50.0f},
         .size = {800.0f, 20.0f},
         .fixedRotation = true
@@ -173,37 +173,37 @@ bool MyFirstGame::initialize(jframe::core::Engine& engine) {
     sys.physics->createBody(ground, groundDef);
 
     // Set up input mappings
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 65,  // A key
             .scale = -1.0f
         },
         .action = "move_left"
     });
 
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 68,  // D key
             .scale = 1.0f
         },
         .action = "move_right"
     });
 
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 32  // Space
         },
         .action = "jump"
     });
 
-    jframe::core::logInfo("Game initialized!");
+    bestow::core::logInfo("Game initialized!");
     return true;
 }
 
-void MyFirstGame::updateFixed(jframe::DeltaTime dt) {
+void MyFirstGame::updateFixed(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     if (!sys.physics->hasBody(player_)) return;
@@ -214,7 +214,7 @@ void MyFirstGame::updateFixed(jframe::DeltaTime dt) {
     float horizontal = moveLeft + moveRight;
 
     // Apply movement
-    jframe::Vec2 velocity = sys.physics->getVelocity(player_);
+    bestow::Vec2 velocity = sys.physics->getVelocity(player_);
     velocity.x = horizontal * 200.0f;  // Move speed
 
     // Jump input
@@ -230,22 +230,22 @@ void MyFirstGame::render(float alpha) {
 
     // Draw the player as a green square
     if (sys.physics->hasBody(player_)) {
-        jframe::Vec2 pos = sys.physics->getPosition(player_);
+        bestow::Vec2 pos = sys.physics->getPosition(player_);
         sys.graphics->drawRect(
             {static_cast<int>(pos.x - 16), static_cast<int>(pos.y - 16), 32, 32},
-            jframe::Color::green()
+            bestow::Color::green()
         );
     }
 }
 
 void MyFirstGame::shutdown() {
-    jframe::core::logInfo("Shutting down game");
+    bestow::core::logInfo("Shutting down game");
 }
 ```
 
 ## Step 6: Build and Run
 
-From the JFrame root directory:
+From the Bestow root directory:
 
 ```bash
 # Configure
@@ -284,9 +284,9 @@ Let's add a box that the player can push around. In `Game.h`, add a new member:
 
 ```cpp
 private:
-    jframe::core::Engine* engine_ = nullptr;
-    jframe::Entity player_;
-    jframe::Entity box_;  // Add this
+    bestow::core::Engine* engine_ = nullptr;
+    bestow::Entity player_;
+    bestow::Entity box_;  // Add this
 ```
 
 In `Game.cpp`, add this to `initialize()` after creating the player:
@@ -294,8 +294,8 @@ In `Game.cpp`, add this to `initialize()` after creating the player:
 ```cpp
 // Create a pushable box
 box_ = sys.entities->createEntity();
-jframe::PhysicsBodyDef boxDef{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef boxDef{
+    .type = bestow::BodyType::Dynamic,
     .transform = {.x = 500.0f, .y = 200.0f},
     .size = {40.0f, 40.0f},
     .fixedRotation = true
@@ -308,10 +308,10 @@ Add this to `render()` to draw the box:
 ```cpp
 // Draw the box as a blue square
 if (sys.physics->hasBody(box_)) {
-    jframe::Vec2 pos = sys.physics->getPosition(box_);
+    bestow::Vec2 pos = sys.physics->getPosition(box_);
     sys.graphics->drawRect(
         {static_cast<int>(pos.x - 20), static_cast<int>(pos.y - 20), 40, 40},
-        jframe::Color::blue()
+        bestow::Color::blue()
     );
 }
 ```
@@ -322,7 +322,7 @@ Rebuild and run. You can now push the blue box around!
 
 ### Application Lifecycle
 
-JFrame games implement the `Application` interface with four methods:
+Bestow games implement the `Application` interface with four methods:
 
 1. **initialize()** - Called once at startup. Create entities, load assets, set up input.
 2. **updateFixed()** - Called at a fixed timestep (60 FPS). Handle game logic, physics, AI.
@@ -345,7 +345,7 @@ EngineBuilder()
 
 ### Entity-Component-System
 
-JFrame uses an ECS architecture:
+Bestow uses an ECS architecture:
 
 - **Entities** are just IDs (like `player_`)
 - **Components** are data (like `PhysicsBodyDef`)
@@ -361,7 +361,7 @@ Every physical object needs a `PhysicsBodyDef`:
 
 ## Next Steps
 
-You've created your first JFrame game! Next tutorials:
+You've created your first Bestow game! Next tutorials:
 
 - **Tutorial 2: Blueprints and Levels** - Learn data-driven entity creation with Lua
 - **Tutorial 3: Physics and Collision** - Understand collision layers, callbacks, and ground detection

@@ -11,10 +11,10 @@
 
 #include <gtest/gtest.h>
 
-import jframe.core;
-import jframe.types;
+import bestow.core;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 //==========================================================================
 // Timer Tests
@@ -275,7 +275,7 @@ TEST_F(UUIDTest, GenerateUnique) {
 }
 
 TEST_F(UUIDTest, GenerateManyUnique) {
-    std::unordered_set<jframe::UUID> uuids;
+    std::unordered_set<bestow::UUID> uuids;
     constexpr int count = 1000;
 
     for (int i = 0; i < count; ++i) {
@@ -318,7 +318,7 @@ TEST_F(GraphicsConfigTest, DefaultValues) {
     core::GraphicsConfig config;
     EXPECT_EQ(config.width, 1280);
     EXPECT_EQ(config.height, 720);
-    EXPECT_EQ(config.title, "JFrame Application");
+    EXPECT_EQ(config.title, "Bestow Application");
     EXPECT_TRUE(config.vsync);
     EXPECT_EQ(config.clearColor.r, 26);
     EXPECT_EQ(config.clearColor.g, 26);
@@ -886,4 +886,4 @@ TEST_F(LoggingTest, LogLongString) {
     EXPECT_NO_THROW(core::logInfo(longMessage));
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

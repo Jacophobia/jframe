@@ -3,25 +3,25 @@
 
 #pragma once
 
-import jframe;
-import jframe.core;
-import jframe.camera.impl;
-import jframe.components;
-import jframe.config.impl;
+import bestow;
+import bestow.core;
+import bestow.camera.impl;
+import bestow.components;
+import bestow.config.impl;
 
-#if defined(JFRAME_DEV_TOOLS)
-import jframe.dev;
+#if defined(BESTOW_DEV_TOOLS)
+import bestow.dev;
 #endif
 
 namespace endless_runner {
 
-class Game : public jframe::core::Application {
+class Game : public bestow::core::Application {
 public:
     Game() = default;
     ~Game() override = default;
 
-    bool initialize(jframe::core::Engine& engine) override;
-    void updateFixed(jframe::DeltaTime dt) override;
+    bool initialize(bestow::core::Engine& engine) override;
+    void updateFixed(bestow::DeltaTime dt) override;
     void render(float alpha) override;
     void shutdown() override;
 
@@ -34,40 +34,40 @@ private:
     void createPlatform(float x, float y, float width, float height);
     void createCoin(float x, float y, int value);
     void createEnemy(float x, float y);
-    void handlePlayerInput(jframe::DeltaTime dt);
-    void updateCamera(jframe::DeltaTime dt);
+    void handlePlayerInput(bestow::DeltaTime dt);
+    void updateCamera(bestow::DeltaTime dt);
     void syncPhysicsToTransforms();
-    void onTriggerEnter(const jframe::EventData& data);
-    void onCollision(const jframe::EventData& data);
+    void onTriggerEnter(const bestow::EventData& data);
+    void onCollision(const bestow::EventData& data);
     void renderEntities();
     void renderHUD();
 
-    jframe::core::Engine* engine_ = nullptr;
-    std::unique_ptr<jframe::IConfigSystem> config_;
-    jframe::Entity player_;
-    std::unique_ptr<jframe::CameraSystem> cameraSystem_;
+    bestow::core::Engine* engine_ = nullptr;
+    std::unique_ptr<bestow::IConfigSystem> config_;
+    bestow::Entity player_;
+    std::unique_ptr<bestow::CameraSystem> cameraSystem_;
 
     // Sprite sheets
-    jframe::SpriteSheet playerSheet_;
-    jframe::AnimatedSprite playerSprite_;
-    jframe::SpriteSheet coinSheet_;
-    jframe::SpriteSheet enemySheet_;
-    jframe::SpriteSheet platformSheet_;
+    bestow::SpriteSheet playerSheet_;
+    bestow::AnimatedSprite playerSprite_;
+    bestow::SpriteSheet coinSheet_;
+    bestow::SpriteSheet enemySheet_;
+    bestow::SpriteSheet platformSheet_;
 
     // Asset handles
-    jframe::AssetHandle playerTextureHandle_;
-    jframe::AssetHandle coinTextureHandle_;
-    jframe::AssetHandle enemyTextureHandle_;
-    jframe::AssetHandle platformTextureHandle_;
-    jframe::AssetHandle fontHandle_;
-    jframe::AssetHandle levelAssetHandle_;
-    jframe::AssetHandle jumpSoundHandle_;
-    jframe::AssetHandle coinSoundHandle_;
-    jframe::AssetHandle hurtSoundHandle_;
+    bestow::AssetHandle playerTextureHandle_;
+    bestow::AssetHandle coinTextureHandle_;
+    bestow::AssetHandle enemyTextureHandle_;
+    bestow::AssetHandle platformTextureHandle_;
+    bestow::AssetHandle fontHandle_;
+    bestow::AssetHandle levelAssetHandle_;
+    bestow::AssetHandle jumpSoundHandle_;
+    bestow::AssetHandle coinSoundHandle_;
+    bestow::AssetHandle hurtSoundHandle_;
 
-    jframe::LevelId currentLevelId_{};
-    jframe::SubscriptionId triggerSubscription_;
-    jframe::SubscriptionId collisionSubscription_;
+    bestow::LevelId currentLevelId_{};
+    bestow::SubscriptionId triggerSubscription_;
+    bestow::SubscriptionId collisionSubscription_;
 
     // Game state
     int score_ = 0;
@@ -88,9 +88,9 @@ private:
     float playerBodyWidth_ = 50.0f;
     float playerBodyHeight_ = 80.0f;
 
-#if defined(JFRAME_DEV_TOOLS)
-    jframe::dev::HotReloadManager hotReload_;
-    jframe::dev::DevOverlay devOverlay_;
+#if defined(BESTOW_DEV_TOOLS)
+    bestow::dev::HotReloadManager hotReload_;
+    bestow::dev::DevOverlay devOverlay_;
 #endif
 };
 

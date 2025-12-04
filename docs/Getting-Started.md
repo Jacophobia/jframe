@@ -1,14 +1,14 @@
-# Getting Started with JFrame
+# Getting Started with Bestow
 
-Welcome to JFrame, a modern C++23 game engine built with clean architecture, data-driven design, and developer productivity in mind.
+Welcome to Bestow, a modern C++23 game engine built with clean architecture, data-driven design, and developer productivity in mind.
 
-This guide will help you set up JFrame and create your first game in minutes.
+This guide will help you set up Bestow and create your first game in minutes.
 
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)
 2. [Installation](#installation)
-3. [Building JFrame](#building-jframe)
+3. [Building Bestow](#building-bestow)
 4. [Project Structure Overview](#project-structure-overview)
 5. [Your First Game](#your-first-game)
 6. [Understanding the Game Loop](#understanding-the-game-loop)
@@ -29,7 +29,7 @@ This guide will help you set up JFrame and create your first game in minutes.
 
 ### Compiler Requirements
 
-JFrame requires a C++23-compliant compiler with full module support, including `import std;`.
+Bestow requires a C++23-compliant compiler with full module support, including `import std;`.
 
 | Platform | Compiler | Version | Installation |
 |----------|----------|---------|--------------|
@@ -80,22 +80,22 @@ brew install llvm@20
 
 See `docs/LLVM20-SETUP.md` for troubleshooting and detailed setup.
 
-### 3. Clone JFrame
+### 3. Clone Bestow
 
 ```bash
-git clone https://github.com/yourusername/jframe.git
-cd jframe
+git clone https://github.com/yourusername/bestow.git
+cd bestow
 ```
 
 ### 4. Install FMOD
 
 1. Download FMOD Core API from [fmod.com](https://www.fmod.com/download)
 2. Extract the archive
-3. Copy the FMOD directory to `jframe/external/fmod/`
+3. Copy the FMOD directory to `bestow/external/fmod/`
 
 Your directory structure should look like:
 ```
-jframe/
+bestow/
 ├── external/
 │   └── fmod/
 │       ├── api/
@@ -105,9 +105,9 @@ jframe/
 
 ---
 
-## Building JFrame
+## Building Bestow
 
-JFrame uses CMake presets for platform-specific builds. All dependencies (except FMOD) are managed by vcpkg automatically.
+Bestow uses CMake presets for platform-specific builds. All dependencies (except FMOD) are managed by vcpkg automatically.
 
 ### macOS
 
@@ -177,29 +177,29 @@ You should see a window with a platformer game featuring sprites, animations, ph
 ## Project Structure Overview
 
 ```
-jframe/
-├── jframe-contract/        # System interfaces (API contracts)
+bestow/
+├── bestow-contract/        # System interfaces (API contracts)
 │   └── src/
-│       ├── jframe.cppm                # Main module (re-exports all)
-│       ├── jframe.types.cppm          # Core types (Entity, Transform2D, etc.)
-│       ├── jframe.entity.cppm         # Entity/Component system
-│       ├── jframe.graphics.cppm       # Rendering system
-│       ├── jframe.physics.cppm        # 2D physics (Box2D)
-│       ├── jframe.input.cppm          # Input handling
-│       ├── jframe.audio.cppm          # Audio system (FMOD)
-│       ├── jframe.assets.cppm         # Asset loading
-│       ├── jframe.level.cppm          # Level management
-│       ├── jframe.events.cppm         # Event system
-│       ├── jframe.ai.cppm             # AI/Pathfinding
+│       ├── bestow.cppm                # Main module (re-exports all)
+│       ├── bestow.types.cppm          # Core types (Entity, Transform2D, etc.)
+│       ├── bestow.entity.cppm         # Entity/Component system
+│       ├── bestow.graphics.cppm       # Rendering system
+│       ├── bestow.physics.cppm        # 2D physics (Box2D)
+│       ├── bestow.input.cppm          # Input handling
+│       ├── bestow.audio.cppm          # Audio system (FMOD)
+│       ├── bestow.assets.cppm         # Asset loading
+│       ├── bestow.level.cppm          # Level management
+│       ├── bestow.events.cppm         # Event system
+│       ├── bestow.ai.cppm             # AI/Pathfinding
 │       └── ...
 │
-├── jframe-*/               # System implementations
-│   ├── jframe-entity/      # Entity system (EnTT-based)
-│   ├── jframe-graphics/    # Graphics system (OpenGL)
-│   ├── jframe-physics/     # Physics system (Box2D)
+├── bestow-*/               # System implementations
+│   ├── bestow-entity/      # Entity system (EnTT-based)
+│   ├── bestow-graphics/    # Graphics system (OpenGL)
+│   ├── bestow-physics/     # Physics system (Box2D)
 │   └── ...
 │
-├── jframe-core/            # Core utilities
+├── bestow-core/            # Core utilities
 │   └── src/
 │       ├── Engine.cpp      # Main engine runtime
 │       ├── EngineBuilder.cpp  # Fluent API for engine setup
@@ -214,7 +214,7 @@ jframe/
 ├── docs/                   # Documentation
 │   ├── Getting-Started.md  # This file
 │   ├── CLAUDE.md           # Development guidelines
-│   ├── jframe-technical-design.md  # Architecture details
+│   ├── bestow-technical-design.md  # Architecture details
 │   └── systems/            # Per-system documentation
 │
 └── data/                   # Game data (in examples)
@@ -228,10 +228,10 @@ jframe/
 
 ### Key Directories
 
-- **jframe-contract**: Defines the public API for all systems (interfaces only)
-- **jframe-{system}**: Implementation of each system (e.g., `jframe-graphics`)
-- **jframe-core**: Engine runtime, utilities, logging, job system
-- **examples**: Playable games showcasing JFrame features
+- **bestow-contract**: Defines the public API for all systems (interfaces only)
+- **bestow-{system}**: Implementation of each system (e.g., `bestow-graphics`)
+- **bestow-core**: Engine runtime, utilities, logging, job system
+- **examples**: Playable games showcasing Bestow features
 - **docs**: All documentation, guides, and tutorials
 
 ---
@@ -255,9 +255,9 @@ Create a `CMakeLists.txt`:
 cmake_minimum_required(VERSION 3.28)
 project(MyFirstGame CXX)
 
-# Point to JFrame (adjust path as needed)
-set(JFRAME_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../jframe")
-add_subdirectory(${JFRAME_DIR} jframe)
+# Point to Bestow (adjust path as needed)
+set(BESTOW_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../bestow")
+add_subdirectory(${BESTOW_DIR} bestow)
 
 # Create your game executable
 add_executable(my-game
@@ -266,8 +266,8 @@ add_executable(my-game
     src/Game.h
 )
 
-# Link against JFrame core (brings in all systems)
-target_link_libraries(my-game PRIVATE jframe-core)
+# Link against Bestow core (brings in all systems)
+target_link_libraries(my-game PRIVATE bestow-core)
 
 # Copy data directory to build output
 add_custom_command(TARGET my-game POST_BUILD
@@ -285,21 +285,21 @@ add_custom_command(TARGET my-game POST_BUILD
 #pragma once
 
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 class Game {
 public:
     // Engine lifecycle
-    bool initialize(jframe::core::Engine& engine);
-    void updateFixed(jframe::DeltaTime dt);
+    bool initialize(bestow::core::Engine& engine);
+    void updateFixed(bestow::DeltaTime dt);
     void render(float alpha);
     void shutdown();
 
 private:
-    jframe::core::Engine* engine_ = nullptr;
-    jframe::Entity player_;
-    jframe::AssetHandle playerTexture_;
+    bestow::core::Engine* engine_ = nullptr;
+    bestow::Entity player_;
+    bestow::AssetHandle playerTexture_;
 };
 ```
 
@@ -307,20 +307,20 @@ private:
 
 ```cpp
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
-bool Game::initialize(jframe::core::Engine& engine) {
+bool Game::initialize(bestow::core::Engine& engine) {
     engine_ = &engine;
     auto& sys = engine.systems();
 
-    jframe::core::logInfo("Initializing My First Game");
+    bestow::core::logInfo("Initializing My First Game");
 
     // Load player texture
     playerTexture_ = sys.assets->registerAsset(
-        jframe::AssetType::Texture,
+        bestow::AssetType::Texture,
         "data/textures/player.png"
     );
     sys.assets->loadAsset(playerTexture_);
@@ -329,7 +329,7 @@ bool Game::initialize(jframe::core::Engine& engine) {
     player_ = sys.entities->createEntity();
 
     // Add transform component (position at center of 1280x720 window)
-    sys.entities->emplace<jframe::Transform2D>(player_, jframe::Transform2D{
+    sys.entities->emplace<bestow::Transform2D>(player_, bestow::Transform2D{
         .x = 640.0f,
         .y = 360.0f,
         .rotation = 0.0f,
@@ -338,28 +338,28 @@ bool Game::initialize(jframe::core::Engine& engine) {
     });
 
     // Setup input
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 65  // 'A' key
         },
         .action = "move_left"
     });
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 68  // 'D' key
         },
         .action = "move_right"
     });
 
-    jframe::core::logInfo("Game initialized successfully");
+    bestow::core::logInfo("Game initialized successfully");
     return true;
 }
 
-void Game::updateFixed(jframe::DeltaTime dt) {
+void Game::updateFixed(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
-    auto& transform = sys.entities->get<jframe::Transform2D>(player_);
+    auto& transform = sys.entities->get<bestow::Transform2D>(player_);
 
     // Handle input - move player left/right
     float moveSpeed = 200.0f;  // pixels per second
@@ -378,10 +378,10 @@ void Game::updateFixed(jframe::DeltaTime dt) {
 
 void Game::render(float alpha) {
     auto& sys = engine_->systems();
-    auto& transform = sys.entities->get<jframe::Transform2D>(player_);
+    auto& transform = sys.entities->get<bestow::Transform2D>(player_);
 
     // Create sprite sheet (single frame)
-    jframe::SpriteSheet sheet{
+    bestow::SpriteSheet sheet{
         .texture = playerTexture_,
         .frameWidth = 64,
         .frameHeight = 64,
@@ -394,7 +394,7 @@ void Game::render(float alpha) {
 }
 
 void Game::shutdown() {
-    jframe::core::logInfo("Shutting down game");
+    bestow::core::logInfo("Shutting down game");
 }
 ```
 
@@ -402,22 +402,22 @@ void Game::shutdown() {
 
 ```cpp
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting My First Game");
+    bestow::core::logInfo("Starting My First Game");
 
     // Build the engine with required systems
-    auto engineResult = jframe::core::EngineBuilder()
+    auto engineResult = bestow::core::EngineBuilder()
         .withEvents()
         .withEntities()
-        .withGraphics(jframe::core::GraphicsConfig{
+        .withGraphics(bestow::core::GraphicsConfig{
             .width = 1280,
             .height = 720,
-            .title = "My First JFrame Game",
+            .title = "My First Bestow Game",
             .vsync = true,
             .clearColor = {30, 30, 50, 255}  // Dark blue background
         })
@@ -426,11 +426,11 @@ int main(int argc, char* argv[]) {
         .build();
 
     if (!engineResult) {
-        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        bestow::core::logError("Failed to build engine: " + engineResult.error());
         return 1;
     }
 
-    jframe::core::logInfo("Engine built successfully");
+    bestow::core::logInfo("Engine built successfully");
 
     // Create the game and run it
     Game game;
@@ -468,17 +468,17 @@ You should see a window with your sprite! Use 'A' and 'D' keys to move it left a
 
 ## Understanding the Game Loop
 
-JFrame uses a fixed-timestep game loop for physics and logic, with variable-timestep rendering for smooth visuals.
+Bestow uses a fixed-timestep game loop for physics and logic, with variable-timestep rendering for smooth visuals.
 
 ```cpp
 class Game {
 public:
     // Called once at startup
-    bool initialize(jframe::core::Engine& engine);
+    bool initialize(bestow::core::Engine& engine);
 
     // Called at fixed intervals (e.g., 60 FPS)
     // Use for physics, game logic, AI
-    void updateFixed(jframe::DeltaTime dt);
+    void updateFixed(bestow::DeltaTime dt);
 
     // Called every frame with interpolation alpha
     // Use for rendering only
@@ -504,7 +504,7 @@ public:
 
 ## Working with Systems
 
-JFrame is built around the concept of **systems**. Each system provides a specific capability (graphics, physics, audio, etc.). You access systems through the `engine.systems()` object.
+Bestow is built around the concept of **systems**. Each system provides a specific capability (graphics, physics, audio, etc.). You access systems through the `engine.systems()` object.
 
 ### Available Systems
 
@@ -559,7 +559,7 @@ sys.ai->findPath(start, end);
 The `EngineBuilder` handles system initialization for you. Just chain the systems you need:
 
 ```cpp
-auto engineResult = jframe::core::EngineBuilder()
+auto engineResult = bestow::core::EngineBuilder()
     .withEvents()        // Event system (no dependencies)
     .withEntities()      // Entity system (requires Events)
     .withPhysics()       // Physics (requires Entities, Events)
@@ -627,7 +627,7 @@ Now that you have a basic game running, explore these topics to level up:
 8. **Camera System**
    - Implement camera follow, smoothing, and deadzone
    - Add screen shake and zoom effects
-   - See: `jframe-camera/` implementation
+   - See: `bestow-camera/` implementation
 
 ### Advanced Topics
 
@@ -649,11 +649,11 @@ Now that you have a basic game running, explore these topics to level up:
 12. **Hot Reload (Debug Only)**
     - Reload Lua scripts, textures, and audio at runtime
     - Iterate quickly without recompiling
-    - See: `jframe-dev/` implementation
+    - See: `bestow-dev/` implementation
 
 ### Example Projects
 
-Study these complete examples to see JFrame in action:
+Study these complete examples to see Bestow in action:
 
 - **platformer-demo**: Full 2D platformer with sprites, physics, AI, and audio
   - Location: `examples/platformer-demo/`
@@ -670,7 +670,7 @@ Study these complete examples to see JFrame in action:
 ### Documentation
 
 - **CLAUDE.md**: Development guidelines, coding standards, architecture
-- **jframe-technical-design.md**: Deep dive into engine architecture
+- **bestow-technical-design.md**: Deep dive into engine architecture
 - **docs/systems/**: Per-system documentation with API reference
 - **docs/GAS-Guide.md**: Gameplay Ability System tutorial
 
@@ -678,7 +678,7 @@ Study these complete examples to see JFrame in action:
 
 - GitHub Issues: Report bugs or request features
 - GitHub Discussions: Ask questions and share projects
-- Discord: Join the JFrame community (link TBD)
+- Discord: Join the Bestow community (link TBD)
 
 ---
 
@@ -741,7 +741,7 @@ auto engine = EngineBuilder()
 
 ### 5. Using Apple Clang on macOS
 
-**JFrame requires LLVM Clang 20+** on macOS. Apple Clang does NOT support `import std;`.
+**Bestow requires LLVM Clang 20+** on macOS. Apple Clang does NOT support `import std;`.
 
 ```bash
 # Check your compiler
@@ -760,10 +760,10 @@ See `docs/LLVM20-SETUP.md` for setup instructions.
 ### Engine Initialization
 
 ```cpp
-auto engineResult = jframe::core::EngineBuilder()
+auto engineResult = bestow::core::EngineBuilder()
     .withEvents()
     .withEntities()
-    .withGraphics(jframe::core::GraphicsConfig{
+    .withGraphics(bestow::core::GraphicsConfig{
         .width = 1280,
         .height = 720,
         .title = "My Game",
@@ -775,7 +775,7 @@ auto engineResult = jframe::core::EngineBuilder()
     .build();
 
 if (!engineResult) {
-    jframe::core::logError("Build failed: " + engineResult.error());
+    bestow::core::logError("Build failed: " + engineResult.error());
     return 1;
 }
 
@@ -787,7 +787,7 @@ engineResult.value().run(game);
 
 ```cpp
 auto entity = sys.entities->createEntity();
-sys.entities->emplace<jframe::Transform2D>(entity, jframe::Transform2D{
+sys.entities->emplace<bestow::Transform2D>(entity, bestow::Transform2D{
     .x = 100.0f, .y = 200.0f
 });
 ```
@@ -795,8 +795,8 @@ sys.entities->emplace<jframe::Transform2D>(entity, jframe::Transform2D{
 ### Physics Body
 
 ```cpp
-jframe::PhysicsBodyDef def{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef def{
+    .type = bestow::BodyType::Dynamic,
     .transform = {.x = 100, .y = 200},
     .size = {50, 50},
     .fixedRotation = true,
@@ -808,9 +808,9 @@ sys.physics->createBody(entity, def);
 ### Input Handling
 
 ```cpp
-sys.input->registerMapping(jframe::InputMapping{
-    .binding = jframe::InputBinding{
-        .deviceType = jframe::InputDeviceType::Keyboard,
+sys.input->registerMapping(bestow::InputMapping{
+    .binding = bestow::InputBinding{
+        .deviceType = bestow::InputDeviceType::Keyboard,
         .keyCode = 32  // Spacebar
     },
     .action = "jump"
@@ -826,9 +826,9 @@ if (sys.input->wasActionJustPressed("jump")) {
 
 ```cpp
 auto subId = sys.events->subscribe(
-    jframe::Events::Collision,
-    [](const jframe::EventData& data) {
-        auto& collision = std::get<jframe::CollisionEvent>(data);
+    bestow::Events::Collision,
+    [](const bestow::EventData& data) {
+        auto& collision = std::get<bestow::CollisionEvent>(data);
         // Handle collision
     }
 );
@@ -841,7 +841,7 @@ sys.events->unsubscribe(subId);
 
 ## Congratulations!
 
-You now have everything you need to start building games with JFrame. The platformer demo in `examples/platformer-demo/` is a great reference for a complete game implementation.
+You now have everything you need to start building games with Bestow. The platformer demo in `examples/platformer-demo/` is a great reference for a complete game implementation.
 
 Happy game development!
 

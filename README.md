@@ -1,23 +1,23 @@
-# JFrame Game Framework
+# Bestow Game Framework
 
 A modern C++23 game framework built with modularity, data-driven design, and performance in mind.
 
 ## Getting Started
 
-**New to JFrame?** Start with the [Getting Started Guide](docs/Getting-Started.md) to learn how to build your first game.
+**New to Bestow?** Start with the [Getting Started Guide](docs/Getting-Started.md) to learn how to build your first game.
 
 ---
 
 ## Start Your Own Game
 
-The easiest way to start a new JFrame game is to copy the **template project**:
+The easiest way to start a new Bestow game is to copy the **template project**:
 
 ```bash
 # Copy the template to your projects directory
 cp -r template/ ~/Projects/my-game
 cd ~/Projects/my-game
 
-# Edit CMakeLists.txt to point JFRAME_DIR to your JFrame installation
+# Edit CMakeLists.txt to point BESTOW_DIR to your Bestow installation
 # Then build!
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
@@ -28,7 +28,7 @@ cmake --build build
 
 ```
 template/
-├── CMakeLists.txt              # Build config (edit JFRAME_DIR path)
+├── CMakeLists.txt              # Build config (edit BESTOW_DIR path)
 ├── README.md                   # Detailed usage instructions
 ├── src/
 │   ├── main.cpp                # Entry point with EngineBuilder
@@ -42,7 +42,7 @@ template/
     └── input/bindings.lua      # Input mappings reference
 ```
 
-The template demonstrates every JFrame system: entities, physics, graphics, input, audio, events, assets, levels, camera, GAS (abilities), and blueprints. Delete what you don't need!
+The template demonstrates every Bestow system: entities, physics, graphics, input, audio, events, assets, levels, camera, GAS (abilities), and blueprints. Delete what you don't need!
 
 ---
 
@@ -83,7 +83,7 @@ Full API documentation is available in [`docs/api/`](docs/api/):
 ### Architecture & Design
 
 - [Data-Driven Design Guide](docs/Data-Driven-Design.md) - What goes in Lua vs C++
-- [Technical Design](docs/jframe-technical-design.md) - Architecture and design decisions
+- [Technical Design](docs/bestow-technical-design.md) - Architecture and design decisions
 - [Project Status](docs/PROJECT-STATUS.md) - Implementation progress
 - [System Implementation Guide](docs/SYSTEM-IMPLEMENTATION-GUIDE.md) - For contributors
 

@@ -18,7 +18,7 @@
             "name": "macos-debug",
             "inherits": "base",
             "displayName": "macOS Debug (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses LLVM triplet for ABI compatibility.",
+            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses LLVM triplet for ABI compatibility.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
@@ -35,12 +35,12 @@
             "name": "macos-release",
             "inherits": "base",
             "displayName": "macOS Release (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses LLVM triplet for ABI compatibility.",
+            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses LLVM triplet for ABI compatibility.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "JFRAME_DEV_TOOLS": "OFF",
-                "JFRAME_BUILD_TESTS": "OFF",
-                "JFRAME_BUILD_EXAMPLES": "OFF",
+                "BESTOW_DEV_TOOLS": "OFF",
+                "BESTOW_BUILD_TESTS": "OFF",
+                "BESTOW_BUILD_EXAMPLES": "OFF",
                 "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
                 "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm"
@@ -82,9 +82,9 @@
             },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "JFRAME_DEV_TOOLS": "OFF",
-                "JFRAME_BUILD_TESTS": "OFF",
-                "JFRAME_BUILD_EXAMPLES": "OFF"
+                "BESTOW_DEV_TOOLS": "OFF",
+                "BESTOW_BUILD_TESTS": "OFF",
+                "BESTOW_BUILD_EXAMPLES": "OFF"
             },
             "condition": {
                 "type": "equals",
@@ -96,7 +96,7 @@
             "name": "linux-debug",
             "inherits": "base",
             "displayName": "Linux Debug (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
+            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses libc++ triplet.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
@@ -112,12 +112,12 @@
             "name": "linux-release",
             "inherits": "base",
             "displayName": "Linux Release (Clang)",
-            "description": "Uses CC/CXX env vars - set JFRAME_CC and JFRAME_CXX. Uses libc++ triplet.",
+            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses libc++ triplet.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "JFRAME_DEV_TOOLS": "OFF",
-                "JFRAME_BUILD_TESTS": "OFF",
-                "JFRAME_BUILD_EXAMPLES": "OFF",
+                "BESTOW_DEV_TOOLS": "OFF",
+                "BESTOW_BUILD_TESTS": "OFF",
+                "BESTOW_BUILD_EXAMPLES": "OFF",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
                 "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
             },

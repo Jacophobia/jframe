@@ -1,8 +1,8 @@
-# JFrame Events System Documentation
+# Bestow Events System Documentation
 
 ## Overview
 
-The JFrame Events System provides a decoupled, event-driven communication mechanism between systems and game entities. It implements the publish-subscribe pattern, allowing systems to communicate without direct dependencies on each other.
+The Bestow Events System provides a decoupled, event-driven communication mechanism between systems and game entities. It implements the publish-subscribe pattern, allowing systems to communicate without direct dependencies on each other.
 
 ### Key Features
 
@@ -11,7 +11,7 @@ The JFrame Events System provides a decoupled, event-driven communication mechan
 - **Type-safe event data** - Uses `std::variant` for flexible, type-safe payloads
 - **Multiple subscribers** - Many listeners can subscribe to the same event
 - **Thread-safe queuing** - Queue operations protected by mutex
-- **Zero dependencies** - Only depends on `jframe.types` module
+- **Zero dependencies** - Only depends on `bestow.types` module
 
 ### Architecture
 
@@ -35,17 +35,17 @@ The JFrame Events System provides a decoupled, event-driven communication mechan
 ## Module Imports
 
 ```cpp
-import jframe.events;       // Interface only
-import jframe.events.impl;  // Implementation + factory
-import jframe.types;        // Event data types
+import bestow.events;       // Interface only
+import bestow.events.impl;  // Implementation + factory
+import bestow.types;        // Event data types
 ```
 
 ## Creating an Event System
 
 ```cpp
 #include <memory>
-import jframe.events;
-import jframe.events.impl;
+import bestow.events;
+import bestow.events.impl;
 
 // Create the event system
 std::unique_ptr<IEventSystem> events = createEventSystem();
@@ -53,10 +53,10 @@ std::unique_ptr<IEventSystem> events = createEventSystem();
 
 ## Event Types
 
-JFrame provides predefined event type constants in the `Events` namespace:
+Bestow provides predefined event type constants in the `Events` namespace:
 
 ```cpp
-namespace jframe::Events {
+namespace bestow::Events {
     inline constexpr const char* Collision = "collision";
     inline constexpr const char* TriggerEnter = "trigger_enter";
     inline constexpr const char* TriggerExit = "trigger_exit";
@@ -158,7 +158,7 @@ struct TriggerEvent {
 Subscribe to an event type with a callback function:
 
 ```cpp
-import jframe.events;
+import bestow.events;
 
 SubscriptionId id = events->subscribe(Events::Collision,
     [](const EventData& data) {
@@ -747,8 +747,8 @@ events->publish("boss_thing", someData);  // What data type?
 ## Complete Example: Platformer Game
 
 ```cpp
-import jframe;
-import jframe.events.impl;
+import bestow;
+import bestow.events.impl;
 
 class PlatformerGame {
 public:
@@ -954,9 +954,9 @@ events->processQueue();  // Processed in order
 
 ## Further Reading
 
-- **JFrame Technical Design**: `/docs/jframe-technical-design.md`
+- **Bestow Technical Design**: `/docs/bestow-technical-design.md`
 - **Project Status**: `/docs/PROJECT-STATUS.md`
 - **System Implementation Guide**: `/docs/SYSTEM-IMPLEMENTATION-GUIDE.md`
 - **Event System Tests**: `/tests/unit/EventSystemTests.cpp`
-- **Event System Interface**: `/jframe-contract/src/jframe.events.cppm`
-- **Event System Implementation**: `/jframe-events/src/jframe.events.impl.cppm`
+- **Event System Interface**: `/bestow-contract/src/bestow.events.cppm`
+- **Event System Implementation**: `/bestow-events/src/bestow.events.impl.cppm`

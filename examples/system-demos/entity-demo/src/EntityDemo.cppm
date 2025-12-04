@@ -1,16 +1,16 @@
 // EntityDemo.cppm
-// Comprehensive demonstration of the JFrame Entity System API
+// Comprehensive demonstration of the Bestow Entity System API
 
 module;
 
 // Use compatibility header for MSVC C++23 module support
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 export module entity.demo;
 
 import std;
-import jframe.types;
-import jframe.entity;
+import bestow.types;
+import bestow.entity;
 
 export namespace demo {
 
@@ -73,11 +73,11 @@ struct DeadTag {
 
 class EntityDemo {
 public:
-    explicit EntityDemo(jframe::IEntitySystem& entitySystem)
+    explicit EntityDemo(bestow::IEntitySystem& entitySystem)
         : entities_(entitySystem) {}
 
     void run() {
-        printHeader("JFRAME ENTITY SYSTEM COMPREHENSIVE DEMO");
+        printHeader("BESTOW ENTITY SYSTEM COMPREHENSIVE DEMO");
 
         demoEntityLifecycle();
         demoComponentAccess();
@@ -93,7 +93,7 @@ public:
     }
 
 private:
-    jframe::IEntitySystem& entities_;
+    bestow::IEntitySystem& entities_;
 
     //==========================================================================
     // Demo Sections
@@ -412,10 +412,10 @@ private:
 
         // Basic selector with predicate
         std::println("Entities with Position and x > 100:");
-        jframe::EntitySelector selector1{
+        bestow::EntitySelector selector1{
             .requiredComponents = {entt::type_hash<Position>::value()},
             .excludedComponents = {},
-            .predicate = [this](jframe::Entity e) {
+            .predicate = [this](bestow::Entity e) {
                 auto* pos = entities_.tryGet<Position>(e);
                 return pos && pos->x > 100.0f;
             }
@@ -430,10 +430,10 @@ private:
 
         // Selector with exclusion (using predicate since type-erased check not implemented)
         std::println("\nEntities with Position but without Health:");
-        jframe::EntitySelector selector2{
+        bestow::EntitySelector selector2{
             .requiredComponents = {},
             .excludedComponents = {},
-            .predicate = [this](jframe::Entity e) {
+            .predicate = [this](bestow::Entity e) {
                 return entities_.tryGet<Position>(e) != nullptr &&
                        entities_.tryGet<Health>(e) == nullptr;
             }
@@ -449,10 +449,10 @@ private:
 
         // Complex selector with health filter (using predicate for all checks)
         std::println("\nEnemies with low health (< 50%):");
-        jframe::EntitySelector selector3{
+        bestow::EntitySelector selector3{
             .requiredComponents = {},
             .excludedComponents = {},
-            .predicate = [this](jframe::Entity e) {
+            .predicate = [this](bestow::Entity e) {
                 auto* hp = entities_.tryGet<Health>(e);
                 auto* enemyTag = entities_.tryGet<EnemyTag>(e);
                 return hp && enemyTag && hp->percentage() < 0.5f;
@@ -489,7 +489,7 @@ private:
 
         std::println("Iterating all entities with each():");
         int count = 0;
-        entities_.each([&](jframe::Entity entity) {
+        entities_.each([&](bestow::Entity entity) {
             ++count;
             if (auto* name = entities_.tryGet<Name>(entity)) {
                 std::println("  Entity {}: {}",
@@ -530,7 +530,7 @@ private:
         entities_.emplace<PlayerTag>(player);
 
         // Create enemies
-        std::vector<jframe::Entity> enemies;
+        std::vector<bestow::Entity> enemies;
         for (int i = 0; i < 3; ++i) {
             auto enemy = entities_.createEntity();
             entities_.emplace<Position>(enemy, 100.0f + i * 50.0f, 50.0f);

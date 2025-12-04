@@ -1,8 +1,8 @@
 {
     "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
-    "name": "jframe",
+    "name": "bestow",
     "version": "1.0.0",
-    "description": "JFrame Game Framework",
+    "description": "Bestow Game Framework",
     "license": "MIT",
     "supports": "!(uwp | arm | android | ios)",
     "dependencies": [

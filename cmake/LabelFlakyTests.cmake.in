@@ -6,7 +6,7 @@
 # Flaky tests defined in: cmake/FlakyTests.cmake
 
 # List of flaky test patterns (configured from FlakyTests.cmake)
-set(_FLAKY_TESTS "@JFRAME_FLAKY_TESTS@")
+set(_FLAKY_TESTS "@BESTOW_FLAKY_TESTS@")
 
 # Label each flaky test
 foreach(_flaky_pattern IN LISTS _FLAKY_TESTS)

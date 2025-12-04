@@ -1,4 +1,4 @@
-# JFrame Project Status
+# Bestow Project Status
 
 > **Last Updated:** 2025-11-25
 > **Status:** Core Systems Functional, Graphics/Audio/Assets In Progress
@@ -7,7 +7,7 @@
 
 ## Executive Summary
 
-The JFrame game framework has **core systems functional** with Events, Physics, Input, and Entity systems working. The project uses **C++23 modules with `import std;`** via LLVM Clang 20. See `docs/LLVM20-SETUP.md` for compiler setup.
+The Bestow game framework has **core systems functional** with Events, Physics, Input, and Entity systems working. The project uses **C++23 modules with `import std;`** via LLVM Clang 20. See `docs/LLVM20-SETUP.md` for compiler setup.
 
 **Current Test Status:** 65/65 tests passing
 
@@ -46,22 +46,22 @@ The JFrame game framework has **core systems functional** with Events, Physics, 
 
 ### 3. Module Interfaces (100% Complete)
 
-All interfaces in `jframe-contract/src/` are fully defined:
+All interfaces in `bestow-contract/src/` are fully defined:
 
 | Module | File | Status |
 |--------|------|--------|
-| `jframe.types` | `jframe.types.cppm` | Complete - All types defined |
-| `jframe.entity` | `jframe.entity.cppm` | Complete - IEntitySystem interface |
-| `jframe.graphics` | `jframe.graphics.cppm` | Complete - IGraphicsSystem interface |
-| `jframe.audio` | `jframe.audio.cppm` | Complete - IAudioSystem interface |
-| `jframe.input` | `jframe.input.cppm` | Complete - IInputSystem interface |
-| `jframe.assets` | `jframe.assets.cppm` | Complete - IAssetSystem interface |
-| `jframe.save` | `jframe.save.cppm` | Complete - ISaveSystem interface |
-| `jframe.level` | `jframe.level.cppm` | Complete - ILevelSystem interface |
-| `jframe.events` | `jframe.events.cppm` | Complete - IEventSystem interface |
-| `jframe.physics` | `jframe.physics.cppm` | Complete - IPhysicsSystem interface |
-| `jframe.ai` | `jframe.ai.cppm` | Complete - IAISystem interface |
-| `jframe` | `jframe.cppm` | Complete - Re-exports all modules |
+| `bestow.types` | `bestow.types.cppm` | Complete - All types defined |
+| `bestow.entity` | `bestow.entity.cppm` | Complete - IEntitySystem interface |
+| `bestow.graphics` | `bestow.graphics.cppm` | Complete - IGraphicsSystem interface |
+| `bestow.audio` | `bestow.audio.cppm` | Complete - IAudioSystem interface |
+| `bestow.input` | `bestow.input.cppm` | Complete - IInputSystem interface |
+| `bestow.assets` | `bestow.assets.cppm` | Complete - IAssetSystem interface |
+| `bestow.save` | `bestow.save.cppm` | Complete - ISaveSystem interface |
+| `bestow.level` | `bestow.level.cppm` | Complete - ILevelSystem interface |
+| `bestow.events` | `bestow.events.cppm` | Complete - IEventSystem interface |
+| `bestow.physics` | `bestow.physics.cppm` | Complete - IPhysicsSystem interface |
+| `bestow.ai` | `bestow.ai.cppm` | Complete - IAISystem interface |
+| `bestow` | `bestow.cppm` | Complete - Re-exports all modules |
 
 ### 4. Implementation Status by System
 
@@ -73,7 +73,7 @@ All interfaces in `jframe-contract/src/` are fully defined:
 
 ---
 
-## jframe-contract (Interface Library)
+## bestow-contract (Interface Library)
 
 **Status: ✅ Complete**
 
@@ -81,7 +81,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-core (Core Utilities)
+## bestow-core (Core Utilities)
 
 **Status: 🟡 Partial**
 
@@ -97,7 +97,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-events (Event System)
+## bestow-events (Event System)
 
 **Status: ✅ Functional**
 
@@ -112,7 +112,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-entity (Entity System)
+## bestow-entity (Entity System)
 
 **Status: 🟡 Mostly Functional**
 
@@ -128,7 +128,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-graphics (Graphics System)
+## bestow-graphics (Graphics System)
 
 **Status: 🟡 Core Rendering Implemented (70%)**
 
@@ -142,7 +142,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 | Camera | ✅ | Projection/view matrices | - |
 | ImGui Integration | ❌ | - | ImGui backend setup |
 
-**Implementation:** `jframe-graphics/src/GraphicsSystem.cpp`
+**Implementation:** `bestow-graphics/src/GraphicsSystem.cpp`
 
 **Still needed:**
 1. Texture loading from AssetSystem
@@ -152,7 +152,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-audio (Audio System)
+## bestow-audio (Audio System)
 
 **Status: 🟡 FMOD Integration Ready (80%)**
 
@@ -165,7 +165,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 | Volume Control | ✅ | Master, channel, groups | - |
 | Channel Groups | ✅ | Create, assign, volume | - |
 
-**Implementation:** `jframe-audio/src/FMODAudioSystem.cpp`
+**Implementation:** `bestow-audio/src/FMODAudioSystem.cpp`
 
 **Note:** Requires manual FMOD SDK installation. Without FMOD, system runs in stub mode (tracks state, no sound output).
 
@@ -176,7 +176,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-input (Input System)
+## bestow-input (Input System)
 
 **Status: ✅ Mostly Functional (95%)**
 
@@ -189,13 +189,13 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 | Input Listening | ✅ | Capture next input for rebinding | - |
 | Controller Enumeration | ✅ | Initial enumeration at startup | - |
 
-**Implementation:** `jframe-input/src/InputSystem.cpp` (~350 LOC)
+**Implementation:** `bestow-input/src/InputSystem.cpp` (~350 LOC)
 
 **Tests:** 16 tests covering all input functionality
 
 ---
 
-## jframe-assets (Asset System)
+## bestow-assets (Asset System)
 
 **Status: ⚪ Stub**
 
@@ -218,7 +218,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-save (Save System)
+## bestow-save (Save System)
 
 **Status: 🟡 Core Serialization Working (75%)**
 
@@ -233,7 +233,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 | Profiles | ✅ | Directory-based profiles | - |
 | Auto-save | ✅ | Timer + actual save trigger | - |
 
-**Implementation:** `jframe-save/src/SaveSystem.cpp`
+**Implementation:** `bestow-save/src/SaveSystem.cpp`
 
 **Still needed:**
 1. Checksum calculation and validation
@@ -243,7 +243,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-level (Level System)
+## bestow-level (Level System)
 
 **Status: ⚪ Stub**
 
@@ -265,7 +265,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-physics (Physics System)
+## bestow-physics (Physics System)
 
 **Status: ✅ Fully Functional (95%)**
 
@@ -282,14 +282,14 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 | Collision Layers | ✅ | Filter system with layers/masks | - |
 | Sensors | ✅ | Sensor bodies via b2Shape_EnableSensorEvents | - |
 
-**Implementation:** `jframe-physics/src/Box2DPhysicsSystem.cpp` (~560 LOC)
+**Implementation:** `bestow-physics/src/Box2DPhysicsSystem.cpp` (~560 LOC)
 
 **Nice to have:**
 - Debug draw visualization (optional)
 
 ---
 
-## jframe-ai (AI System)
+## bestow-ai (AI System)
 
 **Status: ⚪ Stub**
 
@@ -312,7 +312,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-dev (Development Tools)
+## bestow-dev (Development Tools)
 
 **Status: 🟡 Partial**
 
@@ -331,7 +331,7 @@ This is the interface-only library. All abstract interfaces are defined. No impl
 
 ---
 
-## jframe-tests (Test Suite)
+## bestow-tests (Test Suite)
 
 **Status: ✅ 65 Tests Passing**
 
@@ -369,24 +369,24 @@ Build systems in this order to minimize integration issues. Systems at the same 
 
 ### Tier 0: No Dependencies (Build First, In Parallel)
 
-- [ ] **jframe-events** - Already functional, just needs tests
+- [ ] **bestow-events** - Already functional, just needs tests
   - [ ] Add comprehensive test coverage
   - [ ] Document event type conventions
 
-- [ ] **jframe-core** - Minimal work needed
+- [ ] **bestow-core** - Minimal work needed
   - [ ] Complete JobSystem taskflow integration
   - [ ] Add unit tests
 
 ### Tier 1: Contract Only (Build In Parallel)
 
-- [ ] **jframe-entity** - Nearly complete
+- [ ] **bestow-entity** - Nearly complete
   - [ ] Implement type-erased component API (if needed)
   - [ ] Implement EntitySelector query
   - [ ] Add comprehensive tests
 
 ### Tier 2: Single External Dependency (Build In Parallel)
 
-- [ ] **jframe-graphics** - Major work
+- [ ] **bestow-graphics** - Major work
   - [ ] Initialize GLFW window properly
   - [ ] Set up glad/glew OpenGL loader
   - [ ] Create shader compilation system
@@ -406,7 +406,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
   - [ ] ImGui backend integration
   - [ ] Add tests (may need headless/mock)
 
-- [ ] **jframe-physics** - Major work
+- [ ] **bestow-physics** - Major work
   - [ ] Initialize Box2D world
   - [ ] Implement body creation with fixtures
   - [ ] Implement entity-body mapping
@@ -420,7 +420,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
   - [ ] Implement fixed timestep
   - [ ] Add tests
 
-- [ ] **jframe-audio** - Major work
+- [ ] **bestow-audio** - Major work
   - [ ] Initialize FMOD system
   - [ ] Implement sound loading
   - [ ] Implement channel playback
@@ -430,7 +430,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
   - [ ] Implement fade in/out
   - [ ] Add tests (may need mocking)
 
-- [ ] **jframe-input** - Moderate work
+- [ ] **bestow-input** - Moderate work
   - [ ] Fix initialization to receive window handle
   - [ ] Initialize SDL2 GameController subsystem
   - [ ] Load controller database
@@ -440,7 +440,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
 
 ### Tier 3: Multiple Dependencies
 
-- [ ] **jframe-assets** - Major work (depends on graphics, audio)
+- [ ] **bestow-assets** - Major work (depends on graphics, audio)
   - [ ] Implement texture loader (stb_image → OpenGL texture)
   - [ ] Implement sound loader (file → FMOD sound)
   - [ ] Implement font loader (FreeType → MSDF atlas)
@@ -451,7 +451,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
   - [ ] Implement hot reload detection
   - [ ] Add tests
 
-- [ ] **jframe-save** - Moderate work
+- [ ] **bestow-save** - Moderate work
   - [ ] Set up cereal archives with versioning
   - [ ] Implement zstd compression
   - [ ] Implement checksum calculation
@@ -464,7 +464,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
 
 ### Tier 4: Many Dependencies
 
-- [ ] **jframe-level** - Major work (depends on assets, entity, Lua)
+- [ ] **bestow-level** - Major work (depends on assets, entity, Lua)
   - [ ] Set up sol2 with sandboxing
   - [ ] Implement Lua require() for helpers
   - [ ] Implement level file parsing
@@ -475,7 +475,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
   - [ ] Implement hot reload (re-execute Lua)
   - [ ] Add tests
 
-- [ ] **jframe-ai** - Major work (depends on physics, assets)
+- [ ] **bestow-ai** - Major work (depends on physics, assets)
   - [ ] Set up BehaviorTree.CPP factory
   - [ ] Implement custom BT nodes
   - [ ] Implement blackboard type safety
@@ -487,7 +487,7 @@ Build systems in this order to minimize integration issues. Systems at the same 
 
 ### Tier 5: Requires Everything
 
-- [ ] **jframe-dev** - Moderate work (depends on all systems)
+- [ ] **bestow-dev** - Moderate work (depends on all systems)
   - [ ] Complete hot reload Lua execution
   - [ ] Implement entity inspector component display
   - [ ] Implement position copy to clipboard
@@ -514,19 +514,19 @@ Use this to avoid merge conflicts when multiple agents work in parallel.
 
 | Directory | Owner/Focus Area |
 |-----------|------------------|
-| `jframe-contract/` | **DO NOT MODIFY** - Interfaces are complete |
-| `jframe-core/` | Core utilities agent |
-| `jframe-entity/` | Entity system agent |
-| `jframe-events/` | Event system agent |
-| `jframe-graphics/` | Graphics agent |
-| `jframe-audio/` | Audio agent |
-| `jframe-input/` | Input agent |
-| `jframe-assets/` | Assets agent |
-| `jframe-save/` | Save system agent |
-| `jframe-level/` | Level system agent |
-| `jframe-physics/` | Physics agent |
-| `jframe-ai/` | AI agent |
-| `jframe-dev/` | Dev tools agent |
+| `bestow-contract/` | **DO NOT MODIFY** - Interfaces are complete |
+| `bestow-core/` | Core utilities agent |
+| `bestow-entity/` | Entity system agent |
+| `bestow-events/` | Event system agent |
+| `bestow-graphics/` | Graphics agent |
+| `bestow-audio/` | Audio agent |
+| `bestow-input/` | Input agent |
+| `bestow-assets/` | Assets agent |
+| `bestow-save/` | Save system agent |
+| `bestow-level/` | Level system agent |
+| `bestow-physics/` | Physics agent |
+| `bestow-ai/` | AI agent |
+| `bestow-dev/` | Dev tools agent |
 | `tests/` | Test agent (or respective system agents) |
 | `examples/` | Integration agent |
 | `cmake/` | Build system agent |
@@ -537,18 +537,18 @@ Use this to avoid merge conflicts when multiple agents work in parallel.
 
 | System | Effort | Complexity | Notes |
 |--------|--------|------------|-------|
-| jframe-events | 1 day | Low | Already works |
-| jframe-core | 1 day | Low | Mostly done |
-| jframe-entity | 2 days | Low | Nearly done |
-| jframe-input | 3 days | Medium | SDL2 integration |
-| jframe-save | 4 days | Medium | Cereal + zstd |
-| jframe-physics | 5 days | High | Box2D integration |
-| jframe-audio | 5 days | High | FMOD integration |
-| jframe-assets | 6 days | High | Multiple loaders |
-| jframe-graphics | 8 days | Very High | OpenGL, shaders, batching |
-| jframe-level | 5 days | High | Lua + entity spawning |
-| jframe-ai | 6 days | High | BT.CPP + Recast |
-| jframe-dev | 3 days | Medium | ImGui + tools |
+| bestow-events | 1 day | Low | Already works |
+| bestow-core | 1 day | Low | Mostly done |
+| bestow-entity | 2 days | Low | Nearly done |
+| bestow-input | 3 days | Medium | SDL2 integration |
+| bestow-save | 4 days | Medium | Cereal + zstd |
+| bestow-physics | 5 days | High | Box2D integration |
+| bestow-audio | 5 days | High | FMOD integration |
+| bestow-assets | 6 days | High | Multiple loaders |
+| bestow-graphics | 8 days | Very High | OpenGL, shaders, batching |
+| bestow-level | 5 days | High | Lua + entity spawning |
+| bestow-ai | 6 days | High | BT.CPP + Recast |
+| bestow-dev | 3 days | Medium | ImGui + tools |
 | Integration | 5 days | High | Wire everything together |
 
 **Total estimated: ~8-12 weeks for a single developer**

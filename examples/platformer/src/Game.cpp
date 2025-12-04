@@ -1,17 +1,17 @@
 // examples/platformer/src/Game.cpp
-// Platformer game implementation - Showcases ALL 10 JFrame Engine Systems
+// Platformer game implementation - Showcases ALL 10 Bestow Engine Systems
 
 // Include compatibility headers before module imports to avoid MSVC C++23 module issues
-#include <jframe/entt_compat.hpp>
-#include <jframe/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe;
-import jframe.core;
-import jframe.assets.impl;  // For DataAsset
+import bestow;
+import bestow.core;
+import bestow.assets.impl;  // For DataAsset
 
-#if defined(JFRAME_DEV_TOOLS)
-import jframe.dev;
+#if defined(BESTOW_DEV_TOOLS)
+import bestow.dev;
 #endif
 
 #include "Game.h"
@@ -19,16 +19,16 @@ import jframe.dev;
 
 namespace platformer {
 
-bool Game::initialize(jframe::core::Engine& engine) {
-    jframe::core::logInfo("Initializing Platformer Game - Full System Integration");
+bool Game::initialize(bestow::core::Engine& engine) {
+    bestow::core::logInfo("Initializing Platformer Game - Full System Integration");
 
     engine_ = &engine;
     auto& sys = engine.systems();
 
     // ===== EVENTS SYSTEM =====
     // Subscribe to collision events
-    collisionSubscription_ = sys.events->subscribe(jframe::Events::Collision,
-        [this](const jframe::EventData& data) {
+    collisionSubscription_ = sys.events->subscribe(bestow::Events::Collision,
+        [this](const bestow::EventData& data) {
             handleCollisionEvent(data);
         });
 
@@ -37,24 +37,24 @@ bool Game::initialize(jframe::core::Engine& engine) {
 
     // ===== ASSETS SYSTEM =====
     // Register level asset (use Data type for Lua files)
-    levelAsset_ = sys.assets->registerAsset(jframe::AssetType::Data, "data/levels/level1.lua");
+    levelAsset_ = sys.assets->registerAsset(bestow::AssetType::Data, "data/levels/level1.lua");
     sys.assets->loadAsset(levelAsset_);
 
     // Wait for asset to finish loading (synchronous load should be done, but check state)
     auto assetState = sys.assets->getAssetState(levelAsset_);
-    if (assetState != jframe::AssetState::Loaded) {
+    if (assetState != bestow::AssetState::Loaded) {
         auto metadata = sys.assets->getAssetMetadata(levelAsset_);
         std::string errorMsg = metadata.errorMessage.value_or("Unknown error");
-        jframe::core::logError(std::format("Level asset failed to load (state: {}): {}",
+        bestow::core::logError(std::format("Level asset failed to load (state: {}): {}",
             static_cast<int>(assetState), errorMsg));
         return false;
     }
 
     // Register audio assets (stub-safe - will work even without FMOD)
-    jumpSoundAsset_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/jump.wav");
-    coinSoundAsset_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/coin.wav");
-    hurtSoundAsset_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/hurt.wav");
-    musicAsset_ = sys.assets->registerAsset(jframe::AssetType::Music, "data/audio/music.ogg");
+    jumpSoundAsset_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/jump.wav");
+    coinSoundAsset_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/coin.wav");
+    hurtSoundAsset_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/hurt.wav");
+    musicAsset_ = sys.assets->registerAsset(bestow::AssetType::Music, "data/audio/music.ogg");
 
     // ===== LEVEL SYSTEM =====
     // Load the level
@@ -62,9 +62,9 @@ bool Game::initialize(jframe::core::Engine& engine) {
     if (levelResult) {
         currentLevel_ = *levelResult;
         sys.levels->setActiveLevel(currentLevel_);
-        jframe::core::logInfo("Level loaded successfully");
+        bestow::core::logInfo("Level loaded successfully");
     } else {
-        jframe::core::logError("Failed to load level");
+        bestow::core::logError("Failed to load level");
         return false;
     }
 
@@ -94,7 +94,7 @@ bool Game::initialize(jframe::core::Engine& engine) {
 
     // ===== AUDIO SYSTEM =====
     // Start background music (stub-safe)
-    sys.audio->playOnChannel(jframe::Channels::Music, jframe::ChannelSound{
+    sys.audio->playOnChannel(bestow::Channels::Music, bestow::ChannelSound{
         .asset = musicAsset_,
         .volume = 0.5f,
         .looping = true
@@ -104,28 +104,28 @@ bool Game::initialize(jframe::core::Engine& engine) {
     // Try to load previous save
     loadGame();
 
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
     hotReload_.watchDirectory("data/");
 
     hotReload_.onLevelChanged = [this](const auto& path) {
-        jframe::core::logInfo("Level changed: " + path.string());
+        bestow::core::logInfo("Level changed: " + path.string());
         auto& sys = engine_->systems();
         sys.assets->reloadAsset(levelAsset_);
         loadLevel();
     };
 
     hotReload_.onBlueprintChanged = [this](const auto& path) {
-        jframe::core::logInfo("Blueprint changed: " + path.string());
+        bestow::core::logInfo("Blueprint changed: " + path.string());
         // TODO: Update blueprint registry when asset system supports it
     };
 #endif
 
-    jframe::core::logInfo("Platformer game initialized successfully - All 10 systems active!");
+    bestow::core::logInfo("Platformer game initialized successfully - All 10 systems active!");
     return true;
 }
 
-void Game::updateFixed(jframe::DeltaTime dt) {
-#if defined(JFRAME_DEV_TOOLS)
+void Game::updateFixed(bestow::DeltaTime dt) {
+#if defined(BESTOW_DEV_TOOLS)
     hotReload_.update();
 #endif
 
@@ -157,13 +157,13 @@ void Game::updateFixed(jframe::DeltaTime dt) {
     // Quick save on checkpoint (demo purposes - check if S key pressed)
     if (sys.input->wasActionJustPressed("save_game")) {
         saveGame();
-        jframe::core::logInfo("Game saved!");
+        bestow::core::logInfo("Game saved!");
     }
 
     // Quick load (demo purposes - check if L key pressed)
     if (sys.input->wasActionJustPressed("load_game")) {
         loadGame();
-        jframe::core::logInfo("Game loaded!");
+        bestow::core::logInfo("Game loaded!");
     }
 }
 
@@ -173,7 +173,7 @@ void Game::render(float alpha) {
     // Get camera for rendering
     auto* cam = sys.entities->tryGet<Camera2D>(camera_);
     if (cam) {
-        jframe::Camera gameCamera;
+        bestow::Camera gameCamera;
         gameCamera.transform.x = cam->position.x;
         gameCamera.transform.y = cam->position.y;
         gameCamera.zoom = 1.0f;
@@ -183,27 +183,27 @@ void Game::render(float alpha) {
 
     // Render all sprite entities
     auto& registry = sys.entities->getRegistry();
-    auto view = registry.view<jframe::Sprite>();
+    auto view = registry.view<bestow::Sprite>();
     for (auto [entity, sprite] : view.each()) {
         sys.graphics->draw(sprite);
     }
 
     // Debug rendering - draw player as a green rectangle
     if (sys.entities->isValid(player_) && sys.physics->hasBody(player_)) {
-        jframe::Vec2 pos = sys.physics->getPosition(player_);
+        bestow::Vec2 pos = sys.physics->getPosition(player_);
         sys.graphics->drawRect(
             {static_cast<int>(pos.x - 12), static_cast<int>(pos.y - 22), 24, 44},
-            jframe::Color::green()
+            bestow::Color::green()
         );
     }
 
     // Debug rendering - draw enemies as red rectangles
     for (auto enemy : enemies_) {
         if (sys.entities->isValid(enemy) && sys.physics->hasBody(enemy)) {
-            jframe::Vec2 pos = sys.physics->getPosition(enemy);
+            bestow::Vec2 pos = sys.physics->getPosition(enemy);
             sys.graphics->drawRect(
                 {static_cast<int>(pos.x - 10), static_cast<int>(pos.y - 10), 20, 20},
-                jframe::Color::red()
+                bestow::Color::red()
             );
         }
     }
@@ -213,10 +213,10 @@ void Game::render(float alpha) {
         if (sys.entities->isValid(collectible)) {
             auto* coll = sys.entities->tryGet<Collectible>(collectible);
             if (coll && !coll->collected && sys.physics->hasBody(collectible)) {
-                jframe::Vec2 pos = sys.physics->getPosition(collectible);
-                jframe::Color color = (coll->type == Collectible::Type::Coin)
-                    ? jframe::Color{255, 215, 0, 255}  // Gold
-                    : jframe::Color{255, 0, 255, 255}; // Magenta for health
+                bestow::Vec2 pos = sys.physics->getPosition(collectible);
+                bestow::Color color = (coll->type == Collectible::Type::Coin)
+                    ? bestow::Color{255, 215, 0, 255}  // Gold
+                    : bestow::Color{255, 0, 255, 255}; // Magenta for health
                 sys.graphics->drawRect(
                     {static_cast<int>(pos.x - 8), static_cast<int>(pos.y - 8), 16, 16},
                     color
@@ -240,52 +240,52 @@ void Game::shutdown() {
     // Stop all audio
     sys.audio->stopAll();
 
-    jframe::core::logInfo("Shutting down Platformer Game");
+    bestow::core::logInfo("Shutting down Platformer Game");
 }
 
 void Game::setupInputMappings() {
     auto& input = *engine_->systems().input;
 
     // Movement mappings
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 65,  // A key
             .scale = -1.0f
         },
         .action = "move_left"
     });
 
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 68,  // D key
             .scale = 1.0f
         },
         .action = "move_right"
     });
 
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 32  // Space
         },
         .action = "jump"
     });
 
     // Arrow keys as alternatives
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 263,  // Left arrow
             .scale = -1.0f
         },
         .action = "move_left"
     });
 
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 262,  // Right arrow
             .scale = 1.0f
         },
@@ -293,23 +293,23 @@ void Game::setupInputMappings() {
     });
 
     // Save/Load mappings
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 83  // S key
         },
         .action = "save_game"
     });
 
-    input.registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{
-            .deviceType = jframe::InputDeviceType::Keyboard,
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 76  // L key
         },
         .action = "load_game"
     });
 
-    jframe::core::logInfo("Input mappings configured");
+    bestow::core::logInfo("Input mappings configured");
 }
 
 void Game::loadLevel() {
@@ -321,14 +321,14 @@ void Game::loadLevel() {
     // Load level from Lua file using AssetSystem
     const void* rawAsset = sys.assets->getRawAsset(levelAsset_);
     if (rawAsset == nullptr) {
-        jframe::core::logError("Level asset not loaded");
+        bestow::core::logError("Level asset not loaded");
         return;
     }
 
     try {
         // Parse the Lua level file manually (since LevelSystem only parses metadata)
         const std::any* assetAny = static_cast<const std::any*>(rawAsset);
-        const auto& dataAsset = std::any_cast<const jframe::DataAsset&>(*assetAny);
+        const auto& dataAsset = std::any_cast<const bestow::DataAsset&>(*assetAny);
 
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
@@ -337,7 +337,7 @@ void Game::loadLevel() {
         // Use script_pass_on_error so invalid Lua returns an error result instead of throwing
         auto result = lua.safe_script(dataAsset.rawText, sol::script_pass_on_error);
         if (!result.valid()) {
-            jframe::core::logError("Failed to parse level Lua");
+            bestow::core::logError("Failed to parse level Lua");
             return;
         }
 
@@ -354,11 +354,11 @@ void Game::loadLevel() {
                 float width = platform["width"].get_or(100.0f);
                 float height = platform["height"].get_or(20.0f);
 
-                jframe::Entity platformEntity = sys.entities->createEntity();
+                bestow::Entity platformEntity = sys.entities->createEntity();
                 sys.entities->emplace<PlatformTag>(platformEntity, PlatformTag{});
 
-                jframe::PhysicsBodyDef platformDef{
-                    .type = jframe::BodyType::Static,
+                bestow::PhysicsBodyDef platformDef{
+                    .type = bestow::BodyType::Static,
                     .transform = {.x = x, .y = y},
                     .size = {width, height},
                     .fixedRotation = true
@@ -367,10 +367,10 @@ void Game::loadLevel() {
             }
         }
 
-        jframe::core::logInfo("Level geometry loaded from Lua");
+        bestow::core::logInfo("Level geometry loaded from Lua");
 
     } catch (const std::exception& e) {
-        jframe::core::logError(std::format("Failed to load level: {}", e.what()));
+        bestow::core::logError(std::format("Failed to load level: {}", e.what()));
     }
 }
 
@@ -379,9 +379,9 @@ void Game::createPlayer() {
 
     // Get spawn point from Level System
     auto spawnPoint = sys.levels->getSpawnPoint(currentLevel_, "player");
-    jframe::Vec2 startPos = spawnPoint
-        ? jframe::Vec2{spawnPoint->x, spawnPoint->y}
-        : jframe::Vec2{100.0f, 300.0f};
+    bestow::Vec2 startPos = spawnPoint
+        ? bestow::Vec2{spawnPoint->x, spawnPoint->y}
+        : bestow::Vec2{100.0f, 300.0f};
 
     player_ = sys.entities->createEntity();
     sys.entities->emplace<PlayerTag>(player_, PlayerTag{});
@@ -397,8 +397,8 @@ void Game::createPlayer() {
     });
 
     // Create physics body for player
-    jframe::PhysicsBodyDef playerDef{
-        .type = jframe::BodyType::Dynamic,
+    bestow::PhysicsBodyDef playerDef{
+        .type = bestow::BodyType::Dynamic,
         .transform = {.x = startPos.x, .y = startPos.y},
         .size = {24.0f, 44.0f},
         .fixedRotation = true,
@@ -406,10 +406,10 @@ void Game::createPlayer() {
     };
     sys.physics->createBody(player_, playerDef);
 
-    jframe::core::logInfo(std::format("Player created at ({}, {})", startPos.x, startPos.y));
+    bestow::core::logInfo(std::format("Player created at ({}, {})", startPos.x, startPos.y));
 }
 
-void Game::spawnEnemies(jframe::LevelId levelId) {
+void Game::spawnEnemies(bestow::LevelId levelId) {
     auto& sys = engine_->systems();
 
     // Load level data to get enemy definitions
@@ -418,7 +418,7 @@ void Game::spawnEnemies(jframe::LevelId levelId) {
 
     try {
         const std::any* assetAny = static_cast<const std::any*>(rawAsset);
-        const auto& dataAsset = std::any_cast<const jframe::DataAsset&>(*assetAny);
+        const auto& dataAsset = std::any_cast<const bestow::DataAsset&>(*assetAny);
 
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
@@ -439,7 +439,7 @@ void Game::spawnEnemies(jframe::LevelId levelId) {
                 auto spawnPoint = sys.levels->getSpawnPoint(levelId, spawnPointName);
                 if (!spawnPoint) continue;
 
-                jframe::Entity enemy = sys.entities->createEntity();
+                bestow::Entity enemy = sys.entities->createEntity();
                 sys.entities->emplace<EnemyTag>(enemy, EnemyTag{});
                 sys.entities->emplace<EnemyAI>(enemy, EnemyAI{
                     .patrolStart = {spawnPoint->x, spawnPoint->y},
@@ -450,8 +450,8 @@ void Game::spawnEnemies(jframe::LevelId levelId) {
                 });
 
                 // Create physics body
-                jframe::PhysicsBodyDef enemyBodyDef{
-                    .type = jframe::BodyType::Dynamic,
+                bestow::PhysicsBodyDef enemyBodyDef{
+                    .type = bestow::BodyType::Dynamic,
                     .transform = {.x = spawnPoint->x, .y = spawnPoint->y},
                     .size = {20.0f, 20.0f},
                     .fixedRotation = true
@@ -461,15 +461,15 @@ void Game::spawnEnemies(jframe::LevelId levelId) {
                 enemies_.push_back(enemy);
             }
 
-            jframe::core::logInfo(std::format("Spawned {} enemies", enemies_.size()));
+            bestow::core::logInfo(std::format("Spawned {} enemies", enemies_.size()));
         }
 
     } catch (const std::exception& e) {
-        jframe::core::logError(std::format("Failed to spawn enemies: {}", e.what()));
+        bestow::core::logError(std::format("Failed to spawn enemies: {}", e.what()));
     }
 }
 
-void Game::spawnCollectibles(jframe::LevelId levelId) {
+void Game::spawnCollectibles(bestow::LevelId levelId) {
     auto& sys = engine_->systems();
 
     // Load level data to get collectible definitions
@@ -478,7 +478,7 @@ void Game::spawnCollectibles(jframe::LevelId levelId) {
 
     try {
         const std::any* assetAny = static_cast<const std::any*>(rawAsset);
-        const auto& dataAsset = std::any_cast<const jframe::DataAsset&>(*assetAny);
+        const auto& dataAsset = std::any_cast<const bestow::DataAsset&>(*assetAny);
 
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
@@ -503,7 +503,7 @@ void Game::spawnCollectibles(jframe::LevelId levelId) {
                     ? Collectible::Type::Health
                     : Collectible::Type::Coin;
 
-                jframe::Entity collectible = sys.entities->createEntity();
+                bestow::Entity collectible = sys.entities->createEntity();
                 sys.entities->emplace<CollectibleTag>(collectible, CollectibleTag{});
                 sys.entities->emplace<Collectible>(collectible, Collectible{
                     .type = type,
@@ -512,8 +512,8 @@ void Game::spawnCollectibles(jframe::LevelId levelId) {
                 });
 
                 // Create physics body (as sensor/trigger)
-                jframe::PhysicsBodyDef collectibleBodyDef{
-                    .type = jframe::BodyType::Static,
+                bestow::PhysicsBodyDef collectibleBodyDef{
+                    .type = bestow::BodyType::Static,
                     .transform = {.x = x, .y = y},
                     .size = {16.0f, 16.0f},
                     .fixedRotation = true
@@ -523,15 +523,15 @@ void Game::spawnCollectibles(jframe::LevelId levelId) {
                 collectibles_.push_back(collectible);
             }
 
-            jframe::core::logInfo(std::format("Spawned {} collectibles", collectibles_.size()));
+            bestow::core::logInfo(std::format("Spawned {} collectibles", collectibles_.size()));
         }
 
     } catch (const std::exception& e) {
-        jframe::core::logError(std::format("Failed to spawn collectibles: {}", e.what()));
+        bestow::core::logError(std::format("Failed to spawn collectibles: {}", e.what()));
     }
 }
 
-void Game::updateEnemyAI(jframe::DeltaTime dt) {
+void Game::updateEnemyAI(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     // ===== AI SYSTEM - Simple patrol behavior =====
@@ -541,7 +541,7 @@ void Game::updateEnemyAI(jframe::DeltaTime dt) {
         auto* ai = sys.entities->tryGet<EnemyAI>(enemy);
         if (!ai || !sys.physics->hasBody(enemy)) continue;
 
-        jframe::Vec2 currentPos = sys.physics->getPosition(enemy);
+        bestow::Vec2 currentPos = sys.physics->getPosition(enemy);
 
         // Simple patrol logic - move back and forth
         float distanceFromStart = currentPos.x - ai->patrolStart.x;
@@ -558,13 +558,13 @@ void Game::updateEnemyAI(jframe::DeltaTime dt) {
 
         // Apply velocity
         float moveDirection = ai->movingRight ? 1.0f : -1.0f;
-        jframe::Vec2 velocity = sys.physics->getVelocity(enemy);
+        bestow::Vec2 velocity = sys.physics->getVelocity(enemy);
         velocity.x = moveDirection * ai->moveSpeed;
         sys.physics->setVelocity(enemy, velocity);
 
         // ===== AI SYSTEM - Line of sight check (demonstration) =====
         if (sys.physics->hasBody(player_)) {
-            jframe::Vec2 playerPos = sys.physics->getPosition(player_);
+            bestow::Vec2 playerPos = sys.physics->getPosition(player_);
             bool canSeePlayer = sys.ai->hasLineOfSight(currentPos, playerPos, 0xFFFF);
             // In a real game, we'd change behavior here (chase player, etc.)
             // For now, just continue patrolling
@@ -576,7 +576,7 @@ void Game::checkCollectiblePickup() {
     auto& sys = engine_->systems();
 
     if (!sys.physics->hasBody(player_)) return;
-    jframe::Vec2 playerPos = sys.physics->getPosition(player_);
+    bestow::Vec2 playerPos = sys.physics->getPosition(player_);
 
     // Check distance to collectibles
     for (auto collectible : collectibles_) {
@@ -585,7 +585,7 @@ void Game::checkCollectiblePickup() {
         auto* coll = sys.entities->tryGet<Collectible>(collectible);
         if (!coll || coll->collected || !sys.physics->hasBody(collectible)) continue;
 
-        jframe::Vec2 collPos = sys.physics->getPosition(collectible);
+        bestow::Vec2 collPos = sys.physics->getPosition(collectible);
         float distance = std::sqrt(
             (playerPos.x - collPos.x) * (playerPos.x - collPos.x) +
             (playerPos.y - collPos.y) * (playerPos.y - collPos.y)
@@ -600,15 +600,15 @@ void Game::checkCollectiblePickup() {
                 gameState_.coinsCollected++;
 
                 // ===== AUDIO SYSTEM - Play coin sound =====
-                sys.audio->playPositional(jframe::PositionalSound{
+                sys.audio->playPositional(bestow::PositionalSound{
                     .asset = coinSoundAsset_,
                     .position = {collPos.x, collPos.y, 0.0f},
                     .volume = 0.7f
                 });
 
                 // ===== EVENTS SYSTEM - Publish coin collected event =====
-                sys.events->queue(jframe::Events::ItemCollected,
-                    jframe::EntityEventData{collectible, player_});
+                sys.events->queue(bestow::Events::ItemCollected,
+                    bestow::EntityEventData{collectible, player_});
 
             } else if (coll->type == Collectible::Type::Health) {
                 auto* health = sys.entities->tryGet<Health>(player_);
@@ -617,21 +617,21 @@ void Game::checkCollectiblePickup() {
                 }
             }
 
-            jframe::core::logInfo(std::format("Collected item! Score: {}", gameState_.score));
+            bestow::core::logInfo(std::format("Collected item! Score: {}", gameState_.score));
         }
     }
 }
 
-void Game::handleCollisionEvent(const jframe::EventData& data) {
+void Game::handleCollisionEvent(const bestow::EventData& data) {
     auto& sys = engine_->systems();
 
     // ===== EVENTS SYSTEM - Handle collision events =====
     try {
-        const auto& collision = std::get<jframe::CollisionEvent>(data);
+        const auto& collision = std::get<bestow::CollisionEvent>(data);
 
         // Check if player collided with enemy
         bool playerHit = false;
-        jframe::Entity hitEnemy;
+        bestow::Entity hitEnemy;
 
         if (collision.entityA == player_) {
             if (sys.entities->tryGet<EnemyTag>(collision.entityB)) {
@@ -654,23 +654,23 @@ void Game::handleCollisionEvent(const jframe::EventData& data) {
                 health->invincibilityTime = health->invincibilityDuration;
 
                 // ===== AUDIO SYSTEM - Play hurt sound =====
-                sys.audio->playPositional(jframe::PositionalSound{
+                sys.audio->playPositional(bestow::PositionalSound{
                     .asset = hurtSoundAsset_,
                     .position = {collision.contactPoint.x, collision.contactPoint.y, 0.0f},
                     .volume = 1.0f
                 });
 
                 // ===== EVENTS SYSTEM - Publish damage event =====
-                sys.events->queue(jframe::Events::EntityDamaged,
-                    jframe::DamageEventData{player_, hitEnemy, ai->damage, collision.normal});
+                sys.events->queue(bestow::Events::EntityDamaged,
+                    bestow::DamageEventData{player_, hitEnemy, ai->damage, collision.normal});
 
-                jframe::core::logInfo(std::format("Player hit! Health: {}", health->current));
+                bestow::core::logInfo(std::format("Player hit! Health: {}", health->current));
 
                 if (health->current <= 0) {
                     // ===== EVENTS SYSTEM - Publish death event =====
-                    sys.events->publish(jframe::Events::PlayerDeath,
-                        jframe::EntityEventData{player_, std::nullopt});
-                    jframe::core::logInfo("Player died!");
+                    sys.events->publish(bestow::Events::PlayerDeath,
+                        bestow::EntityEventData{player_, std::nullopt});
+                    bestow::core::logInfo("Player died!");
                 }
             }
         }
@@ -680,7 +680,7 @@ void Game::handleCollisionEvent(const jframe::EventData& data) {
     }
 }
 
-void Game::handlePlayerInput(jframe::DeltaTime dt) {
+void Game::handlePlayerInput(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     auto* controller = sys.entities->tryGet<PlayerController>(player_);
@@ -693,7 +693,7 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
 
     // Apply horizontal movement
     float moveForce = horizontal * controller->moveSpeed;
-    jframe::Vec2 currentVel = sys.physics->getVelocity(player_);
+    bestow::Vec2 currentVel = sys.physics->getVelocity(player_);
 
     if (controller->isGrounded) {
         currentVel.x = moveForce;
@@ -709,8 +709,8 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
         controller->coyoteTime = 0.0f;
 
         // ===== AUDIO SYSTEM - Play jump sound =====
-        jframe::Vec2 pos = sys.physics->getPosition(player_);
-        sys.audio->playPositional(jframe::PositionalSound{
+        bestow::Vec2 pos = sys.physics->getPosition(player_);
+        sys.audio->playPositional(bestow::PositionalSound{
             .asset = jumpSoundAsset_,
             .position = {pos.x, pos.y, 0.0f},
             .volume = 0.8f
@@ -720,7 +720,7 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
     sys.physics->setVelocity(player_, currentVel);
 }
 
-void Game::updatePlayerMovement(jframe::DeltaTime dt) {
+void Game::updatePlayerMovement(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     auto* controller = sys.entities->tryGet<PlayerController>(player_);
@@ -732,8 +732,8 @@ void Game::updatePlayerMovement(jframe::DeltaTime dt) {
         health->invincibilityTime -= dt;
     }
 
-    jframe::Vec2 velocity = sys.physics->getVelocity(player_);
-    jframe::Vec2 position = sys.physics->getPosition(player_);
+    bestow::Vec2 velocity = sys.physics->getVelocity(player_);
+    bestow::Vec2 position = sys.physics->getPosition(player_);
 
     // Simple ground detection
     bool wasGrounded = controller->isGrounded;
@@ -749,7 +749,7 @@ void Game::updatePlayerMovement(jframe::DeltaTime dt) {
     }
 }
 
-void Game::updateCamera(jframe::DeltaTime dt) {
+void Game::updateCamera(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     auto* cam = sys.entities->tryGet<Camera2D>(camera_);
@@ -758,10 +758,10 @@ void Game::updateCamera(jframe::DeltaTime dt) {
     if (!sys.entities->isValid(cam->target)) return;
     if (!sys.physics->hasBody(cam->target)) return;
 
-    jframe::Vec2 targetPosition = sys.physics->getPosition(cam->target);
+    bestow::Vec2 targetPosition = sys.physics->getPosition(cam->target);
 
     // Smooth camera follow
-    jframe::Vec2 targetPos = {targetPosition.x + cam->offset.x, targetPosition.y + cam->offset.y};
+    bestow::Vec2 targetPos = {targetPosition.x + cam->offset.x, targetPosition.y + cam->offset.y};
     cam->position.x += (targetPos.x - cam->position.x) * cam->smoothing;
     cam->position.y += (targetPos.y - cam->position.y) * cam->smoothing;
 }
@@ -772,7 +772,7 @@ void Game::saveGame() {
     // ===== SAVE SYSTEM - Save game state =====
     if (!sys.physics->hasBody(player_)) return;
 
-    jframe::Vec2 playerPos = sys.physics->getPosition(player_);
+    bestow::Vec2 playerPos = sys.physics->getPosition(player_);
     auto* health = sys.entities->tryGet<Health>(player_);
 
     PlayerSaveData saveData{
@@ -785,10 +785,10 @@ void Game::saveGame() {
     auto result = sys.save->save(0, "Platformer Quick Save");
     if (result) {
         // ===== EVENTS SYSTEM - Publish save event =====
-        sys.events->publish(jframe::Events::GameSaved, std::any{});
-        jframe::core::logInfo("Game saved successfully!");
+        sys.events->publish(bestow::Events::GameSaved, std::any{});
+        bestow::core::logInfo("Game saved successfully!");
     } else {
-        jframe::core::logError("Failed to save game");
+        bestow::core::logError("Failed to save game");
     }
 }
 
@@ -797,7 +797,7 @@ void Game::loadGame() {
 
     // ===== SAVE SYSTEM - Load game state =====
     if (!sys.save->saveExists(0)) {
-        jframe::core::logInfo("No save file found");
+        bestow::core::logInfo("No save file found");
         return;
     }
 
@@ -807,10 +807,10 @@ void Game::loadGame() {
         // For now, just log that load succeeded
 
         // ===== EVENTS SYSTEM - Publish load event =====
-        sys.events->publish(jframe::Events::GameLoaded, std::any{});
-        jframe::core::logInfo("Game loaded successfully!");
+        sys.events->publish(bestow::Events::GameLoaded, std::any{});
+        bestow::core::logInfo("Game loaded successfully!");
     } else {
-        jframe::core::logError("Failed to load game");
+        bestow::core::logError("Failed to load game");
     }
 }
 

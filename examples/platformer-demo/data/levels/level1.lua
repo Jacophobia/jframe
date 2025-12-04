@@ -1,4 +1,4 @@
--- Demo Level 1 - Showcasing JFrame engine features
+-- Demo Level 1 - Showcasing Bestow engine features
 -- Entity definitions can reference blueprints via the 'blueprint' field
 -- The 'type' field is used by Game.cpp for entity creation
 

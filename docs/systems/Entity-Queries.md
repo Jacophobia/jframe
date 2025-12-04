@@ -1,11 +1,11 @@
-# JFrame Entity Query System
+# Bestow Entity Query System
 
 ## Overview
 
-The Entity Query System extends JFrame's Entity System with automatic entity tracking by component type. This eliminates the need for games to manually maintain `std::vector<Entity>` collections for each entity type.
+The Entity Query System extends Bestow's Entity System with automatic entity tracking by component type. This eliminates the need for games to manually maintain `std::vector<Entity>` collections for each entity type.
 
-**Module:** `jframe.entity` (extended interface)
-**Implementation:** `jframe-entity/`
+**Module:** `bestow.entity` (extended interface)
+**Implementation:** `bestow-entity/`
 **Status:** Planned Enhancement
 
 ## Problem Statement
@@ -205,8 +205,8 @@ if (entities->groupCount<EnemyTag>() == 0) {
 ### Phase 1: Core Group API
 
 **Files to modify:**
-- `jframe-contract/src/jframe.entity.cppm` - Add group methods to interface
-- `jframe-entity/src/EntitySystem.cpp` - Implement using EnTT views
+- `bestow-contract/src/bestow.entity.cppm` - Add group methods to interface
+- `bestow-entity/src/EntitySystem.cpp` - Implement using EnTT views
 
 **Implementation:**
 
@@ -238,7 +238,7 @@ std::optional<Entity> first() const {
 ### Phase 2: EntityGroup Wrapper
 
 **Files to create:**
-- `jframe-entity/src/EntityGroup.hpp` - Group wrapper class
+- `bestow-entity/src/EntityGroup.hpp` - Group wrapper class
 
 ```cpp
 template<typename... Components>
@@ -423,8 +423,8 @@ class Game {
 ## Related Documentation
 
 - [Entity System](Entity-System.md) - Core entity management
-- [Components](../jframe-components/README.md) - Pre-built components
-- [Technical Design](../jframe-technical-design.md) - Architecture overview
+- [Components](../bestow-components/README.md) - Pre-built components
+- [Technical Design](../bestow-technical-design.md) - Architecture overview
 
 ## Status
 
@@ -438,7 +438,7 @@ class Game {
 
 ## Implementation Notes
 
-The Entity Query System was implemented directly in `jframe-contract/src/jframe.entity.cppm` using EnTT views. The following methods are available:
+The Entity Query System was implemented directly in `bestow-contract/src/bestow.entity.cppm` using EnTT views. The following methods are available:
 
 - `groupCount<Components...>()` - Count entities with components
 - `hasAny<Components...>()` - Check if any entities exist with components

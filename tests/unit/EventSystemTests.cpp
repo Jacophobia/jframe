@@ -7,11 +7,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.events;
-import jframe.events.impl;
-import jframe.types;
+import bestow.events;
+import bestow.events.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class EventSystemTest : public ::testing::Test {
 protected:
@@ -470,4 +470,4 @@ TEST_F(EventSystemTest, LargeQueueSize) {
     EXPECT_EQ(eventSystem_->queueSize(), 0);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

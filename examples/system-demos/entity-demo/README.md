@@ -1,10 +1,10 @@
 # Entity System Demo
 
-Comprehensive demonstration of the JFrame Entity System API using EnTT.
+Comprehensive demonstration of the Bestow Entity System API using EnTT.
 
 ## Overview
 
-This demo exercises **every API method** from `IEntitySystem` to showcase the full capabilities of JFrame's ECS (Entity Component System).
+This demo exercises **every API method** from `IEntitySystem` to showcase the full capabilities of Bestow's ECS (Entity Component System).
 
 ## Building
 

@@ -96,6 +96,6 @@ return {
     -- Optional level metadata
     metadata = {
         difficulty = "easy",
-        description = "A simple platforming level to demonstrate JFrame basics"
+        description = "A simple platforming level to demonstrate Bestow basics"
     }
 }

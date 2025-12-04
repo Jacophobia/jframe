@@ -1,8 +1,8 @@
-# JFrame Input System
+# Bestow Input System
 
 ## Overview
 
-The Input System provides a unified interface for handling keyboard, mouse, and gamepad input in JFrame. It uses an action-based input mapping system that allows you to bind multiple input sources to named actions, making it easy to support different control schemes and rebindable controls.
+The Input System provides a unified interface for handling keyboard, mouse, and gamepad input in Bestow. It uses an action-based input mapping system that allows you to bind multiple input sources to named actions, making it easy to support different control schemes and rebindable controls.
 
 **Key Features:**
 - Action-based input mapping (keyboard, mouse, gamepad)
@@ -22,13 +22,13 @@ The Input System provides a unified interface for handling keyboard, mouse, and 
 ### Core Components
 
 ```cpp
-// Interface (jframe.input)
-import jframe.input;
+// Interface (bestow.input)
+import bestow.input;
 IInputSystem* input = ...;
 
-// Implementation (jframe.input.impl)
-import jframe.input.impl;
-auto input = jframe::createInputSystem();
+// Implementation (bestow.input.impl)
+import bestow.input.impl;
+auto input = bestow::createInputSystem();
 ```
 
 ### Data Types
@@ -74,32 +74,32 @@ struct InputMapping {
 ### 1. Register Input Mappings
 
 ```cpp
-import jframe;
+import bestow;
 
 // In your game initialization
-void Game::initialize(jframe::core::Engine& engine) {
+void Game::initialize(bestow::core::Engine& engine) {
     auto& input = engine.systems().input;
 
     // Register keyboard mappings
-    input->registerMapping(jframe::InputMapping{
+    input->registerMapping(bestow::InputMapping{
         .binding = {
-            .deviceType = jframe::InputDeviceType::Keyboard,
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 32  // Spacebar (GLFW_KEY_SPACE)
         },
         .action = "jump"
     });
 
-    input->registerMapping(jframe::InputMapping{
+    input->registerMapping(bestow::InputMapping{
         .binding = {
-            .deviceType = jframe::InputDeviceType::Keyboard,
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 65  // A key (GLFW_KEY_A)
         },
         .action = "move_left"
     });
 
-    input->registerMapping(jframe::InputMapping{
+    input->registerMapping(bestow::InputMapping{
         .binding = {
-            .deviceType = jframe::InputDeviceType::Keyboard,
+            .deviceType = bestow::InputDeviceType::Keyboard,
             .keyCode = 68  // D key (GLFW_KEY_D)
         },
         .action = "move_right"
@@ -110,7 +110,7 @@ void Game::initialize(jframe::core::Engine& engine) {
 ### 2. Query Input State
 
 ```cpp
-void Game::update(jframe::DeltaTime dt) {
+void Game::update(bestow::DeltaTime dt) {
     auto& input = engine_->systems().input;
 
     // Check if action is currently active (held down)
@@ -162,11 +162,11 @@ void GameLoop::update() {
 
 ```cpp
 // PlayerMovementSystem.cpp
-import jframe;
+import bestow;
 
 class PlayerMovementSystem {
 public:
-    PlayerMovementSystem(jframe::core::Engine& engine)
+    PlayerMovementSystem(bestow::core::Engine& engine)
         : engine_(engine) {}
 
     void setupInputMappings() {
@@ -174,36 +174,36 @@ public:
 
         // Primary controls (WASD)
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 65},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 65},
             "move_left"
         });
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 68},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 68},
             "move_right"
         });
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 32},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 32},
             "jump"
         });
 
         // Alternative controls (Arrow keys)
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 263},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 263},
             "move_left"
         });
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 262},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 262},
             "move_right"
         });
 
         // Gamepad support
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Controller, .keyCode = 0},
+            {.deviceType = bestow::InputDeviceType::Controller, .keyCode = 0},
             "jump"  // A button
         });
     }
 
-    void update(jframe::DeltaTime dt) {
+    void update(bestow::DeltaTime dt) {
         auto& sys = engine_.systems();
         auto& input = sys.input;
 
@@ -239,7 +239,7 @@ public:
     }
 
 private:
-    jframe::core::Engine& engine_;
+    bestow::core::Engine& engine_;
     float moveSpeed_ = 400.0f;
     float jumpForce_ = 800.0f;
 };
@@ -254,10 +254,10 @@ void Game::handleMouseInput() {
     auto& input = engine_->systems().input;
 
     // Get mouse position (screen coordinates)
-    jframe::Vec2 mousePos = input->getMousePosition();
+    bestow::Vec2 mousePos = input->getMousePosition();
 
     // Get mouse delta (for camera rotation, etc.)
-    jframe::Vec2 mouseDelta = input->getMouseDelta();
+    bestow::Vec2 mouseDelta = input->getMouseDelta();
 
     // Check mouse buttons (0 = left, 1 = right, 2 = middle)
     if (input->isMouseButtonDown(0)) {
@@ -278,9 +278,9 @@ You can also map mouse buttons to actions:
 
 ```cpp
 // Map left mouse button to "attack" action
-input->registerMapping(jframe::InputMapping{
+input->registerMapping(bestow::InputMapping{
     .binding = {
-        .deviceType = jframe::InputDeviceType::Mouse,
+        .deviceType = bestow::InputDeviceType::Mouse,
         .keyCode = 0  // Left mouse button
     },
     .action = "attack"
@@ -306,7 +306,7 @@ void Game::checkControllers() {
     // Check specific controller
     if (input->isControllerConnected(0)) {
         std::string name = input->getControllerName(0);
-        jframe::core::logInfo("Controller 0: " + name);
+        bestow::core::logInfo("Controller 0: " + name);
     }
 }
 ```
@@ -335,17 +335,17 @@ SDL2 controller button indices:
 
 // Example: Map gamepad buttons
 input->registerMapping({
-    {.deviceType = jframe::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 0},
+    {.deviceType = bestow::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 0},
     "jump"  // A button
 });
 
 input->registerMapping({
-    {.deviceType = jframe::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 1},
+    {.deviceType = bestow::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 1},
     "attack"  // B button
 });
 
 input->registerMapping({
-    {.deviceType = jframe::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 9},
+    {.deviceType = bestow::InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 9},
     "dash"  // Left shoulder
 });
 ```
@@ -354,9 +354,9 @@ input->registerMapping({
 
 ```cpp
 // Map analog stick axes with deadzone and scaling
-input->registerMapping(jframe::InputMapping{
+input->registerMapping(bestow::InputMapping{
     .binding = {
-        .deviceType = jframe::InputDeviceType::Controller,
+        .deviceType = bestow::InputDeviceType::Controller,
         .deviceIndex = 0,
         .keyCode = 0,      // Left stick X axis
         .scale = 1.0f,     // Full range
@@ -379,13 +379,13 @@ You can bind multiple inputs to the same action. The action will be active if AN
 ```cpp
 // Keyboard jump
 input->registerMapping({
-    {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 32},
+    {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 32},
     "jump"
 });
 
 // Gamepad jump
 input->registerMapping({
-    {.deviceType = jframe::InputDeviceType::Controller, .keyCode = 0},
+    {.deviceType = bestow::InputDeviceType::Controller, .keyCode = 0},
     "jump"
 });
 
@@ -399,8 +399,8 @@ if (input->wasActionJustPressed("jump")) {
 
 ```cpp
 // Remove a specific binding
-jframe::InputBinding binding{
-    .deviceType = jframe::InputDeviceType::Keyboard,
+bestow::InputBinding binding{
+    .deviceType = bestow::InputDeviceType::Keyboard,
     .keyCode = 65
 };
 input->removeMapping(binding);
@@ -413,7 +413,7 @@ input->clearMappings();
 
 ```cpp
 // Get all current mappings
-std::vector<jframe::InputMapping> mappings = input->getMappings();
+std::vector<bestow::InputMapping> mappings = input->getMappings();
 
 for (const auto& mapping : mappings) {
     std::cout << "Action: " << mapping.action
@@ -447,7 +447,7 @@ public:
     }
 
 private:
-    jframe::IInputSystem* input_;
+    bestow::IInputSystem* input_;
     std::string rebindingAction_;
 };
 ```
@@ -497,7 +497,7 @@ public:
     }
 
 private:
-    jframe::IInputSystem* input_;
+    bestow::IInputSystem* input_;
     std::string actionToRebind_;
 };
 ```
@@ -541,13 +541,13 @@ void Game::loadInputMappings() {
     // Register move_left
     if (int key = config->getIntOr("move_left.primary", 0)) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = key},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = key},
             "move_left"
         });
     }
     if (int key = config->getIntOr("move_left.secondary", 0)) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = key},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = key},
             "move_left"
         });
     }
@@ -555,13 +555,13 @@ void Game::loadInputMappings() {
     // Register move_right
     if (int key = config->getIntOr("move_right.primary", 0)) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = key},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = key},
             "move_right"
         });
     }
     if (int key = config->getIntOr("move_right.secondary", 0)) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = key},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = key},
             "move_right"
         });
     }
@@ -569,13 +569,13 @@ void Game::loadInputMappings() {
     // Register jump
     if (int key = config->getIntOr("jump.primary", 0)) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = key},
+            {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = key},
             "jump"
         });
     }
     if (int button = config->getIntOr("jump.controller", -1); button >= 0) {
         input->registerMapping({
-            {.deviceType = jframe::InputDeviceType::Controller, .keyCode = button},
+            {.deviceType = bestow::InputDeviceType::Controller, .keyCode = button},
             "jump"
         });
     }
@@ -668,7 +668,7 @@ Get full action state information:
 
 ```cpp
 // Get complete state for an action
-jframe::ActionState state = input->getActionState("jump");
+bestow::ActionState state = input->getActionState("jump");
 
 std::cout << "Active: " << state.active << std::endl;
 std::cout << "Value: " << state.value << std::endl;
@@ -676,7 +676,7 @@ std::cout << "Just Pressed: " << state.justPressed << std::endl;
 std::cout << "Just Released: " << state.justReleased << std::endl;
 
 // Get all action states
-std::vector<jframe::ActionState> allStates = input->getAllActionStates();
+std::vector<bestow::ActionState> allStates = input->getAllActionStates();
 for (const auto& state : allStates) {
     if (state.active) {
         std::cout << "Action " << state.action << " is active" << std::endl;
@@ -689,7 +689,7 @@ for (const auto& state : allStates) {
 ```cpp
 class InputBuffer {
 public:
-    void update(jframe::DeltaTime dt) {
+    void update(bestow::DeltaTime dt) {
         // Update jump buffer
         if (input_->wasActionJustPressed("jump")) {
             jumpBufferTime_ = bufferDuration_;
@@ -707,7 +707,7 @@ public:
     }
 
 private:
-    jframe::IInputSystem* input_;
+    bestow::IInputSystem* input_;
     float jumpBufferTime_ = 0.0f;
     float bufferDuration_ = 0.1f;  // 100ms buffer window
 };

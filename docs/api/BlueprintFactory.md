@@ -567,7 +567,7 @@ return {
 ### Hot-Reload Blueprints
 
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
 void onBlueprintFileChanged(const std::string& path) {
     std::ifstream file(path);
     std::string source((std::istreambuf_iterator<char>(file)),

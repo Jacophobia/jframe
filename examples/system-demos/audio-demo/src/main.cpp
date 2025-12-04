@@ -2,11 +2,11 @@
 // Comprehensive demonstration of IAudioSystem interface
 
 import std;
-import jframe.types;
-import jframe.audio;
-import jframe.assets;
+import bestow.types;
+import bestow.audio;
+import bestow.assets;
 
-using namespace jframe;
+using namespace bestow;
 
 // Mock implementations for demonstration purposes
 class MockAssetSystem : public IAssetSystem {
@@ -66,7 +66,7 @@ void simulateUpdate(float dt) {
 }
 
 int main() {
-    std::println("JFrame Audio System - Comprehensive API Demonstration");
+    std::println("Bestow Audio System - Comprehensive API Demonstration");
     std::println("=====================================================\n");
 
     // Create mock asset system
@@ -635,7 +635,7 @@ int main() {
     std::println("  - Channel grouping for category-based mixing");
     std::println("  - Real-time pitch and volume adjustment");
     std::println("  - Playback state queries and seeking");
-    std::println("\nFor actual audio playback, integrate with jframe-audio implementation.");
+    std::println("\nFor actual audio playback, integrate with bestow-audio implementation.");
 
     return 0;
 }

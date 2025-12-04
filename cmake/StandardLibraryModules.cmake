@@ -126,31 +126,31 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(STATUS "  Found std.cppm at: ${LIBC++_STD_MODULE}")
 
     # Directory for pre-compiled modules
-    set(JFRAME_PCM_DIR "${CMAKE_BINARY_DIR}/pcm")
-    file(MAKE_DIRECTORY "${JFRAME_PCM_DIR}")
+    set(BESTOW_PCM_DIR "${CMAKE_BINARY_DIR}/pcm")
+    file(MAKE_DIRECTORY "${BESTOW_PCM_DIR}")
 
     # Path to pre-compiled std module
-    set(JFRAME_STD_PCM "${JFRAME_PCM_DIR}/std.pcm")
+    set(BESTOW_STD_PCM "${BESTOW_PCM_DIR}/std.pcm")
 
     # Get macOS sysroot for LLVM
     if(APPLE AND CMAKE_OSX_SYSROOT)
-        set(JFRAME_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
+        set(BESTOW_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
     else()
-        set(JFRAME_SYSROOT_FLAG "")
+        set(BESTOW_SYSROOT_FLAG "")
     endif()
 
     # Pre-compile std.cppm to std.pcm at configure time
-    if(NOT EXISTS "${JFRAME_STD_PCM}")
+    if(NOT EXISTS "${BESTOW_STD_PCM}")
         message(STATUS "  Pre-compiling C++ standard library module...")
 
         execute_process(
             COMMAND "${CMAKE_CXX_COMPILER}"
                 -std=c++23
                 -stdlib=libc++
-                ${JFRAME_SYSROOT_FLAG}
+                ${BESTOW_SYSROOT_FLAG}
                 --precompile
                 "${LIBC++_STD_MODULE}"
-                -o "${JFRAME_STD_PCM}"
+                -o "${BESTOW_STD_PCM}"
             RESULT_VARIABLE STD_PCM_RESULT
             OUTPUT_VARIABLE STD_PCM_OUTPUT
             ERROR_VARIABLE STD_PCM_ERROR
@@ -160,38 +160,38 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             message(FATAL_ERROR "Failed to pre-compile std.cppm:\n${STD_PCM_ERROR}")
         endif()
 
-        message(STATUS "  Pre-compiled std.pcm to ${JFRAME_STD_PCM}")
+        message(STATUS "  Pre-compiled std.pcm to ${BESTOW_STD_PCM}")
     endif()
 
     # Function to configure Clang targets for std module support
     function(target_use_std_module TARGET_NAME)
         # Add the pre-built module path
         target_compile_options(${TARGET_NAME} PRIVATE
-            -fprebuilt-module-path=${JFRAME_PCM_DIR}
+            -fprebuilt-module-path=${BESTOW_PCM_DIR}
         )
 
         # Make sure std.pcm is built before the target
-        if(NOT TARGET jframe-std-module)
+        if(NOT TARGET bestow-std-module)
             add_custom_command(
-                OUTPUT "${JFRAME_STD_PCM}"
+                OUTPUT "${BESTOW_STD_PCM}"
                 COMMAND "${CMAKE_CXX_COMPILER}"
                     -std=c++23
                     -stdlib=libc++
-                    ${JFRAME_SYSROOT_FLAG}
+                    ${BESTOW_SYSROOT_FLAG}
                     --precompile
                     "${LIBC++_STD_MODULE}"
-                    -o "${JFRAME_STD_PCM}"
+                    -o "${BESTOW_STD_PCM}"
                 DEPENDS "${LIBC++_STD_MODULE}"
                 COMMENT "Pre-compiling C++ standard library module"
                 VERBATIM
             )
 
-            add_custom_target(jframe-std-module
-                DEPENDS "${JFRAME_STD_PCM}"
+            add_custom_target(bestow-std-module
+                DEPENDS "${BESTOW_STD_PCM}"
             )
         endif()
 
-        add_dependencies(${TARGET_NAME} jframe-std-module)
+        add_dependencies(${TARGET_NAME} bestow-std-module)
     endfunction()
 
     return()
@@ -236,7 +236,7 @@ endif()
 # =============================================================================
 message(FATAL_ERROR
     "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}\n\n"
-    "JFrame requires a C++23 compiler with 'import std;' support:\n"
+    "Bestow requires a C++23 compiler with 'import std;' support:\n"
     "  - Windows: MSVC 19.38+ (Visual Studio 2022 17.8+)\n"
     "  - macOS: LLVM Clang 20+ (brew install llvm@20)\n"
     "  - Linux: Clang 17+ with libc++, or GCC 14+ (experimental)\n\n"

@@ -1,5 +1,5 @@
 -- level1.lua
--- Tutorial Level - Showcases all JFrame engine systems
+-- Tutorial Level - Showcases all Bestow engine systems
 
 return {
     name = "Tutorial Level",

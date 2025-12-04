@@ -370,7 +370,7 @@ Manually reloads a specific asset.
 **Example:**
 
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
 assets->enableHotReload(true);
 
 // In update loop
@@ -567,7 +567,7 @@ AssetHandle randomCoin = coinTextures.getRandom();
 
 ## File Formats
 
-JFrame supports these file formats out of the box:
+Bestow supports these file formats out of the box:
 
 **Textures:**
 - PNG (recommended)

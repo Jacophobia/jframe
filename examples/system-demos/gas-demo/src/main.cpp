@@ -2,18 +2,18 @@
 // This demo exercises every method and type in the Gameplay Ability System
 
 // MSVC C++23 module compatibility for EnTT iterators
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.gas;
-import jframe.gas.impl;
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.events;
-import jframe.events.impl;
+import bestow.types;
+import bestow.gas;
+import bestow.gas.impl;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.events;
+import bestow.events.impl;
 
-using namespace jframe;
+using namespace bestow;
 
 // Forward declarations
 void printSection(const std::string& title);
@@ -40,7 +40,7 @@ void demoUpdateLoop(IGASSystem& gas, Entity entity);
 
 int main() {
     std::println("=================================================================");
-    std::println("        JFrame GAS (Gameplay Ability System) Demo");
+    std::println("        Bestow GAS (Gameplay Ability System) Demo");
     std::println("=================================================================");
     std::println("");
 

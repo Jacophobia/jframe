@@ -1,4 +1,4 @@
-# JFrame AI System Documentation
+# Bestow AI System Documentation
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@
 
 ## Overview
 
-The JFrame AI System provides tools for creating intelligent game entities through:
+The Bestow AI System provides tools for creating intelligent game entities through:
 
 - **Behavior Trees**: Hierarchical decision-making structures for complex AI behaviors
 - **Navigation Meshes**: Pathfinding on walkable surfaces using Recast/Detour
@@ -38,16 +38,16 @@ The AI system integrates tightly with the Physics System for spatial queries and
 ### Dependencies
 
 ```cpp
-import jframe.ai;        // AI system interface
-import jframe.physics;   // Required: spatial queries, line-of-sight
-import jframe.assets;    // Required: behavior tree/navmesh loading
+import bestow.ai;        // AI system interface
+import bestow.physics;   // Required: spatial queries, line-of-sight
+import bestow.assets;    // Required: behavior tree/navmesh loading
 ```
 
 ### System Creation
 
 ```cpp
 #include <memory>
-import jframe.ai.impl;
+import bestow.ai.impl;
 
 // Create dependencies first
 auto physicsSystem = createPhysicsSystem();
@@ -1181,7 +1181,7 @@ void onEntityDestroyed(Entity entity, IAISystem* ai) {
 
 ## Summary
 
-The JFrame AI System provides a flexible foundation for game AI through:
+The Bestow AI System provides a flexible foundation for game AI through:
 
 - **Behavior trees** with per-entity blackboards for complex decision-making
 - **Navigation meshes** powered by Recast/Detour for robust pathfinding
@@ -1191,4 +1191,4 @@ The JFrame AI System provides a flexible foundation for game AI through:
 
 By combining these features, you can create sophisticated AI behaviors ranging from simple patrolling enemies to complex combat encounters with tactical decision-making.
 
-For questions or feature requests, refer to the JFrame technical documentation or the system implementation guide.
+For questions or feature requests, refer to the Bestow technical documentation or the system implementation guide.

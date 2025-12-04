@@ -12,11 +12,11 @@
 #include <SDL.h>
 
 import std;
-import jframe.types;
-import jframe.input;
-import jframe.input.impl;
+import bestow.types;
+import bestow.input;
+import bestow.input.impl;
 
-using namespace jframe;
+using namespace bestow;
 
 // Demo mode
 enum class DemoMode {
@@ -198,7 +198,7 @@ void printControllerState(IInputSystem* input) {
 void printInstructions() {
     std::cout << "\n";
     std::cout << "========================================\n";
-    std::cout << "  JFrame Input System Demo\n";
+    std::cout << "  Bestow Input System Demo\n";
     std::cout << "========================================\n\n";
     std::cout << "This demo exercises the ENTIRE Input System API.\n\n";
     std::cout << "CONTROLS:\n";

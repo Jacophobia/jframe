@@ -2,15 +2,15 @@
 // Player movement system
 
 import std;
-import jframe;
+import bestow;
 
 namespace platformer {
 
 class PlayerMovementSystem {
 public:
-    PlayerMovementSystem(jframe::JFrameEngine& engine) : engine_(engine) {}
+    PlayerMovementSystem(bestow::BestowEngine& engine) : engine_(engine) {}
 
-    void update(jframe::DeltaTime dt) {
+    void update(bestow::DeltaTime dt) {
         // Get input
         float horizontal = engine_.input->getActionValue("move_horizontal");
         bool jump = engine_.input->wasActionJustPressed("jump");
@@ -20,7 +20,7 @@ public:
     }
 
 private:
-    jframe::JFrameEngine& engine_;
+    bestow::BestowEngine& engine_;
 };
 
 }  // namespace platformer

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# JFrame Development Environment Setup Script
+# Bestow Development Environment Setup Script
 # Supports: macOS (Apple Silicon & Intel), Linux (Ubuntu/Debian, Fedora, Arch)
 #
 # This script is idempotent - safe to run multiple times without side effects.
@@ -96,23 +96,23 @@ detect_linux_distro() {
 
 show_help() {
     cat << EOF
-JFrame Development Environment Setup Script
+Bestow Development Environment Setup Script
 
 Usage: ./setup.sh [options]
 
 Options:
-    --no-build      Setup environment only, skip building JFrame
+    --no-build      Setup environment only, skip building Bestow
     --help          Show this help message
 
 Description:
-    This script sets up a complete development environment for JFrame:
+    This script sets up a complete development environment for Bestow:
 
     1. Installs Homebrew (macOS/Linux) if not present
     2. Installs LLVM/Clang 20+ (required for C++23 'import std;')
     3. Installs CMake, Ninja, and other build tools
     4. Installs vcpkg package manager
     5. Installs system libraries (Linux only)
-    6. Configures and builds JFrame with C++23
+    6. Configures and builds Bestow with C++23
 
     The script is idempotent - running it multiple times is safe and will
     only install/update components that are missing or outdated.
@@ -471,11 +471,11 @@ setup_vcpkg() {
 }
 
 # =============================================================================
-# Build JFrame
+# Build Bestow
 # =============================================================================
 
-build_jframe() {
-    print_header "Building JFrame"
+build_bestow() {
+    print_header "Building Bestow"
 
     cd "${SCRIPT_DIR}"
 
@@ -526,7 +526,7 @@ build_jframe() {
     print_success "Configuration complete"
 
     # Build
-    print_info "Building JFrame..."
+    print_info "Building Bestow..."
     if ! cmake --build --preset "${BUILD_PRESET}" --parallel; then
         print_error "Build failed"
         exit 1
@@ -549,7 +549,7 @@ build_jframe() {
 print_post_setup() {
     print_header "Setup Complete!"
 
-    echo "Your JFrame development environment is ready."
+    echo "Your Bestow development environment is ready."
     echo ""
 
     if [ ! -d "${SCRIPT_DIR}/external/fmod/core" ]; then
@@ -624,7 +624,7 @@ main() {
         esac
     done
 
-    print_header "JFrame Development Environment Setup"
+    print_header "Bestow Development Environment Setup"
 
     local OS
     OS=$(detect_os)
@@ -652,7 +652,7 @@ main() {
     setup_vcpkg
 
     if [ "$SKIP_BUILD" = false ]; then
-        build_jframe
+        build_bestow
     else
         print_info "Skipping build (--no-build specified)"
     fi

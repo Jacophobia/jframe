@@ -10,11 +10,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.save;
-import jframe.save.impl;
-import jframe.types;
+import bestow.save;
+import bestow.save.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 // Test implementation of ISaveable
 class TestSaveable : public ISaveable {
@@ -54,7 +54,7 @@ protected:
         saveSystem_ = createSaveSystem();
 
         // Create a temp directory for test saves
-        tempDir_ = std::filesystem::temp_directory_path() / "jframe_save_tests";
+        tempDir_ = std::filesystem::temp_directory_path() / "bestow_save_tests";
         std::filesystem::create_directories(tempDir_);
 
         // Set the test profile to use temp directory
@@ -1457,4 +1457,4 @@ TEST_F(SaveSystemTest, QuickSaveAndAutoSaveAreIndependent) {
     saveSystem_->unregisterSaveable(&saveable);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

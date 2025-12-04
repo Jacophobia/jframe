@@ -15,11 +15,11 @@ add_executable(save-demo
 # Enable std module support
 target_use_std_module(save-demo)
 
-# Link against jframe-save and jframe-contract
+# Link against bestow-save and bestow-contract
 target_link_libraries(save-demo
     PRIVATE
-        jframe-contract
-        jframe-save
+        bestow-contract
+        bestow-save
 )
 
 # Set output directory

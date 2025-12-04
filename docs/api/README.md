@@ -1,13 +1,13 @@
-# JFrame API Reference
+# Bestow API Reference
 
-Complete API documentation for JFrame's core systems.
+Complete API documentation for Bestow's core systems.
 
 ## Core Systems
 
 ### Engine and Application
 
 - [EngineBuilder](EngineBuilder.md) - Fluent API for configuring and building the engine
-- Application - Base class for creating JFrame applications (see EngineBuilder.md)
+- Application - Base class for creating Bestow applications (see EngineBuilder.md)
 
 ### Entity-Component System
 
@@ -39,22 +39,22 @@ Complete API documentation for JFrame's core systems.
 ## Quick Start
 
 ```cpp
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-class MyGame : public jframe::core::Application {
+class MyGame : public bestow::core::Application {
 public:
-    bool initialize(jframe::core::Engine& engine) override {
+    bool initialize(bestow::core::Engine& engine) override {
         auto& sys = engine.systems();
 
         // Create entities
-        jframe::Entity player = sys.entities->createEntity();
-        sys.entities->emplace<jframe::Transform2D>(player, 100.0f, 200.0f);
+        bestow::Entity player = sys.entities->createEntity();
+        sys.entities->emplace<bestow::Transform2D>(player, 100.0f, 200.0f);
 
         return true;
     }
 
-    void updateFixed(jframe::DeltaTime dt) override {
+    void updateFixed(bestow::DeltaTime dt) override {
         // Game logic
     }
 
@@ -68,7 +68,7 @@ public:
 };
 
 int main() {
-    using namespace jframe::core;
+    using namespace bestow::core;
 
     auto engineResult = EngineBuilder()
         .withEvents()
@@ -96,7 +96,7 @@ int main() {
 
 ## Core Types
 
-All systems use common types from `jframe.types`:
+All systems use common types from `bestow.types`:
 
 ```cpp
 using DeltaTime = float;
@@ -195,7 +195,7 @@ sys.events->unsubscribe(id);
 
 ## Error Handling
 
-JFrame uses `std::expected` for error handling:
+Bestow uses `std::expected` for error handling:
 
 ```cpp
 Result<LevelId, std::error_code> loadLevel(AssetHandle levelAsset);
@@ -213,11 +213,11 @@ if (result) {
 ## Module Organization
 
 ```cpp
-import jframe;              // Import all systems
-import jframe.core;         // Core utilities (Timer, FrameTimer, etc.)
-import jframe.types;        // Common types
-import jframe.entity;       // Entity system interface
-import jframe.graphics;     // Graphics system interface
+import bestow;              // Import all systems
+import bestow.core;         // Core utilities (Timer, FrameTimer, etc.)
+import bestow.types;        // Common types
+import bestow.entity;       // Entity system interface
+import bestow.graphics;     // Graphics system interface
 // ... etc
 ```
 
@@ -232,5 +232,5 @@ import jframe.graphics;     // Graphics system interface
 
 - [Getting Started Guide](../Getting-Started.md)
 - [Data-Driven Design](../Data-Driven-Design.md)
-- [Technical Design Document](../jframe-technical-design.md)
+- [Technical Design Document](../bestow-technical-design.md)
 - [CLAUDE.md](../../CLAUDE.md) - Development guidelines

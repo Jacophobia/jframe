@@ -2,35 +2,35 @@
 // Endless runner demo - auto-run, procedural generation, despawn
 
 import std;
-import jframe;
-import jframe.core;
-import jframe.camera.impl;
-import jframe.components;
-import jframe.config.impl;
+import bestow;
+import bestow.core;
+import bestow.camera.impl;
+import bestow.components;
+import bestow.config.impl;
 
-#if defined(JFRAME_DEV_TOOLS)
-import jframe.dev;
+#if defined(BESTOW_DEV_TOOLS)
+import bestow.dev;
 #endif
 
 #include "Game.h"
 
 namespace endless_runner {
 
-bool Game::initialize(jframe::core::Engine& engine) {
+bool Game::initialize(bestow::core::Engine& engine) {
     engine_ = &engine;
     auto& sys = engine.systems();
-    jframe::core::logInfo("Initializing endless runner");
+    bestow::core::logInfo("Initializing endless runner");
 
-    config_ = jframe::createConfigSystem();
+    config_ = bestow::createConfigSystem();
     config_->initialize();
     if (!config_->loadConfig("data/config/game.lua")) {
-        jframe::core::logError("Failed to load game config");
+        bestow::core::logError("Failed to load game config");
     }
 
     sys.physics->setGravity({0.0f, config_->getFloatOr("physics.gravity", 980.0f)});
 
     auto windowSize = sys.graphics->getWindowSize();
-    cameraSystem_ = std::make_unique<jframe::CameraSystem>(windowSize);
+    cameraSystem_ = std::make_unique<bestow::CameraSystem>(windowSize);
     cameraSystem_->setZoom(config_->getFloatOr("camera.zoom", 1.0f));
     cameraSystem_->setFollowSmoothing(config_->getFloatOr("camera.followSmoothing", 5.0f));
 
@@ -42,15 +42,15 @@ bool Game::initialize(jframe::core::Engine& engine) {
     playerBodyHeight_ = config_->getFloatOr("physics.player.height", 80.0f);
 
     // Load assets
-    playerTextureHandle_ = sys.assets->registerAsset(jframe::AssetType::Texture, "data/textures/player_spritesheet.png");
-    coinTextureHandle_ = sys.assets->registerAsset(jframe::AssetType::Texture, "data/textures/coinGold.png");
-    enemyTextureHandle_ = sys.assets->registerAsset(jframe::AssetType::Texture, "data/textures/enemyWalking_1.png");
-    platformTextureHandle_ = sys.assets->registerAsset(jframe::AssetType::Texture, "data/textures/block.png");
-    fontHandle_ = sys.assets->registerAsset(jframe::AssetType::Font, "data/fonts/PressStart2P-Regular.ttf");
-    jumpSoundHandle_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/sfx/phaseJump1.ogg");
-    coinSoundHandle_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/sfx/pepSound1.ogg");
-    hurtSoundHandle_ = sys.assets->registerAsset(jframe::AssetType::Sound, "data/audio/sfx/impactBell_heavy_000.ogg");
-    levelAssetHandle_ = sys.assets->registerAsset(jframe::AssetType::Level, "data/levels/endless.lua");
+    playerTextureHandle_ = sys.assets->registerAsset(bestow::AssetType::Texture, "data/textures/player_spritesheet.png");
+    coinTextureHandle_ = sys.assets->registerAsset(bestow::AssetType::Texture, "data/textures/coinGold.png");
+    enemyTextureHandle_ = sys.assets->registerAsset(bestow::AssetType::Texture, "data/textures/enemyWalking_1.png");
+    platformTextureHandle_ = sys.assets->registerAsset(bestow::AssetType::Texture, "data/textures/block.png");
+    fontHandle_ = sys.assets->registerAsset(bestow::AssetType::Font, "data/fonts/PressStart2P-Regular.ttf");
+    jumpSoundHandle_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/sfx/phaseJump1.ogg");
+    coinSoundHandle_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/sfx/pepSound1.ogg");
+    hurtSoundHandle_ = sys.assets->registerAsset(bestow::AssetType::Sound, "data/audio/sfx/impactBell_heavy_000.ogg");
+    levelAssetHandle_ = sys.assets->registerAsset(bestow::AssetType::Level, "data/levels/endless.lua");
 
     sys.assets->loadAsset(playerTextureHandle_);
     sys.assets->loadAsset(coinTextureHandle_);
@@ -69,7 +69,7 @@ bool Game::initialize(jframe::core::Engine& engine) {
     }
 
     // Setup sprite sheets
-    playerSheet_ = jframe::SpriteSheet{
+    playerSheet_ = bestow::SpriteSheet{
         .texture = playerTextureHandle_,
         .frameWidth = 66, .frameHeight = 92,
         .columns = 9, .rows = 7
@@ -77,13 +77,13 @@ bool Game::initialize(jframe::core::Engine& engine) {
     playerSprite_.sheet = playerSheet_;
     playerSprite_.playing = true;
 
-    jframe::Animation runAnim;
+    bestow::Animation runAnim;
     runAnim.name = "run";
     runAnim.looping = true;
     runAnim.frames = {{9, 0.08f}, {10, 0.08f}, {11, 0.08f}, {12, 0.08f}, {13, 0.08f}, {14, 0.08f}};
     playerSprite_.animations["run"] = runAnim;
 
-    jframe::Animation jumpAnim;
+    bestow::Animation jumpAnim;
     jumpAnim.name = "jump";
     jumpAnim.looping = false;
     jumpAnim.frames = {{18, 0.1f}};
@@ -91,28 +91,28 @@ bool Game::initialize(jframe::core::Engine& engine) {
 
     playerSprite_.play("run");
 
-    coinSheet_ = jframe::SpriteSheet{.texture = coinTextureHandle_, .frameWidth = 128, .frameHeight = 128, .columns = 1, .rows = 1};
-    enemySheet_ = jframe::SpriteSheet{.texture = enemyTextureHandle_, .frameWidth = 32, .frameHeight = 44, .columns = 1, .rows = 1};
-    platformSheet_ = jframe::SpriteSheet{.texture = platformTextureHandle_, .frameWidth = 226, .frameHeight = 148, .columns = 1, .rows = 1};
+    coinSheet_ = bestow::SpriteSheet{.texture = coinTextureHandle_, .frameWidth = 128, .frameHeight = 128, .columns = 1, .rows = 1};
+    enemySheet_ = bestow::SpriteSheet{.texture = enemyTextureHandle_, .frameWidth = 32, .frameHeight = 44, .columns = 1, .rows = 1};
+    platformSheet_ = bestow::SpriteSheet{.texture = platformTextureHandle_, .frameWidth = 226, .frameHeight = 148, .columns = 1, .rows = 1};
 
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 32},
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 32},
         .action = "jump"
     });
-    sys.input->registerMapping(jframe::InputMapping{
-        .binding = jframe::InputBinding{.deviceType = jframe::InputDeviceType::Keyboard, .keyCode = 265},
+    sys.input->registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 265},
         .action = "jump"
     });
 
-    triggerSubscription_ = sys.events->subscribe(jframe::Events::TriggerEnter,
-        [this](const jframe::EventData& data) { onTriggerEnter(data); });
-    collisionSubscription_ = sys.events->subscribe(jframe::Events::Collision,
-        [this](const jframe::EventData& data) { onCollision(data); });
+    triggerSubscription_ = sys.events->subscribe(bestow::Events::TriggerEnter,
+        [this](const bestow::EventData& data) { onTriggerEnter(data); });
+    collisionSubscription_ = sys.events->subscribe(bestow::Events::Collision,
+        [this](const bestow::EventData& data) { onCollision(data); });
 
     setupPlayer();
     loadInitialSection();
 
-    jframe::core::logInfo("Endless runner initialized");
+    bestow::core::logInfo("Endless runner initialized");
     return true;
 }
 
@@ -123,22 +123,22 @@ void Game::setupPlayer() {
     float spawnX = 200.0f;
     float spawnY = groundY_ - 100.0f;
 
-    sys.entities->emplace<jframe::Transform2D>(player_, jframe::Transform2D{
+    sys.entities->emplace<bestow::Transform2D>(player_, bestow::Transform2D{
         .x = spawnX, .y = spawnY,
         .scaleX = playerBodyWidth_ / static_cast<float>(playerSheet_.frameWidth),
         .scaleY = playerBodyHeight_ / static_cast<float>(playerSheet_.frameHeight)
     });
 
-    sys.entities->emplace<jframe::components::Health>(player_, jframe::components::Health{.current = 100, .maximum = 100});
-    sys.entities->emplace<jframe::components::Score>(player_, jframe::components::Score{.value = 0});
-    sys.entities->emplace<jframe::components::GroundDetector>(player_);
-    sys.entities->emplace<jframe::components::JumpState>(player_, jframe::components::JumpState{
+    sys.entities->emplace<bestow::components::Health>(player_, bestow::components::Health{.current = 100, .maximum = 100});
+    sys.entities->emplace<bestow::components::Score>(player_, bestow::components::Score{.value = 0});
+    sys.entities->emplace<bestow::components::GroundDetector>(player_);
+    sys.entities->emplace<bestow::components::JumpState>(player_, bestow::components::JumpState{
         .jumpsRemaining = 1, .maxJumps = 1, .jumpForce = jumpForce_
     });
-    sys.entities->getRegistry().emplace<jframe::components::PlayerTag>(player_);
+    sys.entities->getRegistry().emplace<bestow::components::PlayerTag>(player_);
 
-    jframe::PhysicsBodyDef bodyDef{
-        .type = jframe::BodyType::Dynamic,
+    bestow::PhysicsBodyDef bodyDef{
+        .type = bestow::BodyType::Dynamic,
         .transform = {.x = spawnX, .y = spawnY},
         .size = {playerBodyWidth_, playerBodyHeight_},
         .fixedRotation = true,
@@ -179,20 +179,20 @@ void Game::loadInitialSection() {
 
 void Game::restartGame() {
     auto& sys = engine_->systems();
-    jframe::core::logInfo("Restarting game...");
+    bestow::core::logInfo("Restarting game...");
 
     // Collect entities to destroy (can't modify while iterating)
-    std::vector<jframe::Entity> toDestroy;
+    std::vector<bestow::Entity> toDestroy;
 
-    sys.entities->view<jframe::components::PlatformTag>().each([&toDestroy](auto entity) {
+    sys.entities->view<bestow::components::PlatformTag>().each([&toDestroy](auto entity) {
         toDestroy.push_back(entity);
     });
 
-    sys.entities->view<jframe::components::CollectibleTag>().each([&toDestroy](auto entity) {
+    sys.entities->view<bestow::components::CollectibleTag>().each([&toDestroy](auto entity) {
         toDestroy.push_back(entity);
     });
 
-    sys.entities->view<jframe::components::EnemyTag>().each([&toDestroy](auto entity) {
+    sys.entities->view<bestow::components::EnemyTag>().each([&toDestroy](auto entity) {
         toDestroy.push_back(entity);
     });
 
@@ -216,7 +216,7 @@ void Game::restartGame() {
     loadInitialSection();
 
     playerSprite_.play("run");
-    jframe::core::logInfo("Game restarted!");
+    bestow::core::logInfo("Game restarted!");
 }
 
 void Game::generateNextSection() {
@@ -254,7 +254,7 @@ void Game::generateNextSection() {
 
     nextSectionX_ += sectionWidth_;
     sectionsGenerated_++;
-    jframe::core::logInfo("Generated section " + std::to_string(sectionsGenerated_));
+    bestow::core::logInfo("Generated section " + std::to_string(sectionsGenerated_));
 }
 
 void Game::despawnBehindCamera() {
@@ -263,28 +263,28 @@ void Game::despawnBehindCamera() {
     float despawnThreshold = camera.transform.x - camera.viewportSize.width;
 
     // Despawn platforms behind camera
-    auto platformView = sys.entities->view<jframe::components::PlatformTag, jframe::Transform2D>();
-    std::vector<jframe::Entity> toDestroy;
+    auto platformView = sys.entities->view<bestow::components::PlatformTag, bestow::Transform2D>();
+    std::vector<bestow::Entity> toDestroy;
     for (auto entity : platformView) {
-        auto& transform = platformView.get<jframe::Transform2D>(entity);
+        auto& transform = platformView.get<bestow::Transform2D>(entity);
         if (transform.x < despawnThreshold) {
             toDestroy.push_back(entity);
         }
     }
 
     // Despawn coins
-    auto coinView = sys.entities->view<jframe::components::CollectibleTag, jframe::Transform2D>();
+    auto coinView = sys.entities->view<bestow::components::CollectibleTag, bestow::Transform2D>();
     for (auto entity : coinView) {
-        auto& transform = coinView.get<jframe::Transform2D>(entity);
+        auto& transform = coinView.get<bestow::Transform2D>(entity);
         if (transform.x < despawnThreshold) {
             toDestroy.push_back(entity);
         }
     }
 
     // Despawn enemies
-    auto enemyView = sys.entities->view<jframe::components::EnemyTag, jframe::Transform2D>();
+    auto enemyView = sys.entities->view<bestow::components::EnemyTag, bestow::Transform2D>();
     for (auto entity : enemyView) {
-        auto& transform = enemyView.get<jframe::Transform2D>(entity);
+        auto& transform = enemyView.get<bestow::Transform2D>(entity);
         if (transform.x < despawnThreshold) {
             toDestroy.push_back(entity);
         }
@@ -299,15 +299,15 @@ void Game::createPlatform(float x, float y, float width, float height) {
     auto& sys = engine_->systems();
     auto platform = sys.entities->createEntity();
 
-    sys.entities->emplace<jframe::Transform2D>(platform, jframe::Transform2D{
+    sys.entities->emplace<bestow::Transform2D>(platform, bestow::Transform2D{
         .x = x, .y = y,
         .scaleX = width / static_cast<float>(platformSheet_.frameWidth),
         .scaleY = height / static_cast<float>(platformSheet_.frameHeight)
     });
-    sys.entities->getRegistry().emplace<jframe::components::PlatformTag>(platform);
+    sys.entities->getRegistry().emplace<bestow::components::PlatformTag>(platform);
 
-    jframe::PhysicsBodyDef bodyDef{
-        .type = jframe::BodyType::Static,
+    bestow::PhysicsBodyDef bodyDef{
+        .type = bestow::BodyType::Static,
         .transform = {.x = x, .y = y},
         .size = {width, height},
         .density = 0.0f, .friction = 0.5f
@@ -320,16 +320,16 @@ void Game::createCoin(float x, float y, int value) {
     auto coin = sys.entities->createEntity();
 
     float size = 30.0f;
-    sys.entities->emplace<jframe::Transform2D>(coin, jframe::Transform2D{
+    sys.entities->emplace<bestow::Transform2D>(coin, bestow::Transform2D{
         .x = x, .y = y,
         .scaleX = size / static_cast<float>(coinSheet_.frameWidth),
         .scaleY = size / static_cast<float>(coinSheet_.frameHeight)
     });
-    sys.entities->getRegistry().emplace<jframe::components::CollectibleTag>(coin);
-    sys.entities->emplace<jframe::components::Score>(coin, jframe::components::Score{.value = value});
+    sys.entities->getRegistry().emplace<bestow::components::CollectibleTag>(coin);
+    sys.entities->emplace<bestow::components::Score>(coin, bestow::components::Score{.value = value});
 
-    jframe::PhysicsBodyDef bodyDef{
-        .type = jframe::BodyType::Static,
+    bestow::PhysicsBodyDef bodyDef{
+        .type = bestow::BodyType::Static,
         .transform = {.x = x, .y = y},
         .size = {size, size},
         .density = 0.0f, .isSensor = true
@@ -342,16 +342,16 @@ void Game::createEnemy(float x, float y) {
     auto enemy = sys.entities->createEntity();
 
     float size = 40.0f;
-    sys.entities->emplace<jframe::Transform2D>(enemy, jframe::Transform2D{
+    sys.entities->emplace<bestow::Transform2D>(enemy, bestow::Transform2D{
         .x = x, .y = y,
         .scaleX = size / static_cast<float>(enemySheet_.frameWidth),
         .scaleY = size / static_cast<float>(enemySheet_.frameHeight)
     });
-    sys.entities->getRegistry().emplace<jframe::components::EnemyTag>(enemy);
-    sys.entities->emplace<jframe::components::Damage>(enemy, jframe::components::Damage{.amount = 50});
+    sys.entities->getRegistry().emplace<bestow::components::EnemyTag>(enemy);
+    sys.entities->emplace<bestow::components::Damage>(enemy, bestow::components::Damage{.amount = 50});
 
-    jframe::PhysicsBodyDef bodyDef{
-        .type = jframe::BodyType::Dynamic,
+    bestow::PhysicsBodyDef bodyDef{
+        .type = bestow::BodyType::Dynamic,
         .transform = {.x = x, .y = y},
         .size = {size, size},
         .fixedRotation = true,
@@ -360,7 +360,7 @@ void Game::createEnemy(float x, float y) {
     sys.physics->createBody(enemy, bodyDef);
 }
 
-void Game::updateFixed(jframe::DeltaTime dt) {
+void Game::updateFixed(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     if (gameOver_) {
@@ -391,23 +391,23 @@ void Game::updateFixed(jframe::DeltaTime dt) {
     // Check death (fall off screen)
     if (playerPos.y > groundY_ + 200.0f) {
         gameOver_ = true;
-        jframe::core::logInfo("Game Over - fell off!");
+        bestow::core::logInfo("Game Over - fell off!");
     }
 
     // Update health
-    if (auto* health = sys.entities->tryGet<jframe::components::Health>(player_)) {
+    if (auto* health = sys.entities->tryGet<bestow::components::Health>(player_)) {
         health->update(dt);
         health_ = health->current;
         if (health->isDead() && !gameOver_) {
             gameOver_ = true;
-            jframe::core::logInfo("Game Over!");
+            bestow::core::logInfo("Game Over!");
         }
     }
 
     playerSprite_.update(dt);
 }
 
-void Game::handlePlayerInput(jframe::DeltaTime dt) {
+void Game::handlePlayerInput(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
     auto velocity = sys.physics->getVelocity(player_);
 
@@ -415,7 +415,7 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
     // to give physics time to apply initial velocity
     if (distance_ > 100.0f && velocity.x < runSpeed_ * 0.3f) {
         gameOver_ = true;
-        jframe::core::logInfo("Game Over - stuck!");
+        bestow::core::logInfo("Game Over - stuck!");
         return;
     }
 
@@ -428,7 +428,7 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
     // Jump handling - only when grounded
     if (sys.input->wasActionJustPressed("jump") && isGrounded) {
         velocity.y = -jumpForce_;
-        sys.audio->playPositional(jframe::PositionalSound{.asset = jumpSoundHandle_, .volume = 0.8f});
+        sys.audio->playPositional(bestow::PositionalSound{.asset = jumpSoundHandle_, .volume = 0.8f});
         playerSprite_.play("jump");
     }
 
@@ -440,9 +440,9 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
     }
 }
 
-void Game::updateCamera(jframe::DeltaTime dt) {
+void Game::updateCamera(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
-    auto playerTransform = sys.entities->get<jframe::Transform2D>(player_);
+    auto playerTransform = sys.entities->get<bestow::Transform2D>(player_);
 
     // Camera follows player (same as platformer-demo)
     cameraSystem_->update(dt, playerTransform.position());
@@ -453,52 +453,52 @@ void Game::syncPhysicsToTransforms() {
     auto& sys = engine_->systems();
 
     auto playerPos = sys.physics->getPosition(player_);
-    auto& playerTransform = sys.entities->get<jframe::Transform2D>(player_);
+    auto& playerTransform = sys.entities->get<bestow::Transform2D>(player_);
     playerTransform.x = playerPos.x;
     playerTransform.y = playerPos.y;
 
-    auto enemyView = sys.entities->view<jframe::components::EnemyTag, jframe::Transform2D>();
+    auto enemyView = sys.entities->view<bestow::components::EnemyTag, bestow::Transform2D>();
     for (auto entity : enemyView) {
         auto pos = sys.physics->getPosition(entity);
-        auto& transform = enemyView.get<jframe::Transform2D>(entity);
+        auto& transform = enemyView.get<bestow::Transform2D>(entity);
         transform.x = pos.x;
         transform.y = pos.y;
     }
 }
 
-void Game::onTriggerEnter(const jframe::EventData& data) {
+void Game::onTriggerEnter(const bestow::EventData& data) {
     auto& sys = engine_->systems();
-    auto& triggerData = std::get<jframe::TriggerEvent>(data);
+    auto& triggerData = std::get<bestow::TriggerEvent>(data);
 
     bool playerInvolved = (triggerData.entityA == player_ || triggerData.entityB == player_);
     if (!playerInvolved) return;
 
-    jframe::Entity other = (triggerData.entityA == player_) ? triggerData.entityB : triggerData.entityA;
+    bestow::Entity other = (triggerData.entityA == player_) ? triggerData.entityB : triggerData.entityA;
 
-    if (sys.entities->anyOf<jframe::components::CollectibleTag>(other)) {
-        if (auto* coinScore = sys.entities->tryGet<jframe::components::Score>(other)) {
+    if (sys.entities->anyOf<bestow::components::CollectibleTag>(other)) {
+        if (auto* coinScore = sys.entities->tryGet<bestow::components::Score>(other)) {
             score_ += coinScore->value;
-            sys.audio->playPositional(jframe::PositionalSound{.asset = coinSoundHandle_, .volume = 0.7f});
+            sys.audio->playPositional(bestow::PositionalSound{.asset = coinSoundHandle_, .volume = 0.7f});
             sys.entities->destroyEntity(other);
         }
     }
 }
 
-void Game::onCollision(const jframe::EventData& data) {
+void Game::onCollision(const bestow::EventData& data) {
     auto& sys = engine_->systems();
-    auto& collisionData = std::get<jframe::CollisionEvent>(data);
+    auto& collisionData = std::get<bestow::CollisionEvent>(data);
 
     bool playerInvolved = (collisionData.entityA == player_ || collisionData.entityB == player_);
     if (!playerInvolved) return;
 
-    jframe::Entity other = (collisionData.entityA == player_) ? collisionData.entityB : collisionData.entityA;
+    bestow::Entity other = (collisionData.entityA == player_) ? collisionData.entityB : collisionData.entityA;
 
-    if (sys.entities->anyOf<jframe::components::EnemyTag>(other)) {
-        if (auto* health = sys.entities->tryGet<jframe::components::Health>(player_)) {
-            if (auto* damage = sys.entities->tryGet<jframe::components::Damage>(other)) {
+    if (sys.entities->anyOf<bestow::components::EnemyTag>(other)) {
+        if (auto* health = sys.entities->tryGet<bestow::components::Health>(player_)) {
+            if (auto* damage = sys.entities->tryGet<bestow::components::Damage>(other)) {
                 health->takeDamage(damage->amount);
                 if (!health->isDead()) {
-                    sys.audio->playPositional(jframe::PositionalSound{.asset = hurtSoundHandle_, .volume = 1.0f});
+                    sys.audio->playPositional(bestow::PositionalSound{.asset = hurtSoundHandle_, .volume = 1.0f});
                     cameraSystem_->shake(15.0f, 0.3f);
                 }
             }
@@ -514,24 +514,24 @@ void Game::render(float alpha) {
 void Game::renderEntities() {
     auto& sys = engine_->systems();
 
-    auto playerTransform = sys.entities->get<jframe::Transform2D>(player_);
+    auto playerTransform = sys.entities->get<bestow::Transform2D>(player_);
     sys.graphics->drawAnimatedSprite(playerSprite_, playerTransform);
 
-    auto platformView = sys.entities->view<jframe::components::PlatformTag, jframe::Transform2D>();
+    auto platformView = sys.entities->view<bestow::components::PlatformTag, bestow::Transform2D>();
     for (auto entity : platformView) {
-        auto& transform = platformView.get<jframe::Transform2D>(entity);
+        auto& transform = platformView.get<bestow::Transform2D>(entity);
         sys.graphics->drawSprite(platformSheet_, 0, transform);
     }
 
-    auto coinView = sys.entities->view<jframe::components::CollectibleTag, jframe::Transform2D>();
+    auto coinView = sys.entities->view<bestow::components::CollectibleTag, bestow::Transform2D>();
     for (auto entity : coinView) {
-        auto& transform = coinView.get<jframe::Transform2D>(entity);
+        auto& transform = coinView.get<bestow::Transform2D>(entity);
         sys.graphics->drawSprite(coinSheet_, 0, transform);
     }
 
-    auto enemyView = sys.entities->view<jframe::components::EnemyTag, jframe::Transform2D>();
+    auto enemyView = sys.entities->view<bestow::components::EnemyTag, bestow::Transform2D>();
     for (auto entity : enemyView) {
-        auto& transform = enemyView.get<jframe::Transform2D>(entity);
+        auto& transform = enemyView.get<bestow::Transform2D>(entity);
         sys.graphics->drawSprite(enemySheet_, 0, transform);
     }
 }
@@ -544,36 +544,36 @@ void Game::renderHUD() {
 
     // Health bar
     float healthPercent = static_cast<float>(health_) / 100.0f;
-    jframe::Canvas healthBg{{static_cast<int>(screenLeft + 10), static_cast<int>(screenTop + 10)}, {200, 20}};
-    jframe::Canvas healthFill{{static_cast<int>(screenLeft + 10), static_cast<int>(screenTop + 10)}, {static_cast<int>(200 * healthPercent), 20}};
+    bestow::Canvas healthBg{{static_cast<int>(screenLeft + 10), static_cast<int>(screenTop + 10)}, {200, 20}};
+    bestow::Canvas healthFill{{static_cast<int>(screenLeft + 10), static_cast<int>(screenTop + 10)}, {static_cast<int>(200 * healthPercent), 20}};
     sys.graphics->drawRect(healthBg, {50, 50, 50, 255}, true);
     sys.graphics->drawRect(healthFill, {0, 255, 0, 255}, true);
 
     // Score/Distance
     std::string scoreText = "SCORE: " + std::to_string(score_);
-    jframe::Vec2 scorePos{screenLeft + 620.0f, screenTop + 26.0f};
+    bestow::Vec2 scorePos{screenLeft + 620.0f, screenTop + 26.0f};
     sys.graphics->drawText(scoreText, scorePos, fontHandle_, 16.0f, {255, 215, 0, 255});
 
     // Distance
     std::string distText = "DIST: " + std::to_string(static_cast<int>(distance_)) + "m";
-    jframe::Vec2 distPos{screenLeft + 10.0f, screenTop + 56.0f};
+    bestow::Vec2 distPos{screenLeft + 10.0f, screenTop + 56.0f};
     sys.graphics->drawText(distText, distPos, fontHandle_, 12.0f, {255, 255, 255, 255});
 
     if (gameOver_) {
-        jframe::Vec2 gameOverPos{camera.transform.x, camera.transform.y};
+        bestow::Vec2 gameOverPos{camera.transform.x, camera.transform.y};
         sys.graphics->drawTextCentered("GAME OVER", gameOverPos, fontHandle_, 32.0f, {200, 0, 0, 255});
 
         std::string finalScore = "Final Score: " + std::to_string(score_);
-        jframe::Vec2 finalPos{camera.transform.x, camera.transform.y + 50.0f};
+        bestow::Vec2 finalPos{camera.transform.x, camera.transform.y + 50.0f};
         sys.graphics->drawTextCentered(finalScore, finalPos, fontHandle_, 16.0f, {255, 255, 255, 255});
 
-        jframe::Vec2 restartPos{camera.transform.x, camera.transform.y + 90.0f};
+        bestow::Vec2 restartPos{camera.transform.x, camera.transform.y + 90.0f};
         sys.graphics->drawTextCentered("Press SPACE to restart", restartPos, fontHandle_, 12.0f, {180, 180, 180, 255});
     }
 }
 
 void Game::shutdown() {
-    jframe::core::logInfo("Shutting down endless runner");
+    bestow::core::logInfo("Shutting down endless runner");
     auto& sys = engine_->systems();
     sys.events->unsubscribe(triggerSubscription_);
     sys.events->unsubscribe(collisionSubscription_);

@@ -2,61 +2,61 @@
 // AI System Demo - Entry point
 
 // MSVC C++23 module compatibility for EnTT iterators
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.ai;
-import jframe.ai.impl;
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.physics;
-import jframe.physics.impl;
-import jframe.assets;
-import jframe.assets.impl;
-import jframe.events;
-import jframe.events.impl;
+import bestow.types;
+import bestow.ai;
+import bestow.ai.impl;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.physics;
+import bestow.physics.impl;
+import bestow.assets;
+import bestow.assets.impl;
+import bestow.events;
+import bestow.events.impl;
 import ai.demo;
 
 int main() {
     try {
-        std::println("JFrame AI System Demo");
+        std::println("Bestow AI System Demo");
         std::println("=====================\n");
 
         // Create required systems for AI
         std::println("Initializing systems...");
 
-        auto eventSystem = jframe::createEventSystem();
+        auto eventSystem = bestow::createEventSystem();
         if (!eventSystem) {
             std::println("ERROR: Failed to create event system");
             return 1;
         }
         std::println("  Event system initialized");
 
-        auto entitySystem = jframe::createEntitySystem();
+        auto entitySystem = bestow::createEntitySystem();
         if (!entitySystem) {
             std::println("ERROR: Failed to create entity system");
             return 1;
         }
         std::println("  Entity system initialized");
 
-        auto assetSystem = jframe::createAssetSystem();
+        auto assetSystem = bestow::createAssetSystem();
         if (!assetSystem) {
             std::println("ERROR: Failed to create asset system");
             return 1;
         }
         std::println("  Asset system initialized");
 
-        auto physicsSystem = jframe::createPhysicsSystem();
+        auto physicsSystem = bestow::createPhysicsSystem();
         if (!physicsSystem) {
             std::println("ERROR: Failed to create physics system");
             return 1;
         }
 
-        physicsSystem->setGravity(jframe::Vec2{0.0f, -980.0f});
+        physicsSystem->setGravity(bestow::Vec2{0.0f, -980.0f});
         std::println("  Physics system initialized");
 
-        auto aiSystem = jframe::createAISystem(
+        auto aiSystem = bestow::createAISystem(
             physicsSystem.get(), assetSystem.get());
         if (!aiSystem) {
             std::println("ERROR: Failed to create AI system");

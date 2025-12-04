@@ -12,9 +12,9 @@ target_use_std_module(input-demo)
 
 target_link_libraries(input-demo
     PRIVATE
-        jframe-contract
-        jframe-input
-        jframe-core
+        bestow-contract
+        bestow-input
+        bestow-core
 )
 
 # Set output directory

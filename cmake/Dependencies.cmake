@@ -26,14 +26,14 @@ function(find_dependencies)
     find_package(BehaviorTree CONFIG)
 
     # Development tools (optional in release)
-    if(JFRAME_DEV_TOOLS)
+    if(BESTOW_DEV_TOOLS)
         find_package(efsw CONFIG REQUIRED)
     endif()
 
     # Tracy profiler (optional) - automatically fetched via FetchContent
     # We don't create a separate tracy target to avoid CMake export issues.
-    # Instead, we set variables that jframe-metrics uses to compile Tracy directly.
-    if(JFRAME_ENABLE_TRACY)
+    # Instead, we set variables that bestow-metrics uses to compile Tracy directly.
+    if(BESTOW_ENABLE_TRACY)
         # Check if Tracy is already available locally
         if(EXISTS "${CMAKE_SOURCE_DIR}/external/tracy/public/TracyClient.cpp")
             set(TRACY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/external/tracy" CACHE PATH "Tracy source directory")
@@ -52,7 +52,7 @@ function(find_dependencies)
             message(STATUS "Tracy profiler: fetched from GitHub to ${TRACY_SOURCE_DIR}")
         endif()
 
-        # Set variables for jframe-metrics to use (no separate target to avoid export issues)
+        # Set variables for bestow-metrics to use (no separate target to avoid export issues)
         set(TRACY_CLIENT_SOURCE "${TRACY_SOURCE_DIR}/public/TracyClient.cpp" CACHE FILEPATH "Tracy client source")
         set(TRACY_INCLUDE_DIR "${TRACY_SOURCE_DIR}/public" CACHE PATH "Tracy include directory")
 

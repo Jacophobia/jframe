@@ -1,4 +1,4 @@
-# JFrame TODO
+# Bestow TODO
 
 > Last Updated: 2025-11-27
 
@@ -20,7 +20,7 @@
 - Need: Test navmesh file (10x10 walkable grid)
 
 **Key Steps:**
-1. Add Detour headers to module fragment (`jframe.ai.impl.cppm`)
+1. Add Detour headers to module fragment (`bestow.ai.impl.cppm`)
 2. Extend AISystem with `dtNavMesh*` and `dtNavMeshQuery*` members
 3. Implement loadNavMesh() with binary format parsing
 4. Implement findPath() using Detour's pathfinding API
@@ -28,8 +28,8 @@
 6. Add destructor cleanup for Detour objects
 
 **Key Files:**
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-ai/src/jframe.ai.impl.cppm`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-ai/src/AISystem.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-ai/src/bestow.ai.impl.cppm`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-ai/src/AISystem.cpp`
 
 **Binary Format:**
 ```cpp
@@ -41,7 +41,7 @@ struct NavMeshFileHeader {
 ```
 
 **Coordinate Mapping:**
-- JFrame 2D `(x, y)` → Detour 3D `(x, 0.0f, y)`
+- Bestow 2D `(x, y)` → Detour 3D `(x, 0.0f, y)`
 - Y-axis is height (always 0 for 2D)
 
 **Complexity:** Medium (library already configured, need file format parser)
@@ -72,12 +72,12 @@ struct NavMeshFileHeader {
 4. Update `findClosestEntity()`:
    - Query AABB with 2000px search radius
    - Iterate results, find minimum squared distance
-5. Update CMakeLists.txt to link jframe-physics
+5. Update CMakeLists.txt to link bestow-physics
 
 **Key Files:**
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-ai/src/jframe.ai.impl.cppm`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-ai/src/AISystem.cpp`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-ai/CMakeLists.txt`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-ai/src/bestow.ai.impl.cppm`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-ai/src/AISystem.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-ai/CMakeLists.txt`
 
 **Code Snippet:**
 ```cpp
@@ -134,13 +134,13 @@ bool AISystem::hasLineOfSight(Vec2 from, Vec2 to, CollisionMask mask) const {
 5. Add shutdown sequence (reverse order)
 
 **Key Files:**
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-core/src/jframe.core.cppm`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-core/src/EngineBuilder.cpp` (NEW)
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-core/src/Application.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-core/src/bestow.core.cppm`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-core/src/EngineBuilder.cpp` (NEW)
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-core/src/Application.cpp`
 
 **Usage Example:**
 ```cpp
-auto result = jframe::core::EngineBuilder()
+auto result = bestow::core::EngineBuilder()
     .withEvents()
     .withEntities()
     .withPhysics()
@@ -267,8 +267,8 @@ examples/platformer/
 7. Add `invalidateSoundCache()` for hot reload
 
 **Key Files:**
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-audio/src/jframe.audio.impl.cppm`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-audio/src/FMODAudioSystem.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-audio/src/bestow.audio.impl.cppm`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-audio/src/FMODAudioSystem.cpp`
 
 **Code Snippet:**
 ```cpp
@@ -336,7 +336,7 @@ audio->playOnChannel(Channels::UI, {.asset = soundHandle});
 - [ ] Document how users can register their own game-specific systems with Fruit
 - [ ] Provide example of custom system registration and injection
 
-**Goal:** Users should be able to inject JFrame systems into their application for easy access and use. They should also be able to build their own game-specific systems that can be registered with Fruit and injected alongside the engine systems.
+**Goal:** Users should be able to inject Bestow systems into their application for easy access and use. They should also be able to build their own game-specific systems that can be registered with Fruit and injected alongside the engine systems.
 
 ### Minor Enhancements
 - [ ] Audio: FMOD fade-out using DSP
@@ -382,7 +382,7 @@ Automatic batch rendering for entities with visual components.
 ### Blueprint Factory System (High Impact) ✅
 Data-driven entity creation from Lua templates.
 
-- [x] Create `jframe-blueprints` module
+- [x] Create `bestow-blueprints` module
 - [x] Define IBlueprintFactory interface
 - [x] Implement Lua blueprint parsing
 - [x] Add component registry for runtime component creation
@@ -415,7 +415,7 @@ Chainable API for input registration.
 - [x] Add `Keys`, `ControllerButtons`, `ControllerAxes` constant namespaces
 
 **Impact:** Cleaner input setup, data-driven configuration
-**Files:** `jframe-components/src/jframe.builders.cppm`, `jframe-components/src/jframe.luaconfig.cppm`
+**Files:** `bestow-components/src/bestow.builders.cppm`, `bestow-components/src/bestow.luaconfig.cppm`
 
 ### Physics Body Factory (Low Impact) ✅
 Helper methods for common physics body patterns.
@@ -426,9 +426,9 @@ Helper methods for common physics body patterns.
 - [x] Add Lua-based physics config (`LuaPhysicsLoader`, `PhysicsBodyConfig`)
 
 **Impact:** Reduces physics setup code
-**Files:** `jframe-components/src/jframe.builders.cppm`, `jframe-components/src/jframe.luaconfig.cppm`
+**Files:** `bestow-components/src/bestow.builders.cppm`, `bestow-components/src/bestow.luaconfig.cppm`
 
-### Dev Tools (jframe-dev)
+### Dev Tools (bestow-dev)
 - [x] Hot reload file watcher (efsw)
 - [x] Debug overlay (ImGui backend)
 - [ ] Profiler integration (Tracy) - documentation only
@@ -457,18 +457,18 @@ Helper methods for common physics body patterns.
 6. Tracy Setup - Documentation
 
 **Key Files:**
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-dev/src/ImGuiBackend.cpp` (NEW)
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-dev/src/DevOverlay.cpp`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-dev/src/EntityInspector.cpp`
-- `/Users/jaaaacob/Documents/GameDev/jframe/jframe-dev/src/ComponentRegistry.cpp` (NEW)
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-dev/src/ImGuiBackend.cpp` (NEW)
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-dev/src/DevOverlay.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-dev/src/EntityInspector.cpp`
+- `/Users/jaaaacob/Documents/GameDev/bestow/bestow-dev/src/ComponentRegistry.cpp` (NEW)
 
 **Usage Example:**
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
-    jframe::dev::initializeImGui(window);
-    jframe::dev::HotReloadManager hotReload;
-    jframe::dev::DevOverlay overlay;
-    jframe::dev::EntityInspector inspector(engine);
+#if defined(BESTOW_DEV_TOOLS)
+    bestow::dev::initializeImGui(window);
+    bestow::dev::HotReloadManager hotReload;
+    bestow::dev::DevOverlay overlay;
+    bestow::dev::EntityInspector inspector(engine);
 
     // Game loop
     while (running) {
@@ -479,14 +479,14 @@ Helper methods for common physics body patterns.
         render();
 
         // Dev tools
-        jframe::dev::beginImGuiFrame();
+        bestow::dev::beginImGuiFrame();
         overlay.setFPS(1.0f / dt);
         overlay.render();
         inspector.render();
-        jframe::dev::renderImGui();
+        bestow::dev::renderImGui();
     }
 
-    jframe::dev::shutdownImGui();
+    bestow::dev::shutdownImGui();
 #endif
 ```
 

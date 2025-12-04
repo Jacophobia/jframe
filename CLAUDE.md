@@ -1,4 +1,4 @@
-# JFrame Development Guidelines
+# Bestow Development Guidelines
 
 ## Language Standard
 
@@ -16,7 +16,7 @@
 
 ### Compiler Requirements
 
-**CRITICAL:** JFrame uses `import std;` which requires **LLVM Clang 20+** on macOS. Apple Clang (Xcode) does not yet support `import std;`.
+**CRITICAL:** Bestow uses `import std;` which requires **LLVM Clang 20+** on macOS. Apple Clang (Xcode) does not yet support `import std;`.
 
 | Platform | Compiler | Minimum Version | Notes |
 |----------|----------|-----------------|-------|
@@ -50,26 +50,26 @@ ctest --preset macos-debug
 
 ## C++ Modules
 
-JFrame uses C++23 modules. Follow these conventions:
+Bestow uses C++23 modules. Follow these conventions:
 
 ### Module Naming
 
 ```
-jframe.types          // Core types and aliases
-jframe.core           // Core utilities (Timer, FrameTimer, Easing, JobSystem, Logging)
-jframe.config         // IConfigSystem interface
-jframe.entity         // IEntitySystem interface
-jframe.graphics       // IGraphicsSystem interface
-jframe.audio          // IAudioSystem interface
-jframe.input          // IInputSystem interface
-jframe.assets         // IAssetSystem interface
-jframe.save           // ISaveSystem interface
-jframe.level          // ILevelSystem interface
-jframe.events         // IEventSystem interface
-jframe.physics        // IPhysicsSystem interface
-jframe.ai             // IAISystem interface
-jframe.dev            // Development tools (Debug builds only)
-jframe                // Primary module (re-exports all)
+bestow.types          // Core types and aliases
+bestow.core           // Core utilities (Timer, FrameTimer, Easing, JobSystem, Logging)
+bestow.config         // IConfigSystem interface
+bestow.entity         // IEntitySystem interface
+bestow.graphics       // IGraphicsSystem interface
+bestow.audio          // IAudioSystem interface
+bestow.input          // IInputSystem interface
+bestow.assets         // IAssetSystem interface
+bestow.save           // ISaveSystem interface
+bestow.level          // ILevelSystem interface
+bestow.events         // IEventSystem interface
+bestow.physics        // IPhysicsSystem interface
+bestow.ai             // IAISystem interface
+bestow.dev            // Development tools (Debug builds only)
+bestow                // Primary module (re-exports all)
 ```
 
 ### File Extensions
@@ -89,12 +89,12 @@ module;
 #include <third_party_header.hpp>
 
 // Module declaration
-export module jframe.modulename;
+export module bestow.modulename;
 
 // Standard library imports
 import std;
 
-export namespace jframe {
+export namespace bestow {
     // Exported declarations
 }
 ```
@@ -103,22 +103,22 @@ export namespace jframe {
 
 ```cpp
 // Import everything
-import jframe;
+import bestow;
 
 // Import specific modules
-import jframe.entity;
-import jframe.graphics;
+import bestow.entity;
+import bestow.graphics;
 
 // In game code
-import jframe;
-import jframe.dev;  // Only available in debug builds
+import bestow;
+import bestow.dev;  // Only available in debug builds
 ```
 
 ## Architecture Principles
 
 ### Program to Interfaces
 
-All systems implement abstract interfaces from `jframe-contract`:
+All systems implement abstract interfaces from `bestow-contract`:
 
 ```cpp
 class IEntitySystem {
@@ -190,7 +190,7 @@ constexpr int MAX_ENTITIES = 10000;
 constexpr float kDefaultGravity = -980.0f;
 
 // Namespaces: lowercase
-namespace jframe::events { }
+namespace bestow::events { }
 
 // Member variables: trailing underscore
 class Example {
@@ -238,7 +238,7 @@ lua["load"] = sol::nil;
 Dev tools are available only in Debug/RelWithDebInfo builds:
 
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
     hotReload_.update();
     devOverlay_.render();
 #endif
@@ -270,7 +270,7 @@ TEST(EntitySystemTest, CreateEntity) {
 
 ### Testing Workflow
 
-JFrame follows a two-wave testing approach to ensure quality and catch issues early:
+Bestow follows a two-wave testing approach to ensure quality and catch issues early:
 
 #### Wave 1: Test-Driven Development (Define Expected Behavior)
 
@@ -310,9 +310,9 @@ At the completion of each development wave, agents perform a **swarming review**
 
 1. **Check for stubs** - Search for:
    ```bash
-   grep -r "// TODO" jframe-yoursystem/src/
-   grep -r "return.*;" jframe-yoursystem/src/  # Empty returns
-   grep -r "throw.*NotImplemented" jframe-yoursystem/src/
+   grep -r "// TODO" bestow-yoursystem/src/
+   grep -r "return.*;" bestow-yoursystem/src/  # Empty returns
+   grep -r "throw.*NotImplemented" bestow-yoursystem/src/
    ```
 
 2. **Verify all requirements** - Confirm:
@@ -405,13 +405,13 @@ If a feature truly cannot be implemented due to external dependencies or technic
 
 ```bash
 # Find all TODOs in a system
-grep -rn "// TODO\|// FIXME\|// HACK" jframe-yoursystem/src/
+grep -rn "// TODO\|// FIXME\|// HACK" bestow-yoursystem/src/
 
 # Find stub functions (empty or single-line implementations)
 # Manual review required - look for minimal implementations
 
 # Run static analysis
-clang-tidy jframe-yoursystem/src/*.cpp
+clang-tidy bestow-yoursystem/src/*.cpp
 
 # Verify test coverage
 ctest --preset macos-debug -R "YourSystemTest" --verbose
@@ -419,7 +419,7 @@ ctest --preset macos-debug -R "YourSystemTest" --verbose
 
 ## Profiling
 
-Tracy integration is available with `JFRAME_ENABLE_TRACY`:
+Tracy integration is available with `BESTOW_ENABLE_TRACY`:
 
 ```cpp
 #include <tracy/Tracy.hpp>
@@ -513,7 +513,7 @@ physics->createBody(entity, def);
 
 ## Agent Coordination Guide
 
-This section provides guidance for AI agents working independently on JFrame to minimize merge conflicts and maximize parallel productivity.
+This section provides guidance for AI agents working independently on Bestow to minimize merge conflicts and maximize parallel productivity.
 
 ### File Ownership Model
 
@@ -521,33 +521,33 @@ Each system has clear file boundaries. Agents should claim ownership of exactly 
 
 | System | Owned Files | Dependencies |
 |--------|-------------|--------------|
-| Types | `jframe-contract/src/jframe.types.cppm` | None |
-| Core Utilities | `jframe-core/*` | Types |
-| Events | `jframe-events/*` | Types |
-| Config | `jframe-config/*` | Types |
-| Entity | `jframe-entity/*` | Types, Events |
-| Assets | `jframe-assets/*` | Types, Events |
-| Input | `jframe-input/*` | Types, Events |
-| Save | `jframe-save/*` | Types, Events |
-| Graphics | `jframe-graphics/*` | Types, Entity, Assets |
-| Audio | `jframe-audio/*` | Types, Entity, Assets |
-| Physics | `jframe-physics/*` | Types, Entity, Events |
-| Level | `jframe-level/*` | Types, Entity, Assets, Events |
-| AI | `jframe-ai/*` | Types, Entity, Physics |
-| Dev Tools | `jframe-dev/*` | All systems |
+| Types | `bestow-contract/src/bestow.types.cppm` | None |
+| Core Utilities | `bestow-core/*` | Types |
+| Events | `bestow-events/*` | Types |
+| Config | `bestow-config/*` | Types |
+| Entity | `bestow-entity/*` | Types, Events |
+| Assets | `bestow-assets/*` | Types, Events |
+| Input | `bestow-input/*` | Types, Events |
+| Save | `bestow-save/*` | Types, Events |
+| Graphics | `bestow-graphics/*` | Types, Entity, Assets |
+| Audio | `bestow-audio/*` | Types, Entity, Assets |
+| Physics | `bestow-physics/*` | Types, Entity, Events |
+| Level | `bestow-level/*` | Types, Entity, Assets, Events |
+| AI | `bestow-ai/*` | Types, Entity, Physics |
+| Dev Tools | `bestow-dev/*` | All systems |
 | Platformer | `examples/platformer/*` | All systems |
 
 ### Rules for Independent Work
 
 1. **Never modify files outside your claimed system** - If you need a change to a dependency interface, document the requirement and leave a `// TODO(agent): Need X from Y system` comment.
 
-2. **Interface contracts are immutable** - The `.cppm` files in `jframe-contract/` define the API. Don't change signatures without orchestrator approval.
+2. **Interface contracts are immutable** - The `.cppm` files in `bestow-contract/` define the API. Don't change signatures without orchestrator approval.
 
 3. **Use the test harness** - Each system has its own test file (`tests/test_*.cpp`). Write tests before implementing.
 
 4. **Document assumptions** - If your implementation depends on behavior from another system, add a comment explaining the assumption.
 
-5. **Compile in isolation** - Your system should compile independently: `cmake --build --preset macos-debug --target jframe-yoursystem`
+5. **Compile in isolation** - Your system should compile independently: `cmake --build --preset macos-debug --target bestow-yoursystem`
 
 ### Parallel-Safe Systems (No Coordination Needed)
 
@@ -582,7 +582,7 @@ When completing work, leave a status comment at the top of your implementation f
 - `CMakeLists.txt` in project root (orchestrator only)
 - `vcpkg.json` (orchestrator only)
 - `cmake/` directory (orchestrator only)
-- `jframe-contract/*.cppm` interfaces (orchestrator approval required)
+- `bestow-contract/*.cppm` interfaces (orchestrator approval required)
 - Other agent's system directories
 
 ---
@@ -626,18 +626,18 @@ Check these indicators for each system:
 
 ```bash
 # Does it compile?
-cmake --build --preset macos-debug --target jframe-systemname
+cmake --build --preset macos-debug --target bestow-systemname
 
 # Do tests pass?
 ctest --preset macos-debug -R "SystemNameTest"
 
 # What's the implementation coverage?
-grep -c "// TODO" jframe-systemname/src/*.cpp
+grep -c "// TODO" bestow-systemname/src/*.cpp
 ```
 
 ### Handling Interface Changes
 
-If an agent needs to change an interface in `jframe-contract/`:
+If an agent needs to change an interface in `bestow-contract/`:
 
 1. Agent documents the proposed change in their status comment
 2. Orchestrator reviews impact on dependent systems
@@ -663,7 +663,7 @@ Before marking a system complete:
 
 ### Reference Documents
 
-- **Technical Specification**: `docs/jframe-technical-design.md`
+- **Technical Specification**: `docs/bestow-technical-design.md`
 - **Project Status & Checklist**: `docs/PROJECT-STATUS.md`
 - **This File**: Development guidelines and coordination rules
 
@@ -685,9 +685,9 @@ Based on the implementation checklist in PROJECT-STATUS.md:
 
 1. Read `docs/PROJECT-STATUS.md` for current state
 2. Read this file (`CLAUDE.md`) for coding standards
-3. Read `docs/jframe-technical-design.md` sections relevant to your assigned system
-4. Read the interface file: `jframe-contract/src/jframe.yoursystem.cppm`
-5. Read existing implementation: `jframe-yoursystem/src/*.cpp`
+3. Read `docs/bestow-technical-design.md` sections relevant to your assigned system
+4. Read the interface file: `bestow-contract/src/bestow.yoursystem.cppm`
+5. Read existing implementation: `bestow-yoursystem/src/*.cpp`
 6. Run existing tests: `ctest --preset macos-debug -R "YourSystemTest"`
 7. Implement, test, document, push
 

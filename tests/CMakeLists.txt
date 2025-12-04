@@ -10,7 +10,7 @@ configure_file(
     @ONLY
 )
 
-add_executable(jframe-tests
+add_executable(bestow-tests
     unit/ComponentsTests.cpp
     unit/CoreSystemTests.cpp
     unit/EntitySystemTests.cpp
@@ -27,35 +27,35 @@ add_executable(jframe-tests
     unit/GASSystemTests.cpp
     unit/BlueprintFactoryTests.cpp
 )
-target_use_std_module(jframe-tests)
+target_use_std_module(bestow-tests)
 
-target_link_libraries(jframe-tests
+target_link_libraries(bestow-tests
     PRIVATE
-        jframe-contract
-        jframe-components
-        jframe-core
-        jframe-entity
-        jframe-events
-        jframe-assets
-        jframe-save
-        jframe-input
-        jframe-audio
-        jframe-graphics
-        jframe-physics
-        jframe-level
-        jframe-ai
-        jframe-camera
-        jframe-gas
-        jframe-blueprints
+        bestow-contract
+        bestow-components
+        bestow-core
+        bestow-entity
+        bestow-events
+        bestow-assets
+        bestow-save
+        bestow-input
+        bestow-audio
+        bestow-graphics
+        bestow-physics
+        bestow-level
+        bestow-ai
+        bestow-camera
+        bestow-gas
+        bestow-blueprints
         GTest::gtest
         GTest::gtest_main
 )
 
-target_compile_features(jframe-tests PRIVATE cxx_std_23)
+target_compile_features(bestow-tests PRIVATE cxx_std_23)
 
 # MSVC workaround: force include entt_compat.hpp to fix ADL issues with C++23 modules
 if(MSVC)
-    target_compile_options(jframe-tests PRIVATE /FI"jframe/entt_compat.hpp")
+    target_compile_options(bestow-tests PRIVATE /FI"bestow/entt_compat.hpp")
 endif()
 
 include(GoogleTest)
@@ -67,6 +67,6 @@ include(GoogleTest)
 # Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
 # Run all tests (local):                ctest --preset <preset>
 # Run only flaky tests:                 ctest --preset <preset> -L Flaky
-gtest_discover_tests(jframe-tests
+gtest_discover_tests(bestow-tests
     TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
 )

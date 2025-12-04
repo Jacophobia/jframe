@@ -2,34 +2,34 @@
 // Camera System Demo - Entry point
 
 // MSVC C++23 module compatibility for EnTT iterators
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.camera;
-import jframe.camera.impl;
-import jframe.entity;
-import jframe.entity.impl;
+import bestow.types;
+import bestow.camera;
+import bestow.camera.impl;
+import bestow.entity;
+import bestow.entity.impl;
 import camera.demo;
 
 int main() {
     try {
-        std::println("JFrame Camera System Demo");
+        std::println("Bestow Camera System Demo");
         std::println("=========================\n");
 
         // Create viewport size for camera
-        jframe::Size viewport{800, 600};
+        bestow::Size viewport{800, 600};
         std::println("Creating camera system with viewport: {}x{}", viewport.width, viewport.height);
 
         // Create the camera system
-        auto cameraSystem = jframe::createCameraSystem(viewport);
+        auto cameraSystem = bestow::createCameraSystem(viewport);
         if (!cameraSystem) {
             std::println("ERROR: Failed to create camera system");
             return 1;
         }
 
         // Create the entity system (needed for target entities)
-        auto entitySystem = jframe::createEntitySystem();
+        auto entitySystem = bestow::createEntitySystem();
         if (!entitySystem) {
             std::println("ERROR: Failed to create entity system");
             return 1;

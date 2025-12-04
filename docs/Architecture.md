@@ -1,6 +1,6 @@
 # Architecture Guide
 
-This guide provides a comprehensive overview of JFrame's architecture, design patterns, and system interactions.
+This guide provides a comprehensive overview of Bestow's architecture, design patterns, and system interactions.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This guide provides a comprehensive overview of JFrame's architecture, design pa
 
 ## Overview
 
-JFrame is built on several core architectural principles:
+Bestow is built on several core architectural principles:
 
 1. **Program to Interfaces** - All systems implement abstract interfaces for testability and flexibility
 2. **Composition Over Inheritance** - Entity Component System (ECS) architecture
@@ -36,47 +36,47 @@ JFrame is built on several core architectural principles:
 
 ## Module-Based Architecture
 
-JFrame uses C++23 modules to organize code into logical units with clear dependencies.
+Bestow uses C++23 modules to organize code into logical units with clear dependencies.
 
 ### Module Hierarchy
 
 ```
-jframe (primary module - re-exports all)
-├── jframe.types          // Core types (Entity, Transform2D, Vec2, etc.)
-├── jframe.core           // Core utilities (Timer, Logging, JobSystem)
-├── jframe.events         // Event system interface
-├── jframe.entity         // Entity/Component system interface
-├── jframe.graphics       // Graphics system interface
-├── jframe.physics        // Physics system interface
-├── jframe.audio          // Audio system interface
-├── jframe.input          // Input system interface
-├── jframe.assets         // Asset system interface
-├── jframe.save           // Save system interface
-├── jframe.level          // Level system interface
-├── jframe.ai             // AI system interface
-├── jframe.camera         // Camera system interface
-├── jframe.gas            // Gameplay Ability System interface
-├── jframe.config         // Config system interface
-└── jframe.dev            // Dev tools (debug builds only)
+bestow (primary module - re-exports all)
+├── bestow.types          // Core types (Entity, Transform2D, Vec2, etc.)
+├── bestow.core           // Core utilities (Timer, Logging, JobSystem)
+├── bestow.events         // Event system interface
+├── bestow.entity         // Entity/Component system interface
+├── bestow.graphics       // Graphics system interface
+├── bestow.physics        // Physics system interface
+├── bestow.audio          // Audio system interface
+├── bestow.input          // Input system interface
+├── bestow.assets         // Asset system interface
+├── bestow.save           // Save system interface
+├── bestow.level          // Level system interface
+├── bestow.ai             // AI system interface
+├── bestow.camera         // Camera system interface
+├── bestow.gas            // Gameplay Ability System interface
+├── bestow.config         // Config system interface
+└── bestow.dev            // Dev tools (debug builds only)
 ```
 
 ### Module Structure Pattern
 
-All JFrame modules follow this structure:
+All Bestow modules follow this structure:
 
 ```cpp
-// jframe-{system}/src/jframe.{system}.cppm (Interface)
+// bestow-{system}/src/bestow.{system}.cppm (Interface)
 module;
 
 // Global module fragment - third-party headers only
 #include <third_party_header.hpp>
 
-export module jframe.{system};
+export module bestow.{system};
 
 import std;
-import jframe.types;
+import bestow.types;
 
-export namespace jframe {
+export namespace bestow {
     // Public interface declarations
     class ISystemName {
     public:
@@ -87,18 +87,18 @@ export namespace jframe {
 ```
 
 ```cpp
-// jframe-{system}/src/jframe.{system}.impl.cppm (Implementation Interface)
+// bestow-{system}/src/bestow.{system}.impl.cppm (Implementation Interface)
 module;
 
 #include <third_party_header.hpp>
 
-export module jframe.{system}.impl;
+export module bestow.{system}.impl;
 
 import std;
-import jframe.{system};
-import jframe.types;
+import bestow.{system};
+import bestow.types;
 
-export namespace jframe {
+export namespace bestow {
     // Concrete implementation
     class SystemImpl : public ISystemName {
         // Implementation details
@@ -110,13 +110,13 @@ export namespace jframe {
 ```
 
 ```cpp
-// jframe-{system}/src/SystemImpl.cpp (Implementation)
-module jframe.{system}.impl;
+// bestow-{system}/src/SystemImpl.cpp (Implementation)
+module bestow.{system}.impl;
 
 import std;
-import jframe.{system};
+import bestow.{system};
 
-namespace jframe {
+namespace bestow {
     // Method implementations
     void SystemImpl::method() {
         // ...
@@ -133,16 +133,16 @@ namespace jframe {
 ```cpp
 // Minimal import
 import std;
-import jframe;  // Everything
+import bestow;  // Everything
 
 // Or selective imports
-import jframe.entity;
-import jframe.graphics;
-import jframe.physics;
+import bestow.entity;
+import bestow.graphics;
+import bestow.physics;
 
 // Dev tools (debug builds only)
-#ifdef JFRAME_DEV_TOOLS
-import jframe.dev;
+#ifdef BESTOW_DEV_TOOLS
+import bestow.dev;
 #endif
 ```
 
@@ -150,7 +150,7 @@ import jframe.dev;
 
 ## System Overview
 
-JFrame is composed of independent systems that communicate via interfaces and events.
+Bestow is composed of independent systems that communicate via interfaces and events.
 
 ### System Categories
 
@@ -286,12 +286,12 @@ Events (Tier 0)
 
 ## Dependency Injection
 
-JFrame uses the **EngineBuilder** pattern to wire systems together.
+Bestow uses the **EngineBuilder** pattern to wire systems together.
 
 ### EngineBuilder Pattern
 
 ```cpp
-auto engineResult = jframe::core::EngineBuilder()
+auto engineResult = bestow::core::EngineBuilder()
     .withEvents()                    // Event system
     .withEntities()                  // Entity system (needs Events)
     .withPhysics()                   // Physics (needs Entities, Events)
@@ -326,7 +326,7 @@ engineResult.value().run(game);
 ```cpp
 class Game {
 public:
-    bool initialize(jframe::core::Engine& engine) {
+    bool initialize(bestow::core::Engine& engine) {
         engine_ = &engine;
         auto& sys = engine.systems();
 
@@ -339,7 +339,7 @@ public:
     }
 
 private:
-    jframe::core::Engine* engine_;
+    bestow::core::Engine* engine_;
 };
 ```
 
@@ -347,7 +347,7 @@ private:
 
 ## Data-Driven Design
 
-JFrame separates **engine code (C++)** from **game content (Lua)**.
+Bestow separates **engine code (C++)** from **game content (Lua)**.
 
 ### Lua Data Architecture
 
@@ -467,7 +467,7 @@ For a complete guide, see [Data-Driven Design Guide](Data-Driven-Design.md).
 
 ## The Game Loop
 
-JFrame uses a **fixed-timestep game loop** for physics and logic, with **variable-timestep rendering** for smooth visuals.
+Bestow uses a **fixed-timestep game loop** for physics and logic, with **variable-timestep rendering** for smooth visuals.
 
 ### Fixed Timestep Pattern
 
@@ -488,11 +488,11 @@ Your game implements this interface:
 class Game {
 public:
     // Called once at startup
-    bool initialize(jframe::core::Engine& engine);
+    bool initialize(bestow::core::Engine& engine);
 
     // Called at fixed intervals (e.g., 60 FPS)
     // Use for physics, game logic, AI
-    void updateFixed(jframe::DeltaTime dt);
+    void updateFixed(bestow::DeltaTime dt);
 
     // Called every frame with interpolation alpha [0, 1]
     // Use for rendering only
@@ -570,7 +570,7 @@ void Game::render(float alpha) {
 All systems implement abstract interfaces:
 
 ```cpp
-// Interface in jframe-contract
+// Interface in bestow-contract
 export class IEntitySystem {
 public:
     virtual ~IEntitySystem() = default;
@@ -579,7 +579,7 @@ public:
     // ...
 };
 
-// Implementation in jframe-entity
+// Implementation in bestow-entity
 class EntitySystemImpl : public IEntitySystem {
     Entity createEntity() override {
         return registry_.create();
@@ -597,7 +597,7 @@ private:
 
 ### 2. Entity Component System (ECS)
 
-JFrame uses EnTT for ECS:
+Bestow uses EnTT for ECS:
 
 ```cpp
 // Create entity
@@ -661,7 +661,7 @@ export std::unique_ptr<IGraphicsSystem> createGraphicsSystem(const GraphicsConfi
 
 ### 5. Result Type (std::expected)
 
-JFrame uses `std::expected` for error handling without exceptions:
+Bestow uses `std::expected` for error handling without exceptions:
 
 ```cpp
 template<typename T, typename E = std::error_code>
@@ -837,7 +837,7 @@ for (auto [e, transform] : entities->view<Transform2D>().each()) {
 
 ## Summary
 
-JFrame's architecture is built on:
+Bestow's architecture is built on:
 
 1. **C++23 Modules** - Clean dependency graph, fast compilation
 2. **Interface-Based Design** - Testable, flexible, decoupled
@@ -852,7 +852,7 @@ JFrame's architecture is built on:
 
 - Read [Getting Started Guide](Getting-Started.md) to build your first game
 - Study [Data-Driven Design Guide](Data-Driven-Design.md) for Lua architecture
-- Explore [Technical Design](jframe-technical-design.md) for deep dive
+- Explore [Technical Design](bestow-technical-design.md) for deep dive
 - Check out example projects in `examples/`
 
 ### Further Reading

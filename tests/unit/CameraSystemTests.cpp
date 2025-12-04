@@ -5,14 +5,14 @@
 #include <cmath>
 
 // MSVC C++23 module compatibility - use full EnTT header
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 #include <gtest/gtest.h>
 
-import jframe.camera;
-import jframe.camera.impl;
-import jframe.types;
+import bestow.camera;
+import bestow.camera.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class CameraSystemTest : public ::testing::Test {
 protected:
@@ -677,4 +677,4 @@ TEST_F(CameraSystemTest, TargetEntityDoesNotAffectUpdate) {
     EXPECT_FLOAT_EQ(pos.y, targetPos.y);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

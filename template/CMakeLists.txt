@@ -1,4 +1,4 @@
-# JFrame Template Game Project
+# Bestow Template Game Project
 # Copy this template to start your own game!
 
 cmake_minimum_required(VERSION 3.28)
@@ -12,25 +12,25 @@ add_executable(template-game
 # Enable C++23 modules support
 target_use_std_module(template-game)
 
-# Link all JFrame systems
+# Link all Bestow systems
 # Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(template-game
     PRIVATE
-        jframe-contract
-        jframe-core
-        jframe-entity
-        jframe-graphics
-        jframe-physics
-        jframe-audio
-        jframe-input
-        jframe-events
-        jframe-assets
-        jframe-level
-        jframe-config
-        jframe-gas
-        jframe-camera
-        jframe-blueprints
-        jframe-components
+        bestow-contract
+        bestow-core
+        bestow-entity
+        bestow-graphics
+        bestow-physics
+        bestow-audio
+        bestow-input
+        bestow-events
+        bestow-assets
+        bestow-level
+        bestow-config
+        bestow-gas
+        bestow-camera
+        bestow-blueprints
+        bestow-components
         lua
         sol2::sol2
 )

@@ -1,12 +1,12 @@
 // save-demo/src/main.cpp
-// Comprehensive demonstration of the JFrame Save System API
+// Comprehensive demonstration of the Bestow Save System API
 
 import std;
-import jframe.types;
-import jframe.save;
-import jframe.save.impl;
+import bestow.types;
+import bestow.save;
+import bestow.save.impl;
 
-using namespace jframe;
+using namespace bestow;
 
 //==============================================================================
 // Example Saveable: Player Data
@@ -240,11 +240,11 @@ void printMetadata(const SaveMetadata& meta) {
 //==============================================================================
 
 int main() {
-    std::println("JFrame Save System Demo");
+    std::println("Bestow Save System Demo");
     std::println("Comprehensive demonstration of ISaveSystem API\n");
 
     // Create save system
-    auto saveSystem = jframe::createSaveSystem();
+    auto saveSystem = bestow::createSaveSystem();
 
     // Create saveable objects
     PlayerData player;
@@ -642,9 +642,9 @@ int main() {
         int intValue = 42;
         float floatValue = 3.14159f;
         double doubleValue = 2.71828;
-        std::string stringValue = "Hello, JFrame!";
+        std::string stringValue = "Hello, Bestow!";
         bool boolValue = true;
-        std::vector<std::uint8_t> bytesValue = {0x4A, 0x46, 0x52, 0x41, 0x4D, 0x45}; // "JFRAME"
+        std::vector<std::uint8_t> bytesValue = {0x4A, 0x46, 0x52, 0x41, 0x4D, 0x45}; // "BESTOW"
 
         std::string getSaveKey() const override {
             return "archive_test";

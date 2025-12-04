@@ -2,21 +2,21 @@
 // Entity System Demo - Entry point
 
 // MSVC C++23 module compatibility for EnTT iterators
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.entity;
-import jframe.entity.impl;
+import bestow.types;
+import bestow.entity;
+import bestow.entity.impl;
 import entity.demo;
 
 int main() {
     try {
-        std::println("JFrame Entity System Demo");
+        std::println("Bestow Entity System Demo");
         std::println("=========================\n");
 
         // Create the entity system
-        auto entitySystem = jframe::createEntitySystem();
+        auto entitySystem = bestow::createEntitySystem();
 
         if (!entitySystem) {
             std::println("ERROR: Failed to create entity system");

@@ -1,4 +1,4 @@
-# System Demos - Comprehensive examples demonstrating each JFrame system
+# System Demos - Comprehensive examples demonstrating each Bestow system
 # Each subdirectory contains a standalone example that exercises the full API of a single system
 
 # Entity System Demo - Full ECS API demonstration

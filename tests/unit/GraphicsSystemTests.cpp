@@ -8,11 +8,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.graphics;
-import jframe.graphics.impl;
-import jframe.types;
+import bestow.graphics;
+import bestow.graphics.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 // NOTE: Many tests are marked DISABLED_ because they require OpenGL context
 // which requires a display. These tests define EXPECTED behavior but cannot
@@ -1200,4 +1200,4 @@ TEST_F(GraphicsSystemTest, DISABLED_ColorComponentsAtBoundaries) {
     graphics_->endFrame();
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

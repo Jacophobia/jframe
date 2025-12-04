@@ -4,23 +4,23 @@
 #pragma once
 
 import std;
-import jframe;
-import jframe.core;
-import jframe.gas;
-import jframe.camera;
-import jframe.blueprints;
-import jframe.config.impl;
+import bestow;
+import bestow.core;
+import bestow.gas;
+import bestow.camera;
+import bestow.blueprints;
+import bestow.config.impl;
 
 namespace abilitydemo {
 
-class Game : public jframe::core::Application {
+class Game : public bestow::core::Application {
 public:
     Game() = default;
     ~Game() override = default;
 
     // Application lifecycle
-    bool initialize(jframe::core::Engine& engine) override;
-    void updateFixed(jframe::DeltaTime dt) override;
+    bool initialize(bestow::core::Engine& engine) override;
+    void updateFixed(bestow::DeltaTime dt) override;
     void render(float alpha) override;
     void shutdown() override;
 
@@ -32,32 +32,32 @@ private:
     void loadLevel();
     void checkCollectablePickups();
 
-    void handlePlayerInput(jframe::DeltaTime dt);
-    void updatePlayerMovement(jframe::DeltaTime dt);
-    void updateCamera(jframe::DeltaTime dt);
+    void handlePlayerInput(bestow::DeltaTime dt);
+    void updatePlayerMovement(bestow::DeltaTime dt);
+    void updateCamera(bestow::DeltaTime dt);
     void renderUI();
 
     // Entity creation via blueprints (simplified)
     void createProjectile(float x, float y, float dirX, float dirY, bool isEnemy);
 
     // Combat
-    void handleCombat(jframe::DeltaTime dt);
+    void handleCombat(bestow::DeltaTime dt);
     void updateSwordHitbox();
     void checkSwordCollisions();
     void playerTakeDamage(int amount);
-    void enemyTakeDamage(jframe::Entity enemy, int amount);
+    void enemyTakeDamage(bestow::Entity enemy, int amount);
     void bossTakeDamage(int amount);
 
     // Enemy AI
-    void updateEnemies(jframe::DeltaTime dt);
-    void updateEnemy(jframe::Entity enemy, jframe::DeltaTime dt);
-    void updateBoss(jframe::DeltaTime dt);
+    void updateEnemies(bestow::DeltaTime dt);
+    void updateEnemy(bestow::Entity enemy, bestow::DeltaTime dt);
+    void updateBoss(bestow::DeltaTime dt);
 
     // Level mechanics
     void updateSwitches();
     void updateDoors();
-    void updateMovingPlatforms(jframe::DeltaTime dt);
-    void updateProjectiles(jframe::DeltaTime dt);
+    void updateMovingPlatforms(bestow::DeltaTime dt);
+    void updateProjectiles(bestow::DeltaTime dt);
     void checkTriggerZones();
     void checkHealthPickups();
     void checkCheckpoints();
@@ -67,7 +67,7 @@ private:
     void updateWallCheck();
     void handleDoubleJump();
     void handleWallJump();
-    void handleGroundPound(jframe::DeltaTime dt);
+    void handleGroundPound(bestow::DeltaTime dt);
 
     // Boss patterns
     void bossPatternAttack();
@@ -80,25 +80,25 @@ private:
     void playMusic(const std::string& musicName);
     void stopMusic();
 
-    jframe::core::Engine* engine_ = nullptr;
+    bestow::core::Engine* engine_ = nullptr;
 
     // Config system
-    std::unique_ptr<jframe::IConfigSystem> config_;
+    std::unique_ptr<bestow::IConfigSystem> config_;
 
-    // GAS system (created separately, not part of JFrameEngine)
-    std::unique_ptr<jframe::IGASSystem> gas_;
+    // GAS system (created separately, not part of BestowEngine)
+    std::unique_ptr<bestow::IGASSystem> gas_;
 
     // Blueprint factory for data-driven entity creation
-    std::unique_ptr<jframe::IBlueprintFactory> blueprints_;
+    std::unique_ptr<bestow::IBlueprintFactory> blueprints_;
 
     // Camera system for smooth following
-    std::unique_ptr<jframe::ICameraSystem> camera_;
+    std::unique_ptr<bestow::ICameraSystem> camera_;
 
-    jframe::Entity player_;
+    bestow::Entity player_;
 
     // Level tracking
-    jframe::LevelId currentLevelId_{};
-    jframe::AssetHandle levelAssetHandle_;
+    bestow::LevelId currentLevelId_{};
+    bestow::AssetHandle levelAssetHandle_;
 
     // NOTE: Entity vectors removed - using Entity Query System instead:
     // - Use sys.entities->collect<PlatformTag>() for platforms
@@ -107,29 +107,29 @@ private:
     // - etc.
 
     // GAS attribute IDs
-    jframe::AttributeId healthAttr_ = 0;
-    jframe::AttributeId staminaAttr_ = 0;
-    jframe::AttributeId moveSpeedAttr_ = 0;
+    bestow::AttributeId healthAttr_ = 0;
+    bestow::AttributeId staminaAttr_ = 0;
+    bestow::AttributeId moveSpeedAttr_ = 0;
 
     // GAS ability IDs
-    jframe::AbilityId dashAbility_ = 0;
-    jframe::AbilityId jumpAbility_ = 0;
-    jframe::AbilityId doubleJumpAbility_ = 0;
-    jframe::AbilityId wallJumpAbility_ = 0;
-    jframe::AbilityId groundPoundAbility_ = 0;
-    jframe::AbilityId swordAttackAbility_ = 0;
-    jframe::AbilityId swordCombo2Ability_ = 0;
-    jframe::AbilityId swordCombo3Ability_ = 0;
-    jframe::AbilityId shieldAbility_ = 0;
-    jframe::AbilityId rangedAbility_ = 0;
+    bestow::AbilityId dashAbility_ = 0;
+    bestow::AbilityId jumpAbility_ = 0;
+    bestow::AbilityId doubleJumpAbility_ = 0;
+    bestow::AbilityId wallJumpAbility_ = 0;
+    bestow::AbilityId groundPoundAbility_ = 0;
+    bestow::AbilityId swordAttackAbility_ = 0;
+    bestow::AbilityId swordCombo2Ability_ = 0;
+    bestow::AbilityId swordCombo3Ability_ = 0;
+    bestow::AbilityId shieldAbility_ = 0;
+    bestow::AbilityId rangedAbility_ = 0;
 
     // GAS effect IDs
-    jframe::EffectId healthRegenEffect_ = 0;
-    jframe::EffectId stunEffect_ = 0;
-    jframe::EffectId shieldEffect_ = 0;
-    jframe::EffectId invincibilityEffect_ = 0;
-    jframe::EffectId comboWindow1Effect_ = 0;
-    jframe::EffectId comboWindow2Effect_ = 0;
+    bestow::EffectId healthRegenEffect_ = 0;
+    bestow::EffectId stunEffect_ = 0;
+    bestow::EffectId shieldEffect_ = 0;
+    bestow::EffectId invincibilityEffect_ = 0;
+    bestow::EffectId comboWindow1Effect_ = 0;
+    bestow::EffectId comboWindow2Effect_ = 0;
 
     // Config-driven player values
     float playerMoveSpeed_ = 200.0f;
@@ -162,7 +162,7 @@ private:
     static constexpr float ATTACK_DURATION = 0.2f;
 
     // Sword hitbox
-    jframe::Entity swordHitbox_;
+    bestow::Entity swordHitbox_;
     bool swordHitboxActive_ = false;
 
     // Player combat
@@ -198,18 +198,18 @@ private:
 
     // Level progression
     int currentZone_ = 1;
-    jframe::Vec2 lastCheckpoint_ = {100.0f, 200.0f};
+    bestow::Vec2 lastCheckpoint_ = {100.0f, 200.0f};
     int enemiesDefeated_ = 0;
     int totalEnemiesInZone_ = 0;
 
     // Audio
-    std::unique_ptr<jframe::IConfigSystem> audioConfig_;
-    std::unordered_map<std::string, jframe::AssetHandle> soundAssets_;
+    std::unique_ptr<bestow::IConfigSystem> audioConfig_;
+    std::unordered_map<std::string, bestow::AssetHandle> soundAssets_;
     bool audioEnabled_ = true;
-    static constexpr jframe::Channel MUSIC_CHANNEL = 0;
-    static constexpr jframe::Channel SFX_CHANNEL = 1;
-    static constexpr jframe::Channel PLAYER_CHANNEL = 2;
-    static constexpr jframe::Channel COMBAT_CHANNEL = 3;
+    static constexpr bestow::Channel MUSIC_CHANNEL = 0;
+    static constexpr bestow::Channel SFX_CHANNEL = 1;
+    static constexpr bestow::Channel PLAYER_CHANNEL = 2;
+    static constexpr bestow::Channel COMBAT_CHANNEL = 3;
 };
 
 }  // namespace abilitydemo

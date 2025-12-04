@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(jframe
+project(bestow
     VERSION 1.0.0
     LANGUAGES CXX
-    DESCRIPTION "JFrame Game Framework"
+    DESCRIPTION "Bestow Game Framework"
 )
 
 # C++23 settings
@@ -12,11 +12,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Options
-option(JFRAME_BUILD_TESTS "Build tests" ON)
-option(JFRAME_BUILD_EXAMPLES "Build examples" ON)
-option(JFRAME_ENABLE_TRACY "Enable Tracy profiler" ON)
-option(JFRAME_ENABLE_ASAN "Enable AddressSanitizer" OFF)
-option(JFRAME_DEV_TOOLS "Enable development tools (hot reload, inspector)" ON)
+option(BESTOW_BUILD_TESTS "Build tests" ON)
+option(BESTOW_BUILD_EXAMPLES "Build examples" ON)
+option(BESTOW_ENABLE_TRACY "Enable Tracy profiler" ON)
+option(BESTOW_ENABLE_ASAN "Enable AddressSanitizer" OFF)
+option(BESTOW_DEV_TOOLS "Enable development tools (hot reload, inspector)" ON)
 
 # vcpkg toolchain (if using vcpkg)
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -41,36 +41,36 @@ find_dependencies()
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Add subdirectories
-add_subdirectory(jframe-contract)
-add_subdirectory(jframe-metrics)
-add_subdirectory(jframe-components)
-add_subdirectory(jframe-core)
-add_subdirectory(jframe-entity)
-add_subdirectory(jframe-graphics)
-add_subdirectory(jframe-audio)
-add_subdirectory(jframe-input)
-add_subdirectory(jframe-assets)
-add_subdirectory(jframe-save)
-add_subdirectory(jframe-level)
-add_subdirectory(jframe-events)
-add_subdirectory(jframe-physics)
-add_subdirectory(jframe-ai)
-add_subdirectory(jframe-camera)
-add_subdirectory(jframe-config)
-add_subdirectory(jframe-gas)
-add_subdirectory(jframe-blueprints)
+add_subdirectory(bestow-contract)
+add_subdirectory(bestow-metrics)
+add_subdirectory(bestow-components)
+add_subdirectory(bestow-core)
+add_subdirectory(bestow-entity)
+add_subdirectory(bestow-graphics)
+add_subdirectory(bestow-audio)
+add_subdirectory(bestow-input)
+add_subdirectory(bestow-assets)
+add_subdirectory(bestow-save)
+add_subdirectory(bestow-level)
+add_subdirectory(bestow-events)
+add_subdirectory(bestow-physics)
+add_subdirectory(bestow-ai)
+add_subdirectory(bestow-camera)
+add_subdirectory(bestow-config)
+add_subdirectory(bestow-gas)
+add_subdirectory(bestow-blueprints)
 
 # Development tools (only in debug builds)
-if(JFRAME_DEV_TOOLS)
-    add_subdirectory(jframe-dev)
+if(BESTOW_DEV_TOOLS)
+    add_subdirectory(bestow-dev)
 endif()
 
-if(JFRAME_BUILD_TESTS)
+if(BESTOW_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
 
-if(JFRAME_BUILD_EXAMPLES)
+if(BESTOW_BUILD_EXAMPLES)
     add_subdirectory(examples)
 endif()
 
@@ -84,69 +84,69 @@ add_subdirectory(template)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-# List of all JFrame library targets
-set(JFRAME_LIBRARY_TARGETS
-    jframe-contract
-    jframe-metrics
-    jframe-components
-    jframe-core
-    jframe-entity
-    jframe-graphics
-    jframe-audio
-    jframe-input
-    jframe-assets
-    jframe-save
-    jframe-level
-    jframe-events
-    jframe-physics
-    jframe-ai
-    jframe-camera
-    jframe-config
-    jframe-gas
-    jframe-blueprints
+# List of all Bestow library targets
+set(BESTOW_LIBRARY_TARGETS
+    bestow-contract
+    bestow-metrics
+    bestow-components
+    bestow-core
+    bestow-entity
+    bestow-graphics
+    bestow-audio
+    bestow-input
+    bestow-assets
+    bestow-save
+    bestow-level
+    bestow-events
+    bestow-physics
+    bestow-ai
+    bestow-camera
+    bestow-config
+    bestow-gas
+    bestow-blueprints
 )
 
-if(JFRAME_DEV_TOOLS)
-    list(APPEND JFRAME_LIBRARY_TARGETS jframe-dev)
+if(BESTOW_DEV_TOOLS)
+    list(APPEND BESTOW_LIBRARY_TARGETS bestow-dev)
 endif()
 
-# Note: Tracy is NOT exported - it's statically linked into jframe-metrics
+# Note: Tracy is NOT exported - it's statically linked into bestow-metrics
 # and its include paths point to the build directory (FetchContent)
 
 # Install library targets
-install(TARGETS ${JFRAME_LIBRARY_TARGETS}
-    EXPORT jframe-targets
+install(TARGETS ${BESTOW_LIBRARY_TARGETS}
+    EXPORT bestow-targets
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-    FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/jframe/modules
+    FILE_SET CXX_MODULES DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bestow/modules
     INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
 # Export targets
-install(EXPORT jframe-targets
-    FILE jframe-targets.cmake
-    NAMESPACE jframe::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/jframe
+install(EXPORT bestow-targets
+    FILE bestow-targets.cmake
+    NAMESPACE bestow::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bestow
 )
 
 # Create package config file
 configure_package_config_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/jframe-config.cmake.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/jframe-config.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/jframe
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/bestow-config.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/bestow-config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bestow
 )
 
 # Create version file
 write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/jframe-config-version.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/bestow-config-version.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion
 )
 
 # Install config files
 install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/jframe-config.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/jframe-config-version.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/jframe
+    "${CMAKE_CURRENT_BINARY_DIR}/bestow-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/bestow-config-version.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bestow
 )

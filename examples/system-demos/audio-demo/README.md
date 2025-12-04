@@ -1,6 +1,6 @@
 # Audio System Demo
 
-Comprehensive demonstration of the JFrame Audio System (`IAudioSystem`) interface.
+Comprehensive demonstration of the Bestow Audio System (`IAudioSystem`) interface.
 
 ## Overview
 
@@ -129,7 +129,7 @@ This demo demonstrates **100% of the IAudioSystem interface**:
 
 ## Types Demonstrated
 
-All audio-related types from `jframe.types`:
+All audio-related types from `bestow.types`:
 - ✅ `Channel` and `Channels` namespace constants
 - ✅ `Volume` (float alias)
 - ✅ `SoundHandle` (uint64_t alias)
@@ -141,12 +141,12 @@ All audio-related types from `jframe.types`:
 ## Notes
 
 - This is a demonstration of the **API interface**, not a playback example
-- Actual audio playback requires integration with `jframe-audio` implementation (FMOD-based)
+- Actual audio playback requires integration with `bestow-audio` implementation (FMOD-based)
 - The demo shows typical usage patterns and best practices
 - All API calls are documented with clear examples
 
 ## Related Files
 
-- **Interface**: `/jframe-contract/src/jframe.audio.cppm`
-- **Types**: `/jframe-contract/src/jframe.types.cppm`
-- **Implementation**: `/jframe-audio/` (FMOD-based)
+- **Interface**: `/bestow-contract/src/bestow.audio.cppm`
+- **Types**: `/bestow-contract/src/bestow.types.cppm`
+- **Implementation**: `/bestow-audio/` (FMOD-based)

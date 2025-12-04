@@ -1,15 +1,15 @@
 // config-demo/src/main.cpp
-// Comprehensive demonstration of JFrame Config System API
+// Comprehensive demonstration of Bestow Config System API
 
 // MSVC C++23 module compatibility for sol2 globals
-#include <jframe/sol2_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.config;
-import jframe.config.impl;
+import bestow.types;
+import bestow.config;
+import bestow.config.impl;
 
-using namespace jframe;
+using namespace bestow;
 
 //==============================================================================
 // Helper Functions
@@ -458,7 +458,7 @@ void demoLoadConfigAsset(IConfigSystem& config) {
 //==============================================================================
 
 int main() {
-    std::println("JFrame Config System Demo");
+    std::println("Bestow Config System Demo");
     std::println("Comprehensive API coverage test\n");
 
     // Create config system instance

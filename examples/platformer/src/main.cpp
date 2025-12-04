@@ -2,31 +2,31 @@
 // Platformer example entry point
 
 // MSVC C++23 module compatibility for EnTT iterators and sol2 globals
-#include <jframe/entt_compat.hpp>
-#include <jframe/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-#if defined(JFRAME_DEV_TOOLS)
-import jframe.dev;
+#if defined(BESTOW_DEV_TOOLS)
+import bestow.dev;
 #endif
 
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting JFrame Platformer Example");
+    bestow::core::logInfo("Starting Bestow Platformer Example");
 
     // Build the engine with all required systems
-    auto engineResult = jframe::core::EngineBuilder()
+    auto engineResult = bestow::core::EngineBuilder()
         .withEvents()
         .withEntities()
         .withPhysics()
-        .withGraphics(jframe::core::GraphicsConfig{
+        .withGraphics(bestow::core::GraphicsConfig{
             .width = 800,
             .height = 600,
-            .title = "JFrame Platformer",
+            .title = "Bestow Platformer",
             .vsync = true,
             .clearColor = {135, 206, 235, 255}  // Sky blue
         })
@@ -39,16 +39,16 @@ int main(int argc, char* argv[]) {
         .build();
 
     if (!engineResult) {
-        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        bestow::core::logError("Failed to build engine: " + engineResult.error());
         return 1;
     }
 
-    jframe::core::logInfo("Engine built successfully");
+    bestow::core::logInfo("Engine built successfully");
 
     // Create the game and run it
     platformer::Game game;
     engineResult.value().run(game);
 
-    jframe::core::logInfo("Platformer exiting");
+    bestow::core::logInfo("Platformer exiting");
     return 0;
 }

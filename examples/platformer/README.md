@@ -1,6 +1,6 @@
-# JFrame Platformer Example
+# Bestow Platformer Example
 
-A minimal but functional 2D platformer demonstrating the JFrame game framework.
+A minimal but functional 2D platformer demonstrating the Bestow game framework.
 
 ## Features
 
@@ -114,7 +114,7 @@ The following features are stubbed but not implemented:
 ## Development
 
 ### Hot Reload (Debug builds only)
-When built with `JFRAME_DEV_TOOLS=ON`:
+When built with `BESTOW_DEV_TOOLS=ON`:
 - Level files auto-reload on save
 - Blueprint files auto-reload on save
 - Dev overlay with FPS counter
@@ -128,4 +128,4 @@ When built with `JFRAME_DEV_TOOLS=ON`:
 
 ## License
 
-Part of the JFrame game framework.
+Part of the Bestow game framework.

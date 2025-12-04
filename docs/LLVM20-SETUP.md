@@ -1,4 +1,4 @@
-# LLVM 20 Setup Guide for JFrame
+# LLVM 20 Setup Guide for Bestow
 
 > **Last Updated:** 2025-01-25
 > **Required For:** C++23 `import std;` support
@@ -7,7 +7,7 @@
 
 ## Overview
 
-JFrame uses C++23 modules with `import std;` which requires LLVM Clang 20+. Apple Clang (Xcode) does not yet support `import std;`, so we use Homebrew's LLVM 20.
+Bestow uses C++23 modules with `import std;` which requires LLVM Clang 20+. Apple Clang (Xcode) does not yet support `import std;`, so we use Homebrew's LLVM 20.
 
 ## Prerequisites
 
@@ -72,7 +72,7 @@ target_use_std_module(my_target)
 
 This adds:
 - `-fprebuilt-module-path=${CMAKE_BINARY_DIR}/pcm` to compiler flags
-- Dependency on the `jframe-std-module` target
+- Dependency on the `bestow-std-module` target
 
 ## Common Issues
 
@@ -157,7 +157,7 @@ export namespace myns {
 ```cpp
 // At the top of the file, before any other code
 import std;
-import jframe;
+import bestow;
 
 int main() {
     std::cout << "Hello\n";
@@ -177,7 +177,7 @@ module;
 #include <glm/vec2.hpp>
 #include <box2d/box2d.h>
 
-export module jframe.physics;
+export module bestow.physics;
 
 import std;  // Standard library via module
 

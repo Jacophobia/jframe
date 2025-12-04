@@ -3,7 +3,7 @@
 
 #pragma once
 
-import jframe;
+import bestow;
 
 namespace platformer {
 
@@ -33,15 +33,15 @@ struct Health {
 
 // Camera follow component
 struct Camera2D {
-    jframe::Entity target;
+    bestow::Entity target;
     float smoothing = 0.1f;
-    jframe::Vec2 offset = {0.0f, 100.0f};
-    jframe::Vec2 position = {0.0f, 0.0f};
+    bestow::Vec2 offset = {0.0f, 100.0f};
+    bestow::Vec2 position = {0.0f, 0.0f};
 };
 
 // Enemy AI component
 struct EnemyAI {
-    jframe::Vec2 patrolStart = {0.0f, 0.0f};
+    bestow::Vec2 patrolStart = {0.0f, 0.0f};
     float patrolRange = 150.0f;
     float moveSpeed = 50.0f;
     int damage = 10;
@@ -58,12 +58,12 @@ struct Collectible {
 
 // Save data structures
 struct PlayerSaveData {
-    jframe::Vec2 position;
+    bestow::Vec2 position;
     int health;
     int score;
     float playtime;
 
-    void serialize(jframe::ISaveArchive& archive) const {
+    void serialize(bestow::ISaveArchive& archive) const {
         archive.writeFloat("pos_x", position.x);
         archive.writeFloat("pos_y", position.y);
         archive.writeInt("health", health);
@@ -71,7 +71,7 @@ struct PlayerSaveData {
         archive.writeFloat("playtime", playtime);
     }
 
-    void deserialize(const jframe::ILoadArchive& archive) {
+    void deserialize(const bestow::ILoadArchive& archive) {
         position.x = archive.readFloat("pos_x");
         position.y = archive.readFloat("pos_y");
         health = archive.readInt("health");
@@ -85,7 +85,7 @@ struct GameState {
     float playtime = 0.0f;
     int coinsCollected = 0;
     bool checkpointReached = false;
-    jframe::Vec2 checkpointPosition = {100.0f, 400.0f};
+    bestow::Vec2 checkpointPosition = {100.0f, 400.0f};
 };
 
 // Tag components (empty tags need at least one byte for EnTT)

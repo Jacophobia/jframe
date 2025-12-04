@@ -21,10 +21,10 @@ target_sources(physics-demo
 
 target_link_libraries(physics-demo
     PRIVATE
-        jframe-contract
-        jframe-physics
-        jframe-entity
-        jframe-events
+        bestow-contract
+        bestow-physics
+        bestow-entity
+        bestow-events
 )
 
 # Set output directory

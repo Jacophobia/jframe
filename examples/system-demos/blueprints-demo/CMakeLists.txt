@@ -4,7 +4,7 @@ project(blueprints-demo CXX)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find Lua (same as jframe-blueprints)
+# Find Lua (same as bestow-blueprints)
 find_package(Lua REQUIRED)
 
 # Blueprints demo executable
@@ -17,11 +17,11 @@ target_use_std_module(blueprints-demo)
 
 target_link_libraries(blueprints-demo
     PRIVATE
-        jframe-contract
-        jframe-entity
-        jframe-physics
-        jframe-events
-        jframe-blueprints
+        bestow-contract
+        bestow-entity
+        bestow-physics
+        bestow-events
+        bestow-blueprints
         ${LUA_LIBRARIES}
         sol2::sol2
 )

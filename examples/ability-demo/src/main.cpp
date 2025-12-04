@@ -2,28 +2,28 @@
 // Gameplay Ability System graphical demonstration
 
 // MSVC C++23 module compatibility for EnTT iterators and sol2 globals
-#include <jframe/entt_compat.hpp>
-#include <jframe/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting JFrame GAS Demo");
+    bestow::core::logInfo("Starting Bestow GAS Demo");
 
     // Build the engine with all required systems
     // Note: GAS system is created separately by the Game class
-    auto engineResult = jframe::core::EngineBuilder()
+    auto engineResult = bestow::core::EngineBuilder()
         .withEvents()
         .withEntities()
         .withPhysics()
-        .withGraphics(jframe::core::GraphicsConfig{
+        .withGraphics(bestow::core::GraphicsConfig{
             .width = 800,
             .height = 600,
-            .title = "JFrame - Gameplay Ability System Demo",
+            .title = "Bestow - Gameplay Ability System Demo",
             .vsync = true,
             .clearColor = {20, 20, 30, 255}  // Dark blue background
         })
@@ -33,16 +33,16 @@ int main(int argc, char* argv[]) {
         .build();
 
     if (!engineResult) {
-        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        bestow::core::logError("Failed to build engine: " + engineResult.error());
         return 1;
     }
 
-    jframe::core::logInfo("Engine built successfully");
+    bestow::core::logInfo("Engine built successfully");
 
     // Create the game and run it
     abilitydemo::Game game;
     engineResult.value().run(game);
 
-    jframe::core::logInfo("GAS Demo exiting");
+    bestow::core::logInfo("GAS Demo exiting");
     return 0;
 }

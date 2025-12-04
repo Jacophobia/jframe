@@ -416,7 +416,7 @@ registry.view<Transform2D>().use<Transform2D>().each([](auto& transform) {
 
 ## Common Component Types
 
-JFrame provides built-in component types in `jframe.types`:
+Bestow provides built-in component types in `bestow.types`:
 
 ### Transform2D
 

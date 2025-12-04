@@ -1,6 +1,6 @@
 # Config System Demo
 
-Comprehensive demonstration of the JFrame Config System API (`jframe.config`).
+Comprehensive demonstration of the Bestow Config System API (`bestow.config`).
 
 ## Overview
 

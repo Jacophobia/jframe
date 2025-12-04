@@ -1,5 +1,5 @@
 // tests/unit/AISystemTests.cpp
-// Unit tests for JFrame AI System
+// Unit tests for Bestow AI System
 
 #include <any>
 #include <cmath>
@@ -10,15 +10,15 @@
 
 #include <gtest/gtest.h>
 
-import jframe.ai;
-import jframe.ai.impl;
-import jframe.assets;
-import jframe.assets.impl;
-import jframe.physics;
-import jframe.physics.impl;
-import jframe.types;
+import bestow.ai;
+import bestow.ai.impl;
+import bestow.assets;
+import bestow.assets.impl;
+import bestow.physics;
+import bestow.physics.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class AISystemTest : public ::testing::Test {
 protected:
@@ -1093,4 +1093,4 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithPhysicsBodies) {
     EXPECT_EQ(entities.size(), 2u);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests
