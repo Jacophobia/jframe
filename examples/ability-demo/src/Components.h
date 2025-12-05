@@ -3,7 +3,7 @@
 
 #pragma once
 
-import jframe;
+import bestow;
 
 namespace abilitydemo {
 
@@ -36,15 +36,15 @@ struct PlayerController {
 
 // Camera follow component
 struct Camera2D {
-    jframe::Entity target;
+    bestow::Entity target;
     float smoothing = 5.0f;
-    jframe::Vec2 offset = {0.0f, -50.0f};
-    jframe::Vec2 position = {400.0f, 300.0f};
+    bestow::Vec2 offset = {0.0f, -50.0f};
+    bestow::Vec2 position = {400.0f, 300.0f};
 };
 
 // Visual effect component (for showing active effects)
 struct EffectVisual {
-    jframe::Color tintColor = jframe::Color::white();
+    bestow::Color tintColor = bestow::Color::white();
     float pulseTimer = 0.0f;
 };
 

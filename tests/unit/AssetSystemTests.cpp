@@ -14,11 +14,11 @@
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>  // For accessing JSON data stored in std::any
 
-import jframe.assets;
-import jframe.assets.impl;
-import jframe.types;
+import bestow.assets;
+import bestow.assets.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class AssetSystemTest : public ::testing::Test {
 protected:
@@ -527,7 +527,7 @@ TEST_F(AssetSystemTest, ReloadUnregisteredAssetDoesNotCrash) {
 
 TEST_F(AssetSystemTest, CheckForReloadsDetectsModifiedFile) {
     // Create a temporary test file
-    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_hotreload.txt";
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "bestow_test_hotreload.txt";
 
     // Write initial content
     {
@@ -575,7 +575,7 @@ TEST_F(AssetSystemTest, CheckForReloadsDetectsModifiedFile) {
 
 TEST_F(AssetSystemTest, CheckForReloadsIgnoresUnmodifiedFiles) {
     // Create a temporary test file
-    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_unmodified.txt";
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "bestow_test_unmodified.txt";
 
     {
         std::ofstream file(tempFilePath);
@@ -611,7 +611,7 @@ TEST_F(AssetSystemTest, CheckForReloadsIgnoresUnmodifiedFiles) {
 
 TEST_F(AssetSystemTest, CheckForReloadsIgnoresNonExistentFiles) {
     // Create a temporary file, load it, then delete it
-    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_deleted.txt";
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "bestow_test_deleted.txt";
 
     {
         std::ofstream file(tempFilePath);
@@ -649,7 +649,7 @@ TEST_F(AssetSystemTest, CheckForReloadsIgnoresUnloadedAssets) {
 
 TEST_F(AssetSystemTest, CheckForReloadsIgnoresAssetsBeingLoaded) {
     // Create a temporary test file
-    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "jframe_test_loading.txt";
+    std::filesystem::path tempFilePath = std::filesystem::temp_directory_path() / "bestow_test_loading.txt";
     {
         std::ofstream file(tempFilePath);
         file << "Loading test content";
@@ -679,9 +679,9 @@ TEST_F(AssetSystemTest, CheckForReloadsIgnoresAssetsBeingLoaded) {
 
 TEST_F(AssetSystemTest, CheckForReloadsWithMultipleAssets) {
     // Create multiple temporary test files
-    std::filesystem::path tempFile1 = std::filesystem::temp_directory_path() / "jframe_test_multi1.txt";
-    std::filesystem::path tempFile2 = std::filesystem::temp_directory_path() / "jframe_test_multi2.txt";
-    std::filesystem::path tempFile3 = std::filesystem::temp_directory_path() / "jframe_test_multi3.txt";
+    std::filesystem::path tempFile1 = std::filesystem::temp_directory_path() / "bestow_test_multi1.txt";
+    std::filesystem::path tempFile2 = std::filesystem::temp_directory_path() / "bestow_test_multi2.txt";
+    std::filesystem::path tempFile3 = std::filesystem::temp_directory_path() / "bestow_test_multi3.txt";
 
     {
         std::ofstream file1(tempFile1);
@@ -1579,7 +1579,7 @@ TEST_F(AssetSystemTest, LoadAsyncFailureInvokesCallback) {
 
 TEST_F(AssetSystemTest, LoadCorruptedJSONFallsBackToRawText) {
     // Create a temporary file with invalid JSON but valid text
-    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / "jframe_test_invalid_json.json";
+    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / "bestow_test_invalid_json.json";
     {
         std::ofstream file(tempFile);
         file << "{ invalid json but valid text }";
@@ -1815,7 +1815,7 @@ TEST_F(AssetSystemTest, ManyAsyncLoadsWithCallbacks) {
 
 TEST_F(AssetSystemTest, LoadEmptyDataFile) {
     // Create an empty file
-    std::filesystem::path emptyFile = std::filesystem::temp_directory_path() / "jframe_test_empty.txt";
+    std::filesystem::path emptyFile = std::filesystem::temp_directory_path() / "bestow_test_empty.txt";
     {
         std::ofstream file(emptyFile);
         // Write nothing
@@ -1853,7 +1853,7 @@ TEST_F(AssetSystemTest, LoadEmptyLevelFile) {
 
 TEST_F(AssetSystemTest, HotReloadCallbackOnReload) {
     // Create a temporary test file
-    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / "jframe_test_hotreload_callback.txt";
+    std::filesystem::path tempFile = std::filesystem::temp_directory_path() / "bestow_test_hotreload_callback.txt";
     {
         std::ofstream file(tempFile);
         file << "Original content";
@@ -2046,4 +2046,4 @@ TEST_F(AssetSystemTest, ConcurrentGetRawAssetCalls) {
     EXPECT_EQ(successCount, 1000);  // 10 threads * 100 accesses
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

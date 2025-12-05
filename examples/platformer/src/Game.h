@@ -3,25 +3,25 @@
 
 #pragma once
 
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-#if defined(JFRAME_DEV_TOOLS)
-import jframe.dev;
+#if defined(BESTOW_DEV_TOOLS)
+import bestow.dev;
 #endif
 
 #include "Components.h"
 
 namespace platformer {
 
-class Game : public jframe::core::Application {
+class Game : public bestow::core::Application {
 public:
     Game() = default;
     ~Game() override = default;
 
     // Application lifecycle
-    bool initialize(jframe::core::Engine& engine) override;
-    void updateFixed(jframe::DeltaTime dt) override;
+    bool initialize(bestow::core::Engine& engine) override;
+    void updateFixed(bestow::DeltaTime dt) override;
     void render(float alpha) override;
     void shutdown() override;
 
@@ -29,48 +29,48 @@ private:
     void setupInputMappings();
     void loadLevel();
     void createPlayer();
-    void handlePlayerInput(jframe::DeltaTime dt);
-    void updatePlayerMovement(jframe::DeltaTime dt);
-    void updateCamera(jframe::DeltaTime dt);
+    void handlePlayerInput(bestow::DeltaTime dt);
+    void updatePlayerMovement(bestow::DeltaTime dt);
+    void updateCamera(bestow::DeltaTime dt);
 
     // New system integration methods
-    void spawnEnemies(jframe::LevelId levelId);
-    void spawnCollectibles(jframe::LevelId levelId);
-    void updateEnemyAI(jframe::DeltaTime dt);
+    void spawnEnemies(bestow::LevelId levelId);
+    void spawnCollectibles(bestow::LevelId levelId);
+    void updateEnemyAI(bestow::DeltaTime dt);
     void checkCollectiblePickup();
-    void handleCollisionEvent(const jframe::EventData& data);
+    void handleCollisionEvent(const bestow::EventData& data);
     void saveGame();
     void loadGame();
 
-    jframe::core::Engine* engine_ = nullptr;
-    jframe::Entity player_;
-    jframe::Entity camera_;
+    bestow::core::Engine* engine_ = nullptr;
+    bestow::Entity player_;
+    bestow::Entity camera_;
 
     // Level and Asset handles
-    jframe::AssetHandle levelAsset_;
-    jframe::LevelId currentLevel_;
+    bestow::AssetHandle levelAsset_;
+    bestow::LevelId currentLevel_;
 
     // Enemy entities (AI System)
-    std::vector<jframe::Entity> enemies_;
+    std::vector<bestow::Entity> enemies_;
 
     // Collectible entities
-    std::vector<jframe::Entity> collectibles_;
+    std::vector<bestow::Entity> collectibles_;
 
     // Audio handles (stub-safe)
-    jframe::AssetHandle jumpSoundAsset_;
-    jframe::AssetHandle coinSoundAsset_;
-    jframe::AssetHandle hurtSoundAsset_;
-    jframe::AssetHandle musicAsset_;
+    bestow::AssetHandle jumpSoundAsset_;
+    bestow::AssetHandle coinSoundAsset_;
+    bestow::AssetHandle hurtSoundAsset_;
+    bestow::AssetHandle musicAsset_;
 
     // Event subscriptions
-    jframe::SubscriptionId collisionSubscription_;
+    bestow::SubscriptionId collisionSubscription_;
 
     // Game state
     GameState gameState_;
 
-#if defined(JFRAME_DEV_TOOLS)
-    jframe::dev::HotReloadManager hotReload_;
-    jframe::dev::DevOverlay devOverlay_;
+#if defined(BESTOW_DEV_TOOLS)
+    bestow::dev::HotReloadManager hotReload_;
+    bestow::dev::DevOverlay devOverlay_;
 #endif
 };
 

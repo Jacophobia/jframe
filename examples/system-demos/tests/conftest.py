@@ -1,7 +1,7 @@
 """
-JFrame System Demos Test Configuration
+Bestow System Demos Test Configuration
 
-Pytest configuration and fixtures for testing JFrame system demos.
+Pytest configuration and fixtures for testing Bestow system demos.
 Provides utilities for:
 - Running demo executables
 - Capturing screenshots

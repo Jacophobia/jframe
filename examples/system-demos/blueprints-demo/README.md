@@ -1,6 +1,6 @@
 # Blueprints System Demo
 
-Comprehensive demonstration of the JFrame Blueprints System API.
+Comprehensive demonstration of the Bestow Blueprints System API.
 
 ## Overview
 
@@ -157,9 +157,9 @@ This demo serves as:
 
 ## Related Systems
 
-- **Entity System** (`jframe-entity`) - Manages entities and components
-- **Physics System** (`jframe-physics`) - Provides physics bodies referenced in blueprints
-- **Config System** (`jframe-config`) - Alternative for simple key-value config
+- **Entity System** (`bestow-entity`) - Manages entities and components
+- **Physics System** (`bestow-physics`) - Provides physics bodies referenced in blueprints
+- **Config System** (`bestow-config`) - Alternative for simple key-value config
 
 ## Notes
 

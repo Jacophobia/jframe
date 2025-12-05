@@ -1,6 +1,6 @@
 # Level System Demo
 
-A comprehensive demonstration of the JFrame Level System API.
+A comprehensive demonstration of the Bestow Level System API.
 
 ## Overview
 
@@ -94,7 +94,7 @@ cmake --build --preset macos-debug --target level-demo
 
 ## Lua Level Format
 
-JFrame uses Lua for level files instead of JSON because:
+Bestow uses Lua for level files instead of JSON because:
 
 - **Comments allowed** (`-- comment`)
 - **Trailing commas OK** (no syntax errors)
@@ -286,7 +286,7 @@ eventSystem->subscribe("Level", [](const EventData& data) {
 This demo uses **mock implementations** of the dependency systems (Assets, Entity, Events) to demonstrate the Level System API in isolation. In a real game:
 
 1. **Get systems from DI**: `auto levelSystem = injector.get<ILevelSystem*>()`
-2. **Real implementations**: Link against `jframe-level`, `jframe-assets`, etc.
+2. **Real implementations**: Link against `bestow-level`, `bestow-assets`, etc.
 3. **Actual level files**: Load from filesystem
 4. **Entity spawning**: Create real entities with components
 
@@ -313,17 +313,17 @@ Each section demonstrates API usage, expected behavior, and data structures.
 ## Related Documentation
 
 - [Level System Implementation Guide](../../../docs/SYSTEM-IMPLEMENTATION-GUIDE.md)
-- [JFrame Technical Design](../../../docs/jframe-technical-design.md) - Level System section
-- [Level System Interface](../../../jframe-contract/src/jframe.level.cppm)
+- [Bestow Technical Design](../../../docs/bestow-technical-design.md) - Level System section
+- [Level System Interface](../../../bestow-contract/src/bestow.level.cppm)
 
 ## Dependencies
 
-- `jframe-contract` - Interface definitions
-- `jframe-level` - Level System implementation (when available)
-- `jframe-entity` - Entity management
-- `jframe-assets` - Asset loading
-- `jframe-events` - Event system
+- `bestow-contract` - Interface definitions
+- `bestow-level` - Level System implementation (when available)
+- `bestow-entity` - Entity management
+- `bestow-assets` - Asset loading
+- `bestow-events` - Event system
 
 ## License
 
-Part of the JFrame game engine.
+Part of the Bestow game engine.

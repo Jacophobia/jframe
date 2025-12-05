@@ -2,10 +2,10 @@
 // Comprehensive demonstration of the IAssetSystem interface
 
 import std;
-import jframe.types;
-import jframe.assets;
+import bestow.types;
+import bestow.assets;
 
-using namespace jframe;
+using namespace bestow;
 
 // Helper function to print section headers
 void printSection(std::string_view title) {
@@ -486,7 +486,7 @@ void demoAdvancedPatterns(IAssetSystem& assets) {
 int main() {
     std::println("\n");
     std::println("{:=<80}", "");
-    std::println("  JFrame Assets System - Comprehensive Demo");
+    std::println("  Bestow Assets System - Comprehensive Demo");
     std::println("{:=<80}", "");
     std::println("\nThis demo exercises ALL IAssetSystem interface methods.");
     std::println("Note: Asset files don't need to exist - demo shows API usage.\n");
@@ -497,7 +497,7 @@ int main() {
 
     // Since we're demonstrating the API without a real implementation here,
     // we'll create a mock note
-    std::println("NOTE: This demo requires linking against jframe-assets implementation.");
+    std::println("NOTE: This demo requires linking against bestow-assets implementation.");
     std::println("      Build the full project to see the system in action.\n");
 
     // The following code shows how you would use the asset system:

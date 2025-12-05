@@ -90,7 +90,7 @@ end
 
 -- Conditional helpers
 function H.ifDebug(entities)
-    if os.getenv("JFRAME_DEBUG") == "1" then
+    if os.getenv("BESTOW_DEBUG") == "1" then
         return entities
     end
     return {}

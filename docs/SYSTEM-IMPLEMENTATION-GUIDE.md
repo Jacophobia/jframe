@@ -1,7 +1,7 @@
-# JFrame System Implementation Guide
+# Bestow System Implementation Guide
 
 > **Last Updated:** 2025-11-25
-> **Purpose:** Developer reference for implementing and troubleshooting JFrame systems
+> **Purpose:** Developer reference for implementing and troubleshooting Bestow systems
 
 ---
 
@@ -24,16 +24,16 @@ The Graphics system uses GLFW for windowing and OpenGL 4.1 Core Profile for rend
 
 | File | Purpose |
 |------|---------|
-| `jframe-graphics/src/jframe.graphics.impl.cppm` | Module interface and class definition |
-| `jframe-graphics/src/GraphicsSystem.cpp` | Full implementation |
+| `bestow-graphics/src/bestow.graphics.impl.cppm` | Module interface and class definition |
+| `bestow-graphics/src/GraphicsSystem.cpp` | Full implementation |
 
 ### Dependencies
 
 ```cmake
 # Required in CMakeLists.txt
-target_link_libraries(jframe-graphics
+target_link_libraries(bestow-graphics
     PUBLIC
-        jframe-contract
+        bestow-contract
         glfw
         glm::glm
         glad::glad
@@ -129,8 +129,8 @@ The Audio system uses FMOD Core API for sound playback. It supports both channel
 
 | File | Purpose |
 |------|---------|
-| `jframe-audio/src/jframe.audio.impl.cppm` | Module interface and class definition |
-| `jframe-audio/src/FMODAudioSystem.cpp` | Full implementation |
+| `bestow-audio/src/bestow.audio.impl.cppm` | Module interface and class definition |
+| `bestow-audio/src/FMODAudioSystem.cpp` | Full implementation |
 
 ### FMOD Installation
 
@@ -153,7 +153,7 @@ FMOD is not included in vcpkg. Install manually:
 The audio system compiles with or without FMOD:
 
 ```cpp
-#ifdef JFRAME_HAS_FMOD
+#ifdef BESTOW_HAS_FMOD
     // Real FMOD implementation
     FMOD_System_PlaySound(fmodSystem_, sound, nullptr, false, &channel);
 #else
@@ -165,7 +165,7 @@ The audio system compiles with or without FMOD:
 ### Usage Example
 
 ```cpp
-auto audio = jframe::createAudioSystem();
+auto audio = bestow::createAudioSystem();
 audio->initialize();
 
 // Play music on dedicated channel
@@ -201,7 +201,7 @@ audio->update(deltaTime);
 
 | Issue | Solution |
 |-------|----------|
-| No sound | Verify FMOD is installed and `JFRAME_HAS_FMOD` is defined |
+| No sound | Verify FMOD is installed and `BESTOW_HAS_FMOD` is defined |
 | CMake "FMOD not found" | Check `external/fmod/` directory structure |
 | 3D audio not working | Ensure `setListener()` is called each frame |
 | Volume not changing | Check channel group assignments |
@@ -218,9 +218,9 @@ The Save system uses cereal for binary serialization with nlohmann_json for meta
 
 | File | Purpose |
 |------|---------|
-| `jframe-contract/src/jframe.save.cppm` | Interface and archive types |
-| `jframe-save/src/jframe.save.impl.cppm` | Concrete archive implementations |
-| `jframe-save/src/SaveSystem.cpp` | Save/load logic |
+| `bestow-contract/src/bestow.save.cppm` | Interface and archive types |
+| `bestow-save/src/bestow.save.impl.cppm` | Concrete archive implementations |
+| `bestow-save/src/SaveSystem.cpp` | Save/load logic |
 
 ### Save File Format
 
@@ -282,7 +282,7 @@ private:
 ### Usage Example
 
 ```cpp
-auto save = jframe::createSaveSystem();
+auto save = bestow::createSaveSystem();
 
 // Register saveable objects
 PlayerData player;
@@ -389,9 +389,9 @@ Usually caused by accessing destroyed entities. Check entity validity before com
 
 When implementing a new system:
 
-1. **Interface first** - Define in `jframe-contract/src/jframe.yoursystem.cppm`
-2. **Impl module** - Create `jframe-yoursystem/src/jframe.yoursystem.impl.cppm`
-3. **Implementation** - Create `jframe-yoursystem/src/YourSystem.cpp`
+1. **Interface first** - Define in `bestow-contract/src/bestow.yoursystem.cppm`
+2. **Impl module** - Create `bestow-yoursystem/src/bestow.yoursystem.impl.cppm`
+3. **Implementation** - Create `bestow-yoursystem/src/YourSystem.cpp`
 4. **Factory function** - Export `createYourSystem()` from impl module
 5. **Tests** - Add to `tests/unit/YourSystemTests.cpp`
 6. **Documentation** - Add section to this file
@@ -399,19 +399,19 @@ When implementing a new system:
 ### Module Pattern
 
 ```cpp
-// jframe-yoursystem/src/jframe.yoursystem.impl.cppm
+// bestow-yoursystem/src/bestow.yoursystem.impl.cppm
 module;
 
 // Third-party includes go here (global module fragment)
 #include <third_party.h>
 
-export module jframe.yoursystem.impl;
+export module bestow.yoursystem.impl;
 
 import std;
-import jframe.yoursystem;  // Your interface
-import jframe.types;
+import bestow.yoursystem;  // Your interface
+import bestow.types;
 
-export namespace jframe {
+export namespace bestow {
 
 class YourSystemImpl : public IYourSystem {
     // ...

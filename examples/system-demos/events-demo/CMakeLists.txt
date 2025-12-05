@@ -13,10 +13,10 @@ add_executable(events-demo
 target_use_std_module(events-demo)
 target_compile_features(events-demo PRIVATE cxx_std_23)
 
-# Link against jframe-events and jframe-contract
+# Link against bestow-events and bestow-contract
 target_link_libraries(events-demo PRIVATE
-    jframe-contract
-    jframe-events
+    bestow-contract
+    bestow-events
 )
 
 # Installation

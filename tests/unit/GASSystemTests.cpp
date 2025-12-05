@@ -1,5 +1,5 @@
 // tests/unit/GASSystemTests.cpp
-// Unit tests for JFrame Gameplay Ability System
+// Unit tests for Bestow Gameplay Ability System
 
 #include <cmath>
 #include <limits>
@@ -9,11 +9,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.gas;
-import jframe.gas.impl;
-import jframe.types;
+import bestow.gas;
+import bestow.gas.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class GASSystemTest : public ::testing::Test {
 protected:
@@ -1384,4 +1384,4 @@ TEST_F(GASSystemTest, MultipleEntitiesIndependent) {
     EXPECT_FLOAT_EQ(gasSystem->getAttributeValue(entity2, id), 200.0f);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

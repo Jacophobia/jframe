@@ -1,6 +1,6 @@
-# JFrame System Demos
+# Bestow System Demos
 
-Comprehensive examples demonstrating each JFrame system's complete API.
+Comprehensive examples demonstrating each Bestow system's complete API.
 
 ## Overview
 

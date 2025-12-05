@@ -1,6 +1,6 @@
 # Installation Guide
 
-This guide covers detailed setup instructions for JFrame on macOS, Windows, and Linux.
+This guide covers detailed setup instructions for Bestow on macOS, Windows, and Linux.
 
 ## Table of Contents
 
@@ -26,7 +26,7 @@ This guide covers detailed setup instructions for JFrame on macOS, Windows, and 
 
 ### Compiler Requirements
 
-JFrame requires a C++23-compliant compiler with full module support, including `import std;`.
+Bestow requires a C++23-compliant compiler with full module support, including `import std;`.
 
 | Platform | Compiler | Version | Notes |
 |----------|----------|---------|-------|
@@ -76,7 +76,7 @@ brew --version
 
 ### Step 3: Install LLVM 20
 
-**CRITICAL:** JFrame requires LLVM Clang 20+ for `import std;` support. Apple Clang (bundled with Xcode) does NOT support this feature.
+**CRITICAL:** Bestow requires LLVM Clang 20+ for `import std;` support. Apple Clang (bundled with Xcode) does NOT support this feature.
 
 ```bash
 # Install LLVM 20
@@ -131,18 +131,18 @@ Verify installation:
 ~/vcpkg/vcpkg --version
 ```
 
-### Step 6: Clone JFrame
+### Step 6: Clone Bestow
 
 ```bash
-git clone https://github.com/yourusername/jframe.git
-cd jframe
+git clone https://github.com/yourusername/bestow.git
+cd bestow
 ```
 
 ### Step 7: Install FMOD
 
 See [FMOD Installation](#fmod-installation) below.
 
-### Step 8: Build JFrame
+### Step 8: Build Bestow
 
 ```bash
 # Configure
@@ -222,12 +222,12 @@ Verify installation:
 C:\vcpkg\vcpkg --version
 ```
 
-### Step 4: Clone JFrame
+### Step 4: Clone Bestow
 
 ```cmd
 cd C:\Dev
-git clone https://github.com/yourusername/jframe.git
-cd jframe
+git clone https://github.com/yourusername/bestow.git
+cd bestow
 ```
 
 ### Step 5: Install FMOD
@@ -247,7 +247,7 @@ Or set the environment variable:
 setx VCPKG_ROOT C:\vcpkg
 ```
 
-### Step 7: Build JFrame
+### Step 7: Build Bestow
 
 Open a **Developer Command Prompt for VS 2022**:
 
@@ -390,18 +390,18 @@ Verify:
 ~/vcpkg/vcpkg --version
 ```
 
-### Step 5: Clone JFrame
+### Step 5: Clone Bestow
 
 ```bash
-git clone https://github.com/yourusername/jframe.git
-cd jframe
+git clone https://github.com/yourusername/bestow.git
+cd bestow
 ```
 
 ### Step 6: Install FMOD
 
 See [FMOD Installation](#fmod-installation) below.
 
-### Step 7: Build JFrame
+### Step 7: Build Bestow
 
 ```bash
 # Configure
@@ -435,21 +435,21 @@ FMOD Core API is required for audio functionality. It must be installed manually
 
 Extract the downloaded archive to a temporary location.
 
-### Step 3: Copy to JFrame
+### Step 3: Copy to Bestow
 
-Create the `external/fmod/` directory in your JFrame project and copy the FMOD files:
+Create the `external/fmod/` directory in your Bestow project and copy the FMOD files:
 
 #### macOS
 
 ```bash
-cd /path/to/jframe
+cd /path/to/bestow
 mkdir -p external/fmod
 cp -r /path/to/downloaded/fmodstudioapi20223mac/api/core external/fmod/
 ```
 
 Your structure should look like:
 ```
-jframe/
+bestow/
 └── external/
     └── fmod/
         └── core/
@@ -466,14 +466,14 @@ jframe/
 #### Windows
 
 ```cmd
-cd C:\path\to\jframe
+cd C:\path\to\bestow
 mkdir external\fmod
 xcopy /E /I C:\path\to\downloaded\fmodstudioapi20223win\api\core external\fmod\core
 ```
 
 Your structure should look like:
 ```
-jframe\
+bestow\
 └── external\
     └── fmod\
         └── core\
@@ -491,14 +491,14 @@ jframe\
 #### Linux
 
 ```bash
-cd /path/to/jframe
+cd /path/to/bestow
 mkdir -p external/fmod
 cp -r /path/to/downloaded/fmodstudioapi20223linux/api/core external/fmod/
 ```
 
 Your structure should look like:
 ```
-jframe/
+bestow/
 └── external/
     └── fmod/
         └── core/
@@ -535,7 +535,7 @@ If these files exist, FMOD is installed correctly.
 
 After completing all installation steps, verify everything works:
 
-### 1. Build JFrame
+### 1. Build Bestow
 
 ```bash
 # macOS
@@ -759,7 +759,7 @@ git pull
 .\bootstrap-vcpkg.bat
 ```
 
-Then clean and rebuild JFrame:
+Then clean and rebuild Bestow:
 ```bash
 rm -rf build/
 cmake --preset [your-preset]
@@ -803,7 +803,7 @@ cd cmake-3.28.1
 Once installation is complete and verified:
 
 1. Read the [Getting Started Guide](Getting-Started.md) to build your first game
-2. Study the [Technical Design](jframe-technical-design.md) to understand the architecture
+2. Study the [Technical Design](bestow-technical-design.md) to understand the architecture
 3. Explore the example projects in `examples/`
 4. Join the community on GitHub Discussions
 
@@ -814,8 +814,8 @@ Once installation is complete and verified:
 If you encounter issues not covered here:
 
 1. Check [LLVM20-SETUP.md](LLVM20-SETUP.md) for compiler-specific issues
-2. Search [GitHub Issues](https://github.com/yourusername/jframe/issues)
-3. Ask in [GitHub Discussions](https://github.com/yourusername/jframe/discussions)
+2. Search [GitHub Issues](https://github.com/yourusername/bestow/issues)
+3. Ask in [GitHub Discussions](https://github.com/yourusername/bestow/discussions)
 4. Join the Discord community (link TBD)
 
 When asking for help, include:

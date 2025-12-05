@@ -1,19 +1,19 @@
 // graphics-demo/src/main.cpp
-// Comprehensive demonstration of the JFrame Graphics System API
+// Comprehensive demonstration of the Bestow Graphics System API
 // This demo exercises EVERY method in IGraphicsSystem interface WITH ACTUAL RENDERING
 
 // MSVC C++23 module compatibility for EnTT iterators
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 import std;
-import jframe;
-import jframe.graphics;
-import jframe.graphics.impl;
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.types;
+import bestow;
+import bestow.graphics;
+import bestow.graphics.impl;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.types;
 
-using namespace jframe;
+using namespace bestow;
 
 namespace {
 
@@ -293,7 +293,7 @@ void createTestPatterns(IGraphicsSystem& graphics) {
 
 int main() {
     std::println("===============================================");
-    std::println("JFrame Graphics System - Live Rendering Demo");
+    std::println("Bestow Graphics System - Live Rendering Demo");
     std::println("===============================================");
     std::println("");
     std::println("This demo opens a window and renders graphics");
@@ -308,7 +308,7 @@ int main() {
         auto graphics = std::make_unique<GraphicsSystem>();
 
         // Initialize with a window
-        if (!graphics->initialize(800, 600, "Graphics Demo - JFrame")) {
+        if (!graphics->initialize(800, 600, "Graphics Demo - Bestow")) {
             std::println("ERROR: Failed to initialize graphics system!");
             return 1;
         }

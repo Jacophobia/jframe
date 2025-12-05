@@ -1,8 +1,8 @@
-# JFrame Graphics System
+# Bestow Graphics System
 
 ## Overview
 
-The Graphics System is JFrame's core rendering subsystem, providing window management, sprite rendering, text display, debug drawing, and camera controls. Built on OpenGL 4.1 Core with GLFW for windowing, it offers a modern 2D rendering pipeline optimized for game development.
+The Graphics System is Bestow's core rendering subsystem, providing window management, sprite rendering, text display, debug drawing, and camera controls. Built on OpenGL 4.1 Core with GLFW for windowing, it offers a modern 2D rendering pipeline optimized for game development.
 
 ### Key Features
 
@@ -17,7 +17,7 @@ The Graphics System is JFrame's core rendering subsystem, providing window manag
 
 ### Architecture
 
-The Graphics System follows the JFrame interface pattern:
+The Graphics System follows the Bestow interface pattern:
 
 ```
 IGraphicsSystem (interface) <- GraphicsSystem (implementation)
@@ -39,11 +39,11 @@ The implementation uses:
 The Graphics System is typically initialized through the EngineBuilder:
 
 ```cpp
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
-auto engineResult = jframe::core::EngineBuilder()
-    .withGraphics(jframe::core::GraphicsConfig{
+auto engineResult = bestow::core::EngineBuilder()
+    .withGraphics(bestow::core::GraphicsConfig{
         .width = 1280,
         .height = 720,
         .title = "My Game",
@@ -58,10 +58,10 @@ auto engineResult = jframe::core::EngineBuilder()
 For standalone use without the engine:
 
 ```cpp
-import jframe.graphics;
-import jframe.graphics.impl;
+import bestow.graphics;
+import bestow.graphics.impl;
 
-auto graphics = jframe::createGraphicsSystem();
+auto graphics = bestow::createGraphicsSystem();
 if (!graphics->initialize(1280, 720, "My Game")) {
     // Handle initialization failure
 }
@@ -181,7 +181,7 @@ while (!graphics->shouldClose()) {
 The `Sprite` struct is the fundamental rendering primitive:
 
 ```cpp
-import jframe.types;
+import bestow.types;
 
 Sprite sprite;
 sprite.textureHandle = &myTextureAsset;  // AssetHandle from Asset System
@@ -343,7 +343,7 @@ graphics->drawBatch(enemies);  // More efficient than 100 individual draw() call
 A `SpriteSheet` divides a texture into a grid of frames:
 
 ```cpp
-import jframe.types;
+import bestow.types;
 
 SpriteSheet sheet;
 sheet.texture = characterTexture;  // AssetHandle
@@ -446,7 +446,7 @@ int currentFrame = character.getCurrentFrame();
 Fonts are loaded through the Asset System:
 
 ```cpp
-import jframe.assets;
+import bestow.assets;
 
 // Register and load a TrueType font
 AssetHandle fontHandle = assets->registerAsset(AssetType::Font, "fonts/Roboto-Regular.ttf");
@@ -1065,15 +1065,15 @@ sprite.tint.a = visible ? 255 : 0;
 ### Minimal Rendering Loop
 
 ```cpp
-import jframe.graphics;
-import jframe.graphics.impl;
-import jframe.assets;
-import jframe.assets.impl;
+import bestow.graphics;
+import bestow.graphics.impl;
+import bestow.assets;
+import bestow.assets.impl;
 
 int main() {
     // Initialize systems
-    auto graphics = jframe::createGraphicsSystem();
-    auto assets = jframe::createAssetSystem();
+    auto graphics = bestow::createGraphicsSystem();
+    auto assets = bestow::createAssetSystem();
 
     graphics->initialize(800, 600, "My Game");
     graphics->setAssetSystem(assets);
@@ -1163,7 +1163,7 @@ void renderGame(IGraphicsSystem* graphics) {
     );
 
     // Debug rendering (only in dev builds)
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
     for (auto& enemy : enemies) {
         Canvas hitbox = enemy.getHitbox();
         graphics->drawRect(hitbox, Color::red(), false);
@@ -1239,4 +1239,4 @@ void renderGame(IGraphicsSystem* graphics) {
 - [Asset System Documentation](Asset-System.md) - Loading textures and fonts
 - [Input System Documentation](Input-System.md) - Handling mouse and keyboard
 - [Entity System Documentation](Entity-System.md) - Managing game objects
-- [JFrame Technical Design](../jframe-technical-design.md) - Architecture overview
+- [Bestow Technical Design](../bestow-technical-design.md) - Architecture overview

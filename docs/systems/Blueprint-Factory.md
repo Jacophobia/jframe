@@ -1,11 +1,11 @@
-# JFrame Blueprint Factory System
+# Bestow Blueprint Factory System
 
 ## Overview
 
 The Blueprint Factory System provides data-driven entity creation from Lua-defined templates. Instead of writing repetitive C++ factory functions for each entity type, games define entity blueprints in Lua and create instances with a single factory call.
 
-**Module:** `jframe.level` (extended), `jframe.blueprints` (new)
-**Implementation:** `jframe-level/`, `jframe-blueprints/` (new)
+**Module:** `bestow.level` (extended), `bestow.blueprints` (new)
+**Implementation:** `bestow-level/`, `bestow-blueprints/` (new)
 **Status:** Planned Enhancement
 
 ## Problem Statement
@@ -309,7 +309,7 @@ bool Game::initialize(Engine& engine) {
     auto& sys = engine.systems();
 
     // Create blueprint factory
-    factory_ = jframe::createBlueprintFactory(
+    factory_ = bestow::createBlueprintFactory(
         *sys.entities, *sys.physics, *sys.graphics);
 
     // Load blueprints
@@ -380,7 +380,7 @@ Entity rareCoin = factory_->create("Collectible", x, y, {
 ### Hot Reload
 
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
 void Game::onFileChanged(const std::string& path) {
     if (path.ends_with("blueprints/entities.lua")) {
         factory_->reloadBlueprints();
@@ -395,21 +395,21 @@ void Game::onFileChanged(const std::string& path) {
 ### Phase 1: Core Factory
 
 **Files to create:**
-- `jframe-contract/src/jframe.blueprints.cppm` - Interface
-- `jframe-blueprints/CMakeLists.txt` - Build configuration
-- `jframe-blueprints/src/BlueprintFactory.cpp` - Implementation
+- `bestow-contract/src/bestow.blueprints.cppm` - Interface
+- `bestow-blueprints/CMakeLists.txt` - Build configuration
+- `bestow-blueprints/src/BlueprintFactory.cpp` - Implementation
 
 **Interface:**
 
 ```cpp
-// jframe.blueprints.cppm
-export module jframe.blueprints;
+// bestow.blueprints.cppm
+export module bestow.blueprints;
 
-import jframe.types;
-import jframe.entity;
-import jframe.physics;
+import bestow.types;
+import bestow.entity;
+import bestow.physics;
 
-export namespace jframe {
+export namespace bestow {
 
 struct BlueprintDef {
     std::string name;
@@ -434,7 +434,7 @@ std::unique_ptr<IBlueprintFactory> createBlueprintFactory(
     IPhysicsSystem& physics,
     IGraphicsSystem& graphics);
 
-} // namespace jframe
+} // namespace bestow
 ```
 
 ### Phase 2: Lua Parsing
@@ -778,13 +778,13 @@ factory->create("Player", 100, 200);
 
 The Blueprint Factory was implemented as a new module:
 
-**Interface** (`jframe-contract/src/jframe.blueprints.cppm`):
+**Interface** (`bestow-contract/src/bestow.blueprints.cppm`):
 - `PropertyMap` type alias for component properties
 - `ComponentDef`, `BlueprintPhysicsDef`, `BlueprintDef` structs
 - `IBlueprintFactory` interface with load, query, create, and register methods
 
-**Implementation** (`jframe-blueprints/src/`):
-- `jframe.blueprints.impl.cppm` - BlueprintFactory class declaration
+**Implementation** (`bestow-blueprints/src/`):
+- `bestow.blueprints.impl.cppm` - BlueprintFactory class declaration
 - `BlueprintFactory.cpp` - Full implementation (~500 lines)
 
 **Key Features**:

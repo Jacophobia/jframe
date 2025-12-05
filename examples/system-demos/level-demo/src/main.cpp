@@ -2,13 +2,13 @@
 // Demonstrates all ILevelSystem methods and types
 
 // MSVC C++23 module compatibility for sol2 globals
-#include <jframe/sol2_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.level;
+import bestow.types;
+import bestow.level;
 
-using namespace jframe;
+using namespace bestow;
 
 // Demo helper functions
 void printSectionHeader(const std::string& title) {
@@ -84,7 +84,7 @@ void printEntityDef(const EntityDef& def) {
 int main() {
     std::cout << R"(
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                      JFrame Level System Demo                              ║
+║                      Bestow Level System Demo                              ║
 ║                                                                            ║
 ║  This demo exercises the entire ILevelSystem API:                         ║
 ║    - Level loading and unloading                                          ║
@@ -688,7 +688,7 @@ void onExitTrigger(Entity exitEntity) {
     std::cout << "  ✓ Common usage patterns\n\n";
 
     std::cout << "To use in your game:\n";
-    std::cout << "  1. Implement ILevelSystem (or use jframe-level library)\n";
+    std::cout << "  1. Implement ILevelSystem (or use bestow-level library)\n";
     std::cout << "  2. Wire it up with Fruit DI\n";
     std::cout << "  3. Create Lua level files\n";
     std::cout << "  4. Register level assets\n";
@@ -696,8 +696,8 @@ void onExitTrigger(Entity exitEntity) {
 
     std::cout << "For implementation details, see:\n";
     std::cout << "  - docs/SYSTEM-IMPLEMENTATION-GUIDE.md\n";
-    std::cout << "  - docs/jframe-technical-design.md (Level System section)\n";
-    std::cout << "  - jframe-contract/src/jframe.level.cppm (interface definition)\n\n";
+    std::cout << "  - docs/bestow-technical-design.md (Level System section)\n";
+    std::cout << "  - bestow-contract/src/bestow.level.cppm (interface definition)\n\n";
 
     return 0;
 }

@@ -1,6 +1,6 @@
 # Assets System Demo
 
-Comprehensive demonstration of the JFrame Assets System API (`jframe.assets`).
+Comprehensive demonstration of the Bestow Assets System API (`bestow.assets`).
 
 ## Overview
 
@@ -111,13 +111,13 @@ The demo showcases common patterns:
 
 ## Dependencies
 
-- **jframe-contract** - Interface definitions
-- **jframe-assets** - Asset system implementation
-- **jframe-core** - Core utilities
+- **bestow-contract** - Interface definitions
+- **bestow-assets** - Asset system implementation
+- **bestow-core** - Core utilities
 - **C++23** with `import std;` support
 
 ## See Also
 
-- `/docs/jframe-technical-design.md` - Full system architecture
-- `/jframe-contract/src/jframe.assets.cppm` - Interface definition
-- `/jframe-assets/src/AssetSystem.cpp` - Implementation
+- `/docs/bestow-technical-design.md` - Full system architecture
+- `/bestow-contract/src/bestow.assets.cppm` - Interface definition
+- `/bestow-assets/src/AssetSystem.cpp` - Implementation

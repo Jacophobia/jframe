@@ -16,19 +16,19 @@ jobs:
         include:
           - os: macos-14
             preset: macos-release
-            artifact_name: jframe-macos-arm64
+            artifact_name: bestow-macos-arm64
             name: macOS (Apple Silicon)
           - os: macos-13
             preset: macos-release
-            artifact_name: jframe-macos-x64
+            artifact_name: bestow-macos-x64
             name: macOS (Intel)
           - os: ubuntu-24.04
             preset: linux-release
-            artifact_name: jframe-linux-x64
+            artifact_name: bestow-linux-x64
             name: Linux
           - os: windows-2022
             preset: windows-release
-            artifact_name: jframe-windows-x64
+            artifact_name: bestow-windows-x64
             name: Windows
 
     name: Build Release (${{ matrix.name }})

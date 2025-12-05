@@ -1,11 +1,11 @@
 // PhysicsDemo.cppm
-// Comprehensive demonstration of the JFrame Physics System API
+// Comprehensive demonstration of the Bestow Physics System API
 
 export module physics.demo;
 
 import std;
-import jframe.types;
-import jframe.physics;
+import bestow.types;
+import bestow.physics;
 
 export namespace demo {
 
@@ -15,11 +15,11 @@ export namespace demo {
 
 class PhysicsDemo {
 public:
-    explicit PhysicsDemo(jframe::IPhysicsSystem& physics)
+    explicit PhysicsDemo(bestow::IPhysicsSystem& physics)
         : physics_(physics) {}
 
     void run() {
-        printHeader("JFRAME PHYSICS SYSTEM COMPREHENSIVE DEMO");
+        printHeader("BESTOW PHYSICS SYSTEM COMPREHENSIVE DEMO");
 
         demoWorldSettings();
         demoBodyLifecycle();
@@ -38,8 +38,8 @@ public:
     }
 
 private:
-    jframe::IPhysicsSystem& physics_;
-    std::vector<jframe::Entity> trackedEntities_;
+    bestow::IPhysicsSystem& physics_;
+    std::vector<bestow::Entity> trackedEntities_;
     int nextEntityId_ = 1;
 
     //==========================================================================
@@ -78,8 +78,8 @@ private:
         std::println("Creating physics bodies...");
 
         auto e1 = createMockEntity();
-        jframe::PhysicsBodyDef def1{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def1{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {32.0f, 32.0f}
         };
@@ -87,8 +87,8 @@ private:
         std::println("  Created dynamic body for entity {}", entityId(e1));
 
         auto e2 = createMockEntity();
-        jframe::PhysicsBodyDef def2{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef def2{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 200.0f, .y = 400.0f},
             .size = {100.0f, 20.0f}
         };
@@ -119,8 +119,8 @@ private:
 
         // Create as Dynamic
         std::println("Creating Dynamic body...");
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {32.0f, 32.0f}
         };
@@ -132,17 +132,17 @@ private:
 
         // setBodyType() - Change to Static
         std::println("\nChanging to Static...");
-        physics_.setBodyType(entity, jframe::BodyType::Static);
+        physics_.setBodyType(entity, bestow::BodyType::Static);
         std::println("  New type: {}", bodyTypeToString(physics_.getBodyType(entity)));
 
         // Change to Kinematic
         std::println("\nChanging to Kinematic...");
-        physics_.setBodyType(entity, jframe::BodyType::Kinematic);
+        physics_.setBodyType(entity, bestow::BodyType::Kinematic);
         std::println("  New type: {}", bodyTypeToString(physics_.getBodyType(entity)));
 
         // Change back to Dynamic
         std::println("\nChanging back to Dynamic...");
-        physics_.setBodyType(entity, jframe::BodyType::Dynamic);
+        physics_.setBodyType(entity, bestow::BodyType::Dynamic);
         std::println("  Final type: {}", bodyTypeToString(physics_.getBodyType(entity)));
 
         physics_.destroyBody(entity);
@@ -152,8 +152,8 @@ private:
         printSection("Body Properties");
 
         auto entity = createMockEntity();
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f, .rotation = 0.0f},
             .size = {32.0f, 48.0f}
         };
@@ -195,8 +195,8 @@ private:
         printSection("Velocity");
 
         auto entity = createMockEntity();
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {32.0f, 32.0f}
         };
@@ -232,8 +232,8 @@ private:
         printSection("Forces and Impulses");
 
         auto entity = createMockEntity();
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {32.0f, 32.0f}
         };
@@ -301,8 +301,8 @@ private:
         auto entity1 = createMockEntity();
         auto entity2 = createMockEntity();
 
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {32.0f, 32.0f}
         };
@@ -313,12 +313,12 @@ private:
 
         // setCollisionLayer()
         std::println("Setting collision layers...");
-        physics_.setCollisionLayer(entity1, jframe::CollisionLayers::Player);
-        physics_.setCollisionLayer(entity2, jframe::CollisionLayers::Enemy);
+        physics_.setCollisionLayer(entity1, bestow::CollisionLayers::Player);
+        physics_.setCollisionLayer(entity2, bestow::CollisionLayers::Enemy);
         std::println("  Entity {} set to Player layer (0x{:04X})",
-                     entityId(entity1), jframe::CollisionLayers::Player);
+                     entityId(entity1), bestow::CollisionLayers::Player);
         std::println("  Entity {} set to Enemy layer (0x{:04X})",
-                     entityId(entity2), jframe::CollisionLayers::Enemy);
+                     entityId(entity2), bestow::CollisionLayers::Enemy);
 
         // getCollisionLayer()
         std::println("\nRetrieving collision layers...");
@@ -330,27 +330,27 @@ private:
         // setCollisionMask()
         std::println("\nSetting collision masks...");
         // Player collides with everything except Projectile
-        jframe::CollisionMask playerMask = 0xFFFF & ~jframe::CollisionLayers::Projectile;
+        bestow::CollisionMask playerMask = 0xFFFF & ~bestow::CollisionLayers::Projectile;
         physics_.setCollisionMask(entity1, playerMask);
         std::println("  Player mask: 0x{:04X} (collides with most things)", playerMask);
 
         // Enemy only collides with Player and Terrain
-        jframe::CollisionMask enemyMask =
-            jframe::CollisionLayers::Player | jframe::CollisionLayers::Terrain;
+        bestow::CollisionMask enemyMask =
+            bestow::CollisionLayers::Player | bestow::CollisionLayers::Terrain;
         physics_.setCollisionMask(entity2, enemyMask);
         std::println("  Enemy mask: 0x{:04X} (only Player and Terrain)", enemyMask);
 
         // setSensor()
         std::println("\nCreating sensor bodies...");
         auto trigger = createMockEntity();
-        jframe::PhysicsBodyDef triggerDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef triggerDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 200.0f, .y = 100.0f},
             .size = {50.0f, 50.0f},
             .isSensor = true
         };
         physics_.createBody(trigger, triggerDef);
-        physics_.setCollisionLayer(trigger, jframe::CollisionLayers::Trigger);
+        physics_.setCollisionLayer(trigger, bestow::CollisionLayers::Trigger);
         std::println("  Created sensor trigger at (200, 100)");
 
         // Change sensor status
@@ -363,13 +363,13 @@ private:
 
         // Demonstrate layer usage
         std::println("\nCommon collision layer patterns:");
-        std::println("  Player:      0x{:04X}", jframe::CollisionLayers::Player);
-        std::println("  Enemy:       0x{:04X}", jframe::CollisionLayers::Enemy);
-        std::println("  Projectile:  0x{:04X}", jframe::CollisionLayers::Projectile);
-        std::println("  Terrain:     0x{:04X}", jframe::CollisionLayers::Terrain);
-        std::println("  Trigger:     0x{:04X}", jframe::CollisionLayers::Trigger);
-        std::println("  Collectible: 0x{:04X}", jframe::CollisionLayers::Collectible);
-        std::println("  Ground:      0x{:04X}", jframe::CollisionLayers::Ground);
+        std::println("  Player:      0x{:04X}", bestow::CollisionLayers::Player);
+        std::println("  Enemy:       0x{:04X}", bestow::CollisionLayers::Enemy);
+        std::println("  Projectile:  0x{:04X}", bestow::CollisionLayers::Projectile);
+        std::println("  Terrain:     0x{:04X}", bestow::CollisionLayers::Terrain);
+        std::println("  Trigger:     0x{:04X}", bestow::CollisionLayers::Trigger);
+        std::println("  Collectible: 0x{:04X}", bestow::CollisionLayers::Collectible);
+        std::println("  Ground:      0x{:04X}", bestow::CollisionLayers::Ground);
 
         physics_.destroyBody(entity1);
         physics_.destroyBody(entity2);
@@ -383,8 +383,8 @@ private:
         std::println("Setting up test bodies...");
 
         auto e1 = createMockEntity();
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 100.0f, .y = 100.0f},
             .size = {20.0f, 20.0f}
         };
@@ -441,25 +441,25 @@ private:
         std::println("Setting up obstacles for raycasting...");
 
         auto wall1 = createMockEntity();
-        jframe::PhysicsBodyDef def{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef def{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 200.0f, .y = 100.0f},
             .size = {20.0f, 100.0f}
         };
         physics_.createBody(wall1, def);
-        physics_.setCollisionLayer(wall1, jframe::CollisionLayers::Terrain);
+        physics_.setCollisionLayer(wall1, bestow::CollisionLayers::Terrain);
         std::println("  Wall 1 at (200, 100)");
 
         auto wall2 = createMockEntity();
         def.transform = {.x = 300.0f, .y = 100.0f};
         physics_.createBody(wall2, def);
-        physics_.setCollisionLayer(wall2, jframe::CollisionLayers::Terrain);
+        physics_.setCollisionLayer(wall2, bestow::CollisionLayers::Terrain);
         std::println("  Wall 2 at (300, 100)");
 
         auto wall3 = createMockEntity();
         def.transform = {.x = 400.0f, .y = 100.0f};
         physics_.createBody(wall3, def);
-        physics_.setCollisionLayer(wall3, jframe::CollisionLayers::Enemy);
+        physics_.setCollisionLayer(wall3, bestow::CollisionLayers::Enemy);
         std::println("  Wall 3 at (400, 100) [Enemy layer]");
 
         // raycast() - single hit
@@ -479,7 +479,7 @@ private:
         std::println("\nRaycast with Enemy layer mask only...");
         auto hitEnemy = physics_.raycast(
             {50.0f, 100.0f}, {1.0f, 0.0f}, 500.0f,
-            jframe::CollisionLayers::Enemy
+            bestow::CollisionLayers::Enemy
         );
         if (hitEnemy) {
             std::println("  HIT Enemy at distance {}", hitEnemy->distance);
@@ -499,7 +499,7 @@ private:
 
         // Diagonal raycast
         std::println("\nDiagonal raycast from (50, 50) toward (300, 150)...");
-        jframe::Vec2 dir = {250.0f, 100.0f};  // Direction vector
+        bestow::Vec2 dir = {250.0f, 100.0f};  // Direction vector
         float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
         dir.x /= len;  // Normalize
         dir.y /= len;
@@ -523,7 +523,7 @@ private:
         std::println("Setting up collision callback...");
 
         int collisionCount = 0;
-        physics_.setCollisionCallback([&](const jframe::CollisionEvent& event) {
+        physics_.setCollisionCallback([&](const bestow::CollisionEvent& event) {
             ++collisionCount;
             std::println("  COLLISION #{}", collisionCount);
             std::println("    Entity A: {}", entityId(event.entityA));
@@ -538,8 +538,8 @@ private:
         std::println("\nCreating colliding bodies...");
 
         auto floor = createMockEntity();
-        jframe::PhysicsBodyDef floorDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef floorDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 200.0f, .y = 400.0f},
             .size = {200.0f, 20.0f}
         };
@@ -547,8 +547,8 @@ private:
         std::println("  Floor created at (200, 400)");
 
         auto ball = createMockEntity();
-        jframe::PhysicsBodyDef ballDef{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef ballDef{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 200.0f, .y = 100.0f},
             .size = {20.0f, 20.0f},
             .restitution = 0.8f  // Bouncy
@@ -577,44 +577,44 @@ private:
 
         // Create ground
         auto ground = createMockEntity();
-        jframe::PhysicsBodyDef groundDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef groundDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 200.0f, .y = 400.0f},
             .size = {400.0f, 20.0f}
         };
         physics_.createBody(ground, groundDef);
-        physics_.setCollisionLayer(ground, jframe::CollisionLayers::Ground);
+        physics_.setCollisionLayer(ground, bestow::CollisionLayers::Ground);
         std::println("Ground platform created at (200, 400)");
 
         // Create sloped ground
         auto slope = createMockEntity();
-        jframe::PhysicsBodyDef slopeDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef slopeDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 500.0f, .y = 380.0f, .rotation = 0.5f},  // ~30 degrees
             .size = {100.0f, 20.0f}
         };
         physics_.createBody(slope, slopeDef);
-        physics_.setCollisionLayer(slope, jframe::CollisionLayers::Ground);
+        physics_.setCollisionLayer(slope, bestow::CollisionLayers::Ground);
         std::println("Sloped platform created at (500, 380)");
 
         // Create player above ground
         auto player = createMockEntity();
-        jframe::PhysicsBodyDef playerDef{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef playerDef{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 200.0f, .y = 300.0f},
             .size = {32.0f, 48.0f},
             .fixedRotation = true
         };
         physics_.createBody(player, playerDef);
-        physics_.setCollisionLayer(player, jframe::CollisionLayers::Player);
+        physics_.setCollisionLayer(player, bestow::CollisionLayers::Player);
         std::println("Player created at (200, 300)");
 
         // Test ground check while in air
         std::println("\nGround check while in air:");
-        jframe::GroundCheckParams params{
+        bestow::GroundCheckParams params{
             .rayDistance = 5.0f,
             .slopeToleranceDeg = 60.0f,
-            .groundMask = jframe::CollisionLayers::Ground
+            .groundMask = bestow::CollisionLayers::Ground
         };
         auto result1 = physics_.checkGrounded(player, params);
         std::println("  Grounded: {}", result1.grounded);
@@ -683,39 +683,39 @@ private:
 
         // Create ground
         auto ground = createMockEntity();
-        jframe::PhysicsBodyDef groundDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef groundDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 300.0f, .y = 500.0f},
             .size = {600.0f, 40.0f}
         };
         physics_.createBody(ground, groundDef);
-        physics_.setCollisionLayer(ground, jframe::CollisionLayers::Ground);
+        physics_.setCollisionLayer(ground, bestow::CollisionLayers::Ground);
         std::println("Ground created");
 
         // Create platforms
         auto platform1 = createMockEntity();
-        jframe::PhysicsBodyDef platDef{
-            .type = jframe::BodyType::Static,
+        bestow::PhysicsBodyDef platDef{
+            .type = bestow::BodyType::Static,
             .transform = {.x = 150.0f, .y = 350.0f},
             .size = {100.0f, 20.0f}
         };
         physics_.createBody(platform1, platDef);
-        physics_.setCollisionLayer(platform1, jframe::CollisionLayers::Terrain);
+        physics_.setCollisionLayer(platform1, bestow::CollisionLayers::Terrain);
         std::println("Platform 1 created at (150, 350)");
 
         auto platform2 = createMockEntity();
         platDef.transform = {.x = 450.0f, .y = 350.0f};
         physics_.createBody(platform2, platDef);
-        physics_.setCollisionLayer(platform2, jframe::CollisionLayers::Terrain);
+        physics_.setCollisionLayer(platform2, bestow::CollisionLayers::Terrain);
         std::println("Platform 2 created at (450, 350)");
 
         // Create dynamic boxes
-        std::vector<jframe::Entity> boxes;
+        std::vector<bestow::Entity> boxes;
         std::println("\nCreating stack of boxes...");
         for (int i = 0; i < 5; ++i) {
             auto box = createMockEntity();
-            jframe::PhysicsBodyDef boxDef{
-                .type = jframe::BodyType::Dynamic,
+            bestow::PhysicsBodyDef boxDef{
+                .type = bestow::BodyType::Dynamic,
                 .transform = {.x = 300.0f, .y = 100.0f + i * 35.0f},
                 .size = {30.0f, 30.0f},
                 .density = 1.0f,
@@ -723,28 +723,28 @@ private:
                 .restitution = 0.1f
             };
             physics_.createBody(box, boxDef);
-            physics_.setCollisionLayer(box, jframe::CollisionLayers::Enemy);
+            physics_.setCollisionLayer(box, bestow::CollisionLayers::Enemy);
             boxes.push_back(box);
         }
         std::println("  Created {} boxes", boxes.size());
 
         // Create projectile
         auto projectile = createMockEntity();
-        jframe::PhysicsBodyDef projDef{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef projDef{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = 50.0f, .y = 250.0f},
             .size = {15.0f, 15.0f},
             .density = 2.0f,
             .restitution = 0.6f
         };
         physics_.createBody(projectile, projDef);
-        physics_.setCollisionLayer(projectile, jframe::CollisionLayers::Projectile);
+        physics_.setCollisionLayer(projectile, bestow::CollisionLayers::Projectile);
         physics_.setVelocity(projectile, {300.0f, -50.0f});
         std::println("\nProjectile launched at (50, 250) with velocity (300, -50)");
 
         // Set up collision tracking
         int collisionCount = 0;
-        physics_.setCollisionCallback([&](const jframe::CollisionEvent&) {
+        physics_.setCollisionCallback([&](const bestow::CollisionEvent&) {
             ++collisionCount;
         });
 
@@ -812,23 +812,23 @@ private:
     // Helper Functions
     //==========================================================================
 
-    jframe::Entity createMockEntity() {
+    bestow::Entity createMockEntity() {
         // In a real demo with entity system, you'd use entities_.createEntity()
         // For this standalone demo, we'll create mock entity IDs
-        auto entity = static_cast<jframe::Entity>(nextEntityId_++);
+        auto entity = static_cast<bestow::Entity>(nextEntityId_++);
         trackedEntities_.push_back(entity);
         return entity;
     }
 
-    std::uint32_t entityId(jframe::Entity entity) const {
+    std::uint32_t entityId(bestow::Entity entity) const {
         return static_cast<std::uint32_t>(entity);
     }
 
-    std::string bodyTypeToString(jframe::BodyType type) const {
+    std::string bodyTypeToString(bestow::BodyType type) const {
         switch (type) {
-            case jframe::BodyType::Static: return "Static";
-            case jframe::BodyType::Kinematic: return "Kinematic";
-            case jframe::BodyType::Dynamic: return "Dynamic";
+            case bestow::BodyType::Static: return "Static";
+            case bestow::BodyType::Kinematic: return "Kinematic";
+            case bestow::BodyType::Dynamic: return "Dynamic";
             default: return "Unknown";
         }
     }

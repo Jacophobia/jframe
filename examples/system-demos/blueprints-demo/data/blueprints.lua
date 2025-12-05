@@ -1,5 +1,5 @@
 -- blueprints.lua
--- Example blueprint definitions for JFrame Blueprint System Demo
+-- Example blueprint definitions for Bestow Blueprint System Demo
 -- Demonstrates all features: inheritance, physics, components, metadata
 
 -- Define our blueprints in a global table

@@ -7,7 +7,7 @@ return {
     window = {
         width = 800,
         height = 600,
-        title = "JFrame Template Game",
+        title = "Bestow Template Game",
         vsync = true
     },
 

@@ -1,6 +1,6 @@
 # Input System Demo
 
-Comprehensive demonstration of the JFrame Input System API.
+Comprehensive demonstration of the Bestow Input System API.
 
 ## Overview
 
@@ -152,7 +152,7 @@ auto input = getLastInput();  // Captured!
 When running, you'll see:
 ```
 ========================================
-  JFrame Input System Demo
+  Bestow Input System Demo
 ========================================
 
 [Instructions...]
@@ -185,8 +185,8 @@ Input mappings registered successfully!
 ## Implementation Notes
 
 This demo uses:
-- `jframe.input.impl` - Input system implementation
-- `jframe.types` - Input types (InputBinding, ActionState, etc.)
+- `bestow.input.impl` - Input system implementation
+- `bestow.types` - Input types (InputBinding, ActionState, etc.)
 - GLFW for window creation and keyboard/mouse input
 - SDL2 for game controller support
 

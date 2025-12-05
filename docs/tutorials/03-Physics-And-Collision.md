@@ -1,10 +1,10 @@
 # Tutorial 3: Physics and Collision
 
-This tutorial covers JFrame's physics system, which is built on Box2D 3.0. You'll learn about body types, collision layers, collision callbacks, and ground detection.
+This tutorial covers Bestow's physics system, which is built on Box2D 3.0. You'll learn about body types, collision layers, collision callbacks, and ground detection.
 
 ## Physics System Overview
 
-JFrame's physics system provides:
+Bestow's physics system provides:
 
 - 2D rigid body physics with gravity
 - Collision detection and response
@@ -22,8 +22,8 @@ There are three types of physics bodies:
 Affected by gravity and forces. Used for players, enemies, boxes.
 
 ```cpp
-jframe::PhysicsBodyDef playerDef{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef playerDef{
+    .type = bestow::BodyType::Dynamic,
     .transform = {.x = 100.0f, .y = 200.0f},
     .size = {32.0f, 48.0f},
     .fixedRotation = true  // Prevent rotation
@@ -36,8 +36,8 @@ sys.physics->createBody(player, playerDef);
 Never move. Used for ground, walls, platforms.
 
 ```cpp
-jframe::PhysicsBodyDef groundDef{
-    .type = jframe::BodyType::Static,
+bestow::PhysicsBodyDef groundDef{
+    .type = bestow::BodyType::Static,
     .transform = {.x = 400.0f, .y = 50.0f},
     .size = {800.0f, 100.0f}
 };
@@ -49,8 +49,8 @@ sys.physics->createBody(ground, groundDef);
 Move programmatically but aren't affected by forces. Used for moving platforms, elevators.
 
 ```cpp
-jframe::PhysicsBodyDef platformDef{
-    .type = jframe::BodyType::Kinematic,
+bestow::PhysicsBodyDef platformDef{
+    .type = bestow::BodyType::Kinematic,
     .transform = {.x = 300.0f, .y = 200.0f},
     .size = {100.0f, 20.0f}
 };
@@ -66,11 +66,11 @@ sys.physics->setVelocity(movingPlatform, {50.0f, 0.0f});
 
 ```cpp
 // Create entity
-jframe::Entity entity = sys.entities->createEntity();
+bestow::Entity entity = sys.entities->createEntity();
 
 // Define physics body
-jframe::PhysicsBodyDef bodyDef{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef bodyDef{
+    .type = bestow::BodyType::Dynamic,
     .transform = {.x = 100.0f, .y = 200.0f},
     .size = {32.0f, 32.0f},
     .fixedRotation = true,
@@ -87,20 +87,20 @@ sys.physics->createBody(entity, bodyDef);
 ```cpp
 // Position and rotation
 sys.physics->setPosition(entity, {200.0f, 300.0f});
-jframe::Vec2 pos = sys.physics->getPosition(entity);
+bestow::Vec2 pos = sys.physics->getPosition(entity);
 
 sys.physics->setRotation(entity, 0.785f);  // Radians
 float rotation = sys.physics->getRotation(entity);
 
 // Velocity
 sys.physics->setVelocity(entity, {100.0f, 200.0f});
-jframe::Vec2 vel = sys.physics->getVelocity(entity);
+bestow::Vec2 vel = sys.physics->getVelocity(entity);
 
 sys.physics->setAngularVelocity(entity, 1.5f);
 float angVel = sys.physics->getAngularVelocity(entity);
 
 // Get body size
-jframe::Vec2 size = sys.physics->getBodySize(entity);
+bestow::Vec2 size = sys.physics->getBodySize(entity);
 ```
 
 ### Applying Forces
@@ -116,8 +116,8 @@ sys.physics->applyImpulse(entity, {500.0f, 500.0f});
 sys.physics->applyTorque(entity, 100.0f);
 
 // Apply force at a point (creates rotation)
-jframe::Vec2 force = {1000.0f, 0.0f};
-jframe::Vec2 point = {16.0f, 16.0f};  // Offset from center
+bestow::Vec2 force = {1000.0f, 0.0f};
+bestow::Vec2 point = {16.0f, 16.0f};  // Offset from center
 sys.physics->applyForce(entity, force, point);
 ```
 
@@ -128,7 +128,7 @@ Collision layers control which objects collide with each other.
 ### Predefined Layers
 
 ```cpp
-namespace jframe::CollisionLayers {
+namespace bestow::CollisionLayers {
     inline constexpr CollisionLayer Player      = 0x0001;
     inline constexpr CollisionLayer Enemy       = 0x0002;
     inline constexpr CollisionLayer Projectile  = 0x0004;
@@ -142,7 +142,7 @@ namespace jframe::CollisionLayers {
 ### Setting Collision Layers
 
 ```cpp
-using namespace jframe::CollisionLayers;
+using namespace bestow::CollisionLayers;
 
 // Player collides with terrain, enemies, and collectibles
 sys.physics->setCollisionLayer(player, Player);
@@ -192,10 +192,10 @@ Sensors detect overlaps without causing physical collision.
 
 ```cpp
 // Create a trigger zone (e.g., checkpoint, level exit)
-jframe::Entity trigger = sys.entities->createEntity();
+bestow::Entity trigger = sys.entities->createEntity();
 
-jframe::PhysicsBodyDef triggerDef{
-    .type = jframe::BodyType::Static,
+bestow::PhysicsBodyDef triggerDef{
+    .type = bestow::BodyType::Static,
     .transform = {.x = 500.0f, .y = 300.0f},
     .size = {100.0f, 200.0f}
 };
@@ -203,8 +203,8 @@ sys.physics->createBody(trigger, triggerDef);
 
 // Make it a sensor (no collision, only triggers)
 sys.physics->setSensor(trigger, true);
-sys.physics->setCollisionLayer(trigger, jframe::CollisionLayers::Trigger);
-sys.physics->setCollisionMask(trigger, jframe::CollisionLayers::Player);
+sys.physics->setCollisionLayer(trigger, bestow::CollisionLayers::Trigger);
+sys.physics->setCollisionMask(trigger, bestow::CollisionLayers::Player);
 ```
 
 ## Collision Callbacks
@@ -213,23 +213,23 @@ Receive collision events through the event system.
 
 ```cpp
 // Subscribe to collision events
-collisionSub_ = sys.events->subscribe(jframe::Events::Collision,
-    [this](const jframe::EventData& data) {
+collisionSub_ = sys.events->subscribe(bestow::Events::Collision,
+    [this](const bestow::EventData& data) {
         handleCollision(data);
     });
 
 // Handle collision
-void handleCollision(const jframe::EventData& data) {
+void handleCollision(const bestow::EventData& data) {
     try {
-        const auto& collision = std::get<jframe::CollisionEvent>(data);
+        const auto& collision = std::get<bestow::CollisionEvent>(data);
 
         // Check what collided
-        jframe::Entity entityA = collision.entityA;
-        jframe::Entity entityB = collision.entityB;
+        bestow::Entity entityA = collision.entityA;
+        bestow::Entity entityB = collision.entityB;
 
         // Collision details
-        jframe::Vec2 contactPoint = collision.contactPoint;
-        jframe::Vec2 normal = collision.normal;
+        bestow::Vec2 contactPoint = collision.contactPoint;
+        bestow::Vec2 normal = collision.normal;
         bool isBegin = collision.isBegin;  // true = collision start, false = end
 
         // Example: Player hit enemy
@@ -267,23 +267,23 @@ struct CollisionEvent {
 
 ## Ground Detection
 
-JFrame provides a helper for detecting if a character is standing on the ground.
+Bestow provides a helper for detecting if a character is standing on the ground.
 
 ```cpp
 // Check if player is grounded
-jframe::GroundCheckParams params{
+bestow::GroundCheckParams params{
     .rayLength = 5.0f,          // How far down to check
     .rayOffsetX = 10.0f,        // Check multiple rays for stability
-    .groundLayers = jframe::CollisionLayers::Ground | jframe::CollisionLayers::Terrain
+    .groundLayers = bestow::CollisionLayers::Ground | bestow::CollisionLayers::Terrain
 };
 
-jframe::GroundCheckResult result = sys.physics->checkGrounded(player, params);
+bestow::GroundCheckResult result = sys.physics->checkGrounded(player, params);
 
 if (result.isGrounded) {
     // Player is on the ground
-    jframe::Vec2 groundPoint = result.groundPoint;
-    jframe::Vec2 groundNormal = result.groundNormal;
-    jframe::Entity groundEntity = result.groundEntity;
+    bestow::Vec2 groundPoint = result.groundPoint;
+    bestow::Vec2 groundNormal = result.groundNormal;
+    bestow::Entity groundEntity = result.groundEntity;
 
     // Can jump
     if (jumpPressed) {
@@ -304,15 +304,15 @@ struct PlayerController {
     static constexpr float kCoyoteTimeMax = 0.15f;
 };
 
-void updatePlayerMovement(jframe::DeltaTime dt) {
+void updatePlayerMovement(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
     auto* controller = sys.entities->tryGet<PlayerController>(player_);
 
     // Check grounded state
-    jframe::GroundCheckParams params{
+    bestow::GroundCheckParams params{
         .rayLength = 5.0f,
         .rayOffsetX = 8.0f,  // Check left and right edges
-        .groundLayers = jframe::CollisionLayers::Ground
+        .groundLayers = bestow::CollisionLayers::Ground
     };
 
     auto groundCheck = sys.physics->checkGrounded(player_, params);
@@ -344,14 +344,14 @@ Query physics bodies in a region.
 
 ```cpp
 // Find all entities in a rectangular area
-jframe::Vec2 min = {100.0f, 100.0f};
-jframe::Vec2 max = {300.0f, 300.0f};
+bestow::Vec2 min = {100.0f, 100.0f};
+bestow::Vec2 max = {300.0f, 300.0f};
 
-std::vector<jframe::Entity> entities = sys.physics->queryAABB(min, max);
+std::vector<bestow::Entity> entities = sys.physics->queryAABB(min, max);
 
-for (jframe::Entity entity : entities) {
+for (bestow::Entity entity : entities) {
     // Do something with entity
-    jframe::core::logInfo(std::format("Found entity in area"));
+    bestow::core::logInfo(std::format("Found entity in area"));
 }
 ```
 
@@ -359,13 +359,13 @@ for (jframe::Entity entity : entities) {
 
 ```cpp
 // Find all entities within a radius
-jframe::Vec2 center = {400.0f, 300.0f};
+bestow::Vec2 center = {400.0f, 300.0f};
 float radius = 100.0f;
 
-std::vector<jframe::Entity> entities = sys.physics->queryCircle(center, radius);
+std::vector<bestow::Entity> entities = sys.physics->queryCircle(center, radius);
 
 // Example: Explosion damage
-for (jframe::Entity entity : entities) {
+for (bestow::Entity entity : entities) {
     if (auto* health = sys.entities->tryGet<Health>(entity)) {
         health->current -= 50;
     }
@@ -376,19 +376,19 @@ for (jframe::Entity entity : entities) {
 
 ```cpp
 // Cast a ray to find the first hit
-jframe::Vec2 origin = {100.0f, 300.0f};
-jframe::Vec2 direction = {1.0f, 0.0f};  // Normalized
+bestow::Vec2 origin = {100.0f, 300.0f};
+bestow::Vec2 direction = {1.0f, 0.0f};  // Normalized
 float maxDistance = 500.0f;
 
 auto hit = sys.physics->raycast(origin, direction, maxDistance);
 
 if (hit) {
-    jframe::Entity hitEntity = hit->entity;
-    jframe::Vec2 hitPoint = hit->point;
-    jframe::Vec2 hitNormal = hit->normal;
+    bestow::Entity hitEntity = hit->entity;
+    bestow::Vec2 hitPoint = hit->point;
+    bestow::Vec2 hitNormal = hit->normal;
     float distance = hit->distance;
 
-    jframe::core::logInfo(std::format("Hit at ({}, {}), distance: {}",
+    bestow::core::logInfo(std::format("Hit at ({}, {}), distance: {}",
         hitPoint.x, hitPoint.y, distance));
 }
 ```
@@ -397,7 +397,7 @@ if (hit) {
 
 ```cpp
 // Only hit enemies
-jframe::CollisionMask mask = jframe::CollisionLayers::Enemy;
+bestow::CollisionMask mask = bestow::CollisionLayers::Enemy;
 auto hit = sys.physics->raycast(origin, direction, maxDistance, mask);
 
 if (hit) {
@@ -413,7 +413,7 @@ if (hit) {
 auto hits = sys.physics->raycastAll(origin, direction, maxDistance);
 
 for (const auto& hit : hits) {
-    jframe::core::logInfo(std::format("Hit entity at distance: {}", hit.distance));
+    bestow::core::logInfo(std::format("Hit entity at distance: {}", hit.distance));
 }
 ```
 
@@ -424,7 +424,7 @@ for (const auto& hit : hits) {
 sys.physics->setGravity({0.0f, -980.0f});  // 980 pixels/s^2 downward
 
 // Get current gravity
-jframe::Vec2 gravity = sys.physics->getGravity();
+bestow::Vec2 gravity = sys.physics->getGravity();
 
 // Example: Low gravity level
 sys.physics->setGravity({0.0f, -300.0f});
@@ -442,22 +442,22 @@ sys.physics->setGravity({0.0f, 0.0f});
 
 ```cpp
 // Create a platform the player can jump through from below
-jframe::Entity platform = sys.entities->createEntity();
+bestow::Entity platform = sys.entities->createEntity();
 
-jframe::PhysicsBodyDef platformDef{
-    .type = jframe::BodyType::Static,
+bestow::PhysicsBodyDef platformDef{
+    .type = bestow::BodyType::Static,
     .transform = {.x = 300.0f, .y = 200.0f},
     .size = {200.0f, 20.0f}
 };
 sys.physics->createBody(platform, platformDef);
 
 // In collision callback
-void handleCollision(const jframe::EventData& data) {
-    const auto& collision = std::get<jframe::CollisionEvent>(data);
+void handleCollision(const bestow::EventData& data) {
+    const auto& collision = std::get<bestow::CollisionEvent>(data);
 
     // If player is moving upward and hits platform from below, ignore collision
     if (isPlatform(collision.entityB) && collision.isBegin) {
-        jframe::Vec2 vel = sys.physics->getVelocity(player_);
+        bestow::Vec2 vel = sys.physics->getVelocity(player_);
         if (vel.y > 0) {
             // Moving up - pass through
             // (This requires setting platform as sensor temporarily)
@@ -469,10 +469,10 @@ void handleCollision(const jframe::EventData& data) {
 ### Pushable Box
 
 ```cpp
-jframe::Entity box = sys.entities->createEntity();
+bestow::Entity box = sys.entities->createEntity();
 
-jframe::PhysicsBodyDef boxDef{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef boxDef{
+    .type = bestow::BodyType::Dynamic,
     .transform = {.x = 300.0f, .y = 200.0f},
     .size = {40.0f, 40.0f},
     .fixedRotation = true,
@@ -487,10 +487,10 @@ sys.physics->createBody(box, boxDef);
 ### Jump Pad
 
 ```cpp
-jframe::Entity jumpPad = sys.entities->createEntity();
+bestow::Entity jumpPad = sys.entities->createEntity();
 
-jframe::PhysicsBodyDef padDef{
-    .type = jframe::BodyType::Static,
+bestow::PhysicsBodyDef padDef{
+    .type = bestow::BodyType::Static,
     .transform = {.x = 400.0f, .y = 100.0f},
     .size = {60.0f, 20.0f}
 };
@@ -500,7 +500,7 @@ sys.physics->setSensor(jumpPad, true);
 // In collision callback
 if (isJumpPad(collision.entityB) && collision.isBegin) {
     // Launch player upward
-    jframe::Vec2 vel = sys.physics->getVelocity(player_);
+    bestow::Vec2 vel = sys.physics->getVelocity(player_);
     vel.y = 800.0f;  // High jump
     sys.physics->setVelocity(player_, vel);
 }
@@ -510,14 +510,14 @@ if (isJumpPad(collision.entityB) && collision.isBegin) {
 
 ```cpp
 struct MovingPlatform {
-    jframe::Vec2 startPos;
-    jframe::Vec2 endPos;
+    bestow::Vec2 startPos;
+    bestow::Vec2 endPos;
     float speed = 100.0f;
     float time = 0.0f;
     float duration = 4.0f;
 };
 
-void updateMovingPlatforms(jframe::DeltaTime dt) {
+void updateMovingPlatforms(bestow::DeltaTime dt) {
     auto view = sys.entities->getRegistry().view<MovingPlatform>();
 
     for (auto [entity, platform] : view.each()) {
@@ -526,7 +526,7 @@ void updateMovingPlatforms(jframe::DeltaTime dt) {
         // Ping-pong between start and end
         float t = std::abs(std::fmod(platform.time / platform.duration, 2.0f) - 1.0f);
 
-        jframe::Vec2 newPos = {
+        bestow::Vec2 newPos = {
             platform.startPos.x + t * (platform.endPos.x - platform.startPos.x),
             platform.startPos.y + t * (platform.endPos.y - platform.startPos.y)
         };
@@ -570,8 +570,8 @@ sys.physics->setSensor(trigger, true);
 Prevent characters from tipping over:
 
 ```cpp
-jframe::PhysicsBodyDef playerDef{
-    .type = jframe::BodyType::Dynamic,
+bestow::PhysicsBodyDef playerDef{
+    .type = bestow::BodyType::Dynamic,
     .fixedRotation = true  // IMPORTANT for platformers
 };
 ```
@@ -616,5 +616,5 @@ Now you understand physics and collision! Next tutorials:
 ## Further Reading
 
 - Box2D Manual: https://box2d.org/documentation/
-- JFrame Physics System API: `docs/systems/physics.md`
+- Bestow Physics System API: `docs/systems/physics.md`
 - Example: `examples/platformer/src/Game.cpp`

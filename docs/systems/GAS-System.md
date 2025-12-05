@@ -1,4 +1,4 @@
-# JFrame Gameplay Ability System (GAS) Guide
+# Bestow Gameplay Ability System (GAS) Guide
 
 The Gameplay Ability System provides a flexible, data-driven framework for implementing gameplay mechanics like abilities, buffs, debuffs, and attribute management.
 
@@ -9,10 +9,10 @@ The Gameplay Ability System provides a flexible, data-driven framework for imple
 Hierarchical identifiers for categorizing and querying gameplay state.
 
 ```cpp
-import jframe.gas;
-import jframe.gas.impl;
+import bestow.gas;
+import bestow.gas.impl;
 
-auto gas = jframe::createGASSystem();
+auto gas = bestow::createGASSystem();
 
 // Register tags (hierarchical with dots)
 auto stunTag = gas->registerTag("State.Debuff.Stunned");
@@ -33,7 +33,7 @@ auto found = gas->findTag("State.Debuff.Stunned");  // Returns optional<Gameplay
 Collections of tags with query operations.
 
 ```cpp
-jframe::GameplayTagContainer container;
+bestow::GameplayTagContainer container;
 container.addTag(stunTag);
 container.addTag(dashTag);
 
@@ -50,7 +50,7 @@ Numeric values attached to entities with base/current separation.
 
 ```cpp
 // Define an attribute
-jframe::AttributeDef healthDef{
+bestow::AttributeDef healthDef{
     .name = "Health",
     .baseValue = 100.0f,
     .minValue = 0.0f,
@@ -60,7 +60,7 @@ jframe::AttributeDef healthDef{
 auto healthId = gas->registerAttribute(healthDef);
 
 // Initialize on entity
-jframe::Entity player = /* ... */;
+bestow::Entity player = /* ... */;
 gas->initializeComponent(player);
 gas->initializeAttribute(player, healthId, 100.0f);
 
@@ -77,14 +77,14 @@ Modifiers applied to attributes with duration control.
 
 ```cpp
 // Define a poison effect
-jframe::EffectDef poisonDef{
+bestow::EffectDef poisonDef{
     .name = "Poison",
-    .durationType = jframe::EffectDurationType::Duration,
+    .durationType = bestow::EffectDurationType::Duration,
     .duration = 5.0f,
     .period = 1.0f,  // Tick every second
     .modifiers = {{
         .attribute = healthId,
-        .op = jframe::EffectModifierOp::Add,
+        .op = bestow::EffectModifierOp::Add,
         .value = -10.0f  // -10 HP per tick
     }},
     .stackable = true,
@@ -112,7 +112,7 @@ auto activeEffects = gas->getActiveEffects(target);
 
 **Effect Tags:**
 ```cpp
-jframe::EffectDef buffDef{
+bestow::EffectDef buffDef{
     .name = "SpeedBoost",
     .grantedTags = /* tags added while effect active */,
     .applicationRequiredTags = /* target must have these to apply */,
@@ -126,9 +126,9 @@ jframe::EffectDef buffDef{
 Activatable capabilities with costs, cooldowns, and tag requirements.
 
 ```cpp
-jframe::AbilityDef dashDef{
+bestow::AbilityDef dashDef{
     .name = "Dash",
-    .activationPolicy = jframe::AbilityActivationPolicy::OnInputPressed,
+    .activationPolicy = bestow::AbilityActivationPolicy::OnInputPressed,
     .cooldown = 2.0f,
     .costs = {{
         .attribute = staminaId,
@@ -270,17 +270,17 @@ auto healthDef = gas->getAttributeDef("Health");
 React to gameplay events:
 
 ```cpp
-gas->setAttributeChangeCallback([](const jframe::AttributeChangeEvent& e) {
+gas->setAttributeChangeCallback([](const bestow::AttributeChangeEvent& e) {
     if (e.newValue <= 0) {
         // Entity died
     }
 });
 
-gas->setEffectAppliedCallback([](const jframe::EffectAppliedEvent& e) {
+gas->setEffectAppliedCallback([](const bestow::EffectAppliedEvent& e) {
     // Play VFX, sound, etc.
 });
 
-gas->setAbilityActivatedCallback([](const jframe::AbilityActivatedEvent& e) {
+gas->setAbilityActivatedCallback([](const bestow::AbilityActivatedEvent& e) {
     // Trigger animations, sounds
 });
 ```
@@ -379,7 +379,7 @@ auto engine = EngineBuilder()
     .build();
 
 // Manual GAS setup
-auto gas = jframe::createGASSystem();
+auto gas = bestow::createGASSystem();
 gas->loadDefinitionsFromLua(abilitiesLua);
 
 // In game loop - must call manually

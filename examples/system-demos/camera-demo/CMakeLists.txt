@@ -21,9 +21,9 @@ target_sources(camera-demo
 
 target_link_libraries(camera-demo
     PRIVATE
-        jframe-contract
-        jframe-camera
-        jframe-entity
+        bestow-contract
+        bestow-camera
+        bestow-entity
 )
 
 # Set output directory

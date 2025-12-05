@@ -14,9 +14,9 @@ target_use_std_module(assets-demo)
 
 target_link_libraries(assets-demo
     PRIVATE
-        jframe-contract
-        jframe-assets
-        jframe-core
+        bestow-contract
+        bestow-assets
+        bestow-core
 )
 
 # Set output directory

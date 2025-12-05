@@ -1,25 +1,25 @@
 // template/src/Game.cpp
-// JFrame Template Game - Implementation
-// This file demonstrates how to use all JFrame systems together
+// Bestow Template Game - Implementation
+// This file demonstrates how to use all Bestow systems together
 
 // Use compatibility header for MSVC C++23 module support
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 #include <fstream>
 #include <sstream>
 
 import std;
-import jframe;
-import jframe.core;
-import jframe.gas;
-import jframe.gas.impl;
-import jframe.camera;
-import jframe.camera.impl;
-import jframe.blueprints;
-import jframe.blueprints.impl;
-import jframe.config.impl;
-import jframe.builders;
-import jframe.luaconfig;
+import bestow;
+import bestow.core;
+import bestow.gas;
+import bestow.gas.impl;
+import bestow.camera;
+import bestow.camera.impl;
+import bestow.blueprints;
+import bestow.blueprints.impl;
+import bestow.config.impl;
+import bestow.builders;
+import bestow.luaconfig;
 
 #include "Game.h"
 
@@ -29,8 +29,8 @@ namespace template_game {
 // Application Lifecycle
 // ============================================================================
 
-bool Game::initialize(jframe::core::Engine& engine) {
-    jframe::core::logInfo("Initializing Template Game");
+bool Game::initialize(bestow::core::Engine& engine) {
+    bestow::core::logInfo("Initializing Template Game");
 
     engine_ = &engine;
 
@@ -49,15 +49,15 @@ bool Game::initialize(jframe::core::Engine& engine) {
     // Start background music
     playMusic("background");
 
-    jframe::core::logInfo("Template Game initialized successfully!");
-    jframe::core::logInfo("Controls:");
-    jframe::core::logInfo("  A/D or Left/Right Arrow - Move");
-    jframe::core::logInfo("  W/Space or Up Arrow - Jump");
+    bestow::core::logInfo("Template Game initialized successfully!");
+    bestow::core::logInfo("Controls:");
+    bestow::core::logInfo("  A/D or Left/Right Arrow - Move");
+    bestow::core::logInfo("  W/Space or Up Arrow - Jump");
 
     return true;
 }
 
-void Game::updateFixed(jframe::DeltaTime dt) {
+void Game::updateFixed(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     // Update GAS system (cooldowns, effects, etc.)
@@ -78,10 +78,10 @@ void Game::render(float alpha) {
 
     // Sync physics positions to Transform2D for rendering
     // This ensures visuals match physics simulation
-    for (jframe::Entity entity : sys.entities->view<jframe::Transform2D>()) {
+    for (bestow::Entity entity : sys.entities->view<bestow::Transform2D>()) {
         if (sys.physics->hasBody(entity)) {
-            jframe::Vec2 pos = sys.physics->getPosition(entity);
-            auto* transform = sys.entities->tryGet<jframe::Transform2D>(entity);
+            bestow::Vec2 pos = sys.physics->getPosition(entity);
+            auto* transform = sys.entities->tryGet<bestow::Transform2D>(entity);
             if (transform) {
                 transform->x = pos.x;
                 transform->y = pos.y;
@@ -91,7 +91,7 @@ void Game::render(float alpha) {
 
     // Apply camera transform for world rendering
     if (camera_) {
-        jframe::Camera gameCamera = camera_->getCamera();
+        bestow::Camera gameCamera = camera_->getCamera();
         sys.graphics->setCamera(gameCamera);
     }
 
@@ -104,7 +104,7 @@ void Game::render(float alpha) {
 }
 
 void Game::shutdown() {
-    jframe::core::logInfo("Shutting down Template Game");
+    bestow::core::logInfo("Shutting down Template Game");
 
     // Shutdown systems in reverse order of initialization
     // Note: Audio system is already being shut down by Engine
@@ -113,7 +113,7 @@ void Game::shutdown() {
     config_.reset();
     gas_.reset();
 
-    jframe::core::logInfo("Template Game shutdown complete");
+    bestow::core::logInfo("Template Game shutdown complete");
 }
 
 // ============================================================================
@@ -121,12 +121,12 @@ void Game::shutdown() {
 // ============================================================================
 
 void Game::setupConfig() {
-    config_ = jframe::createConfigSystem();
+    config_ = bestow::createConfigSystem();
     config_->initialize();
 
     // Load game configuration from Lua
     if (!config_->loadConfig("data/config/game.lua")) {
-        jframe::core::logWarn("Could not load game config, using defaults");
+        bestow::core::logWarn("Could not load game config, using defaults");
         return;
     }
 
@@ -136,7 +136,7 @@ void Game::setupConfig() {
     playerPhysicsWidth_ = config_->getFloatOr("player.physics.width", 30.0f);
     playerPhysicsHeight_ = config_->getFloatOr("player.physics.height", 50.0f);
 
-    jframe::core::logInfo("Game configuration loaded");
+    bestow::core::logInfo("Game configuration loaded");
 }
 
 void Game::setupInput() {
@@ -144,50 +144,50 @@ void Game::setupInput() {
 
     // Use InputMappingBuilder for clean input configuration
     // Actions are defined in code, but could also be loaded from Lua
-    jframe::InputMappingBuilder(input)
+    bestow::InputMappingBuilder(input)
         // Movement
         .action("move_left")
-            .key(jframe::Keys::A)
-            .key(jframe::Keys::Left)
-            .button(jframe::ControllerButtons::DPadLeft)
+            .key(bestow::Keys::A)
+            .key(bestow::Keys::Left)
+            .button(bestow::ControllerButtons::DPadLeft)
         .action("move_right")
-            .key(jframe::Keys::D)
-            .key(jframe::Keys::Right)
-            .button(jframe::ControllerButtons::DPadRight)
+            .key(bestow::Keys::D)
+            .key(bestow::Keys::Right)
+            .button(bestow::ControllerButtons::DPadRight)
 
         // Jump
         .action("jump")
-            .key(jframe::Keys::Space)
-            .key(jframe::Keys::W)
-            .key(jframe::Keys::Up)
-            .button(jframe::ControllerButtons::A)
+            .key(bestow::Keys::Space)
+            .key(bestow::Keys::W)
+            .key(bestow::Keys::Up)
+            .button(bestow::ControllerButtons::A)
 
         .apply();
 
-    jframe::core::logInfo("Input mappings configured");
+    bestow::core::logInfo("Input mappings configured");
 }
 
 void Game::setupBlueprints() {
     auto& sys = engine_->systems();
 
     // Create blueprint factory for data-driven entity creation
-    blueprints_ = jframe::createBlueprintFactory(*sys.entities, sys.physics);
+    blueprints_ = bestow::createBlueprintFactory(*sys.entities, sys.physics);
 
     // Register custom components (DebugRect/DebugCircle are built-in)
     blueprints_->registerComponent("PlayerTag",
-        [](jframe::Entity e, jframe::IEntitySystem& sys, const jframe::PropertyMap&) {
+        [](bestow::Entity e, bestow::IEntitySystem& sys, const bestow::PropertyMap&) {
             sys.emplace<PlayerTag>(e);
         });
 
     blueprints_->registerComponent("PlatformTag",
-        [](jframe::Entity e, jframe::IEntitySystem& sys, const jframe::PropertyMap&) {
+        [](bestow::Entity e, bestow::IEntitySystem& sys, const bestow::PropertyMap&) {
             sys.emplace<PlatformTag>(e);
         });
 
     // Load blueprints from Lua file
     std::ifstream file("data/blueprints/entities.lua");
     if (!file) {
-        jframe::core::logError("Could not open data/blueprints/entities.lua");
+        bestow::core::logError("Could not open data/blueprints/entities.lua");
         return;
     }
 
@@ -195,18 +195,18 @@ void Game::setupBlueprints() {
     buffer << file.rdbuf();
 
     if (blueprints_->loadBlueprints(buffer.str())) {
-        jframe::core::logInfo("Loaded " +
+        bestow::core::logInfo("Loaded " +
             std::to_string(blueprints_->getBlueprintNames().size()) + " blueprints");
     } else {
-        jframe::core::logError("Failed to parse blueprints");
+        bestow::core::logError("Failed to parse blueprints");
     }
 }
 
 void Game::setupGAS() {
     // Create Gameplay Ability System
-    gas_ = jframe::createGASSystem();
+    gas_ = bestow::createGASSystem();
     if (!gas_) {
-        jframe::core::logError("Failed to create GAS system");
+        bestow::core::logError("Failed to create GAS system");
         return;
     }
 
@@ -214,18 +214,18 @@ void Game::setupGAS() {
     // In a real game, you'd load this from Lua like in ability-demo
 
     // Create basic attributes first (abilities may depend on them)
-    jframe::AttributeDef healthDef;
+    bestow::AttributeDef healthDef;
     healthDef.name = "Health";
     healthDef.baseValue = 100.0f;
     healthAttr_ = gas_->registerAttribute(healthDef);
 
-    jframe::AttributeDef staminaDef;
+    bestow::AttributeDef staminaDef;
     staminaDef.name = "Stamina";
     staminaDef.baseValue = 100.0f;
     staminaAttr_ = gas_->registerAttribute(staminaDef);
 
     // Create jump ability definition
-    jframe::AbilityDef jumpDef;
+    bestow::AbilityDef jumpDef;
     jumpDef.name = "Jump";
     jumpDef.cooldown = 0.0f;  // No cooldown for basic jump
     // Note: costs is a vector of AbilityCost, empty = no cost
@@ -234,7 +234,7 @@ void Game::setupGAS() {
     // Register ability with GAS
     jumpAbility_ = gas_->registerAbility(jumpDef);
 
-    jframe::core::logInfo("GAS system initialized");
+    bestow::core::logInfo("GAS system initialized");
 }
 
 void Game::setupAudio() {
@@ -248,25 +248,25 @@ void Game::setupAudio() {
     };
 
     for (const auto& [name, path] : sounds) {
-        auto handle = sys.assets->registerAsset(jframe::AssetType::Sound, path);
+        auto handle = sys.assets->registerAsset(bestow::AssetType::Sound, path);
         soundAssets_[name] = handle;
         // Load asynchronously (won't block game startup)
-        sys.assets->loadAssetAsync(handle, [](jframe::AssetHandle, jframe::AssetState) {});
+        sys.assets->loadAssetAsync(handle, [](bestow::AssetHandle, bestow::AssetState) {});
     }
 
-    jframe::core::logInfo("Audio system initialized");
+    bestow::core::logInfo("Audio system initialized");
 }
 
 void Game::setupCamera() {
     // Create camera system with viewport size
-    camera_ = jframe::createCameraSystem(jframe::Size{800, 600});
+    camera_ = bestow::createCameraSystem(bestow::Size{800, 600});
 
     // Configure camera following behavior
     camera_->setFollowSmoothing(0.1f);  // 0.0 = instant, 0.9 = very smooth
     camera_->setOffset({0.0f, -50.0f}); // Look slightly ahead of player
     camera_->setTarget(player_);        // Follow the player entity
 
-    jframe::core::logInfo("Camera system initialized");
+    bestow::core::logInfo("Camera system initialized");
 }
 
 // ============================================================================
@@ -278,7 +278,7 @@ void Game::createPlayer() {
 
     // Load level first to get spawn point
     levelAssetHandle_ = sys.assets->registerAsset(
-        jframe::AssetType::Level, "data/levels/main.lua");
+        bestow::AssetType::Level, "data/levels/main.lua");
     sys.assets->loadAsset(levelAssetHandle_);
 
     auto levelResult = sys.levels->loadLevel(levelAssetHandle_);
@@ -305,7 +305,7 @@ void Game::createPlayer() {
     gas_->initializeAttribute(player_, staminaAttr_, 100.0f);
     gas_->grantAbility(player_, jumpAbility_);
 
-    jframe::core::logInfo("Player created at (" +
+    bestow::core::logInfo("Player created at (" +
         std::to_string(spawnX) + ", " + std::to_string(spawnY) + ")");
 }
 
@@ -340,7 +340,7 @@ void Game::loadLevel() {
         if (def.type == "platform") {
             blueprintName = "Platform";
         } else {
-            jframe::core::logWarn("Unknown entity type: " + def.type);
+            bestow::core::logWarn("Unknown entity type: " + def.type);
             continue;
         }
 
@@ -355,18 +355,18 @@ void Game::loadLevel() {
         }
 
         // Create entity using blueprint
-        jframe::Entity entity = blueprints_->create(
+        bestow::Entity entity = blueprints_->create(
             blueprintName, def.transform.x, def.transform.y, width, height);
 
         if (sys.entities->isValid(entity)) {
             // Set platform collision layer
-            sys.physics->setCollisionLayer(entity, jframe::CollisionLayers::Ground);
+            sys.physics->setCollisionLayer(entity, bestow::CollisionLayers::Ground);
             entityCount++;
         }
     }
 
     size_t platformCount = sys.entities->groupCount<PlatformTag>();
-    jframe::core::logInfo("Level loaded with " +
+    bestow::core::logInfo("Level loaded with " +
         std::to_string(platformCount) + " platforms");
 }
 
@@ -374,7 +374,7 @@ void Game::loadLevel() {
 // Game Logic
 // ============================================================================
 
-void Game::handlePlayerInput(jframe::DeltaTime dt) {
+void Game::handlePlayerInput(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     if (!sys.physics->hasBody(player_)) return;
@@ -389,7 +389,7 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
     }
 
     // Apply horizontal velocity
-    jframe::Vec2 velocity = sys.physics->getVelocity(player_);
+    bestow::Vec2 velocity = sys.physics->getVelocity(player_);
     velocity.x = moveInput * playerMoveSpeed_;
     sys.physics->setVelocity(player_, velocity);
 
@@ -406,11 +406,11 @@ void Game::handlePlayerInput(jframe::DeltaTime dt) {
         }
 
         playSound("jump");
-        jframe::core::logInfo("Jump!");
+        bestow::core::logInfo("Jump!");
     }
 }
 
-void Game::updatePlayerMovement(jframe::DeltaTime dt) {
+void Game::updatePlayerMovement(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     if (!sys.physics->hasBody(player_)) return;
@@ -420,14 +420,14 @@ void Game::updatePlayerMovement(jframe::DeltaTime dt) {
     isGrounded_ = groundResult.grounded;
 }
 
-void Game::updateCamera(jframe::DeltaTime dt) {
+void Game::updateCamera(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
 
     if (!camera_ || !sys.entities->isValid(player_)) return;
     if (!sys.physics->hasBody(player_)) return;
 
     // Update camera to follow player position
-    jframe::Vec2 targetPos = sys.physics->getPosition(player_);
+    bestow::Vec2 targetPos = sys.physics->getPosition(player_);
     camera_->update(dt, targetPos);
 }
 
@@ -437,7 +437,7 @@ void Game::renderUI() {
     if (!sys.entities->isValid(player_)) return;
 
     // Reset camera to screen space for UI rendering
-    jframe::Camera uiCamera;
+    bestow::Camera uiCamera;
     uiCamera.transform.x = 400.0f;  // Center of 800x600 viewport
     uiCamera.transform.y = 300.0f;
     uiCamera.zoom = 1.0f;
@@ -449,9 +449,9 @@ void Game::renderUI() {
 
     // Draw health bar (top-left corner)
     int healthBarWidth = static_cast<int>((health / 100.0f) * 200.0f);
-    sys.graphics->drawRect({10, 10, 200, 20}, jframe::Color{50, 50, 50, 255}, true);
-    sys.graphics->drawRect({10, 10, healthBarWidth, 20}, jframe::Color{255, 0, 0, 255}, true);
-    sys.graphics->drawRect({10, 10, 200, 20}, jframe::Color::white(), false);
+    sys.graphics->drawRect({10, 10, 200, 20}, bestow::Color{50, 50, 50, 255}, true);
+    sys.graphics->drawRect({10, 10, healthBarWidth, 20}, bestow::Color{255, 0, 0, 255}, true);
+    sys.graphics->drawRect({10, 10, 200, 20}, bestow::Color::white(), false);
 
     // Draw simple instructions
     // (In a real game, you'd use text rendering here)
@@ -469,11 +469,11 @@ void Game::playSound(const std::string& soundName) {
     if (it == soundAssets_.end()) return;
 
     // Check if asset is loaded
-    if (sys.assets->getAssetState(it->second) != jframe::AssetState::Loaded) {
+    if (sys.assets->getAssetState(it->second) != bestow::AssetState::Loaded) {
         return;
     }
 
-    jframe::ChannelSound sound{
+    bestow::ChannelSound sound{
         .asset = it->second,
         .volume = 0.8f,
         .pitch = 1.0f,
@@ -491,11 +491,11 @@ void Game::playMusic(const std::string& musicName) {
     auto it = soundAssets_.find(musicName);
     if (it == soundAssets_.end()) return;
 
-    if (sys.assets->getAssetState(it->second) != jframe::AssetState::Loaded) {
+    if (sys.assets->getAssetState(it->second) != bestow::AssetState::Loaded) {
         return;
     }
 
-    jframe::ChannelSound sound{
+    bestow::ChannelSound sound{
         .asset = it->second,
         .volume = 0.5f,
         .pitch = 1.0f,

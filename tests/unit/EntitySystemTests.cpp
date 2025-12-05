@@ -6,14 +6,14 @@
 #include <vector>
 
 // Use compatibility header for MSVC C++23 module support
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 #include <gtest/gtest.h>
 
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.types;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class EntitySystemTest : public ::testing::Test {
 protected:
@@ -724,4 +724,4 @@ TEST_F(EntitySystemTest, ManyComponentsPerEntity) {
     EXPECT_EQ(entitySystem_->get<TestComponent>(entity).value, 1);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

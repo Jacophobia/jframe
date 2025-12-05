@@ -1,23 +1,23 @@
 // template/src/main.cpp
-// JFrame Template Game - Entry Point
-// This file shows how to build a JFrame engine with all systems enabled
+// Bestow Template Game - Entry Point
+// This file shows how to build a Bestow engine with all systems enabled
 
 // MSVC C++23 module compatibility for EnTT iterators and sol2 globals
-#include <jframe/entt_compat.hpp>
-#include <jframe/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe;
-import jframe.core;
+import bestow;
+import bestow.core;
 
 #include "Game.h"
 
 int main(int argc, char* argv[]) {
-    jframe::core::logInfo("Starting JFrame Template Game");
+    bestow::core::logInfo("Starting Bestow Template Game");
 
     // Build the engine with all required systems
     // The EngineBuilder provides a fluent API for configuring systems
-    auto engineResult = jframe::core::EngineBuilder()
+    auto engineResult = bestow::core::EngineBuilder()
         // Event System - Pub/sub messaging between systems
         .withEvents()
 
@@ -28,10 +28,10 @@ int main(int argc, char* argv[]) {
         .withPhysics()
 
         // Graphics System - OpenGL rendering with debug primitives
-        .withGraphics(jframe::core::GraphicsConfig{
+        .withGraphics(bestow::core::GraphicsConfig{
             .width = 800,
             .height = 600,
-            .title = "JFrame Template Game",
+            .title = "Bestow Template Game",
             .vsync = true,
             .clearColor = {40, 40, 50, 255}  // Dark blue-gray background
         })
@@ -53,17 +53,17 @@ int main(int argc, char* argv[]) {
 
     // Check if engine build succeeded
     if (!engineResult) {
-        jframe::core::logError("Failed to build engine: " + engineResult.error());
+        bestow::core::logError("Failed to build engine: " + engineResult.error());
         return 1;
     }
 
-    jframe::core::logInfo("Engine built successfully");
+    bestow::core::logInfo("Engine built successfully");
 
     // Create the game application and run the game loop
     // The engine will call initialize(), updateFixed(), render(), and shutdown()
     template_game::Game game;
     engineResult.value().run(game);
 
-    jframe::core::logInfo("Template Game exiting");
+    bestow::core::logInfo("Template Game exiting");
     return 0;
 }

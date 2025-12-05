@@ -3,16 +3,16 @@
 
 #include <gtest/gtest.h>
 
-import jframe.blueprints;
-import jframe.blueprints.impl;
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.physics;
-import jframe.physics.impl;
-import jframe.types;
+import bestow.blueprints;
+import bestow.blueprints.impl;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.physics;
+import bestow.physics.impl;
+import bestow.types;
 import std;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class BlueprintFactoryTest : public ::testing::Test {
 protected:
@@ -1100,4 +1100,4 @@ TEST_F(BlueprintFactoryTest, DefaultPhysicsSizeUsedWhenNoSizeAvailable) {
     EXPECT_FLOAT_EQ(bodySize.y, 32.0f);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

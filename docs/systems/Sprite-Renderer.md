@@ -1,11 +1,11 @@
-# JFrame Sprite Renderer System
+# Bestow Sprite Renderer System
 
 ## Overview
 
 The Sprite Renderer System provides automatic batch rendering for entities with visual components, eliminating repetitive rendering loops in game code. Instead of manually iterating entity collections and calling draw functions, games can rely on the engine to render all entities with `Sprite`, `AnimatedSprite`, or debug primitive components.
 
-**Module:** `jframe.graphics` (extended interface)
-**Implementation:** `jframe-graphics/`
+**Module:** `bestow.graphics` (extended interface)
+**Implementation:** `bestow-graphics/`
 **Status:** Planned Enhancement
 
 ## Problem Statement
@@ -233,7 +233,7 @@ void Game::render(float alpha) {
 
     sys.graphics->renderEntities(*sys.entities);
 
-    #if defined(JFRAME_DEV_TOOLS)
+    #if defined(BESTOW_DEV_TOOLS)
     if (showDebugInfo_) {
         sys.graphics->setDebugRenderEnabled(true);
         sys.graphics->renderDebugInfo(*sys.entities);
@@ -285,11 +285,11 @@ Entity Game::createEnemy(float x, float y, const std::string& type) {
 ### Phase 1: Debug Primitive Components
 
 **Files to create/modify:**
-- `jframe-contract/src/jframe.types.cppm` - Add DebugRect, DebugCircle
-- `jframe-graphics/src/GraphicsSystem.cpp` - Render debug primitives
+- `bestow-contract/src/bestow.types.cppm` - Add DebugRect, DebugCircle
+- `bestow-graphics/src/GraphicsSystem.cpp` - Render debug primitives
 
 ```cpp
-// In jframe.types.cppm
+// In bestow.types.cppm
 export struct DebugRect {
     Vec2 size{32.0f, 32.0f};
     Color fillColor{255, 255, 255, 255};
@@ -554,18 +554,18 @@ void Game::render(float alpha) {
 
 The Sprite Renderer was implemented across several files:
 
-**Components** (`jframe-contract/src/jframe.types.cppm`):
+**Components** (`bestow-contract/src/bestow.types.cppm`):
 - `DebugRect` - Rectangle with fill/outline colors and layer
 - `DebugCircle` - Circle with fill/outline colors, segments, and layer
 - `DebugLine` - Line with color, thickness, and layer
 - `RenderLayers` namespace with preset layer values (Background, Player, UI, etc.)
 
-**Interface** (`jframe-contract/src/jframe.graphics.cppm`):
+**Interface** (`bestow-contract/src/bestow.graphics.cppm`):
 - `renderEntities(IEntitySystem&)` - Render all entities with visual components
 - `renderEntities(IEntitySystem&, minLayer, maxLayer)` - Render within layer range
 - `setViewportCulling(bool)` / `isViewportCullingEnabled()` - Culling control
 
-**Implementation** (`jframe-graphics/src/GraphicsSystem.cpp`):
+**Implementation** (`bestow-graphics/src/GraphicsSystem.cpp`):
 - Collects all entities with Transform2D + visual components
 - Sorts by render layer
 - Optionally culls off-screen entities

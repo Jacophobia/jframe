@@ -1,6 +1,6 @@
-# JFrame Gameplay Ability System Demo
+# Bestow Gameplay Ability System Demo
 
-This demo showcases the JFrame Gameplay Ability System (GAS) with a fully graphical, interactive demonstration.
+This demo showcases the Bestow Gameplay Ability System (GAS) with a fully graphical, interactive demonstration.
 
 ## Features Demonstrated
 
@@ -72,7 +72,7 @@ This demo showcases the JFrame Gameplay Ability System (GAS) with a fully graphi
 
 ## How to Build
 
-From the JFrame root directory:
+From the Bestow root directory:
 
 ```bash
 cmake --preset macos-debug
@@ -124,9 +124,9 @@ Walk around the level to experience:
 
 ## Architecture Notes
 
-This demo follows the JFrame architecture guidelines:
-- Uses `import jframe;` for all JFrame modules
-- Implements the `Application` interface from `jframe.core`
+This demo follows the Bestow architecture guidelines:
+- Uses `import bestow;` for all Bestow modules
+- Implements the `Application` interface from `bestow.core`
 - Separates game logic into `updateFixed()` and rendering into `render()`
 - Uses the `EngineBuilder` to configure all required systems
 - Demonstrates proper component-based design with ECS

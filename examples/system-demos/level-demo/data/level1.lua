@@ -7,7 +7,7 @@ return {
         name = "Tutorial Village",
         width = 1920.0,
         height = 1080.0,
-        author = "JFrame Demo",
+        author = "Bestow Demo",
         description = "A simple tutorial level for demonstrating the Level System API"
     },
 

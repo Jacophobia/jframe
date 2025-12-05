@@ -9,21 +9,21 @@ target_use_std_module(ability-demo)
 # Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(ability-demo
     PRIVATE
-        jframe-contract
-        jframe-core
-        jframe-entity
-        jframe-graphics
-        jframe-physics
-        jframe-audio
-        jframe-input
-        jframe-events
-        jframe-assets
-        jframe-level
-        jframe-config
-        jframe-gas
-        jframe-camera
-        jframe-blueprints
-        jframe-components
+        bestow-contract
+        bestow-core
+        bestow-entity
+        bestow-graphics
+        bestow-physics
+        bestow-audio
+        bestow-input
+        bestow-events
+        bestow-assets
+        bestow-level
+        bestow-config
+        bestow-gas
+        bestow-camera
+        bestow-blueprints
+        bestow-components
         lua
         sol2::sol2
 )

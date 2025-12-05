@@ -1,8 +1,8 @@
-# JFrame Physics System
+# Bestow Physics System
 
 ## Overview
 
-The JFrame Physics System provides 2D rigid body physics simulation powered by **Box2D 3.0**. It handles collision detection, response, raycasting, and spatial queries for game entities.
+The Bestow Physics System provides 2D rigid body physics simulation powered by **Box2D 3.0**. It handles collision detection, response, raycasting, and spatial queries for game entities.
 
 ### Key Features
 
@@ -49,7 +49,7 @@ Box2D 3.0 World (b2WorldId)
 ### Basic Body Creation
 
 ```cpp
-import jframe.physics;
+import bestow.physics;
 
 // Create a dynamic player body
 Entity player = entities->createEntity();
@@ -220,7 +220,7 @@ void updatePlayerMovement(Entity player, DeltaTime dt) {
 Collision layers define **what something is**. Each body belongs to one layer.
 
 ```cpp
-// Predefined layers (from jframe.physics)
+// Predefined layers (from bestow.physics)
 namespace CollisionLayers {
     inline constexpr CollisionLayer Player      = 0x0001;
     inline constexpr CollisionLayer Enemy       = 0x0002;
@@ -309,7 +309,7 @@ physics->setCollisionLayer(exitTrigger, CollisionLayers::Trigger);
 Trigger callbacks require downcasting to `Box2DPhysicsSystem`:
 
 ```cpp
-import jframe.physics.impl;
+import bestow.physics.impl;
 
 auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
 
@@ -581,8 +581,8 @@ physics->update(dt);
 ### Setup
 
 ```cpp
-import jframe;
-import jframe.physics.impl;
+import bestow;
+import bestow.physics.impl;
 
 // Initialize physics system
 auto physics = createPhysicsSystem();
@@ -891,7 +891,7 @@ physics->setCollisionMask(ground, 0xFFFF);  // Collides with everything
 ## Further Reading
 
 - **Box2D Manual**: [https://box2d.org/documentation/](https://box2d.org/documentation/)
-- **JFrame Technical Design**: `docs/jframe-technical-design.md`
+- **Bestow Technical Design**: `docs/bestow-technical-design.md`
 - **Physics System Tests**: `tests/unit/PhysicsSystemTests.cpp`
 
 ---

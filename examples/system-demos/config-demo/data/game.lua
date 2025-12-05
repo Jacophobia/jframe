@@ -1,5 +1,5 @@
 -- game.lua
--- Main game configuration file demonstrating JFrame Config System features
+-- Main game configuration file demonstrating Bestow Config System features
 
 -- This file demonstrates:
 -- - Simple primitive values (numbers, strings, bools)
@@ -14,9 +14,9 @@ return {
     -- ========================================================================
 
     -- Simple string values
-    title = "JFrame Config Demo",
+    title = "Bestow Config Demo",
     version = "1.0.0",
-    author = "JFrame Team",
+    author = "Bestow Team",
 
     -- ========================================================================
     -- WINDOW SETTINGS
@@ -137,7 +137,7 @@ return {
         halfPi = math.pi / 2,
 
         -- Using string operations
-        fullTitle = "JFrame Config Demo v1.0.0",
+        fullTitle = "Bestow Config Demo v1.0.0",
 
         -- Conditional values (Lua ternary-like)
         startInDebug = true and 1 or 0,  -- 1 if true, 0 if false

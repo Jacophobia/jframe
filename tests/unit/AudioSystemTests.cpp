@@ -7,11 +7,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.audio;
-import jframe.audio.impl;
-import jframe.types;
+import bestow.audio;
+import bestow.audio.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class AudioSystemTest : public ::testing::Test {
 protected:
@@ -1231,4 +1231,4 @@ TEST_F(AudioSystemTest, PlayPositionalWithHighVolume) {
     EXPECT_TRUE(true);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

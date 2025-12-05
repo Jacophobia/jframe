@@ -1,8 +1,8 @@
-# JFrame Level System Documentation
+# Bestow Level System Documentation
 
 ## Overview
 
-The Level System (`ILevelSystem`) manages level loading, entity spawning, spawn points, and level transitions in JFrame. Levels are defined in Lua files for flexibility and ease of content authoring. The system parses these Lua files to extract level metadata, entity definitions, and spawn point locations.
+The Level System (`ILevelSystem`) manages level loading, entity spawning, spawn points, and level transitions in Bestow. Levels are defined in Lua files for flexibility and ease of content authoring. The system parses these Lua files to extract level metadata, entity definitions, and spawn point locations.
 
 ### Key Features
 
@@ -305,7 +305,7 @@ return {
 Levels are assets and must be registered with the Asset System first:
 
 ```cpp
-import jframe;
+import bestow;
 
 // Register the level asset
 AssetHandle levelAsset = assetSystem->registerAsset(
@@ -705,7 +705,7 @@ std::string findNearestSpawnPoint(LevelId levelId, Vec2 position) {
 ## Complete Example: Level Loading and Transition
 
 ```cpp
-import jframe;
+import bestow;
 
 class Game {
 public:
@@ -1197,7 +1197,7 @@ void preloadAdjacentLevels(LevelId currentLevel) {
 
 ## API Reference
 
-See `jframe-contract/src/jframe.level.cppm` for the complete interface definition.
+See `bestow-contract/src/bestow.level.cppm` for the complete interface definition.
 
 ### Core Methods
 

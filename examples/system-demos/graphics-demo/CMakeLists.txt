@@ -14,11 +14,11 @@ target_use_std_module(graphics-demo)
 
 target_link_libraries(graphics-demo
     PRIVATE
-        jframe-contract
-        jframe-graphics
-        jframe-entity
-        jframe-assets
-        jframe-core
+        bestow-contract
+        bestow-graphics
+        bestow-entity
+        bestow-assets
+        bestow-core
 )
 
 # Set output directory

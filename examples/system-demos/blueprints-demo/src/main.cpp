@@ -2,21 +2,21 @@
 // Blueprints System Demo - Comprehensive API demonstration
 
 // MSVC C++23 module compatibility for EnTT iterators and sol2 globals
-#include <jframe/entt_compat.hpp>
-#include <jframe/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
+#include <bestow/sol2_compat.hpp>
 
 import std;
-import jframe.types;
-import jframe.entity;
-import jframe.entity.impl;
-import jframe.physics;
-import jframe.physics.impl;
-import jframe.events;
-import jframe.events.impl;
-import jframe.blueprints;
-import jframe.blueprints.impl;
+import bestow.types;
+import bestow.entity;
+import bestow.entity.impl;
+import bestow.physics;
+import bestow.physics.impl;
+import bestow.events;
+import bestow.events.impl;
+import bestow.blueprints;
+import bestow.blueprints.impl;
 
-using namespace jframe;
+using namespace bestow;
 
 //==============================================================================
 // Helper Functions
@@ -188,7 +188,7 @@ void registerCustomComponents(IBlueprintFactory& factory, [[maybe_unused]] IEnti
 
 int main() {
     try {
-        std::println("JFrame Blueprints System Demo");
+        std::println("Bestow Blueprints System Demo");
         std::println("=============================\n");
 
         // Create required systems

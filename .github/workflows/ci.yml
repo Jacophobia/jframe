@@ -21,9 +21,9 @@ jobs:
           - os: ubuntu-24.04
             preset: linux-debug
             name: Linux
-          # Windows re-enabled: Added jframe/entt_compat.hpp header that brings
+          # Windows re-enabled: Added bestow/entt_compat.hpp header that brings
           # EnTT internal comparison operators into scope for MSVC C++23 modules.
-          # See include/jframe/entt_compat.hpp for details.
+          # See include/bestow/entt_compat.hpp for details.
           - os: windows-2022
             preset: windows-debug
             name: Windows
@@ -81,8 +81,8 @@ jobs:
           fi
 
           echo "Using LLVM at: $LLVM_PATH"
-          echo "JFRAME_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
-          echo "JFRAME_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+          echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
 
           # Set library paths for consistent libc++ usage
           echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
@@ -135,8 +135,8 @@ jobs:
           fi
 
           # Set compiler paths
-          echo "JFRAME_CC=/usr/bin/clang-20" >> $GITHUB_ENV
-          echo "JFRAME_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
+          echo "BESTOW_CC=/usr/bin/clang-20" >> $GITHUB_ENV
+          echo "BESTOW_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
 
           # Use custom triplet with libc++ for ABI compatibility
           echo "VCPKG_DEFAULT_TRIPLET=x64-linux-libcxx" >> $GITHUB_ENV
@@ -186,8 +186,8 @@ jobs:
         run: |
           # Pass compiler paths directly to CMake to ensure they're used
           cmake --preset ${{ matrix.preset }} \
-            -DCMAKE_C_COMPILER=$JFRAME_CC \
-            -DCMAKE_CXX_COMPILER=$JFRAME_CXX
+            -DCMAKE_C_COMPILER=$BESTOW_CC \
+            -DCMAKE_CXX_COMPILER=$BESTOW_CXX
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'

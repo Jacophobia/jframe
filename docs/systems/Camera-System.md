@@ -1,12 +1,12 @@
-# JFrame Camera System
+# Bestow Camera System
 
 ## Overview
 
-The Camera System provides 2D camera functionality for JFrame games, including position tracking, zoom control, entity following with smooth interpolation, camera bounds, screen shake effects, and coordinate conversion between world and screen space.
+The Camera System provides 2D camera functionality for Bestow games, including position tracking, zoom control, entity following with smooth interpolation, camera bounds, screen shake effects, and coordinate conversion between world and screen space.
 
-**Module:** `jframe.camera` (interface), `jframe.camera.impl` (implementation)
-**Dependencies:** `jframe.types`
-**Implementation:** `jframe-camera/`
+**Module:** `bestow.camera` (interface), `bestow.camera.impl` (implementation)
+**Dependencies:** `bestow.types`
+**Implementation:** `bestow-camera/`
 
 ## Key Features
 
@@ -23,7 +23,7 @@ The Camera System provides 2D camera functionality for JFrame games, including p
 
 ### Camera Coordinates
 
-JFrame uses a 2D coordinate system where:
+Bestow uses a 2D coordinate system where:
 - The camera position represents the center of the viewport
 - World coordinates are independent of screen size
 - Screen coordinates are pixel-based (0,0 is top-left)
@@ -44,7 +44,7 @@ The camera can follow a target entity with several behaviors:
 ```cpp
 // Create camera system with viewport size
 auto windowSize = sys.graphics->getWindowSize();
-auto camera = std::make_unique<jframe::CameraSystem>(windowSize);
+auto camera = std::make_unique<bestow::CameraSystem>(windowSize);
 
 // Set target entity to follow
 camera->setTarget(playerEntity);
@@ -145,7 +145,7 @@ struct Camera {
 ```cpp
 // In game initialization
 auto windowSize = sys.graphics->getWindowSize();
-cameraSystem_ = std::make_unique<jframe::CameraSystem>(windowSize);
+cameraSystem_ = std::make_unique<bestow::CameraSystem>(windowSize);
 cameraSystem_->setTarget(player_);
 
 // In update loop
@@ -284,12 +284,12 @@ Here's a complete example from the platformer demo:
 ```cpp
 class Game {
 public:
-    bool initialize(jframe::core::Engine& engine) {
+    bool initialize(bestow::core::Engine& engine) {
         auto& sys = engine.systems();
 
         // Initialize camera with window size
         auto windowSize = sys.graphics->getWindowSize();
-        cameraSystem_ = std::make_unique<jframe::CameraSystem>(windowSize);
+        cameraSystem_ = std::make_unique<bestow::CameraSystem>(windowSize);
 
         // Load camera config from Lua
         cameraSystem_->setZoom(config_->getFloatOr("camera.zoom", 1.0f));
@@ -360,7 +360,7 @@ public:
     }
 
 private:
-    std::unique_ptr<jframe::CameraSystem> cameraSystem_;
+    std::unique_ptr<bestow::CameraSystem> cameraSystem_;
     Entity player_;
     float cameraShakeMagnitude_;
     float cameraShakeDuration_;
@@ -722,7 +722,7 @@ auto engine = EngineBuilder()
 
 // Manual camera setup
 auto windowSize = engine->systems().graphics->getWindowSize();
-cameraSystem_ = std::make_unique<jframe::CameraSystem>(windowSize);
+cameraSystem_ = std::make_unique<bestow::CameraSystem>(windowSize);
 
 // Planned approach - automatic integration
 auto engine = EngineBuilder()
@@ -771,4 +771,4 @@ This approach is documented in the [Sprite Renderer](Sprite-Renderer.md) system.
 - [Entity System](Entity-System.md) - Entities are camera targets
 - [Physics System](Physics-System.md) - Physics positions feed camera
 - [Sprite Renderer](Sprite-Renderer.md) - Automatic entity rendering with camera
-- Technical Design: `docs/jframe-technical-design.md`
+- Technical Design: `docs/bestow-technical-design.md`

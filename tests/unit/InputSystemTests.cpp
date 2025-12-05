@@ -7,11 +7,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.input;
-import jframe.input.impl;
-import jframe.types;
+import bestow.input;
+import bestow.input.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class InputSystemTest : public ::testing::Test {
 protected:
@@ -621,4 +621,4 @@ TEST_F(InputSystemTest, ActionWithLongName) {
     EXPECT_EQ(state.action, longAction);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

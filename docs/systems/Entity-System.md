@@ -1,8 +1,8 @@
-# JFrame Entity System
+# Bestow Entity System
 
 ## Overview
 
-The Entity System is JFrame's implementation of the Entity-Component-System (ECS) architectural pattern, built on top of the powerful [EnTT library](https://github.com/skypjack/entt). The ECS pattern separates game objects into three fundamental concepts:
+The Entity System is Bestow's implementation of the Entity-Component-System (ECS) architectural pattern, built on top of the powerful [EnTT library](https://github.com/skypjack/entt). The ECS pattern separates game objects into three fundamental concepts:
 
 - **Entities**: Lightweight identifiers (essentially just numbers) that represent game objects
 - **Components**: Pure data structures that hold state (position, health, sprite, etc.)
@@ -29,8 +29,8 @@ This architecture provides:
 An `Entity` is an opaque identifier (typedef of `entt::entity`) that uniquely represents a game object. It has no behavior or data on its own - it's simply a handle used to associate components together.
 
 ```cpp
-import jframe;
-import jframe.entity;
+import bestow;
+import bestow.entity;
 
 // Create an entity
 Entity player = entitySystem->createEntity();
@@ -76,11 +76,11 @@ While the Entity System manages entities and components, your game logic lives i
 ### Creating Entities
 
 ```cpp
-import jframe.entity;
-import jframe.entity.impl;
+import bestow.entity;
+import bestow.entity.impl;
 
 // Create the entity system
-auto entitySystem = jframe::createEntitySystem();
+auto entitySystem = bestow::createEntitySystem();
 
 // Create a simple entity
 Entity enemy = entitySystem->createEntity();
@@ -109,7 +109,7 @@ auto& health = entitySystem->emplace<Health>(player, 100, 100);
 // Add a tag component (no data)
 entitySystem->emplace<PlayerTag>(player);
 
-// Using Transform2D from jframe.types
+// Using Transform2D from bestow.types
 entitySystem->emplace<Transform2D>(player, Transform2D{
     .x = 100.0f,
     .y = 200.0f,
@@ -731,11 +731,11 @@ Example test patterns for entity system usage:
 
 ```cpp
 #include <gtest/gtest.h>
-import jframe.entity;
-import jframe.entity.impl;
+import bestow.entity;
+import bestow.entity.impl;
 
 TEST(GameSystemTest, PlayerCreation) {
-    auto entities = jframe::createEntitySystem();
+    auto entities = bestow::createEntitySystem();
 
     Entity player = createPlayer(*entities, 100, 200);
 
@@ -748,7 +748,7 @@ TEST(GameSystemTest, PlayerCreation) {
 }
 
 TEST(GameSystemTest, PhysicsUpdate) {
-    auto entities = jframe::createEntitySystem();
+    auto entities = bestow::createEntitySystem();
 
     Entity entity = entities->createEntity();
     entities->emplace<Position>(entity, 0.0f, 0.0f);
@@ -873,20 +873,20 @@ class IEntitySystem {
 
 ### Common Component Types
 
-JFrame provides standard component types in `jframe.types`:
+Bestow provides standard component types in `bestow.types`:
 
 - `Transform2D` - 2D position, rotation, and scale
 - `Sprite` - Renderable sprite with texture and properties
 - `AnimatedSprite` - Sprite with animation state
 - `Camera` - Camera transform and viewport
-- See `jframe.types.cppm` for complete list
+- See `bestow.types.cppm` for complete list
 
 ### Factory Function
 
 ```cpp
-import jframe.entity.impl;
+import bestow.entity.impl;
 
-std::unique_ptr<IEntitySystem> entities = jframe::createEntitySystem();
+std::unique_ptr<IEntitySystem> entities = bestow::createEntitySystem();
 ```
 
 ## Entity Groups (Planned Enhancement)
@@ -929,8 +929,8 @@ See [Entity Queries](Entity-Queries.md) for full documentation of the planned gr
 
 - [EnTT Documentation](https://github.com/skypjack/entt/wiki)
 - [Entity-Component-System FAQ](https://github.com/SanderMertens/ecs-faq)
-- JFrame Technical Design Document
-- JFrame Project Status Document
+- Bestow Technical Design Document
+- Bestow Project Status Document
 
 ## Related Systems
 

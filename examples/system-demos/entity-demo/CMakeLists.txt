@@ -21,9 +21,9 @@ target_sources(entity-demo
 
 target_link_libraries(entity-demo
     PRIVATE
-        jframe-contract
-        jframe-entity
-        jframe-events
+        bestow-contract
+        bestow-entity
+        bestow-events
 )
 
 # Set output directory

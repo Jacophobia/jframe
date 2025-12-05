@@ -2,18 +2,18 @@
 // Physics System Demo - Entry point
 
 import std;
-import jframe.types;
-import jframe.physics;
-import jframe.physics.impl;
+import bestow.types;
+import bestow.physics;
+import bestow.physics.impl;
 import physics.demo;
 
 int main() {
     try {
-        std::println("JFrame Physics System Demo");
+        std::println("Bestow Physics System Demo");
         std::println("==========================\n");
 
         // Create the physics system
-        auto physicsSystem = jframe::createPhysicsSystem();
+        auto physicsSystem = bestow::createPhysicsSystem();
 
         if (!physicsSystem) {
             std::println("ERROR: Failed to create physics system");

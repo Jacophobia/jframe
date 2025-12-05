@@ -7,27 +7,27 @@ target_use_std_module(platformer-demo)
 # Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(platformer-demo
     PRIVATE
-        jframe-contract
-        jframe-core
-        jframe-entity
-        jframe-graphics
-        jframe-audio
-        jframe-input
-        jframe-assets
-        jframe-save
-        jframe-level
-        jframe-events
-        jframe-physics
-        jframe-ai
-        jframe-camera
-        jframe-components
-        jframe-config
+        bestow-contract
+        bestow-core
+        bestow-entity
+        bestow-graphics
+        bestow-audio
+        bestow-input
+        bestow-assets
+        bestow-save
+        bestow-level
+        bestow-events
+        bestow-physics
+        bestow-ai
+        bestow-camera
+        bestow-components
+        bestow-config
         lua
         sol2::sol2
 )
 
-if(JFRAME_DEV_TOOLS)
-    target_link_libraries(platformer-demo PRIVATE jframe-dev)
+if(BESTOW_DEV_TOOLS)
+    target_link_libraries(platformer-demo PRIVATE bestow-dev)
 endif()
 
 target_compile_features(platformer-demo PRIVATE cxx_std_23)

@@ -15,11 +15,11 @@ target_use_std_module(level-demo)
 # Note: lua and sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(level-demo
     PRIVATE
-        jframe-contract
-        jframe-level
-        jframe-entity
-        jframe-assets
-        jframe-events
+        bestow-contract
+        bestow-level
+        bestow-entity
+        bestow-assets
+        bestow-events
         lua
         sol2::sol2
 )

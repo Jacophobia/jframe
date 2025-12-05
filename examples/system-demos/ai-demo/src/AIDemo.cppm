@@ -1,19 +1,19 @@
 // AIDemo.cppm
-// Comprehensive demonstration of the JFrame AI System API
+// Comprehensive demonstration of the Bestow AI System API
 
 module;
 
 // Use compatibility header for MSVC C++23 module support
-#include <jframe/entt_compat.hpp>
+#include <bestow/entt_compat.hpp>
 
 export module ai.demo;
 
 import std;
-import jframe.types;
-import jframe.ai;
-import jframe.entity;
-import jframe.physics;
-import jframe.assets;
+import bestow.types;
+import bestow.ai;
+import bestow.entity;
+import bestow.physics;
+import bestow.assets;
 
 export namespace demo {
 
@@ -59,17 +59,17 @@ struct PatrollerTag {
 
 class AIDemo {
 public:
-    AIDemo(jframe::IAISystem& aiSystem,
-           jframe::IEntitySystem& entitySystem,
-           jframe::IPhysicsSystem& physicsSystem,
-           jframe::IAssetSystem& assetSystem)
+    AIDemo(bestow::IAISystem& aiSystem,
+           bestow::IEntitySystem& entitySystem,
+           bestow::IPhysicsSystem& physicsSystem,
+           bestow::IAssetSystem& assetSystem)
         : ai_(aiSystem)
         , entities_(entitySystem)
         , physics_(physicsSystem)
         , assets_(assetSystem) {}
 
     void run() {
-        printHeader("JFRAME AI SYSTEM COMPREHENSIVE DEMO");
+        printHeader("BESTOW AI SYSTEM COMPREHENSIVE DEMO");
 
         demoLifecycle();
         demoBehaviorTrees();
@@ -86,13 +86,13 @@ public:
     }
 
 private:
-    jframe::IAISystem& ai_;
-    jframe::IEntitySystem& entities_;
-    jframe::IPhysicsSystem& physics_;
-    jframe::IAssetSystem& assets_;
+    bestow::IAISystem& ai_;
+    bestow::IEntitySystem& entities_;
+    bestow::IPhysicsSystem& physics_;
+    bestow::IAssetSystem& assets_;
 
     // Test entities created during demo
-    std::vector<jframe::Entity> testEntities_;
+    std::vector<bestow::Entity> testEntities_;
 
     //==========================================================================
     // Demo Sections
@@ -108,8 +108,8 @@ private:
         auto agent2 = createAIAgent("UpdateTestAgent2", 200.0f, 100.0f);
 
         // Set navigation targets
-        ai_.setNavigationTarget(agent1, jframe::Vec2{150.0f, 150.0f});
-        ai_.setNavigationTarget(agent2, jframe::Vec2{250.0f, 150.0f});
+        ai_.setNavigationTarget(agent1, bestow::Vec2{150.0f, 150.0f});
+        ai_.setNavigationTarget(agent2, bestow::Vec2{250.0f, 150.0f});
 
         std::println("  Created 2 AI agents with navigation targets");
 
@@ -128,9 +128,9 @@ private:
         printSection("Behavior Trees");
 
         // Register mock behavior tree assets
-        auto btHandle1 = assets_.registerAsset(jframe::AssetType::BehaviorTree,
+        auto btHandle1 = assets_.registerAsset(bestow::AssetType::BehaviorTree,
                                                 "behaviors/patrol.bt");
-        auto btHandle2 = assets_.registerAsset(jframe::AssetType::BehaviorTree,
+        auto btHandle2 = assets_.registerAsset(bestow::AssetType::BehaviorTree,
                                                 "behaviors/chase.bt");
 
         std::println("Registered behavior tree assets:");
@@ -230,7 +230,7 @@ private:
 
         // loadNavMesh
         std::println("\nTesting loadNavMesh()...");
-        auto navMeshHandle = assets_.registerAsset(jframe::AssetType::NavMesh,
+        auto navMeshHandle = assets_.registerAsset(bestow::AssetType::NavMesh,
                                                     "navmesh/level1.navmesh");
         std::println("  Registered NavMesh asset: UUID {}", navMeshHandle.uuid);
 
@@ -261,8 +261,8 @@ private:
 
         // isPointOnNavMesh
         std::println("Testing isPointOnNavMesh()...");
-        jframe::Vec2 validPoint{100.0f, 100.0f};
-        jframe::Vec2 invalidPoint{-999.0f, -999.0f};
+        bestow::Vec2 validPoint{100.0f, 100.0f};
+        bestow::Vec2 invalidPoint{-999.0f, -999.0f};
 
         bool onMesh1 = ai_.isPointOnNavMesh(validPoint);
         bool onMesh2 = ai_.isPointOnNavMesh(invalidPoint);
@@ -274,7 +274,7 @@ private:
 
         // getClosestPointOnNavMesh
         std::println("\nTesting getClosestPointOnNavMesh()...");
-        jframe::Vec2 queryPoint{105.5f, 99.3f};
+        bestow::Vec2 queryPoint{105.5f, 99.3f};
 
         auto closestPoint = ai_.getClosestPointOnNavMesh(queryPoint);
         if (closestPoint) {
@@ -288,7 +288,7 @@ private:
         // findPath
         std::println("\nTesting findPath()...");
 
-        jframe::NavMeshQuery query1{
+        bestow::NavMeshQuery query1{
             .start = {50.0f, 50.0f},
             .end = {200.0f, 150.0f},
             .agentRadius = 0.5f
@@ -317,7 +317,7 @@ private:
         }
 
         // Test with different agent radius
-        jframe::NavMeshQuery query2{
+        bestow::NavMeshQuery query2{
             .start = {100.0f, 100.0f},
             .end = {300.0f, 200.0f},
             .agentRadius = 1.0f
@@ -348,7 +348,7 @@ private:
 
         // setNavigationTarget
         std::println("Testing setNavigationTarget()...");
-        jframe::Vec2 target1{600.0f, 200.0f};
+        bestow::Vec2 target1{600.0f, 200.0f};
         ai_.setNavigationTarget(agent, target1);
         std::println("  Set navigation target to ({}, {})", target1.x, target1.y);
 
@@ -364,7 +364,7 @@ private:
 
         // Update to new target
         std::println("\nChanging navigation target...");
-        jframe::Vec2 target2{700.0f, 300.0f};
+        bestow::Vec2 target2{700.0f, 300.0f};
         ai_.setNavigationTarget(agent, target2);
         retrievedTarget = ai_.getNavigationTarget(agent);
         if (retrievedTarget) {
@@ -422,7 +422,7 @@ private:
         // setPatrolBehavior
         std::println("Testing setPatrolBehavior()...");
 
-        jframe::PatrolBehavior patrol1{
+        bestow::PatrolBehavior patrol1{
             .startX = 100.0f,
             .range = 150.0f,
             .speed = 60.0f,
@@ -436,7 +436,7 @@ private:
         std::println("    Speed: {}", patrol1.speed);
         std::println("    Moving right: {}", patrol1.movingRight);
 
-        jframe::PatrolBehavior patrol2{
+        bestow::PatrolBehavior patrol2{
             .startX = 300.0f,
             .range = 200.0f,
             .speed = 80.0f,
@@ -506,7 +506,7 @@ private:
         // findEntitiesInRadius
         std::println("\nTesting findEntitiesInRadius()...");
 
-        jframe::Vec2 center1{125.0f, 110.0f};
+        bestow::Vec2 center1{125.0f, 110.0f};
         float radius1 = 50.0f;
 
         std::println("  Query 1: Center ({}, {}), Radius {}",
@@ -541,7 +541,7 @@ private:
         // findClosestEntity
         std::println("\nTesting findClosestEntity()...");
 
-        jframe::Vec2 queryPos{140.0f, 115.0f};
+        bestow::Vec2 queryPos{140.0f, 115.0f};
         std::println("  Query position: ({}, {})", queryPos.x, queryPos.y);
 
         auto closestAll = ai_.findClosestEntity(queryPos);
@@ -572,9 +572,9 @@ private:
         // hasLineOfSight
         std::println("\nTesting hasLineOfSight()...");
 
-        jframe::Vec2 from{100.0f, 100.0f};
-        jframe::Vec2 to1{150.0f, 120.0f};
-        jframe::Vec2 to2{500.0f, 100.0f};
+        bestow::Vec2 from{100.0f, 100.0f};
+        bestow::Vec2 to1{150.0f, 120.0f};
+        bestow::Vec2 to2{500.0f, 100.0f};
 
         std::println("  From ({}, {}) to ({}, {}):",
                      from.x, from.y, to1.x, to1.y);
@@ -603,7 +603,7 @@ private:
         std::println("Created player at (50, 50)");
 
         // Create guard entities with full AI setup
-        std::vector<jframe::Entity> guards;
+        std::vector<bestow::Entity> guards;
 
         for (int i = 0; i < 3; ++i) {
             float x = 200.0f + i * 150.0f;
@@ -616,12 +616,12 @@ private:
 
             // Attach behavior tree
             auto btHandle = assets_.registerAsset(
-                jframe::AssetType::BehaviorTree,
+                bestow::AssetType::BehaviorTree,
                 std::format("behaviors/guard{}.bt", i + 1));
             ai_.attachBehaviorTree(guard, btHandle);
 
             // Configure patrol
-            jframe::PatrolBehavior patrol{
+            bestow::PatrolBehavior patrol{
                 .startX = x,
                 .range = 100.0f,
                 .speed = 50.0f,
@@ -684,7 +684,7 @@ private:
                                                   std::any(3));
                     ai_.clearPatrolBehavior(guards[i]);
                     ai_.setNavigationTarget(guards[i],
-                                           jframe::Vec2{playerPos->x, playerPos->y});
+                                           bestow::Vec2{playerPos->x, playerPos->y});
                 } else {
                     std::println("  Guard{} still patrolling. Distance: {:.1f}",
                                  i + 1, distance);
@@ -718,8 +718,8 @@ private:
             auto* guardPos = entities_.tryGet<Position>(guards[i]);
             if (guardPos && playerPos) {
                 bool los = ai_.hasLineOfSight(
-                    jframe::Vec2{guardPos->x, guardPos->y},
-                    jframe::Vec2{playerPos->x, playerPos->y});
+                    bestow::Vec2{guardPos->x, guardPos->y},
+                    bestow::Vec2{playerPos->x, playerPos->y});
                 std::println("  Guard{} -> Player: {}", i + 1,
                              los ? "Clear" : "Blocked");
             }
@@ -729,12 +729,12 @@ private:
         std::println("\nSpatial query - enemies near player:");
         if (playerPos) {
             auto nearbyEnemies = ai_.findEntitiesInRadius(
-                jframe::Vec2{playerPos->x, playerPos->y}, 150.0f, 0x0002);
+                bestow::Vec2{playerPos->x, playerPos->y}, 150.0f, 0x0002);
             std::println("  Found {} enemies within 150 units", nearbyEnemies.size());
 
             // Find closest enemy
             auto closestEnemy = ai_.findClosestEntity(
-                jframe::Vec2{playerPos->x, playerPos->y}, 0x0002);
+                bestow::Vec2{playerPos->x, playerPos->y}, 0x0002);
             if (closestEnemy) {
                 if (auto* name = entities_.tryGet<Name>(*closestEnemy)) {
                     std::println("  Closest enemy: {}", name->value);
@@ -749,7 +749,7 @@ private:
     // Helper Functions
     //==========================================================================
 
-    jframe::Entity createAIAgent(const std::string& name, float x, float y) {
+    bestow::Entity createAIAgent(const std::string& name, float x, float y) {
         auto entity = entities_.createEntity();
         entities_.emplace<Position>(entity, x, y);
         entities_.emplace<Name>(entity, name);
@@ -758,16 +758,16 @@ private:
         return entity;
     }
 
-    jframe::Entity createPhysicsEntity(const std::string& name,
+    bestow::Entity createPhysicsEntity(const std::string& name,
                                        float x, float y,
-                                       jframe::CollisionMask mask) {
+                                       bestow::CollisionMask mask) {
         auto entity = entities_.createEntity();
         entities_.emplace<Position>(entity, x, y);
         entities_.emplace<Name>(entity, name);
 
         // Create physics body
-        jframe::PhysicsBodyDef bodyDef{
-            .type = jframe::BodyType::Dynamic,
+        bestow::PhysicsBodyDef bodyDef{
+            .type = bestow::BodyType::Dynamic,
             .transform = {.x = x, .y = y},
             .size = {32.0f, 32.0f},
             .fixedRotation = true
@@ -775,7 +775,7 @@ private:
         physics_.createBody(entity, bodyDef);
 
         // Set collision mask (using layer as mask for demo)
-        physics_.setCollisionLayer(entity, static_cast<jframe::CollisionLayer>(mask));
+        physics_.setCollisionLayer(entity, static_cast<bestow::CollisionLayer>(mask));
 
         testEntities_.push_back(entity);
         return entity;

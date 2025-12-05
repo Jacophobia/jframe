@@ -1,6 +1,6 @@
 # Tutorial 2: Blueprints and Levels
 
-In this tutorial, you'll learn how to use JFrame's data-driven architecture to create entities from Lua blueprints and build levels without recompiling C++ code.
+In this tutorial, you'll learn how to use Bestow's data-driven architecture to create entities from Lua blueprints and build levels without recompiling C++ code.
 
 ## What Are Blueprints?
 
@@ -307,7 +307,7 @@ Here's how to load and use a level in your game:
 
 // Register and load the level asset
 levelAsset_ = sys.assets->registerAsset(
-    jframe::AssetType::Data,
+    bestow::AssetType::Data,
     "data/levels/level1.lua"
 );
 sys.assets->loadAsset(levelAsset_);
@@ -317,22 +317,22 @@ auto levelResult = sys.levels->loadLevel(levelAsset_);
 if (levelResult) {
     currentLevel_ = *levelResult;
     sys.levels->setActiveLevel(currentLevel_);
-    jframe::core::logInfo("Level loaded successfully");
+    bestow::core::logInfo("Level loaded successfully");
 } else {
-    jframe::core::logError("Failed to load level");
+    bestow::core::logError("Failed to load level");
     return false;
 }
 
 // Get spawn points from the level
 auto playerSpawn = sys.levels->getSpawnPoint(currentLevel_, "player");
 if (playerSpawn) {
-    jframe::core::logInfo(std::format("Player spawn: ({}, {})",
+    bestow::core::logInfo(std::format("Player spawn: ({}, {})",
         playerSpawn->x, playerSpawn->y));
 }
 
 // Get level metadata
 auto metadata = sys.levels->getLevelMetadata(currentLevel_);
-jframe::core::logInfo("Level name: " + metadata.name);
+bestow::core::logInfo("Level name: " + metadata.name);
 ```
 
 ## Step 6: Advanced Level Patterns
@@ -453,19 +453,19 @@ return {
 
 ## Step 7: Hot Reload
 
-In debug builds, JFrame watches for file changes and reloads automatically:
+In debug builds, Bestow watches for file changes and reloads automatically:
 
 ```cpp
-#if defined(JFRAME_DEV_TOOLS)
+#if defined(BESTOW_DEV_TOOLS)
     hotReload_.watchDirectory("data/");
 
     hotReload_.onBlueprintChanged = [this](const auto& path) {
-        jframe::core::logInfo("Blueprint changed: " + path.string());
+        bestow::core::logInfo("Blueprint changed: " + path.string());
         // Reload blueprint and update entities
     };
 
     hotReload_.onLevelChanged = [this](const auto& path) {
-        jframe::core::logInfo("Level changed: " + path.string());
+        bestow::core::logInfo("Level changed: " + path.string());
         // Reload level
         auto& sys = engine_->systems();
         sys.assets->reloadAsset(levelAsset_);
@@ -656,7 +656,7 @@ Now you know how to create data-driven entities and levels! Next tutorials:
 - Don't include `.lua` extension in `require()`: `require("traits/health")`
 
 **Hot reload not working**
-- Only works in debug builds with `JFRAME_DEV_TOOLS`
+- Only works in debug builds with `BESTOW_DEV_TOOLS`
 - Make sure you called `hotReload_.watchDirectory("data/")`
 - Check console logs for file watcher errors
 

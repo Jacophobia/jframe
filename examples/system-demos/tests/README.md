@@ -1,6 +1,6 @@
-# JFrame System Demos Tests
+# Bestow System Demos Tests
 
-Automated testing framework for JFrame system demos using pytest.
+Automated testing framework for Bestow system demos using pytest.
 
 ## Overview
 

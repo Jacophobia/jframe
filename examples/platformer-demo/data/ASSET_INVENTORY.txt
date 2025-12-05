@@ -1,4 +1,4 @@
-JFrame Platformer Demo - Asset Inventory
+Bestow Platformer Demo - Asset Inventory
 Generated: $(date)
 
 TEXTURE ASSETS (108 files, 588 KB)

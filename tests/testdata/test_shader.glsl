@@ -1,4 +1,4 @@
-// Test shader file for JFrame Asset System tests
+// Test shader file for Bestow Asset System tests
 #version 330 core
 
 // Vertex shader section

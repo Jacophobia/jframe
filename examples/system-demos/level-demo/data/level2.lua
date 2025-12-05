@@ -7,7 +7,7 @@ return {
         name = "Dungeon Depths",
         width = 2560.0,
         height = 1440.0,
-        author = "JFrame Demo",
+        author = "Bestow Demo",
         description = "A more challenging dungeon level with multiple enemies and hazards"
     },
 

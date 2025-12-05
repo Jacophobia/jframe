@@ -13,11 +13,11 @@ add_executable(audio-demo
 target_use_std_module(audio-demo)
 target_compile_features(audio-demo PRIVATE cxx_std_23)
 
-# Link against jframe-audio, jframe-assets, and jframe-contract
+# Link against bestow-audio, bestow-assets, and bestow-contract
 target_link_libraries(audio-demo PRIVATE
-    jframe-contract
-    jframe-audio
-    jframe-assets
+    bestow-contract
+    bestow-audio
+    bestow-assets
 )
 
 # Installation

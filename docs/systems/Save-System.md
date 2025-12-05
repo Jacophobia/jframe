@@ -1,4 +1,4 @@
-# JFrame Save System
+# Bestow Save System
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@
 
 ## Overview
 
-The JFrame Save System provides a robust, type-safe mechanism for persisting and restoring game state. It supports multiple save slots, user profiles, metadata tracking, and automatic serialization using cereal for binary efficiency.
+The Bestow Save System provides a robust, type-safe mechanism for persisting and restoring game state. It supports multiple save slots, user profiles, metadata tracking, and automatic serialization using cereal for binary efficiency.
 
 ### Key Features
 
@@ -53,8 +53,8 @@ SaveMetadata              JSON metadata about a save file
 ### Module Structure
 
 ```cpp
-import jframe.save;        // Interface only
-import jframe.save.impl;   // Implementation + factory
+import bestow.save;        // Interface only
+import bestow.save.impl;   // Implementation + factory
 ```
 
 ### File Format
@@ -62,7 +62,7 @@ import jframe.save.impl;   // Implementation + factory
 Each save consists of two files:
 
 1. **Binary Save File** (`.sav`): Contains game state
-   - Magic number: `0x4A465356` ("JFSV" = JFrame Save)
+   - Magic number: `0x4A465356` ("JFSV" = Bestow Save)
    - Version number: `1`
    - Saveable count
    - For each saveable:
@@ -86,8 +86,8 @@ Profiles allow multiple users to have separate save data on the same system. Eac
 ### Setting the Active Profile
 
 ```cpp
-import jframe.save;
-import jframe.save.impl;
+import bestow.save;
+import bestow.save.impl;
 
 auto saveSystem = createSaveSystem();
 
@@ -133,7 +133,7 @@ saveSystem->save(0, "Bob's First Save");    // saves/bob/save_0.sav
 Any component that needs to persist data implements the `ISaveable` interface:
 
 ```cpp
-import jframe.save;
+import bestow.save;
 
 class PlayerState : public ISaveable {
 public:
@@ -176,7 +176,7 @@ public:
 ### Step 2: Register with Save System
 
 ```cpp
-import jframe.save.impl;
+import bestow.save.impl;
 
 auto saveSystem = createSaveSystem();
 PlayerState playerState;
@@ -539,8 +539,8 @@ saveSystem->load(SaveSlots::QuickSave);
 ### Input Binding Example
 
 ```cpp
-import jframe.input;
-import jframe.save.impl;
+import bestow.input;
+import bestow.save.impl;
 
 void handleInput(IInputSystem* input, ISaveSystem* saveSystem) {
     if (input->isActionJustPressed("QuickSave")) {
@@ -690,9 +690,9 @@ void renderSaveMenu(ISaveSystem* saveSystem) {
 ### Complete Game Save Example
 
 ```cpp
-import jframe.save;
-import jframe.save.impl;
-import jframe.types;
+import bestow.save;
+import bestow.save.impl;
+import bestow.types;
 
 // Game state components
 class PlayerProgress : public ISaveable {
@@ -1025,7 +1025,7 @@ enum class SaveError {
 ### Error Handling Pattern
 
 ```cpp
-import jframe.types;  // For Result<T, E>
+import bestow.types;  // For Result<T, E>
 
 auto result = saveSystem->save(0, "My Save");
 
@@ -1087,7 +1087,7 @@ Result<void, SaveError> safeLoad(ISaveSystem* saveSystem, SaveSlot slot) {
 
 ## Summary
 
-The JFrame Save System provides:
+The Bestow Save System provides:
 
 - **Binary serialization** with cereal for fast, compact saves
 - **JSON metadata** for user-facing information
@@ -1098,6 +1098,6 @@ The JFrame Save System provides:
 - **ISaveable interface** for clean component-based serialization
 
 For more details, see:
-- Interface: `/Users/jaaaacob/Documents/GameDev/jframe/jframe-contract/src/jframe.save.cppm`
-- Implementation: `/Users/jaaaacob/Documents/GameDev/jframe/jframe-save/src/`
-- Tests: `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/SaveSystemTests.cpp`
+- Interface: `/Users/jaaaacob/Documents/GameDev/bestow/bestow-contract/src/bestow.save.cppm`
+- Implementation: `/Users/jaaaacob/Documents/GameDev/bestow/bestow-save/src/`
+- Tests: `/Users/jaaaacob/Documents/GameDev/bestow/tests/unit/SaveSystemTests.cpp`

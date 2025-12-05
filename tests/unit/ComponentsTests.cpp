@@ -1,14 +1,14 @@
 #include <gtest/gtest.h>
-import jframe.components;
-import jframe.builders;
-import jframe.luaconfig;
-import jframe.types;
-import jframe.input;
-import jframe.physics;
+import bestow.components;
+import bestow.builders;
+import bestow.luaconfig;
+import bestow.types;
+import bestow.input;
+import bestow.physics;
 import std;
 
-using namespace jframe;
-using namespace jframe::components;
+using namespace bestow;
+using namespace bestow::components;
 
 //==========================================================================
 // Health Component Tests

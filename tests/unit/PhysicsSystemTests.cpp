@@ -1,5 +1,5 @@
 // tests/unit/PhysicsSystemTests.cpp
-// Unit tests for JFrame Physics System
+// Unit tests for Bestow Physics System
 
 #include <cmath>
 #include <memory>
@@ -8,11 +8,11 @@
 
 #include <gtest/gtest.h>
 
-import jframe.physics;
-import jframe.physics.impl;
-import jframe.types;
+import bestow.physics;
+import bestow.physics.impl;
+import bestow.types;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class PhysicsSystemTest : public ::testing::Test {
 protected:
@@ -1102,7 +1102,7 @@ TEST_F(PhysicsSystemTest, GetBodySizeReturnsDefaultSizeWhenNotSpecified) {
 
     Vec2 size = physics->getBodySize(entity);
     // Default size should match PhysicsBodyDef::size default value
-    // From jframe.types.cppm, default is {32.0f, 32.0f}
+    // From bestow.types.cppm, default is {32.0f, 32.0f}
     // Box2D may add a small collision skin, so allow some tolerance
     EXPECT_NEAR(size.x, 32.0f, 5.0f);
     EXPECT_NEAR(size.y, 32.0f, 5.0f);
@@ -1500,4 +1500,4 @@ TEST_F(PhysicsSystemTest, CheckGroundedWorksWithDefaultParams) {
     EXPECT_TRUE(result.grounded || !result.grounded);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

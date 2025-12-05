@@ -11,13 +11,13 @@
 
 #include <gtest/gtest.h>
 
-import jframe.level;
-import jframe.level.impl;
-import jframe.types;
-import jframe.assets;
-import jframe.assets.impl;
+import bestow.level;
+import bestow.level.impl;
+import bestow.types;
+import bestow.assets;
+import bestow.assets.impl;
 
-namespace jframe::tests {
+namespace bestow::tests {
 
 class LevelSystemTest : public ::testing::Test {
 protected:
@@ -1387,4 +1387,4 @@ TEST_F(LevelSystemLuaTest, TransitionBetweenActualLevels) {
     EXPECT_FLOAT_EQ(spawnPoint->y, 400.0f);
 }
 
-}  // namespace jframe::tests
+}  // namespace bestow::tests

@@ -1,10 +1,10 @@
 # Tutorial 5: Audio
 
-This tutorial covers JFrame's audio system, which is built on FMOD Core API. You'll learn how to play sounds, music, and use positional 3D audio.
+This tutorial covers Bestow's audio system, which is built on FMOD Core API. You'll learn how to play sounds, music, and use positional 3D audio.
 
 ## Audio System Overview
 
-JFrame's audio system provides:
+Bestow's audio system provides:
 
 - **Channel-based audio** - Managed playback for music and looping sounds
 - **Positional audio** - Fire-and-forget 3D sound effects
@@ -13,7 +13,7 @@ JFrame's audio system provides:
 
 ## Audio Asset Types
 
-JFrame supports two types of audio assets:
+Bestow supports two types of audio assets:
 
 ### Sound Assets
 
@@ -21,8 +21,8 @@ Short sound effects loaded entirely into memory:
 
 ```cpp
 // Register a sound effect
-jframe::AssetHandle jumpSound = sys.assets->registerAsset(
-    jframe::AssetType::Sound,
+bestow::AssetHandle jumpSound = sys.assets->registerAsset(
+    bestow::AssetType::Sound,
     "data/audio/jump.wav"
 );
 sys.assets->loadAsset(jumpSound);
@@ -34,8 +34,8 @@ Longer audio files streamed from disk:
 
 ```cpp
 // Register background music
-jframe::AssetHandle bgMusic = sys.assets->registerAsset(
-    jframe::AssetType::Music,
+bestow::AssetHandle bgMusic = sys.assets->registerAsset(
+    bestow::AssetType::Music,
     "data/audio/level1_music.ogg"
 );
 sys.assets->loadAsset(bgMusic);
@@ -50,7 +50,7 @@ Channels are for managed, long-running sounds like music and ambient loops.
 ### Predefined Channels
 
 ```cpp
-namespace jframe::Channels {
+namespace bestow::Channels {
     inline constexpr Channel Music = 0;
     inline constexpr Channel Ambient = 1;
     inline constexpr Channel UI = 2;
@@ -69,7 +69,7 @@ void startBackgroundMusic() {
     auto& sys = engine_->systems();
 
     // Play on the Music channel
-    sys.audio->playOnChannel(jframe::Channels::Music, jframe::ChannelSound{
+    sys.audio->playOnChannel(bestow::Channels::Music, bestow::ChannelSound{
         .asset = musicAsset_,
         .volume = 0.7f,
         .looping = true,
@@ -82,41 +82,41 @@ void startBackgroundMusic() {
 
 ```cpp
 // Stop music (with optional fade out)
-sys.audio->stopChannel(jframe::Channels::Music, 1.5f);  // Fade out over 1.5s
+sys.audio->stopChannel(bestow::Channels::Music, 1.5f);  // Fade out over 1.5s
 
 // Pause and resume
-sys.audio->pauseChannel(jframe::Channels::Music);
-sys.audio->resumeChannel(jframe::Channels::Music);
+sys.audio->pauseChannel(bestow::Channels::Music);
+sys.audio->resumeChannel(bestow::Channels::Music);
 
 // Change volume
-sys.audio->setChannelVolume(jframe::Channels::Music, 0.5f);
+sys.audio->setChannelVolume(bestow::Channels::Music, 0.5f);
 
 // Change pitch (speed)
-sys.audio->setChannelPitch(jframe::Channels::Music, 1.2f);  // 20% faster
+sys.audio->setChannelPitch(bestow::Channels::Music, 1.2f);  // 20% faster
 
 // Seek to position
-sys.audio->seekChannel(jframe::Channels::Music, 30.0f);  // Skip to 30 seconds
+sys.audio->seekChannel(bestow::Channels::Music, 30.0f);  // Skip to 30 seconds
 ```
 
 ### Channel State
 
 ```cpp
 // Check if a channel is playing
-if (sys.audio->isChannelPlaying(jframe::Channels::Music)) {
-    jframe::core::logInfo("Music is playing");
+if (sys.audio->isChannelPlaying(bestow::Channels::Music)) {
+    bestow::core::logInfo("Music is playing");
 }
 
 // Get detailed channel state
-jframe::ChannelState state = sys.audio->getChannelState(jframe::Channels::Music);
+bestow::ChannelState state = sys.audio->getChannelState(bestow::Channels::Music);
 
 if (state.isPlaying) {
-    jframe::core::logInfo(std::format("Position: {:.2f}s / {:.2f}s",
+    bestow::core::logInfo(std::format("Position: {:.2f}s / {:.2f}s",
         state.position, state.length));
-    jframe::core::logInfo(std::format("Volume: {:.2f}", state.volume));
+    bestow::core::logInfo(std::format("Volume: {:.2f}", state.volume));
 }
 
 if (state.isPaused) {
-    jframe::core::logInfo("Music is paused");
+    bestow::core::logInfo("Music is paused");
 }
 ```
 
@@ -127,11 +127,11 @@ Positional audio is for one-shot 3D sound effects. The audio system manages the 
 ### Playing Positional Sounds
 
 ```cpp
-void playFootstep(jframe::Vec2 playerPos) {
+void playFootstep(bestow::Vec2 playerPos) {
     auto& sys = engine_->systems();
 
     // Play a 3D sound at the player's position
-    jframe::SoundHandle handle = sys.audio->playPositional(jframe::PositionalSound{
+    bestow::SoundHandle handle = sys.audio->playPositional(bestow::PositionalSound{
         .asset = footstepSound_,
         .position = {playerPos.x, playerPos.y, 0.0f},
         .volume = 0.8f,
@@ -149,10 +149,10 @@ For sounds that follow a moving object:
 
 ```cpp
 // Store the handle
-jframe::SoundHandle engineSound_;
+bestow::SoundHandle engineSound_;
 
-void startEngineSound(jframe::Vec2 carPos) {
-    engineSound_ = sys.audio->playPositional(jframe::PositionalSound{
+void startEngineSound(bestow::Vec2 carPos) {
+    engineSound_ = sys.audio->playPositional(bestow::PositionalSound{
         .asset = engineSound_,
         .position = {carPos.x, carPos.y, 0.0f},
         .volume = 1.0f,
@@ -160,7 +160,7 @@ void startEngineSound(jframe::Vec2 carPos) {
     });
 }
 
-void updateEngineSound(jframe::Vec2 carPos) {
+void updateEngineSound(bestow::Vec2 carPos) {
     if (sys.audio->isPositionalPlaying(engineSound_)) {
         // Update position as the car moves
         sys.audio->updatePositionalPosition(engineSound_, {carPos.x, carPos.y, 0.0f});
@@ -179,11 +179,11 @@ The listener represents the player's ears. Positional sounds are heard relative 
 ### Setting the Listener
 
 ```cpp
-void updateAudioListener(jframe::Vec2 cameraPos) {
+void updateAudioListener(bestow::Vec2 cameraPos) {
     auto& sys = engine_->systems();
 
     // Set listener to camera/player position
-    sys.audio->setListener(jframe::AudioListener{
+    sys.audio->setListener(bestow::AudioListener{
         .position = {cameraPos.x, cameraPos.y, 0.0f},
         .forward = {0.0f, 0.0f, -1.0f},  // Looking into screen
         .up = {0.0f, 1.0f, 0.0f}         // Y-axis is up
@@ -230,12 +230,12 @@ Group channels together for easier volume control:
 
 ```cpp
 // Create volume groups
-sys.audio->assignChannelToGroup(jframe::Channels::Music, "music");
-sys.audio->assignChannelToGroup(jframe::Channels::Ambient, "music");
+sys.audio->assignChannelToGroup(bestow::Channels::Music, "music");
+sys.audio->assignChannelToGroup(bestow::Channels::Ambient, "music");
 
-sys.audio->assignChannelToGroup(jframe::Channels::UI, "sfx");
-sys.audio->assignChannelToGroup(jframe::Channels::SFX1, "sfx");
-sys.audio->assignChannelToGroup(jframe::Channels::SFX2, "sfx");
+sys.audio->assignChannelToGroup(bestow::Channels::UI, "sfx");
+sys.audio->assignChannelToGroup(bestow::Channels::SFX1, "sfx");
+sys.audio->assignChannelToGroup(bestow::Channels::SFX2, "sfx");
 
 // Control all music channels at once
 sys.audio->setGroupVolume("music", 0.5f);
@@ -294,15 +294,15 @@ private:
 struct Footsteps {
     float stepInterval = 0.5f;  // Seconds between steps
     float stepTimer = 0.0f;
-    jframe::AssetHandle stepSound;
+    bestow::AssetHandle stepSound;
 };
 
-void updateFootsteps(jframe::DeltaTime dt) {
+void updateFootsteps(bestow::DeltaTime dt) {
     auto view = sys.entities->getRegistry().view<Footsteps>();
 
     for (auto [entity, footsteps] : view.each()) {
         // Only play when moving
-        jframe::Vec2 vel = sys.physics->getVelocity(entity);
+        bestow::Vec2 vel = sys.physics->getVelocity(entity);
         bool isMoving = std::abs(vel.x) > 10.0f;
 
         if (isMoving) {
@@ -311,8 +311,8 @@ void updateFootsteps(jframe::DeltaTime dt) {
             if (footsteps.stepTimer >= footsteps.stepInterval) {
                 footsteps.stepTimer = 0.0f;
 
-                jframe::Vec2 pos = sys.physics->getPosition(entity);
-                sys.audio->playPositional(jframe::PositionalSound{
+                bestow::Vec2 pos = sys.physics->getPosition(entity);
+                sys.audio->playPositional(bestow::PositionalSound{
                     .asset = footsteps.stepSound,
                     .position = {pos.x, pos.y, 0.0f},
                     .volume = 0.6f,
@@ -330,13 +330,13 @@ void updateFootsteps(jframe::DeltaTime dt) {
 ### Impact Sounds
 
 ```cpp
-void onCollision(const jframe::CollisionEvent& collision) {
+void onCollision(const bestow::CollisionEvent& collision) {
     // Only play on collision start
     if (!collision.isBegin) return;
 
     // Get relative velocity
-    jframe::Vec2 velA = sys.physics->getVelocity(collision.entityA);
-    jframe::Vec2 velB = sys.physics->getVelocity(collision.entityB);
+    bestow::Vec2 velA = sys.physics->getVelocity(collision.entityA);
+    bestow::Vec2 velB = sys.physics->getVelocity(collision.entityB);
 
     float impactSpeed = glm::length(velA - velB);
 
@@ -344,7 +344,7 @@ void onCollision(const jframe::CollisionEvent& collision) {
     if (impactSpeed > 100.0f) {
         float volume = std::clamp(impactSpeed / 500.0f, 0.0f, 1.0f);
 
-        sys.audio->playPositional(jframe::PositionalSound{
+        sys.audio->playPositional(bestow::PositionalSound{
             .asset = impactSound_,
             .position = {collision.contactPoint.x, collision.contactPoint.y, 0.0f},
             .volume = volume,
@@ -359,14 +359,14 @@ void onCollision(const jframe::CollisionEvent& collision) {
 
 ```cpp
 struct AmbientZone {
-    jframe::Rect bounds;
-    jframe::AssetHandle ambientSound;
-    jframe::Channel channel;
+    bestow::Rect bounds;
+    bestow::AssetHandle ambientSound;
+    bestow::Channel channel;
     float targetVolume = 0.5f;
     float currentVolume = 0.0f;
 };
 
-void updateAmbientZones(jframe::DeltaTime dt, jframe::Vec2 playerPos) {
+void updateAmbientZones(bestow::DeltaTime dt, bestow::Vec2 playerPos) {
     for (auto& zone : ambientZones_) {
         // Check if player is in zone
         bool inZone = zone.bounds.contains(playerPos);
@@ -380,7 +380,7 @@ void updateAmbientZones(jframe::DeltaTime dt, jframe::Vec2 playerPos) {
             );
 
             if (!sys.audio->isChannelPlaying(zone.channel)) {
-                sys.audio->playOnChannel(zone.channel, jframe::ChannelSound{
+                sys.audio->playOnChannel(zone.channel, bestow::ChannelSound{
                     .asset = zone.ambientSound,
                     .volume = zone.currentVolume,
                     .looping = true
@@ -408,40 +408,40 @@ void updateAmbientZones(jframe::DeltaTime dt, jframe::Vec2 playerPos) {
 class UIAudio {
 public:
     void playHover() {
-        sys.audio->playOnChannel(jframe::Channels::UI, jframe::ChannelSound{
+        sys.audio->playOnChannel(bestow::Channels::UI, bestow::ChannelSound{
             .asset = hoverSound_,
             .volume = 0.3f
         });
     }
 
     void playClick() {
-        sys.audio->playOnChannel(jframe::Channels::UI, jframe::ChannelSound{
+        sys.audio->playOnChannel(bestow::Channels::UI, bestow::ChannelSound{
             .asset = clickSound_,
             .volume = 0.5f
         });
     }
 
     void playError() {
-        sys.audio->playOnChannel(jframe::Channels::UI, jframe::ChannelSound{
+        sys.audio->playOnChannel(bestow::Channels::UI, bestow::ChannelSound{
             .asset = errorSound_,
             .volume = 0.7f
         });
     }
 
 private:
-    jframe::AssetHandle hoverSound_;
-    jframe::AssetHandle clickSound_;
-    jframe::AssetHandle errorSound_;
+    bestow::AssetHandle hoverSound_;
+    bestow::AssetHandle clickSound_;
+    bestow::AssetHandle errorSound_;
 };
 ```
 
 ### Music Crossfade
 
 ```cpp
-void crossfadeMusic(jframe::AssetHandle newMusic, float fadeTime = 2.0f) {
+void crossfadeMusic(bestow::AssetHandle newMusic, float fadeTime = 2.0f) {
     // Fade out current music
-    if (sys.audio->isChannelPlaying(jframe::Channels::Music)) {
-        sys.audio->stopChannel(jframe::Channels::Music, fadeTime);
+    if (sys.audio->isChannelPlaying(bestow::Channels::Music)) {
+        sys.audio->stopChannel(bestow::Channels::Music, fadeTime);
     }
 
     // Wait for fade out, then start new music
@@ -450,7 +450,7 @@ void crossfadeMusic(jframe::AssetHandle newMusic, float fadeTime = 2.0f) {
         std::this_thread::sleep_for(std::chrono::milliseconds(
             static_cast<int>(fadeTime * 1000)));
 
-        sys.audio->playOnChannel(jframe::Channels::Music, jframe::ChannelSound{
+        sys.audio->playOnChannel(bestow::Channels::Music, bestow::ChannelSound{
             .asset = newMusic,
             .volume = 0.7f,
             .looping = true,
@@ -468,7 +468,7 @@ void onPauseGame() {
     sys.audio->pauseAll();
 
     // Play pause menu music
-    sys.audio->playOnChannel(jframe::Channels::Music, jframe::ChannelSound{
+    sys.audio->playOnChannel(bestow::Channels::Music, bestow::ChannelSound{
         .asset = pauseMenuMusic_,
         .volume = 0.5f,
         .looping = true
@@ -477,7 +477,7 @@ void onPauseGame() {
 
 void onResumeGame() {
     // Stop pause menu music
-    sys.audio->stopChannel(jframe::Channels::Music);
+    sys.audio->stopChannel(bestow::Channels::Music);
 
     // Resume all game audio
     sys.audio->resumeAll();
@@ -570,7 +570,7 @@ void loadAudioConfig() {
     // Load music
     sol::table music = config["music"];
     menuThemeAsset_ = sys.assets->registerAsset(
-        jframe::AssetType::Music,
+        bestow::AssetType::Music,
         music["menuTheme"].get<std::string>()
     );
 
@@ -578,7 +578,7 @@ void loadAudioConfig() {
     sol::table sfx = config["sfx"];
     sol::table playerSfx = sfx["player"];
     jumpSoundAsset_ = sys.assets->registerAsset(
-        jframe::AssetType::Sound,
+        bestow::AssetType::Sound,
         playerSfx["jump"].get<std::string>()
     );
 
@@ -649,10 +649,10 @@ if (coinsCollected > 0) {
 ### 5. Update Listener Every Frame
 
 ```cpp
-void updateFixed(jframe::DeltaTime dt) {
+void updateFixed(bestow::DeltaTime dt) {
     // Update listener to follow player/camera
-    jframe::Vec2 playerPos = sys.physics->getPosition(player_);
-    sys.audio->setListener(jframe::AudioListener{
+    bestow::Vec2 playerPos = sys.physics->getPosition(player_);
+    sys.audio->setListener(bestow::AudioListener{
         .position = {playerPos.x, playerPos.y, 0.0f}
     });
 
@@ -709,7 +709,7 @@ void preloadAudio() {
 // Reuse handles for repeating sounds
 class SoundPool {
 public:
-    jframe::SoundHandle playPooled(jframe::PositionalSound sound) {
+    bestow::SoundHandle playPooled(bestow::PositionalSound sound) {
         // Find an available handle
         for (auto& handle : pool_) {
             if (!sys.audio->isPositionalPlaying(handle)) {
@@ -726,13 +726,13 @@ public:
     }
 
 private:
-    std::vector<jframe::SoundHandle> pool_;
+    std::vector<bestow::SoundHandle> pool_;
 };
 ```
 
 ## Conclusion
 
-You now know how to use JFrame's audio system! Key takeaways:
+You now know how to use Bestow's audio system! Key takeaways:
 
 - Use channels for managed audio (music, ambient loops)
 - Use positional audio for one-shot 3D sound effects
@@ -743,5 +743,5 @@ You now know how to use JFrame's audio system! Key takeaways:
 ## Further Reading
 
 - FMOD Core API: https://fmod.com/docs/2.02/api/core-api.html
-- JFrame Audio System API: `docs/systems/audio.md`
+- Bestow Audio System API: `docs/systems/audio.md`
 - Example: `examples/platformer/src/Game.cpp`

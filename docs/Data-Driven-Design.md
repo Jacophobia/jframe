@@ -1,6 +1,6 @@
 # Data-Driven Design Guide
 
-JFrame uses a **data-driven architecture** where game content is defined in Lua, not C++. This guide explains what belongs in each layer.
+Bestow uses a **data-driven architecture** where game content is defined in Lua, not C++. This guide explains what belongs in each layer.
 
 ## Core Principle: Lua First
 

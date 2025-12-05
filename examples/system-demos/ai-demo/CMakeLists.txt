@@ -21,12 +21,12 @@ target_sources(ai-demo
 
 target_link_libraries(ai-demo
     PRIVATE
-        jframe-contract
-        jframe-ai
-        jframe-entity
-        jframe-physics
-        jframe-assets
-        jframe-events
+        bestow-contract
+        bestow-ai
+        bestow-entity
+        bestow-physics
+        bestow-assets
+        bestow-events
 )
 
 # Set output directory

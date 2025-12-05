@@ -1,0 +1,50 @@
+@PACKAGE_INIT@
+
+# Bestow CMake Package Configuration
+#
+# This file is used by find_package(bestow) to locate the Bestow library.
+#
+# Usage:
+#   find_package(bestow REQUIRED)
+#   target_link_libraries(my_game PRIVATE bestow::bestow-core)
+#
+# Available targets:
+#   bestow::bestow-core      - Main framework (includes all systems)
+#   bestow::bestow-entity    - Entity Component System
+#   bestow::bestow-graphics  - Graphics/Rendering
+#   bestow::bestow-audio     - Audio system
+#   bestow::bestow-input     - Input handling
+#   bestow::bestow-physics   - Physics simulation
+#   bestow::bestow-assets    - Asset management
+#   bestow::bestow-events    - Event system
+#   bestow::bestow-save      - Save/Load system
+#   bestow::bestow-level     - Level management
+#   bestow::bestow-ai        - AI/Pathfinding
+#   bestow::bestow-camera    - Camera system
+#   bestow::bestow-config    - Configuration
+#   bestow::bestow-gas       - Gameplay Ability System
+#   bestow::bestow-blueprints - Blueprint/Prefab system
+#   bestow::bestow-dev       - Development tools (debug builds only)
+
+include(CMakeFindDependencyMacro)
+
+# Find required dependencies
+find_dependency(spdlog)
+find_dependency(glfw3)
+find_dependency(glad)
+find_dependency(SDL2)
+find_dependency(glm)
+find_dependency(EnTT)
+find_dependency(nlohmann_json)
+find_dependency(sol2)
+find_dependency(cereal)
+find_dependency(box2d)
+find_dependency(freetype)
+find_dependency(Taskflow)
+find_dependency(imgui)
+find_dependency(GTest)
+
+# Include the targets file
+include("${CMAKE_CURRENT_LIST_DIR}/bestow-targets.cmake")
+
+check_required_components(bestow)

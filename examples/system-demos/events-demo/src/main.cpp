@@ -1,7 +1,7 @@
 // Events System Demo
 // Comprehensive demonstration of the IEventSystem interface
 //
-// This demo exercises ALL methods from jframe.events:
+// This demo exercises ALL methods from bestow.events:
 // - publish() - Immediate event dispatch
 // - queue() - Deferred event dispatch
 // - subscribe() - Register event listeners
@@ -27,11 +27,11 @@
 // - std::any for custom data
 
 import std;
-import jframe.events;
-import jframe.events.impl;
-import jframe.types;
+import bestow.events;
+import bestow.events.impl;
+import bestow.types;
 
-using namespace jframe;
+using namespace bestow;
 
 // Custom event data structure
 struct PlayerLevelUpData {
@@ -53,7 +53,7 @@ void printSubsection(const std::string& title) {
 }
 
 int main() {
-    std::cout << "JFrame Events System - Comprehensive API Demo\n";
+    std::cout << "Bestow Events System - Comprehensive API Demo\n";
     std::cout << "==============================================\n";
 
     // Create the event system
