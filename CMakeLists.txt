@@ -64,6 +64,7 @@ add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
 add_subdirectory(bestow-gamestate)
 add_subdirectory(bestow-shader)
+add_subdirectory(bestow-engine)
 
 # Development tools (only in debug builds)
 if(BESTOW_DEV_TOOLS)
