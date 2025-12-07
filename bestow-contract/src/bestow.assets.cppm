@@ -38,6 +38,127 @@ struct SoundData {
     std::size_t fileSize = 0;
 };
 
+//==========================================================================
+// 3D Asset Types
+//==========================================================================
+
+// Forward declarations for 3D types (defined in bestow.types)
+// Using inline definitions here to avoid circular imports
+
+struct Vertex3DData {
+    float position[3]{0.0f};
+    float normal[3]{0.0f, 1.0f, 0.0f};
+    float texCoord[2]{0.0f};
+    float color[4]{1.0f, 1.0f, 1.0f, 1.0f};
+    float tangent[4]{1.0f, 0.0f, 0.0f, 1.0f};      // w = handedness
+    unsigned char boneIndices[4]{0};               // For skeletal animation
+    float boneWeights[4]{0.0f, 0.0f, 0.0f, 0.0f};  // For skeletal animation
+};
+
+struct SubMeshData {
+    std::uint32_t indexOffset = 0;
+    std::uint32_t indexCount = 0;
+    std::uint32_t materialIndex = 0;
+    float boundsMin[3]{0.0f};
+    float boundsMax[3]{0.0f};
+    std::string name;
+};
+
+struct MeshData {
+    std::vector<Vertex3DData> vertices;
+    std::vector<std::uint32_t> indices;
+    std::vector<SubMeshData> subMeshes;
+    float boundsMin[3]{0.0f};
+    float boundsMax[3]{0.0f};
+    std::string name;
+    bool hasTangents = false;
+    bool hasBoneData = false;
+};
+
+struct MaterialTextureRef {
+    std::string path;
+    AssetHandle handle;
+};
+
+struct MaterialData {
+    std::string name;
+
+    // PBR properties
+    float baseColorFactor[4]{1.0f, 1.0f, 1.0f, 1.0f};
+    float metallicFactor = 0.0f;
+    float roughnessFactor = 1.0f;
+    float normalScale = 1.0f;
+    float occlusionStrength = 1.0f;
+    float emissiveFactor[3]{0.0f};
+    float alphaCutoff = 0.5f;
+
+    // Texture references
+    MaterialTextureRef baseColorTexture;
+    MaterialTextureRef metallicRoughnessTexture;
+    MaterialTextureRef normalTexture;
+    MaterialTextureRef occlusionTexture;
+    MaterialTextureRef emissiveTexture;
+
+    // Render state
+    bool doubleSided = false;
+    bool transparent = false;
+    bool unlit = false;
+};
+
+struct ModelData {
+    std::vector<MeshData> meshes;
+    std::vector<MaterialData> materials;
+    std::string name;
+
+    // Scene hierarchy (for multi-mesh models)
+    struct Node {
+        std::string name;
+        int meshIndex = -1;
+        int parentIndex = -1;
+        float localTransform[16]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};  // Identity
+        std::vector<int> children;
+    };
+    std::vector<Node> nodes;
+    int rootNodeIndex = 0;
+
+    // Skeletal animation data
+    struct Bone {
+        std::string name;
+        int parentIndex = -1;
+        float offsetMatrix[16]{1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};  // Inverse bind pose
+    };
+    std::vector<Bone> bones;
+
+    struct AnimationKeyframe {
+        float time = 0.0f;
+        float translation[3]{0, 0, 0};
+        float rotation[4]{0, 0, 0, 1};  // Quaternion (x, y, z, w)
+        float scale[3]{1, 1, 1};
+    };
+
+    struct AnimationChannel {
+        int boneIndex = -1;
+        std::vector<AnimationKeyframe> keyframes;
+    };
+
+    struct Animation {
+        std::string name;
+        float duration = 0.0f;
+        float ticksPerSecond = 30.0f;
+        std::vector<AnimationChannel> channels;
+    };
+    std::vector<Animation> animations;
+};
+
+struct CubemapData {
+    // 6 faces: +X, -X, +Y, -Y, +Z, -Z
+    std::vector<std::vector<unsigned char>> facePixels;
+    int faceWidth = 0;
+    int faceHeight = 0;
+    int channels = 0;
+    std::string name;
+};
+
 struct AssetMetadata {
     AssetHandle handle;
     std::filesystem::path sourcePath;
@@ -115,6 +236,40 @@ public:
     virtual void enableHotReload(bool enable) = 0;
     virtual void checkForReloads() = 0;
     virtual void reloadAsset(AssetHandle handle) = 0;
+
+    //======================================================================
+    // 3D Asset Loading
+    //======================================================================
+
+    /// Load mesh data from an asset (OBJ, glTF, FBX)
+    /// The mesh data is parsed and stored in CPU memory
+    virtual const MeshData* getMeshData(AssetHandle handle) const = 0;
+
+    /// Load model data from an asset (glTF, FBX with materials)
+    /// Includes meshes, materials, and scene hierarchy
+    virtual const ModelData* getModelData(AssetHandle handle) const = 0;
+
+    /// Load material data from an asset
+    virtual const MaterialData* getMaterialData(AssetHandle handle) const = 0;
+
+    /// Load cubemap data from an asset (6 separate images or single equirectangular)
+    virtual const CubemapData* getCubemapData(AssetHandle handle) const = 0;
+
+    /// Register and load a mesh asset in one call
+    virtual AssetHandle loadMesh(const std::filesystem::path& path) = 0;
+
+    /// Register and load a model asset in one call
+    virtual AssetHandle loadModel(const std::filesystem::path& path) = 0;
+
+    /// Register and load a cubemap asset (6 faces or single HDR)
+    virtual AssetHandle loadCubemap(const std::filesystem::path& path) = 0;
+    virtual AssetHandle loadCubemap(
+        const std::filesystem::path& posX,
+        const std::filesystem::path& negX,
+        const std::filesystem::path& posY,
+        const std::filesystem::path& negY,
+        const std::filesystem::path& posZ,
+        const std::filesystem::path& negZ) = 0;
 };
 
 }  // namespace bestow

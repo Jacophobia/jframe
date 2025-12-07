@@ -47,6 +47,7 @@ add_subdirectory(bestow-components)
 add_subdirectory(bestow-core)
 add_subdirectory(bestow-entity)
 add_subdirectory(bestow-graphics)
+add_subdirectory(bestow-graphics3d)
 add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
@@ -54,11 +55,14 @@ add_subdirectory(bestow-save)
 add_subdirectory(bestow-level)
 add_subdirectory(bestow-events)
 add_subdirectory(bestow-physics)
+add_subdirectory(bestow-physics3d)
 add_subdirectory(bestow-ai)
 add_subdirectory(bestow-camera)
 add_subdirectory(bestow-config)
 add_subdirectory(bestow-gas)
 add_subdirectory(bestow-blueprints)
+add_subdirectory(bestow-ui)
+add_subdirectory(bestow-gamestate)
 
 # Development tools (only in debug builds)
 if(BESTOW_DEV_TOOLS)
@@ -92,6 +96,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-core
     bestow-entity
     bestow-graphics
+    bestow-graphics3d
     bestow-audio
     bestow-input
     bestow-assets
@@ -104,7 +109,14 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-config
     bestow-gas
     bestow-blueprints
+    bestow-ui
+    bestow-gamestate
 )
+
+# Add optional 3D physics system (requires Jolt Physics)
+if(TARGET bestow-physics3d)
+    list(APPEND BESTOW_LIBRARY_TARGETS bestow-physics3d)
+endif()
 
 if(BESTOW_DEV_TOOLS)
     list(APPEND BESTOW_LIBRARY_TARGETS bestow-dev)

@@ -30,6 +30,60 @@ function(find_dependencies)
         find_package(efsw CONFIG REQUIRED)
     endif()
 
+    # 3D Graphics dependencies (with FetchContent fallback)
+    find_package(tinyobjloader CONFIG QUIET)
+    if(NOT tinyobjloader_FOUND)
+        message(STATUS "tinyobjloader not found via vcpkg, fetching from GitHub...")
+        FetchContent_Declare(
+            tinyobjloader
+            GIT_REPOSITORY https://github.com/tinyobjloader/tinyobjloader.git
+            GIT_TAG v2.0.0rc13
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(tinyobjloader)
+    endif()
+
+    find_package(tinygltf CONFIG QUIET)
+    if(NOT tinygltf_FOUND)
+        message(STATUS "tinygltf not found via vcpkg, fetching from GitHub...")
+        FetchContent_Declare(
+            tinygltf
+            GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
+            GIT_TAG v2.9.3
+            GIT_SHALLOW TRUE
+        )
+        set(TINYGLTF_HEADER_ONLY ON CACHE BOOL "" FORCE)
+        set(TINYGLTF_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(tinygltf)
+    endif()
+
+    # 3D Physics - Jolt Physics (with FetchContent fallback)
+    find_package(unofficial-joltphysics CONFIG QUIET)
+    if(NOT unofficial-joltphysics_FOUND)
+        find_package(Jolt CONFIG QUIET)
+    endif()
+    if(NOT unofficial-joltphysics_FOUND AND NOT Jolt_FOUND)
+        message(STATUS "Jolt Physics not found via vcpkg, fetching from GitHub...")
+        FetchContent_Declare(
+            JoltPhysics
+            GIT_REPOSITORY https://github.com/jrouwe/JoltPhysics.git
+            GIT_TAG v5.2.0
+            GIT_SHALLOW TRUE
+            SOURCE_SUBDIR Build
+        )
+        set(TARGET_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+        set(TARGET_HELLO_WORLD OFF CACHE BOOL "" FORCE)
+        set(TARGET_PERFORMANCE_TEST OFF CACHE BOOL "" FORCE)
+        set(TARGET_SAMPLES OFF CACHE BOOL "" FORCE)
+        set(TARGET_VIEWER OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(JoltPhysics)
+
+        # Create alias to match vcpkg naming
+        if(TARGET Jolt)
+            add_library(unofficial::joltphysics::Jolt ALIAS Jolt)
+        endif()
+    endif()
+
     # Tracy profiler (optional) - automatically fetched via FetchContent
     # We don't create a separate tracy target to avoid CMake export issues.
     # Instead, we set variables that bestow-metrics uses to compile Tracy directly.

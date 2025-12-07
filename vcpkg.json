@@ -26,7 +26,11 @@
         "recastnavigation",
         "behaviortree-cpp",
         "efsw",
-        "stb"
+        "stb",
+        "joltphysics",
+        "tinyobjloader",
+        "tinygltf",
+        "rmlui"
     ],
     "builtin-baseline": "9aee6e968f51e15ee93606f064691d8f6d228190"
 }

@@ -55,6 +55,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-stdlib=libc++)
     add_link_options(-stdlib=libc++)
 
+    # Add pthread support globally - required for std module consistency
+    # The std.pcm must be compiled with the same pthread setting as all targets
+    add_compile_options(-pthread)
+    add_link_options(-pthread)
+
     # On Linux, we may need to add the libc++ library path
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # Find libc++ library path
@@ -147,6 +152,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
             COMMAND "${CMAKE_CXX_COMPILER}"
                 -std=c++23
                 -stdlib=libc++
+                -pthread
                 ${BESTOW_SYSROOT_FLAG}
                 --precompile
                 "${LIBC++_STD_MODULE}"
@@ -177,6 +183,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
                 COMMAND "${CMAKE_CXX_COMPILER}"
                     -std=c++23
                     -stdlib=libc++
+                    -pthread
                     ${BESTOW_SYSROOT_FLAG}
                     --precompile
                     "${LIBC++_STD_MODULE}"

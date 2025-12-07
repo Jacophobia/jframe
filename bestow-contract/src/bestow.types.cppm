@@ -7,6 +7,10 @@ module;
 #include <bestow/entt_compat.hpp>
 #include <glm/vec2.hpp>
 #include <glm/vec3.hpp>
+#include <glm/vec4.hpp>
+#include <glm/mat3x3.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 export module bestow.types;
 
@@ -32,6 +36,10 @@ using Result = std::expected<T, E>;
 
 using Vec2 = glm::vec2;
 using Vec3 = glm::vec3;
+using Vec4 = glm::vec4;
+using Mat3 = glm::mat3;
+using Mat4 = glm::mat4;
+using Quat = glm::quat;
 
 struct Transform2D {
     float x = 0.0f;
@@ -42,6 +50,39 @@ struct Transform2D {
 
     Vec2 position() const { return {x, y}; }
     Vec2 scale() const { return {scaleX, scaleY}; }
+};
+
+struct Transform3D {
+    Vec3 position{0.0f, 0.0f, 0.0f};
+    Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};  // Identity quaternion (w, x, y, z)
+    Vec3 scale{1.0f, 1.0f, 1.0f};
+
+    static Transform3D identity() { return {}; }
+};
+
+struct AABB3D {
+    Vec3 min{0.0f};
+    Vec3 max{0.0f};
+
+    Vec3 center() const { return (min + max) * 0.5f; }
+    Vec3 extents() const { return (max - min) * 0.5f; }
+    Vec3 size() const { return max - min; }
+};
+
+struct Ray3D {
+    Vec3 origin{0.0f};
+    Vec3 direction{0.0f, 0.0f, -1.0f};
+
+    Vec3 pointAt(float t) const { return origin + direction * t; }
+};
+
+struct Plane {
+    Vec3 normal{0.0f, 1.0f, 0.0f};
+    float distance{0.0f};
+};
+
+struct Frustum {
+    Plane planes[6];  // Near, Far, Left, Right, Top, Bottom
 };
 
 //==========================================================================
@@ -161,7 +202,12 @@ enum class AssetType : std::uint8_t {
     Data,
     Shader,
     NavMesh,
-    BehaviorTree
+    BehaviorTree,
+    // 3D asset types
+    Mesh,       // 3D mesh (OBJ, glTF, FBX)
+    Model,      // 3D model with materials (glTF, FBX)
+    Material,   // Material definition (JSON, glTF embedded)
+    Cubemap     // Skybox/environment map
 };
 
 enum class AssetState : std::uint8_t {
@@ -427,6 +473,203 @@ struct GroundCheckResult {
     Vec2 contactPoint{};                // Where we're touching
     Vec2 surfaceNormal{0.0f, -1.0f};    // Surface orientation (default: pointing up)
     float slopeAngle = 0.0f;            // Angle in degrees from vertical
+};
+
+//==========================================================================
+// 3D Physics Types
+//==========================================================================
+
+enum class BodyType3D : std::uint8_t {
+    Static,
+    Kinematic,
+    Dynamic
+};
+
+enum class ShapeType3D : std::uint8_t {
+    Box,
+    Sphere,
+    Capsule,
+    Cylinder,
+    ConvexHull,
+    Mesh,
+    Compound,
+    HeightField
+};
+
+using CollisionLayer3D = std::uint16_t;
+using CollisionMask3D = std::uint16_t;
+
+namespace CollisionLayers3D {
+    inline constexpr CollisionLayer3D Default = 0x0001;
+    inline constexpr CollisionLayer3D Static = 0x0002;
+    inline constexpr CollisionLayer3D Dynamic = 0x0004;
+    inline constexpr CollisionLayer3D Character = 0x0008;
+    inline constexpr CollisionLayer3D Projectile = 0x0010;
+    inline constexpr CollisionLayer3D Trigger = 0x0020;
+    inline constexpr CollisionLayer3D Debris = 0x0040;
+    inline constexpr CollisionLayer3D Vehicle = 0x0080;
+}
+
+struct RaycastHit3D {
+    Entity entity;
+    Vec3 point;
+    Vec3 normal;
+    float distance;
+    std::uint32_t shapeIndex;
+};
+
+struct ShapecastHit3D {
+    Entity entity;
+    Vec3 point;
+    Vec3 normal;
+    float distance;
+    std::uint32_t shapeIndex;
+    float penetrationDepth;
+};
+
+struct CollisionEvent3D {
+    Entity entityA;
+    Entity entityB;
+    Vec3 contactPoint;
+    Vec3 contactNormal;
+    float impulse;
+    float penetrationDepth;
+};
+
+struct TriggerEvent3D {
+    Entity entityA;
+    Entity entityB;
+};
+
+// Constraint types
+enum class ConstraintType3D : std::uint8_t {
+    Fixed,
+    Point,
+    Distance,
+    Hinge,
+    Slider,
+    Cone,
+    SixDOF
+};
+
+using ConstraintId3D = std::uint64_t;
+
+// Character controller
+enum class CharacterGroundState : std::uint8_t {
+    OnGround,
+    OnSteepGround,
+    InAir,
+    Sliding
+};
+
+struct CharacterGroundInfo {
+    CharacterGroundState state = CharacterGroundState::InAir;
+    Entity groundEntity;
+    Vec3 groundNormal{0.0f, 1.0f, 0.0f};
+    Vec3 groundPoint{0.0f};
+    float slopeAngle = 0.0f;
+};
+
+// Vehicle input
+struct VehicleInput {
+    float throttle = 0.0f;
+    float brake = 0.0f;
+    float steering = 0.0f;
+    bool handbrake = false;
+};
+
+//==========================================================================
+// 3D Graphics Types
+//==========================================================================
+
+struct Vertex3D {
+    Vec3 position{0.0f};
+    Vec3 normal{0.0f, 1.0f, 0.0f};
+    Vec2 texCoord{0.0f};
+    Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+};
+
+using MeshHandle = std::uint64_t;
+using MaterialHandle = std::uint64_t;
+
+enum class BlendMode : std::uint8_t {
+    Opaque,
+    AlphaTest,
+    AlphaBlend,
+    Additive,
+    Multiply
+};
+
+enum class CullMode : std::uint8_t {
+    None,
+    Front,
+    Back
+};
+
+enum class LightType : std::uint8_t {
+    Directional,
+    Point,
+    Spot
+};
+
+struct Light3D {
+    LightType type = LightType::Point;
+    Vec3 color{1.0f, 1.0f, 1.0f};
+    float intensity = 1.0f;
+    float range = 10.0f;
+    float innerConeAngle = 0.4f;
+    float outerConeAngle = 0.5f;
+    bool castShadows = true;
+};
+
+enum class ProjectionType : std::uint8_t {
+    Perspective,
+    Orthographic
+};
+
+struct Camera3D {
+    Transform3D transform;
+    ProjectionType projection = ProjectionType::Perspective;
+    float fovY = 60.0f;
+    float aspectRatio = 16.0f / 9.0f;
+    float orthoWidth = 10.0f;
+    float orthoHeight = 10.0f;
+    float nearPlane = 0.1f;
+    float farPlane = 1000.0f;
+};
+
+struct Fog {
+    bool enabled = false;
+    Vec3 color{0.5f, 0.5f, 0.6f};
+    float density = 0.01f;
+    float startDistance = 10.0f;
+    float endDistance = 100.0f;
+};
+
+// Debug rendering
+struct DebugLine3D {
+    Vec3 start{0.0f};
+    Vec3 end{0.0f};
+    Color color = Color::white();
+    float duration = 0.0f;
+    bool depthTest = true;
+};
+
+struct DebugBox3D {
+    Vec3 center{0.0f};
+    Vec3 halfExtents{0.5f};
+    Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    Color color = Color::white();
+    float duration = 0.0f;
+    bool depthTest = true;
+};
+
+struct DebugSphere3D {
+    Vec3 center{0.0f};
+    float radius = 0.5f;
+    Color color = Color::white();
+    float duration = 0.0f;
+    bool depthTest = true;
 };
 
 //==========================================================================

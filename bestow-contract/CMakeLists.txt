@@ -5,6 +5,7 @@ target_sources(bestow-contract
         src/bestow.types.cppm
         src/bestow.entity.cppm
         src/bestow.graphics.cppm
+        src/bestow.graphics3d.cppm
         src/bestow.audio.cppm
         src/bestow.input.cppm
         src/bestow.assets.cppm
@@ -12,11 +13,14 @@ target_sources(bestow-contract
         src/bestow.level.cppm
         src/bestow.events.cppm
         src/bestow.physics.cppm
+        src/bestow.physics3d.cppm
         src/bestow.ai.cppm
         src/bestow.camera.cppm
         src/bestow.config.cppm
         src/bestow.gas.cppm
         src/bestow.blueprints.cppm
+        src/bestow.ui.cppm
+        src/bestow.gamestate.cppm
         src/bestow.cppm
 )
 

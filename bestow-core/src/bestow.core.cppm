@@ -194,7 +194,9 @@ public:
     EngineBuilder& withEvents();
     EngineBuilder& withEntities();
     EngineBuilder& withPhysics();
+    EngineBuilder& withPhysics3D();
     EngineBuilder& withGraphics(GraphicsConfig config);
+    EngineBuilder& withGraphics3D(GraphicsConfig config);
     EngineBuilder& withAudio();
     EngineBuilder& withInput();
     EngineBuilder& withAssets(std::string_view basePath);
@@ -204,6 +206,8 @@ public:
     EngineBuilder& withCamera(Size viewportSize);
     EngineBuilder& withGAS();
     EngineBuilder& withBlueprints();
+    EngineBuilder& withUI();
+    EngineBuilder& withGameStates();
 
     // Build the engine
     std::expected<Engine, std::string> build();
