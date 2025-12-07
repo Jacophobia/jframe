@@ -30,7 +30,8 @@
         "joltphysics",
         "tinyobjloader",
         "tinygltf",
-        "rmlui"
+        "rmlui",
+        "kangaru"
     ],
     "builtin-baseline": "9aee6e968f51e15ee93606f064691d8f6d228190"
 }

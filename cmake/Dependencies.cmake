@@ -24,6 +24,7 @@ function(find_dependencies)
     find_package(Taskflow CONFIG REQUIRED)
     find_package(RecastNavigation CONFIG REQUIRED)
     find_package(BehaviorTree CONFIG)
+    find_package(kangaru CONFIG REQUIRED)
 
     # Development tools (optional in release)
     if(BESTOW_DEV_TOOLS)
