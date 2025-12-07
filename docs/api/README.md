@@ -17,6 +17,7 @@ Complete API documentation for Bestow's core systems.
 ### Simulation
 
 - [PhysicsSystem](PhysicsSystem.md) - Box2D-based 2D physics simulation
+- [Physics3DSystem](Physics3DSystem.md) - Jolt Physics-based 3D physics simulation
 - [GASSystem](GASSystem.md) - Gameplay Ability System for tags, attributes, effects, and abilities
 
 ### Rendering

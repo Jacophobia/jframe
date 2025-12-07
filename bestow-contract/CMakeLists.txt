@@ -21,6 +21,7 @@ target_sources(bestow-contract
         src/bestow.blueprints.cppm
         src/bestow.ui.cppm
         src/bestow.gamestate.cppm
+        src/bestow.shader.cppm
         src/bestow.cppm
 )
 

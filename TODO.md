@@ -1,8 +1,131 @@
 # Bestow TODO
 
-> Last Updated: 2025-11-27
+> Last Updated: 2025-12-07
 
 ## High Priority
+
+### Dynamic Shader System
+> Enable runtime shader loading, hot reload, and Lua-based material definitions for rapid experimentation.
+
+- [x] Create `IShaderSystem` interface in bestow-contract
+- [x] Create `bestow-shader` module with file-based shader loading
+- [x] Add hot reload support for shaders via efsw file watcher
+- [x] Add Lua material definitions using sol2
+- [ ] Integrate shader system with Graphics3D (optional - can use standalone)
+- [x] Create example shaders for experimentation
+- [ ] Update 3D platformer to use new shader system (optional)
+
+<details>
+<summary>Architecture</summary>
+
+**File Structure:**
+```
+assets/
+  shaders/
+    pbr.vert           # Physically-based rendering vertex
+    pbr.frag           # Physically-based rendering fragment
+    toon.frag          # Toon/cel shading
+    outline.vert       # Outline effect vertex
+    water.vert/frag    # Animated water
+  materials/
+    player.lua         # Lua material definition
+    ground.lua
+    water.lua
+```
+
+**Lua Material Format:**
+```lua
+return {
+    shader = {
+        vertex = "shaders/pbr.vert",
+        fragment = "shaders/pbr.frag"
+    },
+    uniforms = {
+        albedoColor = {1.0, 0.8, 0.6},
+        metallic = 0.0,
+        roughness = 0.5,
+        emission = {0.0, 0.0, 0.0}
+    },
+    hotReload = true  -- Enable live editing
+}
+```
+
+**IShaderSystem Interface:**
+```cpp
+class IShaderSystem {
+public:
+    virtual ~IShaderSystem() = default;
+
+    // Shader management
+    virtual Result<ShaderHandle, ShaderError> loadShader(std::string_view vertPath, std::string_view fragPath) = 0;
+    virtual Result<ShaderHandle, ShaderError> loadShaderFromSource(std::string_view vertSrc, std::string_view fragSrc) = 0;
+    virtual void unloadShader(ShaderHandle handle) = 0;
+
+    // Material management
+    virtual Result<MaterialHandle, ShaderError> loadMaterial(std::string_view luaPath) = 0;
+    virtual Result<MaterialHandle, ShaderError> createMaterial(ShaderHandle shader) = 0;
+    virtual void setMaterialUniform(MaterialHandle mat, std::string_view name, const UniformValue& value) = 0;
+
+    // Binding
+    virtual void bindShader(ShaderHandle handle) = 0;
+    virtual void bindMaterial(MaterialHandle handle) = 0;
+
+    // Hot reload
+    virtual void enableHotReload(bool enable) = 0;
+    virtual void update() = 0;  // Check for file changes
+};
+```
+
+</details>
+
+### Lua Integration Gaps
+> Systems that could benefit from Lua scripting but currently don't support it.
+
+**High Priority (Major User Impact):**
+- [ ] Input bindings from Lua (`config/input.lua` - remap keys without recompiling)
+- [ ] Shader parameters from Lua (material definitions, uniform values)
+- [ ] Physics body definitions from Lua (expand existing support)
+- [ ] Entity behaviors/scripts in Lua (update functions, event handlers)
+
+**Medium Priority:**
+- [ ] Graphics settings from Lua (resolution, quality presets)
+- [ ] Audio channel configuration from Lua (volumes, effects)
+- [ ] UI layouts from Lua (menu definitions, HUD elements)
+- [ ] AI behavior trees from Lua (node definitions, parameters)
+
+**Low Priority (Nice to Have):**
+- [ ] Event subscriptions from Lua
+- [ ] Save game metadata from Lua
+- [ ] Custom debug overlays from Lua
+
+<details>
+<summary>Current Lua Usage</summary>
+
+**Well Integrated (Config/Data):**
+- ✅ Config System - `config/*.lua`
+- ✅ Blueprint Factory - `blueprints/*.lua`
+- ✅ Level System - `levels/*.lua`
+- ✅ Input mappings via LuaInputLoader
+- ✅ Physics config via LuaPhysicsLoader
+
+**Not Integrated:**
+- ❌ Graphics3D shaders/materials
+- ❌ Physics3D runtime configuration
+- ❌ Audio channel setup
+- ❌ UI system
+- ❌ Entity scripts/behaviors
+- ❌ AI parameters
+- ❌ Event handlers
+
+</details>
+
+### Test Coverage Gaps
+- [ ] Graphics3D system tests (currently 0 tests)
+- [ ] Physics3D system tests (currently 0 tests)
+- [ ] UI system tests (currently 0 tests)
+- [ ] GameState system tests (currently 0 tests)
+
+
 
 ### Graphics3D System - Incomplete Features
 - [ ] Texture loading from asset handles (asset system integration)

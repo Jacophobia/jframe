@@ -63,6 +63,7 @@ add_subdirectory(bestow-gas)
 add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
 add_subdirectory(bestow-gamestate)
+add_subdirectory(bestow-shader)
 
 # Development tools (only in debug builds)
 if(BESTOW_DEV_TOOLS)
@@ -111,6 +112,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-blueprints
     bestow-ui
     bestow-gamestate
+    bestow-shader
 )
 
 # Add optional 3D physics system (requires Jolt Physics)
