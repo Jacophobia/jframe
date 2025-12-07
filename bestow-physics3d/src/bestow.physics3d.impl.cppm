@@ -1572,13 +1572,9 @@ Result<void, Physics3DError> JoltPhysics3DSystem::moveCharacter(Entity entity, V
 
     JPH::CharacterVirtual* character = it->second.get();
 
-    // Apply gravity
-    JPH::Vec3 gravity = physicsSystem_->GetGravity();
-    JPH::Vec3 currentVelocity = character->GetLinearVelocity();
+    // Use the velocity directly as provided by the caller
+    // The caller is responsible for applying gravity and handling jumping
     JPH::Vec3 newVelocity = toJolt(velocity);
-
-    // Keep vertical velocity for gravity, but use input for horizontal
-    newVelocity.SetY(currentVelocity.GetY() + gravity.GetY() * dt);
 
     // Check if grounded and zero out downward velocity if so
     if (character->GetGroundState() == JPH::CharacterVirtual::EGroundState::OnGround) {
@@ -1589,9 +1585,10 @@ Result<void, Physics3DError> JoltPhysics3DSystem::moveCharacter(Entity entity, V
 
     character->SetLinearVelocity(newVelocity);
 
-    // Update character
+    // Update character - don't apply gravity here since caller handles it
+    JPH::Vec3 gravity = physicsSystem_->GetGravity();
     JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
-    character->ExtendedUpdate(dt, gravity, updateSettings,
+    character->ExtendedUpdate(dt, JPH::Vec3::sZero(), updateSettings,  // No gravity here
                                physicsSystem_->GetDefaultBroadPhaseLayerFilter(LAYER_MOVING),
                                physicsSystem_->GetDefaultLayerFilter(LAYER_MOVING),
                                {},  // Body filter

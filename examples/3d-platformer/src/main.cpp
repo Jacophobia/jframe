@@ -1,8 +1,8 @@
 // examples/3d-platformer/src/main.cpp
 // 3D Platformer Demo - Demonstrates Physics3D, Graphics3D, and Input systems
 //
-// Controls:
-//   WASD - Move
+// Controls (Dvorak layout):
+//   ,AOE - Move (equivalent to WASD on QWERTY)
 //   Space - Jump
 //   Mouse - Look around
 //   Escape - Exit
@@ -138,13 +138,13 @@ GLFWwindow* createWindow() {
 
 // Setup input mappings
 void setupInput(IInputSystem* input) {
-    // Movement - WASD
+    // Movement - ,AOE (Dvorak equivalent of WASD)
     input->registerMapping(InputMapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_W},
+        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_COMMA},
         .action = "MoveForward"
     });
     input->registerMapping(InputMapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_S},
+        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_O},
         .action = "MoveBackward"
     });
     input->registerMapping(InputMapping{
@@ -152,7 +152,7 @@ void setupInput(IInputSystem* input) {
         .action = "MoveLeft"
     });
     input->registerMapping(InputMapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_D},
+        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = GLFW_KEY_E},
         .action = "MoveRight"
     });
     input->registerMapping(InputMapping{
@@ -257,17 +257,21 @@ Player createPlayer(IGraphics3DSystem* graphics, IPhysics3DSystem* physics) {
         player.material = *matResult;
     }
 
-    // Create physics body (dynamic capsule)
-    PhysicsBodyDef3D bodyDef;
-    bodyDef.type = BodyType3D::Dynamic;
-    bodyDef.transform.position = player.position;
-    bodyDef.shapeType = ShapeType3D::Capsule;
-    bodyDef.shapeRadius = 0.3f;
-    bodyDef.shapeHalfHeight = 0.4f;
-    bodyDef.density = 1000.0f;
-    bodyDef.friction = 0.5f;
-    bodyDef.linearDamping = 0.1f;
-    physics->createBody(player.entity, bodyDef);
+    // Create character controller (proper character physics with ground detection)
+    CharacterControllerDef charDef;
+    charDef.radius = 0.3f;
+    charDef.height = 1.6f;
+    charDef.stepHeight = 0.35f;
+    charDef.maxSlopeAngle = 50.0f;
+    charDef.mass = 80.0f;
+
+    auto result = physics->createCharacter(player.entity, charDef);
+    if (!result) {
+        std::println("Warning: Failed to create character controller");
+    }
+
+    // Set initial position
+    physics->setCharacterPosition(player.entity, player.position);
 
     return player;
 }
@@ -287,17 +291,11 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
     g_mouseDeltaX = 0.0;
     g_mouseDeltaY = 0.0;
 
-    // Calculate forward and right vectors based on yaw only (for movement)
-    Vec3 forward{
-        std::sin(player.yaw),
-        0.0f,
-        -std::cos(player.yaw)
-    };
-    Vec3 right{
-        std::cos(player.yaw),
-        0.0f,
-        std::sin(player.yaw)
-    };
+    // Calculate forward and right vectors using the same yaw quaternion as the camera
+    // This ensures movement direction matches where the camera is looking
+    glm::quat yawQuat = glm::angleAxis(player.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    Vec3 forward = yawQuat * glm::vec3(0.0f, 0.0f, -1.0f);  // Camera looks along -Z
+    Vec3 right = yawQuat * glm::vec3(1.0f, 0.0f, 0.0f);     // Right is +X
 
     // Movement input
     Vec3 moveDir{0.0f};
@@ -311,8 +309,25 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
         moveDir = glm::normalize(moveDir);
     }
 
-    // Get current velocity from physics
-    auto velResult = physics->getLinearVelocity(player.entity);
+    // Get ground state from character controller
+    auto groundResult = physics->getCharacterGroundInfo(player.entity);
+    if (groundResult) {
+        player.grounded = (groundResult->state == CharacterGroundState::OnGround ||
+                          groundResult->state == CharacterGroundState::OnSteepGround);
+    }
+
+    // Fallback: use raycast for ground detection if character controller reports InAir
+    if (!player.grounded) {
+        Vec3 rayStart = player.position + Vec3{0.0f, 0.1f, 0.0f};
+        Vec3 rayDir{0.0f, -1.0f, 0.0f};
+        auto rayResult = physics->raycast(rayStart, rayDir, 0.3f);
+        if (rayResult.has_value()) {
+            player.grounded = true;
+        }
+    }
+
+    // Get current velocity from character controller
+    auto velResult = physics->getCharacterVelocity(player.entity);
     if (velResult) {
         player.velocity = *velResult;
     }
@@ -322,22 +337,24 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
     player.velocity.x = targetVel.x;
     player.velocity.z = targetVel.z;
 
-    // Check if grounded (simple check: velocity.y is near zero and we're not going up)
-    player.grounded = std::abs(player.velocity.y) < 0.5f && player.velocity.y <= 0.1f;
-
     // Jump
     if (input->wasActionJustPressed("Jump") && player.grounded) {
         player.velocity.y = JUMP_FORCE;
     }
 
-    // Apply gravity (physics system handles this, but we might need to tweak)
-    // The physics system should have gravity set
+    // Apply gravity manually for character controller
+    if (!player.grounded) {
+        player.velocity.y += GRAVITY * dt;
+    } else if (player.velocity.y < 0) {
+        // Reset downward velocity when grounded
+        player.velocity.y = 0.0f;
+    }
 
-    // Set velocity back to physics
-    physics->setLinearVelocity(player.entity, player.velocity);
+    // Move character controller (handles collisions and sliding)
+    physics->moveCharacter(player.entity, player.velocity, dt);
 
-    // Get position from physics
-    auto posResult = physics->getPosition(player.entity);
+    // Get position from character controller
+    auto posResult = physics->getCharacterPosition(player.entity);
     if (posResult) {
         player.position = *posResult;
     }
@@ -346,8 +363,7 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
     if (player.position.y < -10.0f) {
         player.position = Vec3{0.0f, 5.0f, 0.0f};
         player.velocity = Vec3{0.0f};
-        physics->setPosition(player.entity, player.position);
-        physics->setLinearVelocity(player.entity, player.velocity);
+        physics->setCharacterPosition(player.entity, player.position);
     }
 }
 
@@ -376,8 +392,8 @@ Camera3D getPlayerCamera(const Player& player) {
 int main() {
     std::println("Bestow 3D Platformer Demo");
     std::println("==========================");
-    std::println("Controls:");
-    std::println("  WASD  - Move");
+    std::println("Controls (Dvorak layout):");
+    std::println("  ,AOE  - Move");
     std::println("  Space - Jump");
     std::println("  Mouse - Look around");
     std::println("  Tab   - Recapture mouse");
@@ -406,12 +422,14 @@ int main() {
         return 1;
     }
 
-    auto input = createInputSystem();
-    if (!input) {
+    auto inputPtr = createInputSystem();
+    auto* inputImpl = dynamic_cast<InputSystem*>(inputPtr.get());
+    if (!inputImpl || !inputImpl->initialize(g_window)) {
         std::println("Failed to initialize input system");
         glfwTerminate();
         return 1;
     }
+    auto& input = inputPtr;  // Keep using input variable name for consistency
 
     // Setup
     setupInput(input.get());

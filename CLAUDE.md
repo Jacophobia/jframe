@@ -1,5 +1,9 @@
 # Bestow Development Guidelines
 
+## User Preferences
+
+**Keyboard Layout:** The project owner uses **Dvorak**. When implementing keyboard controls, **STRONGLY prefer ,AOE over WASD** for movement (Dvorak-equivalent of WASD positions). This applies to all demos, examples, and default configurations.
+
 ## Language Standard
 
 **C++23 Required** - Use modern C++ features throughout the codebase.

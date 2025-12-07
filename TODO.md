@@ -4,6 +4,35 @@
 
 ## High Priority
 
+### Graphics3D System - Incomplete Features
+- [ ] Texture loading from asset handles (asset system integration)
+- [ ] Entity rendering via `renderEntities()` and `renderEntitiesInFrustum()`
+- [ ] Entity layer rendering via `renderEntitiesInLayer()`
+- [ ] Light entity updates via `updateLightsFromEntities()`
+- [ ] Render queue sorting by material/depth
+- [ ] Batch rendering for performance
+- [ ] Debug capsule drawing
+- [ ] Debug frustum drawing
+- [ ] Fullscreen toggle
+- [ ] Skybox cubemap loading
+
+### Physics3D System - Incomplete Features
+- [ ] Vehicle physics (VehicleConstraint-based)
+  - [ ] `createVehicle()` - Create wheeled vehicle
+  - [ ] `destroyVehicle()` - Remove vehicle
+  - [ ] `setVehicleInput()` - Steering/throttle/brake
+  - [ ] `getWheelTransform()` - Wheel positions
+  - [ ] `isWheelGrounded()` - Wheel contact
+  - [ ] `getVehicleSpeed()` - Current velocity
+- [ ] Collision layer/mask filtering
+- [ ] Mass override (requires mass properties recalculation)
+- [ ] Complex shape types:
+  - [ ] Mesh shape from vertices/indices
+  - [ ] Convex hull shape
+  - [ ] Height field shape
+- [ ] Debug line extraction from Jolt DebugRenderer
+- [ ] Physics statistics tracking (sleeping bodies, update time, collision pairs)
+
 ### AI System - Recast/Detour Integration
 - [x] Add Recast/Detour to vcpkg.json or build from source
 - [x] Implement `loadNavMesh()` to parse binary navmesh format
