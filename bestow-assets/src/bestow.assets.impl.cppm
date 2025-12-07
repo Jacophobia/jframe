@@ -110,6 +110,22 @@ public:
     void checkForReloads() override;
     void reloadAsset(AssetHandle handle) override;
 
+    // 3D Asset loading and access
+    const MeshData* getMeshData(AssetHandle handle) const override;
+    const ModelData* getModelData(AssetHandle handle) const override;
+    const MaterialData* getMaterialData(AssetHandle handle) const override;
+    const CubemapData* getCubemapData(AssetHandle handle) const override;
+    AssetHandle loadMesh(const std::filesystem::path& path) override;
+    AssetHandle loadModel(const std::filesystem::path& path) override;
+    AssetHandle loadCubemap(const std::filesystem::path& path) override;
+    AssetHandle loadCubemap(
+        const std::filesystem::path& right,
+        const std::filesystem::path& left,
+        const std::filesystem::path& top,
+        const std::filesystem::path& bottom,
+        const std::filesystem::path& front,
+        const std::filesystem::path& back) override;
+
 private:
     struct AssetEntry {
         AssetMetadata metadata;

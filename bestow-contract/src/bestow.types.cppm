@@ -672,6 +672,22 @@ struct DebugSphere3D {
     bool depthTest = true;
 };
 
+// 3D Mesh Rendering Component - attach to entities for 3D rendering
+struct Mesh3DComponent {
+    MeshHandle mesh = 0;
+    MaterialHandle material = 0;
+    RenderLayer layer = 0;
+    bool visible = true;
+    bool castShadow = true;
+    bool receiveShadow = true;
+};
+
+// 3D Light Component - attach to entities for dynamic lighting
+struct Light3DComponent {
+    Light3D light;
+    bool enabled = true;
+};
+
 //==========================================================================
 // Level Types
 //==========================================================================

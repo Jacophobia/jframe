@@ -43,6 +43,7 @@ module;
 #include <Jolt/Physics/Character/CharacterVirtual.h>
 #include <Jolt/Physics/Vehicle/VehicleConstraint.h>
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 
 // EnTT for Entity type
 #include <entt/entity/entity.hpp>
@@ -170,6 +171,12 @@ public:
 
 class ContactListenerImpl : public JPH::ContactListener {
 public:
+    // Collision filter data type (must match JoltPhysics3DSystem's internal struct)
+    struct CollisionFilterData {
+        CollisionLayer3D layer = 0x0001;
+        CollisionMask3D mask = 0xFFFF;
+    };
+
     void setCollisionCallback(Collision3DCallback callback) {
         collisionCallback_ = std::move(callback);
     }
@@ -186,9 +193,31 @@ public:
         entityLookup_ = std::move(lookup);
     }
 
+    void setCollisionFilterLookup(std::function<const CollisionFilterData*(Entity)> lookup) {
+        collisionFilterLookup_ = std::move(lookup);
+    }
+
     JPH::ValidateResult OnContactValidate(const JPH::Body& inBody1, const JPH::Body& inBody2,
                                           JPH::RVec3Arg inBaseOffset,
                                           const JPH::CollideShapeResult& inCollisionResult) override {
+        // Check layer/mask collision filtering
+        if (entityLookup_ && collisionFilterLookup_) {
+            Entity entityA = entityLookup_(inBody1.GetID());
+            Entity entityB = entityLookup_(inBody2.GetID());
+
+            const CollisionFilterData* filterA = collisionFilterLookup_(entityA);
+            const CollisionFilterData* filterB = collisionFilterLookup_(entityB);
+
+            if (filterA && filterB) {
+                // Check if A's layer is in B's mask AND B's layer is in A's mask
+                bool aCanCollideWithB = (filterA->layer & filterB->mask) != 0;
+                bool bCanCollideWithA = (filterB->layer & filterA->mask) != 0;
+
+                if (!aCanCollideWithB || !bCanCollideWithA) {
+                    return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
+                }
+            }
+        }
         return JPH::ValidateResult::AcceptAllContactsForThisBodyPair;
     }
 
@@ -334,6 +363,7 @@ private:
     Trigger3DEnterCallback triggerEnterCallback_;
     Trigger3DExitCallback triggerExitCallback_;
     std::function<Entity(JPH::BodyID)> entityLookup_;
+    std::function<const CollisionFilterData*(Entity)> collisionFilterLookup_;
     std::unordered_map<std::uint64_t, ContactPair3D> activeContacts_;
 };
 
@@ -622,6 +652,13 @@ private:
     std::unordered_map<std::uint32_t, JPH::BodyID> entityToBody_;
     std::unordered_map<std::uint32_t, Entity> bodyIdToEntity_;
 
+    // Per-entity collision layer/mask storage
+    struct CollisionFilterData {
+        CollisionLayer3D layer = 0x0001;  // Default layer 1
+        CollisionMask3D mask = 0xFFFF;    // Collide with everything by default
+    };
+    std::unordered_map<std::uint32_t, CollisionFilterData> entityCollisionFilters_;
+
     // Character controllers
     std::unordered_map<std::uint32_t, std::unique_ptr<JPH::CharacterVirtual>> characters_;
 
@@ -635,12 +672,14 @@ private:
     std::unordered_map<std::uint64_t, ConstraintData> constraints_;
     std::uint64_t nextConstraintId_ = 1;
 
-    // Vehicles (stubbed for now - VehicleConstraint needs proper setup)
-    // struct VehicleData {
-    //     JPH::Ref<JPH::VehicleConstraint> constraint;
-    //     JPH::WheeledVehicleController* controller;
-    // };
-    // std::unordered_map<std::uint32_t, VehicleData> vehicles_;
+    // Vehicles
+    struct VehicleData {
+        JPH::Ref<JPH::VehicleConstraint> constraint;
+        JPH::WheeledVehicleController* controller;  // Owned by constraint
+        JPH::BodyID bodyId;
+        std::vector<WheelDef> wheelDefs;  // Store original defs for reference
+    };
+    std::unordered_map<std::uint32_t, VehicleData> vehicles_;
 
     // Old constraints storage (superseded by ConstraintData above)
     // std::unordered_map<std::uint64_t, JPH::Ref<JPH::Constraint>> constraints_;
@@ -668,7 +707,7 @@ JoltPhysics3DSystem::JoltPhysics3DSystem() = default;
 JoltPhysics3DSystem::~JoltPhysics3DSystem() {
     // Clean up in reverse order
     characters_.clear();
-    // vehicles_.clear();  // Vehicles stubbed out for now
+    vehicles_.clear();
     constraints_.clear();
     entityToBody_.clear();
     bodyIdToEntity_.clear();
@@ -740,6 +779,15 @@ bool JoltPhysics3DSystem::initialize() {
     contactListener_.setEntityLookup([this](JPH::BodyID bodyId) -> Entity {
         return getEntity(bodyId);
     });
+    contactListener_.setCollisionFilterLookup([this](Entity entity) -> const ContactListenerImpl::CollisionFilterData* {
+        std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+        auto it = entityCollisionFilters_.find(entityId);
+        if (it != entityCollisionFilters_.end()) {
+            // Return pointer to the filter data (cast is safe since struct layouts match)
+            return reinterpret_cast<const ContactListenerImpl::CollisionFilterData*>(&it->second);
+        }
+        return nullptr;
+    });
     physicsSystem_->SetContactListener(&contactListener_);
 
     initialized_ = true;
@@ -788,8 +836,15 @@ Result<void, Physics3DError> JoltPhysics3DSystem::createBody(Entity entity, cons
     JPH::BodyID bodyId = body->GetID();
     physicsSystem_->GetBodyInterface().AddBody(bodyId, JPH::EActivation::Activate);
 
-    entityToBody_[static_cast<std::uint32_t>(entity)] = bodyId;
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    entityToBody_[entityId] = bodyId;
     bodyIdToEntity_[bodyId.GetIndexAndSequenceNumber()] = entity;
+
+    // Initialize collision filter with values from body definition
+    entityCollisionFilters_[entityId] = CollisionFilterData{
+        .layer = def.layer,
+        .mask = def.mask
+    };
 
     return {};
 }
@@ -803,8 +858,10 @@ Result<void, Physics3DError> JoltPhysics3DSystem::destroyBody(Entity entity) {
     physicsSystem_->GetBodyInterface().RemoveBody(*bodyId);
     physicsSystem_->GetBodyInterface().DestroyBody(*bodyId);
 
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
     bodyIdToEntity_.erase(bodyId->GetIndexAndSequenceNumber());
-    entityToBody_.erase(static_cast<std::uint32_t>(entity));
+    entityToBody_.erase(entityId);
+    entityCollisionFilters_.erase(entityId);  // Clean up collision filter data
 
     return {};
 }
@@ -1038,13 +1095,29 @@ Result<void, Physics3DError> JoltPhysics3DSystem::setRestitution(Entity entity, 
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::setCollisionLayer(Entity entity, CollisionLayer3D layer) {
-    // TODO: Implement collision layer filtering with custom ObjectLayerFilter
-    return std::unexpected(Physics3DError::InvalidConfiguration);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+
+    // Verify entity has a body
+    if (!entityToBody_.contains(entityId)) {
+        return std::unexpected(Physics3DError::BodyNotFound);
+    }
+
+    // Store collision layer for this entity
+    entityCollisionFilters_[entityId].layer = layer;
+    return {};
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::setCollisionMask(Entity entity, CollisionMask3D mask) {
-    // TODO: Implement collision mask filtering with custom ObjectLayerFilter
-    return std::unexpected(Physics3DError::InvalidConfiguration);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+
+    // Verify entity has a body
+    if (!entityToBody_.contains(entityId)) {
+        return std::unexpected(Physics3DError::BodyNotFound);
+    }
+
+    // Store collision mask for this entity
+    entityCollisionFilters_[entityId].mask = mask;
+    return {};
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::setSensor(Entity entity, bool isSensor) {
@@ -1535,8 +1608,9 @@ Result<void, Physics3DError> JoltPhysics3DSystem::createCharacter(Entity entity,
     settings.mMaxSlopeAngle = JPH::DegreesToRadians(def.maxSlopeAngle);
     settings.mMass = def.mass;
     settings.mMaxStrength = 100.0f;
-    settings.mPredictiveContactDistance = 0.1f;
-    settings.mPenetrationRecoverySpeed = 1.0f;
+    settings.mPredictiveContactDistance = 0.02f;  // Reduced from 0.1f to prevent wall grabbing
+    settings.mPenetrationRecoverySpeed = 4.0f;    // Increased from 1.0f for faster wall rejection
+    settings.mCharacterPadding = 0.02f;           // Small padding to prevent getting wedged
 
     // Create the character
     auto character = std::make_unique<JPH::CharacterVirtual>(
@@ -1583,11 +1657,32 @@ Result<void, Physics3DError> JoltPhysics3DSystem::moveCharacter(Entity entity, V
         }
     }
 
+    // WALL STICKING FIX: Project velocity against wall contacts BEFORE moving
+    // This prevents the character from continuously pushing into walls
+    const auto& contacts = character->GetActiveContacts();
+    for (const auto& contact : contacts) {
+        // Check if this is a wall contact (normal is mostly horizontal)
+        // A "wall" has a normal where Y component is small (close to 0)
+        // Ground/ceiling contacts have Y close to +1 or -1
+        float normalY = std::abs(contact.mContactNormal.GetY());
+        if (normalY < 0.5f) {  // This is a wall (normal tilted less than ~30 degrees from horizontal)
+            // Project velocity to be parallel to this wall
+            // Remove the component of velocity that points into the wall
+            float velDotNormal = newVelocity.Dot(contact.mContactNormal);
+            if (velDotNormal < 0.0f) {  // Only if velocity is pointing INTO the wall
+                newVelocity -= contact.mContactNormal * velDotNormal;
+            }
+        }
+    }
+
     character->SetLinearVelocity(newVelocity);
 
     // Update character - don't apply gravity here since caller handles it
-    JPH::Vec3 gravity = physicsSystem_->GetGravity();
     JPH::CharacterVirtual::ExtendedUpdateSettings updateSettings;
+    // Disable "stick to floor" to prevent wall sticking - we only want floor sticking
+    updateSettings.mStickToFloorStepDown = JPH::Vec3::sZero();
+    // Keep walk stairs enabled for stepping up small obstacles
+    updateSettings.mWalkStairsStepUp = JPH::Vec3(0, 0.3f, 0);
     character->ExtendedUpdate(dt, JPH::Vec3::sZero(), updateSettings,  // No gravity here
                                physicsSystem_->GetDefaultBroadPhaseLayerFilter(LAYER_MOVING),
                                physicsSystem_->GetDefaultLayerFilter(LAYER_MOVING),
@@ -1670,36 +1765,206 @@ Result<Vec3, Physics3DError> JoltPhysics3DSystem::getCharacterVelocity(Entity en
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::createVehicle(Entity entity, const VehicleDef& def) {
-    // TODO: Implement vehicle creation using VehicleConstraint
-    return std::unexpected(Physics3DError::InvalidConfiguration);
+    if (def.wheels.empty()) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+
+    // Check if entity already has a vehicle
+    if (vehicles_.contains(entityId)) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    // Entity must have a body first
+    auto* bodyId = getBodyID(entity);
+    if (!bodyId) {
+        return std::unexpected(Physics3DError::BodyNotFound);
+    }
+
+    auto& bodyInterface = physicsSystem_->GetBodyInterface();
+
+    // Create vehicle constraint settings
+    JPH::VehicleConstraintSettings vehicleSettings;
+
+    // Create wheeled vehicle controller settings
+    JPH::WheeledVehicleControllerSettings* controllerSettings = new JPH::WheeledVehicleControllerSettings();
+    controllerSettings->mEngine.mMaxTorque = def.maxEngineForce;
+    controllerSettings->mTransmission.mMode = JPH::ETransmissionMode::Auto;
+
+    // Configure wheels
+    vehicleSettings.mWheels.resize(def.wheels.size());
+    for (std::size_t i = 0; i < def.wheels.size(); ++i) {
+        const WheelDef& wheelDef = def.wheels[i];
+        JPH::WheelSettingsWV* wheelSettings = new JPH::WheelSettingsWV();
+
+        wheelSettings->mPosition = toJolt(wheelDef.connectionPoint);
+        wheelSettings->mSuspensionDirection = toJolt(wheelDef.suspensionDirection);
+        wheelSettings->mSuspensionMinLength = 0.0f;
+        wheelSettings->mSuspensionMaxLength = wheelDef.suspensionLength;
+        wheelSettings->mSuspensionSpring.mFrequency = wheelDef.suspensionStiffness;
+        wheelSettings->mSuspensionSpring.mDamping = wheelDef.suspensionDamping;
+        wheelSettings->mRadius = wheelDef.radius;
+        wheelSettings->mWidth = wheelDef.radius * 0.5f;  // Default width
+        wheelSettings->mMaxSteerAngle = wheelDef.isSteered ? def.maxSteeringAngle : 0.0f;
+        wheelSettings->mMaxBrakeTorque = def.maxBrakeForce;
+        wheelSettings->mLongitudinalFriction.mPoints[0] = {0.0f, 0.0f};
+        wheelSettings->mLongitudinalFriction.mPoints[1] = {0.06f, wheelDef.friction * 1.2f};
+        wheelSettings->mLongitudinalFriction.mPoints[2] = {0.2f, wheelDef.friction};
+        wheelSettings->mLateralFriction.mPoints[0] = {0.0f, 0.0f};
+        wheelSettings->mLateralFriction.mPoints[1] = {3.0f, wheelDef.friction * 1.2f};
+        wheelSettings->mLateralFriction.mPoints[2] = {20.0f, wheelDef.friction};
+
+        vehicleSettings.mWheels[i] = wheelSettings;
+
+        // Configure differentials for driven wheels
+        if (wheelDef.isDriven) {
+            // Add to appropriate differential
+            // Simple setup: assume first two are front, next two are rear
+            if (i < 2) {
+                controllerSettings->mDifferentials.resize(std::max(controllerSettings->mDifferentials.size(), std::size_t(1)));
+                if (i == 0) controllerSettings->mDifferentials[0].mLeftWheel = static_cast<int>(i);
+                else controllerSettings->mDifferentials[0].mRightWheel = static_cast<int>(i);
+            } else if (i < 4) {
+                controllerSettings->mDifferentials.resize(std::max(controllerSettings->mDifferentials.size(), std::size_t(2)));
+                if (i == 2) controllerSettings->mDifferentials[1].mLeftWheel = static_cast<int>(i);
+                else controllerSettings->mDifferentials[1].mRightWheel = static_cast<int>(i);
+            }
+        }
+    }
+
+    // Ensure we have at least one differential
+    if (controllerSettings->mDifferentials.empty()) {
+        controllerSettings->mDifferentials.resize(1);
+        controllerSettings->mDifferentials[0].mLeftWheel = 0;
+        controllerSettings->mDifferentials[0].mRightWheel = std::min(1, static_cast<int>(def.wheels.size()) - 1);
+    }
+
+    vehicleSettings.mController = controllerSettings;
+
+    // Create the vehicle constraint - need to get body via lock
+    JPH::BodyLockWrite lock(physicsSystem_->GetBodyLockInterface(), *bodyId);
+    if (!lock.Succeeded()) {
+        return std::unexpected(Physics3DError::BodyNotFound);
+    }
+    JPH::Body& body = lock.GetBody();
+
+    JPH::Ref<JPH::VehicleConstraint> constraint = new JPH::VehicleConstraint(
+        body,
+        vehicleSettings);
+
+    // Add constraint to the physics system
+    physicsSystem_->AddConstraint(constraint);
+    physicsSystem_->AddStepListener(constraint);
+
+    // Store vehicle data
+    VehicleData vehicleData;
+    vehicleData.constraint = constraint;
+    vehicleData.controller = static_cast<JPH::WheeledVehicleController*>(constraint->GetController());
+    vehicleData.bodyId = *bodyId;
+    vehicleData.wheelDefs = def.wheels;
+    vehicles_[entityId] = std::move(vehicleData);
+
+    return {};
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::destroyVehicle(Entity entity) {
-    // TODO: Implement vehicle destruction
-    return std::unexpected(Physics3DError::VehicleNotFound);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    auto it = vehicles_.find(entityId);
+    if (it == vehicles_.end()) {
+        return std::unexpected(Physics3DError::VehicleNotFound);
+    }
+
+    // Remove the constraint from the physics system
+    physicsSystem_->RemoveStepListener(it->second.constraint);
+    physicsSystem_->RemoveConstraint(it->second.constraint);
+
+    vehicles_.erase(it);
+    return {};
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::updateVehicle(Entity entity, float throttle,
                                                                 float steering, float brake) {
-    // TODO: Implement vehicle control update
-    return std::unexpected(Physics3DError::VehicleNotFound);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    auto it = vehicles_.find(entityId);
+    if (it == vehicles_.end()) {
+        return std::unexpected(Physics3DError::VehicleNotFound);
+    }
+
+    JPH::WheeledVehicleController* controller = it->second.controller;
+
+    // Set forward input (-1 to 1, negative is reverse)
+    controller->SetDriverInput(throttle, steering, brake, 0.0f);
+
+    return {};
 }
 
 Result<WheelState, Physics3DError> JoltPhysics3DSystem::getWheelTransform(Entity entity,
                                                                            std::uint32_t wheelIndex) const {
-    // TODO: Implement wheel transform query
-    return std::unexpected(Physics3DError::VehicleNotFound);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    auto it = vehicles_.find(entityId);
+    if (it == vehicles_.end()) {
+        return std::unexpected(Physics3DError::VehicleNotFound);
+    }
+
+    const VehicleData& vehicle = it->second;
+    if (wheelIndex >= vehicle.constraint->GetWheels().size()) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    const JPH::Wheel* wheel = vehicle.constraint->GetWheel(wheelIndex);
+    // GetWheelLocalTransform params: wheel index, right axis, up axis
+    JPH::RMat44 wheelTransform = vehicle.constraint->GetWheelLocalTransform(wheelIndex,
+        JPH::Vec3::sAxisX(), JPH::Vec3::sAxisY());
+
+    // Get body transform to convert to world space
+    auto& bodyInterface = physicsSystem_->GetBodyInterface();
+    JPH::RMat44 bodyTransform = bodyInterface.GetWorldTransform(vehicle.bodyId);
+    JPH::RMat44 worldTransform = bodyTransform * wheelTransform;
+
+    WheelState state;
+    state.transform.position = fromJolt(worldTransform.GetTranslation());
+    state.transform.rotation = fromJolt(worldTransform.GetQuaternion());
+    state.grounded = wheel->HasContact();
+    state.suspensionLength = wheel->GetSuspensionLength();
+
+    if (wheel->HasContact()) {
+        state.contactPoint = fromJolt(wheel->GetContactPosition());
+        state.contactNormal = fromJoltVec3(wheel->GetContactNormal());
+    }
+
+    return state;
 }
 
 Result<bool, Physics3DError> JoltPhysics3DSystem::isWheelGrounded(Entity entity,
                                                                    std::uint32_t wheelIndex) const {
-    // TODO: Implement wheel grounded check
-    return std::unexpected(Physics3DError::VehicleNotFound);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    auto it = vehicles_.find(entityId);
+    if (it == vehicles_.end()) {
+        return std::unexpected(Physics3DError::VehicleNotFound);
+    }
+
+    const VehicleData& vehicle = it->second;
+    if (wheelIndex >= vehicle.constraint->GetWheels().size()) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    return vehicle.constraint->GetWheel(wheelIndex)->HasContact();
 }
 
 Result<float, Physics3DError> JoltPhysics3DSystem::getVehicleSpeed(Entity entity) const {
-    // TODO: Implement vehicle speed query
-    return std::unexpected(Physics3DError::VehicleNotFound);
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    auto it = vehicles_.find(entityId);
+    if (it == vehicles_.end()) {
+        return std::unexpected(Physics3DError::VehicleNotFound);
+    }
+
+    // Get linear velocity of the vehicle body
+    auto& bodyInterface = physicsSystem_->GetBodyInterface();
+    JPH::Vec3 velocity = bodyInterface.GetLinearVelocity(it->second.bodyId);
+
+    // Return speed (magnitude of velocity)
+    return velocity.Length();
 }
 
 void JoltPhysics3DSystem::setGravity(Vec3 gravity) {
@@ -1782,8 +2047,15 @@ Result<void, Physics3DError> JoltPhysics3DSystem::createCompoundBody(
     JPH::BodyID bodyId = body->GetID();
     physicsSystem_->GetBodyInterface().AddBody(bodyId, JPH::EActivation::Activate);
 
-    entityToBody_[static_cast<std::uint32_t>(entity)] = bodyId;
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    entityToBody_[entityId] = bodyId;
     bodyIdToEntity_[bodyId.GetIndexAndSequenceNumber()] = entity;
+
+    // Initialize collision filter with defaults for compound bodies
+    entityCollisionFilters_[entityId] = CollisionFilterData{
+        .layer = 0x0001,  // Default layer
+        .mask = 0xFFFF    // Collide with everything
+    };
 
     return {};
 }
@@ -1825,8 +2097,15 @@ Result<void, Physics3DError> JoltPhysics3DSystem::createHeightFieldBody(
     JPH::BodyID bodyId = body->GetID();
     physicsSystem_->GetBodyInterface().AddBody(bodyId, JPH::EActivation::DontActivate);
 
-    entityToBody_[static_cast<std::uint32_t>(entity)] = bodyId;
+    std::uint32_t entityId = static_cast<std::uint32_t>(entity);
+    entityToBody_[entityId] = bodyId;
     bodyIdToEntity_[bodyId.GetIndexAndSequenceNumber()] = entity;
+
+    // Initialize collision filter with defaults for height field bodies (terrain)
+    entityCollisionFilters_[entityId] = CollisionFilterData{
+        .layer = 0x0001,  // Default layer
+        .mask = 0xFFFF    // Collide with everything
+    };
 
     return {};
 }

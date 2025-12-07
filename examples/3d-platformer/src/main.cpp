@@ -15,6 +15,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 
 import std;
@@ -25,6 +26,8 @@ import bestow.graphics3d;
 import bestow.graphics3d.impl;
 import bestow.physics3d;
 import bestow.physics3d.impl;
+import bestow.shader;
+import bestow.shader.impl;
 
 using namespace bestow;
 
@@ -36,6 +39,20 @@ constexpr float GRAVITY = -20.0f;
 constexpr int WINDOW_WIDTH = 1280;
 constexpr int WINDOW_HEIGHT = 720;
 
+// Third-person camera configuration
+constexpr float CAMERA_DISTANCE_MIN = 1.0f;      // Minimum distance (when against wall)
+constexpr float CAMERA_DISTANCE_MAX = 5.0f;      // Ideal/maximum distance behind player
+constexpr float CAMERA_HEIGHT_OFFSET = 1.5f;     // Height above player pivot
+constexpr float CAMERA_LOOK_OFFSET = 0.8f;       // Look target height offset
+constexpr float CAMERA_COLLISION_RADIUS = 0.3f;  // Sphere radius for camera collision
+constexpr float CAMERA_SMOOTH_SPEED = 12.0f;     // How fast camera adjusts distance
+
+// Camera state for smooth third-person following
+struct CameraState {
+    float currentDistance = CAMERA_DISTANCE_MAX;  // Current smoothed distance
+    float targetDistance = CAMERA_DISTANCE_MAX;   // Target distance (after collision)
+};
+
 // Player state
 struct Player {
     Entity entity;
@@ -46,15 +63,22 @@ struct Player {
     bool grounded = false;
     MeshHandle mesh;
     MaterialHandle material;
+    std::string luaMaterial;  // For cel-shading support
 };
+
+// Global camera state
+CameraState g_cameraState;
 
 // Platform definition
 struct Platform {
     Entity entity;
     Vec3 position;
     Vec3 size;
+    Vec3 color;  // Per-object color for cel-shading
     MeshHandle mesh;
     MaterialHandle material;
+    std::string luaMaterial;  // Optional Lua material path for special effects
+    bool useShaderMaterial = false;
 };
 
 // GLFW callbacks for input
@@ -170,33 +194,39 @@ std::vector<Platform> createPlatforms(IGraphics3DSystem* graphics, IPhysics3DSys
         Vec3 pos;
         Vec3 size;
         Vec3 color;
+        std::string luaMaterial;  // Empty = use PBR, otherwise use Lua material
     };
 
+    // All platforms use cel-shading for a cartoon look!
+    // Material paths are relative to the material base path (assets/materials/)
     std::vector<PlatformDef> defs = {
-        // Ground floor (endless floor)
-        {{0.0f, -2.0f, 0.0f}, {50.0f, 1.0f, 50.0f}, {0.3f, 0.5f, 0.3f}},
+        // Ground floor - cel-shaded grass green
+        {{0.0f, -2.0f, 0.0f}, {50.0f, 1.0f, 50.0f}, {0.35f, 0.6f, 0.25f}, "toon.lua"},
 
-        // Starting platform
-        {{0.0f, 0.0f, 0.0f}, {4.0f, 0.5f, 4.0f}, {0.5f, 0.5f, 0.6f}},
+        // Starting platform - cel-shaded stone gray
+        {{0.0f, 0.0f, 0.0f}, {4.0f, 0.5f, 4.0f}, {0.6f, 0.55f, 0.5f}, "toon.lua"},
 
-        // Jumping platforms
-        {{5.0f, 1.0f, 0.0f}, {3.0f, 0.5f, 3.0f}, {0.6f, 0.4f, 0.4f}},
-        {{10.0f, 2.5f, 2.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.6f, 0.4f}},
-        {{8.0f, 4.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.4f, 0.6f}},
-        {{3.0f, 5.5f, 8.0f}, {3.0f, 0.5f, 3.0f}, {0.6f, 0.6f, 0.4f}},
-        {{-2.0f, 7.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.5f, 0.4f, 0.6f}},
-        {{-6.0f, 8.5f, 3.0f}, {3.0f, 0.5f, 3.0f}, {0.6f, 0.5f, 0.4f}},
-        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {0.8f, 0.7f, 0.3f}},  // Goal platform
+        // Jumping platforms - colorful cel-shaded blocks
+        {{5.0f, 1.0f, 0.0f}, {3.0f, 0.5f, 3.0f}, {0.85f, 0.4f, 0.35f}, "toon.lua"},   // Red
+        {{10.0f, 2.5f, 2.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.75f, 0.4f}, "toon.lua"},   // Green
+        {{8.0f, 4.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.5f, 0.85f}, "toon.lua"},    // Blue
+        {{3.0f, 5.5f, 8.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.8f, 0.3f}, "toon.lua"},     // Yellow
+        {{-2.0f, 7.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.7f, 0.4f, 0.8f}, "toon.lua"},    // Purple
+        {{-6.0f, 8.5f, 3.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.6f, 0.3f}, "toon.lua"},    // Orange
 
-        // Some side platforms
-        {{-5.0f, 2.0f, -3.0f}, {2.5f, 0.5f, 2.5f}, {0.5f, 0.3f, 0.5f}},
-        {{-8.0f, 3.5f, 0.0f}, {2.5f, 0.5f, 2.5f}, {0.3f, 0.5f, 0.5f}},
+        // Goal platform - glowing gold with special effect!
+        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {1.0f, 0.85f, 0.2f}, "glow.lua"},
+
+        // Side platforms - cel-shaded pastels
+        {{-5.0f, 2.0f, -3.0f}, {2.5f, 0.5f, 2.5f}, {0.7f, 0.5f, 0.7f}, "toon.lua"},   // Lavender
+        {{-8.0f, 3.5f, 0.0f}, {2.5f, 0.5f, 2.5f}, {0.5f, 0.7f, 0.7f}, "toon.lua"},    // Teal
     };
 
     for (const auto& def : defs) {
         Platform platform;
         platform.position = def.pos;
         platform.size = def.size;
+        platform.color = def.color;  // Store for per-object shader color
         platform.entity = static_cast<Entity>(platforms.size() + 100);
 
         // Create mesh (scaled cube)
@@ -205,7 +235,13 @@ std::vector<Platform> createPlatforms(IGraphics3DSystem* graphics, IPhysics3DSys
             platform.mesh = *meshResult;
         }
 
-        // Create material with color
+        // Check if this platform uses a Lua shader material
+        if (!def.luaMaterial.empty()) {
+            platform.luaMaterial = def.luaMaterial;
+            platform.useShaderMaterial = true;
+        }
+
+        // Create fallback PBR material with color (used when shader system not available)
         PBRMaterial mat;
         mat.baseColorFactor = Vec4{def.color.x, def.color.y, def.color.z, 1.0f};
         mat.roughnessFactor = 0.7f;
@@ -234,6 +270,7 @@ Player createPlayer(IGraphics3DSystem* graphics, IPhysics3DSystem* physics) {
     Player player;
     player.entity = static_cast<Entity>(1);
     player.position = Vec3{0.0f, 2.0f, 0.0f};
+    player.luaMaterial = "toon.lua";  // Cel-shaded player!
 
     // Create capsule mesh for player
     auto meshResult = graphics->createCapsuleMesh(0.3f, 0.8f);
@@ -247,9 +284,9 @@ Player createPlayer(IGraphics3DSystem* graphics, IPhysics3DSystem* physics) {
         }
     }
 
-    // Player material (bright blue)
+    // Player material - bright cartoon blue (fallback and for shader base color)
     PBRMaterial mat;
-    mat.baseColorFactor = Vec4{0.2f, 0.4f, 0.9f, 1.0f};
+    mat.baseColorFactor = Vec4{0.3f, 0.5f, 0.95f, 1.0f};  // Bright cartoon blue
     mat.roughnessFactor = 0.3f;
     mat.metallicFactor = 0.5f;
     auto matResult = graphics->createMaterial(mat);
@@ -326,16 +363,9 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
         }
     }
 
-    // Get current velocity from character controller
-    auto velResult = physics->getCharacterVelocity(player.entity);
-    if (velResult) {
-        player.velocity = *velResult;
-    }
-
-    // Apply horizontal movement
-    Vec3 targetVel = moveDir * MOVE_SPEED;
-    player.velocity.x = targetVel.x;
-    player.velocity.z = targetVel.z;
+    // Apply horizontal movement directly - physics system handles wall collision projection
+    player.velocity.x = moveDir.x * MOVE_SPEED;
+    player.velocity.z = moveDir.z * MOVE_SPEED;
 
     // Jump
     if (input->wasActionJustPressed("Jump") && player.grounded) {
@@ -367,21 +397,85 @@ void updatePlayer(Player& player, IInputSystem* input, IPhysics3DSystem* physics
     }
 }
 
-// Get camera transform from player
+// Update camera with wall collision detection (telescoping)
+void updateCameraCollision(const Player& player, IPhysics3DSystem* physics, float dt) {
+    // Calculate the look target (where the camera looks at)
+    Vec3 lookTarget = player.position + Vec3{0.0f, CAMERA_LOOK_OFFSET, 0.0f};
+
+    // Calculate ideal camera direction (behind player based on yaw/pitch)
+    glm::quat yawQuat = glm::angleAxis(player.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+    glm::quat pitchQuat = glm::angleAxis(player.pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+    glm::quat cameraRot = yawQuat * pitchQuat;
+
+    // Camera looks forward (-Z), so "behind" is +Z in camera space
+    Vec3 behindDir = cameraRot * glm::vec3(0.0f, 0.0f, 1.0f);
+
+    // Add some height to the camera offset
+    Vec3 cameraOffsetDir = glm::normalize(behindDir + Vec3{0.0f, CAMERA_HEIGHT_OFFSET / CAMERA_DISTANCE_MAX, 0.0f});
+
+    // Start position for raycast (at player's head)
+    Vec3 rayStart = lookTarget;
+
+    // Raycast from player toward ideal camera position
+    float targetDist = CAMERA_DISTANCE_MAX;
+
+    auto hitResult = physics->raycast(rayStart, cameraOffsetDir, CAMERA_DISTANCE_MAX + CAMERA_COLLISION_RADIUS);
+    if (hitResult.has_value()) {
+        // Hit something - pull camera closer
+        float hitDist = hitResult->distance - CAMERA_COLLISION_RADIUS;
+        targetDist = std::max(CAMERA_DISTANCE_MIN, hitDist);
+    }
+
+    g_cameraState.targetDistance = targetDist;
+
+    // Smooth camera distance - fast when pulling in (hitting wall), slower when extending out
+    float smoothSpeed = CAMERA_SMOOTH_SPEED;
+    if (g_cameraState.currentDistance > g_cameraState.targetDistance) {
+        // Pulling in quickly (wall hit)
+        smoothSpeed *= 3.0f;
+    }
+
+    float diff = g_cameraState.targetDistance - g_cameraState.currentDistance;
+    g_cameraState.currentDistance += diff * std::min(1.0f, smoothSpeed * dt);
+}
+
+// Get camera transform from player (third-person with collision)
 Camera3D getPlayerCamera(const Player& player) {
     Camera3D camera;
 
-    // Camera position: slightly behind and above player
-    Vec3 cameraOffset{0.0f, 0.8f, 0.0f};  // First person: at head height
-    camera.transform.position = player.position + cameraOffset;
+    // Look target: slightly above player pivot
+    Vec3 lookTarget = player.position + Vec3{0.0f, CAMERA_LOOK_OFFSET, 0.0f};
 
-    // Camera rotation from yaw and pitch
+    // Calculate camera orientation from yaw and pitch
     glm::quat yawQuat = glm::angleAxis(player.yaw, glm::vec3(0.0f, 1.0f, 0.0f));
     glm::quat pitchQuat = glm::angleAxis(player.pitch, glm::vec3(1.0f, 0.0f, 0.0f));
-    camera.transform.rotation = yawQuat * pitchQuat;
+    glm::quat cameraRot = yawQuat * pitchQuat;
+
+    // Camera is positioned behind the player
+    // In camera space, forward is -Z, so behind is +Z
+    Vec3 behindDir = cameraRot * glm::vec3(0.0f, 0.0f, 1.0f);
+
+    // Add height offset to camera position
+    Vec3 cameraOffset = behindDir * g_cameraState.currentDistance;
+    cameraOffset.y += CAMERA_HEIGHT_OFFSET * (g_cameraState.currentDistance / CAMERA_DISTANCE_MAX);
+
+    // Final camera position
+    camera.transform.position = lookTarget + cameraOffset;
+
+    // Camera looks at the look target
+    Vec3 lookDir = glm::normalize(lookTarget - camera.transform.position);
+
+    // Calculate rotation to look at target
+    // Create a rotation that points -Z toward lookDir
+    Vec3 forward = -lookDir;  // Camera forward is -Z
+    Vec3 right = glm::normalize(glm::cross(Vec3{0.0f, 1.0f, 0.0f}, forward));
+    Vec3 up = glm::cross(forward, right);
+
+    glm::mat3 rotMatrix(right, up, forward);
+    camera.transform.rotation = glm::quat_cast(rotMatrix);
 
     camera.projection = ProjectionType::Perspective;
-    camera.fovY = 70.0f;
+    camera.fovY = 60.0f;  // Slightly narrower FOV for third-person
     camera.aspectRatio = static_cast<float>(WINDOW_WIDTH) / static_cast<float>(WINDOW_HEIGHT);
     camera.nearPlane = 0.1f;
     camera.farPlane = 500.0f;
@@ -421,6 +515,13 @@ int main() {
         glfwTerminate();
         return 1;
     }
+
+    // Create shader system and connect to graphics
+    auto shaderSystem = createShaderSystem();
+    graphics->setShaderSystem(shaderSystem.get());
+    shaderSystem->setShaderBasePath("assets/shaders/");
+    shaderSystem->setMaterialBasePath("assets/materials/");
+    std::println("Shader system initialized with hot reload support");
 
     auto inputPtr = createInputSystem();
     auto* inputImpl = dynamic_cast<InputSystem*>(inputPtr.get());
@@ -475,33 +576,68 @@ int main() {
         // Update player
         updatePlayer(player, input.get(), physics.get(), dt);
 
-        // Sync physics to get updated positions
-        // (The physics system updates body positions internally)
+        // Update third-person camera collision (telescoping behind walls)
+        updateCameraCollision(player, physics.get(), dt);
 
         // Begin frame
         graphics->beginFrame();
 
-        // Set camera
+        // Set camera (third-person with wall avoidance)
         Camera3D camera = getPlayerCamera(player);
         graphics->setCamera(camera);
+
+        // Check for shader hot reload
+        graphics->updateShaders();
 
         // Render platforms
         for (const auto& platform : platforms) {
             Transform3D transform;
             transform.position = platform.position;
             transform.scale = platform.size;
-            graphics->drawMesh(platform.mesh, platform.material, transform);
+
+            // Use Lua shader material if available, otherwise use PBR material
+            if (platform.useShaderMaterial && !platform.luaMaterial.empty()) {
+                // Calculate world matrix for shader
+                Mat4 worldMatrix = glm::translate(Mat4(1.0f), platform.position);
+                worldMatrix = glm::scale(worldMatrix, platform.size);
+
+                // Pass per-object color to the shader
+                Vec4 colorOverride{platform.color.x, platform.color.y, platform.color.z, 1.0f};
+                auto result = graphics->drawMeshWithLuaMaterial(
+                    platform.mesh, platform.luaMaterial, worldMatrix, colorOverride);
+
+                if (!result) {
+                    // Fallback to regular PBR if shader fails
+                    graphics->drawMesh(platform.mesh, platform.material, transform);
+                }
+            } else {
+                graphics->drawMesh(platform.mesh, platform.material, transform);
+            }
         }
 
-        // Render player (visible in third person, or for shadow)
+        // Render player (visible in third person, or for shadow) - cel-shaded!
         {
             Transform3D transform;
             transform.position = player.position;
-            graphics->drawMesh(player.mesh, player.material, transform);
+
+            // Use cel-shader for player with bright cartoon blue
+            if (!player.luaMaterial.empty()) {
+                Mat4 worldMatrix = glm::translate(Mat4(1.0f), player.position);
+                Vec4 playerColor{0.3f, 0.5f, 0.95f, 1.0f};  // Bright cartoon blue
+                auto result = graphics->drawMeshWithLuaMaterial(
+                    player.mesh, player.luaMaterial, worldMatrix, playerColor);
+
+                if (!result) {
+                    // Fallback to PBR if shader fails
+                    graphics->drawMesh(player.mesh, player.material, transform);
+                }
+            } else {
+                graphics->drawMesh(player.mesh, player.material, transform);
+            }
         }
 
-        // Debug: draw some coordinate axes at origin
-        graphics->debugDrawAxes(Transform3D{}, 2.0f);
+        // Debug: draw some coordinate axes at origin (disabled - causes rendering artifacts)
+        // graphics->debugDrawAxes(Transform3D{}, 2.0f);
 
         // End frame
         graphics->endFrame();

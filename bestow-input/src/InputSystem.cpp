@@ -56,6 +56,9 @@ void InputSystem::update() {
     prevActionStates_ = actionStates_;
     prevMousePosition_ = mousePosition_;
 
+    // Reset scroll delta (it accumulates from callbacks)
+    scrollDelta_ = Vec2{0.0f, 0.0f};
+
     updateKeyboardState();
     updateMouseState();
     updateControllerState();
@@ -361,6 +364,57 @@ std::string InputSystem::getControllerName(int index) const {
         return name ? name : "Unknown Controller";
     }
     return "";
+}
+
+Vec2 InputSystem::getScrollDelta() const {
+    return scrollDelta_;
+}
+
+void InputSystem::enableTextInput() {
+    textInputEnabled_ = true;
+}
+
+void InputSystem::disableTextInput() {
+    textInputEnabled_ = false;
+}
+
+bool InputSystem::isTextInputEnabled() const {
+    return textInputEnabled_;
+}
+
+std::string InputSystem::getTextInput() const {
+    return textInputBuffer_;
+}
+
+void InputSystem::clearTextInput() {
+    textInputBuffer_.clear();
+}
+
+void InputSystem::onScrollCallback(double xoffset, double yoffset) {
+    // Accumulate scroll delta (will be reset at start of next update())
+    scrollDelta_.x += static_cast<float>(xoffset);
+    scrollDelta_.y += static_cast<float>(yoffset);
+}
+
+void InputSystem::onCharCallback(unsigned int codepoint) {
+    if (!textInputEnabled_) return;
+
+    // Convert codepoint to UTF-8 and append to buffer
+    if (codepoint < 0x80) {
+        textInputBuffer_ += static_cast<char>(codepoint);
+    } else if (codepoint < 0x800) {
+        textInputBuffer_ += static_cast<char>(0xC0 | (codepoint >> 6));
+        textInputBuffer_ += static_cast<char>(0x80 | (codepoint & 0x3F));
+    } else if (codepoint < 0x10000) {
+        textInputBuffer_ += static_cast<char>(0xE0 | (codepoint >> 12));
+        textInputBuffer_ += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+        textInputBuffer_ += static_cast<char>(0x80 | (codepoint & 0x3F));
+    } else {
+        textInputBuffer_ += static_cast<char>(0xF0 | (codepoint >> 18));
+        textInputBuffer_ += static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F));
+        textInputBuffer_ += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
+        textInputBuffer_ += static_cast<char>(0x80 | (codepoint & 0x3F));
+    }
 }
 
 }  // namespace bestow

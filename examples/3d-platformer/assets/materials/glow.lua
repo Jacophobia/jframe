@@ -1,28 +1,28 @@
 -- Pulsing Glow Material
--- Emissive material with animated glow effect
+-- Golden goal platform with animated glow effect
 
 return {
     shader = {
-        vertex = "shaders/basic.vert",
-        fragment = "shaders/glow.frag"
+        vertex = "basic.vert",
+        fragment = "glow.frag"
     },
 
     uniforms = {
-        -- Base surface color
-        uBaseColor = {0.1, 0.1, 0.1, 1.0},
+        -- Golden base surface
+        uBaseColor = {0.9, 0.75, 0.2, 1.0},
 
-        -- Glow color (orange/red for lava, blue for energy, etc.)
-        uGlowColor = {1.0, 0.5, 0.0},
+        -- Warm golden glow
+        uGlowColor = {1.0, 0.85, 0.3},
 
-        -- Glow strength
-        uGlowIntensity = 1.5,
+        -- Strong glow for goal visibility
+        uGlowIntensity = 1.8,
 
-        -- Pulse animation
-        uPulseSpeed = 2.0,  -- Pulses per second
-        uPulseMin = 0.3,    -- Minimum brightness during pulse
+        -- Gentle pulse animation
+        uPulseSpeed = 1.5,  -- Pulses per second
+        uPulseMin = 0.6,    -- Stays bright
 
-        -- Edge glow (fresnel)
-        uFresnelGlow = 0.5
+        -- Strong edge glow (fresnel) for beacon effect
+        uFresnelGlow = 0.8
     },
 
     blendMode = "opaque",

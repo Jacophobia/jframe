@@ -28,6 +28,7 @@ import bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
+import bestow.shader;
 
 export namespace bestow {
 
@@ -643,6 +644,31 @@ public:
     float getRenderScale() const override;
 
     //======================================================================
+    // Shader System Integration
+    //======================================================================
+
+    void setShaderSystem(IShaderSystem* shaders) override;
+    IShaderSystem* getShaderSystem() const override;
+    void drawMeshWithShaderMaterial(
+        MeshHandle mesh,
+        ShaderProgramHandle shader,
+        const Mat4& worldMatrix,
+        bool castShadow = true,
+        bool receiveShadow = true) override;
+    Result<void, Graphics3DError> drawMeshWithLuaMaterial(
+        MeshHandle mesh,
+        std::string_view materialPath,
+        const Mat4& worldMatrix) override;
+
+    Result<void, Graphics3DError> drawMeshWithLuaMaterial(
+        MeshHandle mesh,
+        std::string_view materialPath,
+        const Mat4& worldMatrix,
+        const Vec4& colorOverride) override;
+
+    void updateShaders() override;
+
+    //======================================================================
     // Asset System Integration
     //======================================================================
 
@@ -865,6 +891,10 @@ private:
     // Asset system
     IAssetSystem* assetSystem_ = nullptr;
 
+    // Shader system
+    IShaderSystem* shaderSystem_ = nullptr;
+    std::unordered_map<std::string, MaterialHandle> luaMaterialCache_;
+
     // Helper functions
     bool compileShader(GLuint shader, const char* source);
     bool linkProgram(GLuint program);
@@ -886,6 +916,12 @@ private:
 
     // LOD selection helper
     MeshHandle selectLODMesh(MeshHandle primaryMesh, float distance) const;
+
+    // Frustum culling helper - returns true if AABB is visible
+    bool isAABBInFrustum(const AABB3D& aabb, const Frustum& frustum) const;
+
+    // Transform AABB by world matrix to get world-space AABB
+    AABB3D transformAABB(const AABB3D& aabb, const glm::mat4& worldMatrix) const;
 };
 
 //==========================================================================
@@ -1682,14 +1718,69 @@ void OpenGLGraphics3DSystem::flushRenderQueue() {
 //==========================================================================
 
 void OpenGLGraphics3DSystem::renderEntities(IEntitySystem& entities) {
-    // TODO: Query entities with Mesh3D and Transform3D components
-    // TODO: For each entity, queue render item
+    // Query entities with Mesh3DComponent and Transform3D components
+    auto view = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : view) {
+        const auto& meshComp = view.get<Mesh3DComponent>(entity);
+        const auto& transform = view.get<Transform3D>(entity);
+
+        // Skip invisible entities
+        if (!meshComp.visible) continue;
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = transformToMatrix(transform);
+
+        // Frustum culling if enabled
+        if (frustumCullingEnabled_) {
+            auto meshIt = meshes_.find(meshComp.mesh);
+            if (meshIt != meshes_.end()) {
+                AABB3D worldBounds = transformAABB(meshIt->second.bounds, worldMatrix);
+                if (!isAABBInFrustum(worldBounds, viewFrustum_)) {
+                    stats_.culledObjects++;
+                    continue;
+                }
+            }
+        }
+
+        stats_.visibleObjects++;
+
+        // Draw the mesh
+        drawMesh(meshComp.mesh, meshComp.material, worldMatrix,
+                meshComp.castShadow, meshComp.receiveShadow);
+    }
 }
 
 void OpenGLGraphics3DSystem::renderEntities(IEntitySystem& entities, const Frustum& frustum) {
-    // TODO: Query entities with Mesh3D and Transform3D components
-    // TODO: Frustum cull each entity
-    // TODO: Queue visible entities
+    // Query entities with Mesh3DComponent and Transform3D components
+    auto view = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : view) {
+        const auto& meshComp = view.get<Mesh3DComponent>(entity);
+        const auto& transform = view.get<Transform3D>(entity);
+
+        // Skip invisible entities
+        if (!meshComp.visible) continue;
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = transformToMatrix(transform);
+
+        // Frustum culling with provided frustum
+        auto meshIt = meshes_.find(meshComp.mesh);
+        if (meshIt != meshes_.end()) {
+            AABB3D worldBounds = transformAABB(meshIt->second.bounds, worldMatrix);
+            if (!isAABBInFrustum(worldBounds, frustum)) {
+                stats_.culledObjects++;
+                continue;
+            }
+        }
+
+        stats_.visibleObjects++;
+
+        // Draw the mesh
+        drawMesh(meshComp.mesh, meshComp.material, worldMatrix,
+                meshComp.castShadow, meshComp.receiveShadow);
+    }
 }
 
 void OpenGLGraphics3DSystem::renderEntities(
@@ -1697,7 +1788,40 @@ void OpenGLGraphics3DSystem::renderEntities(
     RenderLayer minLayer,
     RenderLayer maxLayer) {
 
-    // TODO: Query entities with Mesh3D, Transform3D, and layer in range
+    // Query entities with Mesh3DComponent and Transform3D components
+    auto view = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : view) {
+        const auto& meshComp = view.get<Mesh3DComponent>(entity);
+        const auto& transform = view.get<Transform3D>(entity);
+
+        // Skip invisible entities
+        if (!meshComp.visible) continue;
+
+        // Skip entities outside the layer range
+        if (meshComp.layer < minLayer || meshComp.layer > maxLayer) continue;
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = transformToMatrix(transform);
+
+        // Frustum culling if enabled
+        if (frustumCullingEnabled_) {
+            auto meshIt = meshes_.find(meshComp.mesh);
+            if (meshIt != meshes_.end()) {
+                AABB3D worldBounds = transformAABB(meshIt->second.bounds, worldMatrix);
+                if (!isAABBInFrustum(worldBounds, viewFrustum_)) {
+                    stats_.culledObjects++;
+                    continue;
+                }
+            }
+        }
+
+        stats_.visibleObjects++;
+
+        // Draw the mesh
+        drawMesh(meshComp.mesh, meshComp.material, worldMatrix,
+                meshComp.castShadow, meshComp.receiveShadow);
+    }
 }
 
 //==========================================================================
@@ -1861,7 +1985,59 @@ void OpenGLGraphics3DSystem::setAmbientLight(const Vec3& color, float intensity)
 }
 
 void OpenGLGraphics3DSystem::updateEntityLights(IEntitySystem& entities) {
-    // TODO: Query entities with light components and update lights_
+    // Clear existing dynamic lights (keep only manually added ones)
+    // For simplicity, we rebuild the lights_ vector each frame from entities
+    lights_.clear();
+    stats_.lights = 0;
+
+    // Query entities with Light3DComponent and Transform3D
+    auto view = entities.view<Light3DComponent, Transform3D>();
+
+    for (auto entity : view) {
+        const auto& lightComp = view.get<Light3DComponent>(entity);
+        const auto& transform = view.get<Transform3D>(entity);
+
+        // Skip disabled lights
+        if (!lightComp.enabled) continue;
+
+        const auto& light = lightComp.light;
+
+        LightData data;
+        data.id = static_cast<uint32_t>(entity);
+        data.position = transform.position;
+        data.color = light.color;
+        data.intensity = light.intensity;
+        data.range = light.range;
+        data.castShadows = light.castShadows;
+
+        // Convert from rotation quaternion to direction vector
+        glm::mat4 rotMatrix = glm::mat4_cast(transform.rotation);
+        glm::vec3 forward = glm::vec3(rotMatrix * glm::vec4(0, 0, -1, 0));
+
+        switch (light.type) {
+            case LightType::Point:
+                data.type = LightData::Type::Point;
+                data.direction = Vec3{0, -1, 0};  // Not used for point lights
+                data.innerCone = 0.0f;
+                data.outerCone = 0.0f;
+                break;
+
+            case LightType::Spot:
+                data.type = LightData::Type::Spot;
+                data.direction = forward;
+                data.innerCone = light.innerConeAngle;
+                data.outerCone = light.outerConeAngle;
+                break;
+
+            case LightType::Directional:
+                // Directional lights are handled separately via setDirectionalLight
+                // Skip them here - they should be set up separately
+                continue;
+        }
+
+        lights_.push_back(data);
+        stats_.lights++;
+    }
 }
 
 //==========================================================================
@@ -2135,6 +2311,213 @@ float OpenGLGraphics3DSystem::getRenderScale() const {
 
 void OpenGLGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
     assetSystem_ = assets;
+}
+
+//==========================================================================
+// Shader System Integration
+//==========================================================================
+
+void OpenGLGraphics3DSystem::setShaderSystem(IShaderSystem* shaders) {
+    shaderSystem_ = shaders;
+    if (shaderSystem_) {
+        shaderSystem_->setAssetSystem(assetSystem_);
+    }
+}
+
+IShaderSystem* OpenGLGraphics3DSystem::getShaderSystem() const {
+    return shaderSystem_;
+}
+
+void OpenGLGraphics3DSystem::drawMeshWithShaderMaterial(
+    MeshHandle mesh,
+    ShaderProgramHandle shader,
+    const Mat4& worldMatrix,
+    bool /*castShadow*/,
+    bool /*receiveShadow*/)
+{
+    if (!shaderSystem_) return;
+
+    auto meshIt = meshes_.find(mesh);
+    if (meshIt == meshes_.end()) return;
+
+    const auto& meshRes = meshIt->second;
+
+    // Bind the shader
+    shaderSystem_->bindShader(shader);
+
+    // Set standard uniforms that all shaders expect
+    shaderSystem_->setUniform("uModel", worldMatrix);
+    shaderSystem_->setUniform("uView", viewMatrix_);
+    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+
+    // Calculate normal matrix
+    Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
+    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+
+    // Set camera and lighting uniforms
+    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    if (directionalLight_) {
+        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+    } else {
+        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+    }
+    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+
+    // Draw the mesh
+    glBindVertexArray(meshRes.vao);
+    glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+
+    stats_.drawCalls++;
+    stats_.triangles += meshRes.indexCount / 3;
+    stats_.vertices += meshRes.vertexCount;
+}
+
+Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
+    MeshHandle mesh,
+    std::string_view materialPath,
+    const Mat4& worldMatrix)
+{
+    if (!shaderSystem_) {
+        return std::unexpected(Graphics3DError::InvalidShader);
+    }
+
+    // Check cache first
+    std::string pathStr(materialPath);
+    auto cacheIt = luaMaterialCache_.find(pathStr);
+    MaterialHandle material = 0;
+
+    if (cacheIt != luaMaterialCache_.end()) {
+        material = cacheIt->second;
+    } else {
+        // Load the material
+        auto result = shaderSystem_->loadMaterial(materialPath);
+        if (!result) {
+            return std::unexpected(Graphics3DError::InvalidShader);
+        }
+        material = *result;
+        luaMaterialCache_[pathStr] = material;
+    }
+
+    // Bind the material (sets shader and all uniforms)
+    shaderSystem_->bindMaterial(material);
+
+    // Now draw with the material's shader
+    auto meshIt = meshes_.find(mesh);
+    if (meshIt == meshes_.end()) {
+        return std::unexpected(Graphics3DError::InvalidMesh);
+    }
+
+    const auto& meshRes = meshIt->second;
+
+    // Set standard uniforms
+    shaderSystem_->setUniform("uModel", worldMatrix);
+    shaderSystem_->setUniform("uView", viewMatrix_);
+    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+
+    Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
+    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    if (directionalLight_) {
+        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+    } else {
+        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+    }
+    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+
+    // Draw
+    glBindVertexArray(meshRes.vao);
+    glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+
+    stats_.drawCalls++;
+    stats_.triangles += meshRes.indexCount / 3;
+    stats_.vertices += meshRes.vertexCount;
+
+    return {};
+}
+
+Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
+    MeshHandle mesh,
+    std::string_view materialPath,
+    const Mat4& worldMatrix,
+    const Vec4& colorOverride)
+{
+    if (!shaderSystem_) {
+        return std::unexpected(Graphics3DError::InvalidShader);
+    }
+
+    // Check cache first
+    std::string pathStr(materialPath);
+    auto cacheIt = luaMaterialCache_.find(pathStr);
+    MaterialHandle material = 0;
+
+    if (cacheIt != luaMaterialCache_.end()) {
+        material = cacheIt->second;
+    } else {
+        // Load the material
+        auto result = shaderSystem_->loadMaterial(materialPath);
+        if (!result) {
+            return std::unexpected(Graphics3DError::InvalidShader);
+        }
+        material = *result;
+        luaMaterialCache_[pathStr] = material;
+    }
+
+    // Bind the material (sets shader and all uniforms from Lua)
+    shaderSystem_->bindMaterial(material);
+
+    // Override the base color with per-object color
+    shaderSystem_->setUniform("uBaseColor", colorOverride);
+
+    // Now draw with the material's shader
+    auto meshIt = meshes_.find(mesh);
+    if (meshIt == meshes_.end()) {
+        return std::unexpected(Graphics3DError::InvalidMesh);
+    }
+
+    const auto& meshRes = meshIt->second;
+
+    // Set standard uniforms
+    shaderSystem_->setUniform("uModel", worldMatrix);
+    shaderSystem_->setUniform("uView", viewMatrix_);
+    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+
+    Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
+    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    if (directionalLight_) {
+        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+    } else {
+        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+    }
+    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+
+    // Draw
+    glBindVertexArray(meshRes.vao);
+    glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
+    glBindVertexArray(0);
+
+    stats_.drawCalls++;
+    stats_.triangles += meshRes.indexCount / 3;
+    stats_.vertices += meshRes.vertexCount;
+
+    return {};
+}
+
+void OpenGLGraphics3DSystem::updateShaders() {
+    if (shaderSystem_) {
+        shaderSystem_->update();  // Check for hot reload
+    }
 }
 
 Result<MeshHandle, Graphics3DError> OpenGLGraphics3DSystem::createMeshFromData(const MeshData& data) {
@@ -3628,6 +4011,69 @@ MeshHandle OpenGLGraphics3DSystem::selectLODMesh(MeshHandle primaryMesh, float d
 
     lodLevel = std::min(lodLevel - 1, group.lodMeshes.size() - 1);
     return group.lodMeshes[lodLevel];
+}
+
+//==========================================================================
+// Frustum Culling Helpers
+//==========================================================================
+
+bool OpenGLGraphics3DSystem::isAABBInFrustum(const AABB3D& aabb, const Frustum& frustum) const {
+    // Test AABB against all 6 frustum planes
+    // If the AABB is completely outside any plane, it's not visible
+    for (int i = 0; i < 6; ++i) {
+        const auto& plane = frustum.planes[i];
+
+        // Find the corner of the AABB most aligned with the plane normal (positive vertex)
+        Vec3 positiveVertex{
+            (plane.normal.x >= 0) ? aabb.max.x : aabb.min.x,
+            (plane.normal.y >= 0) ? aabb.max.y : aabb.min.y,
+            (plane.normal.z >= 0) ? aabb.max.z : aabb.min.z
+        };
+
+        // If the positive vertex is behind the plane, the AABB is outside
+        float dist = plane.normal.x * positiveVertex.x +
+                     plane.normal.y * positiveVertex.y +
+                     plane.normal.z * positiveVertex.z + plane.distance;
+
+        if (dist < 0) {
+            return false;  // AABB is completely outside this plane
+        }
+    }
+
+    return true;  // AABB is at least partially inside all planes
+}
+
+AABB3D OpenGLGraphics3DSystem::transformAABB(const AABB3D& aabb, const glm::mat4& worldMatrix) const {
+    // Transform all 8 corners of the AABB and find the new bounds
+    Vec3 corners[8] = {
+        {aabb.min.x, aabb.min.y, aabb.min.z},
+        {aabb.max.x, aabb.min.y, aabb.min.z},
+        {aabb.min.x, aabb.max.y, aabb.min.z},
+        {aabb.max.x, aabb.max.y, aabb.min.z},
+        {aabb.min.x, aabb.min.y, aabb.max.z},
+        {aabb.max.x, aabb.min.y, aabb.max.z},
+        {aabb.min.x, aabb.max.y, aabb.max.z},
+        {aabb.max.x, aabb.max.y, aabb.max.z}
+    };
+
+    AABB3D result;
+    result.min = Vec3{std::numeric_limits<float>::max()};
+    result.max = Vec3{std::numeric_limits<float>::lowest()};
+
+    for (const auto& corner : corners) {
+        glm::vec4 transformed = worldMatrix * glm::vec4(corner.x, corner.y, corner.z, 1.0f);
+        Vec3 p{transformed.x, transformed.y, transformed.z};
+
+        result.min.x = std::min(result.min.x, p.x);
+        result.min.y = std::min(result.min.y, p.y);
+        result.min.z = std::min(result.min.z, p.z);
+
+        result.max.x = std::max(result.max.x, p.x);
+        result.max.y = std::max(result.max.y, p.y);
+        result.max.z = std::max(result.max.z, p.z);
+    }
+
+    return result;
 }
 
 //==========================================================================

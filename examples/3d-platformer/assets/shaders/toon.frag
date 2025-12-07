@@ -1,5 +1,5 @@
 // Toon/Cel Shader - cartoon-style lighting with discrete bands
-#version 330 core
+#version 410 core
 
 out vec4 FragColor;
 
@@ -16,9 +16,10 @@ uniform vec3 uCameraPos;
 
 // Toon shader parameters
 uniform int uBands;           // Number of light bands (default: 3)
-uniform float uOutlineWidth;  // Outline width (default: 0.03)
-uniform vec3 uOutlineColor;   // Outline color (default: black)
+uniform float uOutlineWidth;  // Outline width (default: 0.02)
+uniform vec3 uOutlineColor;   // Outline color (default: dark)
 uniform float uSpecularSize;  // Specular highlight size (default: 0.9)
+uniform vec3 uShadowTint;     // Shadow tint color (default: cool blue)
 
 void main() {
     vec3 N = normalize(vNormal);
@@ -29,34 +30,49 @@ void main() {
     // Calculate diffuse with bands
     float NdotL = max(dot(N, L), 0.0);
 
-    // Quantize to discrete bands
-    int bands = max(uBands, 1);
+    // Ensure some minimum lighting even on back-facing surfaces
+    NdotL = NdotL * 0.7 + 0.3;  // Remap to 0.3-1.0 range (brighter shadows)
+
+    // Smooth cel-shading with soft band transitions
+    int bands = max(uBands, 2);
     float bandSize = 1.0 / float(bands);
-    float quantized = floor(NdotL / bandSize) * bandSize + bandSize * 0.5;
+    float bandPos = NdotL / bandSize;
+    float bandIndex = floor(bandPos);
+    float bandFrac = fract(bandPos);
 
-    // Apply smooth transition at band edges
-    float edge = fract(NdotL / bandSize);
-    float smoothEdge = smoothstep(0.0, 0.1, edge) * smoothstep(1.0, 0.9, edge);
-    quantized = mix(quantized - bandSize * 0.5, quantized, smoothEdge);
+    // Smooth transition between bands (prevents harsh rectangles on curved surfaces)
+    float smoothFrac = smoothstep(0.0, 0.15, bandFrac) * (1.0 - smoothstep(0.85, 1.0, bandFrac));
+    float quantized = (bandIndex + 0.5 + smoothFrac * 0.3) * bandSize;
 
-    // Calculate specular highlight (sharp edge)
+    // Calculate specular highlight (subtle, not too harsh)
     float NdotH = max(dot(N, H), 0.0);
-    float specular = step(uSpecularSize, NdotH);
+    float specular = smoothstep(uSpecularSize, uSpecularSize + 0.05, NdotH) * 0.3;
 
-    // Fresnel/rim outline
+    // Subtle rim lighting (reduced intensity)
     float fresnel = 1.0 - max(dot(N, V), 0.0);
-    float outline = step(1.0 - uOutlineWidth, fresnel);
+    float rim = pow(fresnel, 5.0) * 0.1;
 
-    // Combine colors
-    vec3 baseColor = uBaseColor.rgb * vColor.rgb;
-    vec3 diffuse = baseColor * quantized;
-    vec3 ambient = uAmbientColor * baseColor;
-    vec3 spec = uLightColor * specular * 0.5;
+    // Base color (use uBaseColor directly - per-object color is set before drawing)
+    vec3 baseColor = uBaseColor.rgb;
 
-    vec3 color = ambient + diffuse * uLightColor + spec;
+    // Shadow tinting - shadows get tinted with cool color for depth
+    vec3 shadowColor = mix(baseColor * 0.4, uShadowTint * baseColor * 0.6, 0.4);
+    vec3 litColor = mix(shadowColor, baseColor, quantized);
 
-    // Apply outline
-    color = mix(color, uOutlineColor, outline);
+    // Apply lighting
+    vec3 diffuse = litColor * uLightColor;
+    vec3 ambient = uAmbientColor * baseColor * 0.4;
+    vec3 spec = uLightColor * specular * baseColor;  // Tint specular with base color
+    vec3 rimColor = uLightColor * rim * baseColor;
 
-    FragColor = vec4(color, uBaseColor.a * vColor.a);
+    vec3 color = ambient + diffuse + spec + rimColor;
+
+    // Slight saturation boost for cartoon look
+    float gray = dot(color, vec3(0.299, 0.587, 0.114));
+    color = mix(vec3(gray), color, 1.15);
+
+    // Clamp to prevent over-brightness
+    color = min(color, vec3(1.2));
+
+    FragColor = vec4(color, uBaseColor.a);
 }

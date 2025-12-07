@@ -48,10 +48,24 @@ public:
     Vec2 getMouseDelta() const override;
     bool isMouseButtonDown(int button) const override;
 
+    // Scroll wheel
+    Vec2 getScrollDelta() const override;
+
+    // Text input
+    void enableTextInput() override;
+    void disableTextInput() override;
+    bool isTextInputEnabled() const override;
+    std::string getTextInput() const override;
+    void clearTextInput() override;
+
     // Controller
     int getConnectedControllerCount() const override;
     bool isControllerConnected(int index) const override;
     std::string getControllerName(int index) const override;
+
+    // GLFW callbacks (need to be called by external scroll/char callback setters)
+    void onScrollCallback(double xoffset, double yoffset);
+    void onCharCallback(unsigned int codepoint);
 
 private:
     void updateKeyboardState();
@@ -71,6 +85,13 @@ private:
     std::array<SDL_GameController*, 4> controllers_{};
     bool isListening_ = false;
     std::optional<InputBinding> lastInput_;
+
+    // Scroll wheel
+    Vec2 scrollDelta_{0, 0};
+
+    // Text input
+    bool textInputEnabled_ = false;
+    std::string textInputBuffer_;
 
     bool sdlInitialized_ = false;
 };

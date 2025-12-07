@@ -14,6 +14,7 @@ export module bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
+import bestow.shader;
 
 export namespace bestow {
 
@@ -524,6 +525,40 @@ public:
     virtual void setVSync(bool enabled) = 0;
     virtual void setRenderScale(float scale) = 0;
     virtual float getRenderScale() const = 0;
+
+    //======================================================================
+    // Shader System Integration
+    //======================================================================
+
+    /// Set shader system for custom shader/material support
+    virtual void setShaderSystem(IShaderSystem* shaders) = 0;
+
+    /// Get the shader system (for direct access to shader features)
+    virtual IShaderSystem* getShaderSystem() const = 0;
+
+    /// Draw mesh with a shader system material (from Lua or custom shaders)
+    virtual void drawMeshWithShaderMaterial(
+        MeshHandle mesh,
+        ShaderProgramHandle shader,
+        const Mat4& worldMatrix,
+        bool castShadow = true,
+        bool receiveShadow = true) = 0;
+
+    /// Convenience: Draw mesh with Lua material file
+    virtual Result<void, Graphics3DError> drawMeshWithLuaMaterial(
+        MeshHandle mesh,
+        std::string_view materialPath,
+        const Mat4& worldMatrix) = 0;
+
+    /// Draw mesh with Lua material and per-object color override
+    virtual Result<void, Graphics3DError> drawMeshWithLuaMaterial(
+        MeshHandle mesh,
+        std::string_view materialPath,
+        const Mat4& worldMatrix,
+        const Vec4& colorOverride) = 0;
+
+    /// Update shader system (call each frame for hot reload)
+    virtual void updateShaders() = 0;
 
     //======================================================================
     // Asset System Integration

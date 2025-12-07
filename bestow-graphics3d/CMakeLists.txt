@@ -11,6 +11,7 @@ target_sources(bestow-graphics3d
 target_link_libraries(bestow-graphics3d
     PUBLIC
         bestow-contract
+        bestow-shader
         glfw
         glad::glad
         glm::glm

@@ -2,18 +2,92 @@
 
 > Last Updated: 2025-12-07
 
+## Critical Implementation Gaps (Discovered 2025-12-07)
+
+> These gaps were identified through comprehensive codebase analysis. They represent stub implementations or missing functionality that blocks features.
+
+### Physics3D System - Critical Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| **Vehicle System (6 methods)** | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1676-1706 | CRITICAL |
+| Collision layer filtering | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1040-1047 | CRITICAL |
+| Mass setting at runtime | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 976-978 | HIGH |
+| Inertia tensor (returns identity) | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1994-2003 | HIGH |
+| Shape removal from compound | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1926-1930 | HIGH |
+| Mesh/ConvexHull/HeightField shapes | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2112-2121 | MEDIUM |
+| Debug line visualization | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2064-2066 | LOW |
+| Statistics tracking | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2076-2081 | LOW |
+
+### Graphics3D System - Critical Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| **Entity rendering (3 methods)** | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1714-1731 | CRITICAL |
+| Material texture loading | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1627-1640 | CRITICAL |
+| Entity lighting updates | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1893 | HIGH |
+| Debug capsule drawing | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2044 | HIGH |
+| Debug frustum drawing | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2053 | HIGH |
+| Skybox from asset data | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2462-2470 | MEDIUM |
+| Render queue sorting/batching | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1698-1708 | MEDIUM |
+| Fullscreen toggle | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2129-2132 | MEDIUM |
+
+### Shader System - Critical Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| **Texture binding not implemented** | `bestow-shader/src/bestow.shader.impl.cppm` | 525-587 | CRITICAL |
+| Geometry/Tess/Compute shaders ignored | `bestow-shader/src/bestow.shader.impl.cppm` | 173-203 | CRITICAL |
+| efsw hot reload incomplete | `bestow-shader/src/bestow.shader.impl.cppm` | 81-94 | HIGH |
+| Material reload logic bug | `bestow-shader/src/bestow.shader.impl.cppm` | 744-756 | HIGH |
+| Uniform array crash risk | `bestow-shader/src/bestow.shader.impl.cppm` | 935-966 | MEDIUM |
+
+### Input System - Critical Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| **Text input/character events** | `bestow-input/src/InputSystem.cpp` | N/A | CRITICAL |
+| **Mouse scroll wheel** | `bestow-input/src/InputSystem.cpp` | N/A | CRITICAL |
+| Keyboard modifier keys | `bestow-input/src/InputSystem.cpp` | N/A | HIGH |
+| Direct keyboard state queries | Interface missing | N/A | MEDIUM |
+| Mouse button press/release | `bestow-input/src/InputSystem.cpp` | 342-344 | MEDIUM |
+| Mouse movement as mappable axis | Interface missing | N/A | MEDIUM |
+
+### UI System - Critical Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| **Stylesheet loading** | `bestow-ui/src/bestow.ui.impl.cppm` | 508 | CRITICAL |
+| **Stylesheet application** | `bestow-ui/src/bestow.ui.impl.cppm` | 515 | CRITICAL |
+| Data binding synchronization | `bestow-ui/src/bestow.ui.impl.cppm` | 759 | MEDIUM |
+| Element callbacks | `bestow-ui/src/bestow.ui.impl.cppm` | 772 | MEDIUM |
+
+### Other Systems - Gaps
+
+| System | Gap | Priority |
+|--------|-----|----------|
+| AI | Behavior tree integration | HIGH |
+| AI | Steering behaviors | HIGH |
+| Audio | Fade out with DSP | MEDIUM |
+| Save | Game version tracking | MEDIUM |
+| Save | Playtime tracking | MEDIUM |
+| Config | Asset system integration | MEDIUM |
+| GameState | Transition overlay | MEDIUM |
+
+---
+
 ## High Priority
 
-### Dynamic Shader System
-> Enable runtime shader loading, hot reload, and Lua-based material definitions for rapid experimentation.
+### Dynamic Shader System (COMPLETE)
+> Runtime shader loading, hot reload, and Lua-based material definitions for rapid experimentation.
 
 - [x] Create `IShaderSystem` interface in bestow-contract
 - [x] Create `bestow-shader` module with file-based shader loading
 - [x] Add hot reload support for shaders via efsw file watcher
 - [x] Add Lua material definitions using sol2
-- [ ] Integrate shader system with Graphics3D (optional - can use standalone)
-- [x] Create example shaders for experimentation
-- [ ] Update 3D platformer to use new shader system (optional)
+- [x] Integrate shader system with Graphics3D as first-class citizen
+- [x] Create example shaders for experimentation (toon, hologram, glow, grid, water)
+- [ ] Update 3D platformer to demonstrate shader system usage
 
 <details>
 <summary>Architecture</summary>
@@ -109,7 +183,7 @@ public:
 - ✅ Physics config via LuaPhysicsLoader
 
 **Not Integrated:**
-- ❌ Graphics3D shaders/materials
+- ✅ Graphics3D shaders/materials - NOW INTEGRATED via `bestow-shader`
 - ❌ Physics3D runtime configuration
 - ❌ Audio channel setup
 - ❌ UI system
@@ -127,7 +201,16 @@ public:
 
 
 
-### Graphics3D System - Incomplete Features
+### Graphics3D System - CORE ENGINE FEATURE
+> The 3D and 2D parts of this engine are equally important. Graphics3D is a first-class citizen.
+
+**Shader System Integration (COMPLETE):**
+- [x] `setShaderSystem()` - Inject shader system
+- [x] `drawMeshWithShaderMaterial()` - Render with custom shaders
+- [x] `drawMeshWithLuaMaterial()` - Render with Lua-defined materials
+- [x] `updateShaders()` - Hot reload support
+
+**Remaining Features:**
 - [ ] Texture loading from asset handles (asset system integration)
 - [ ] Entity rendering via `renderEntities()` and `renderEntitiesInFrustum()`
 - [ ] Entity layer rendering via `renderEntitiesInLayer()`
@@ -139,7 +222,8 @@ public:
 - [ ] Fullscreen toggle
 - [ ] Skybox cubemap loading
 
-### Physics3D System - Incomplete Features
+### Physics3D System - CORE ENGINE FEATURE
+> The 3D and 2D parts of this engine are equally important. Physics3D is a first-class citizen.
 - [ ] Vehicle physics (VehicleConstraint-based)
   - [ ] `createVehicle()` - Create wheeled vehicle
   - [ ] `destroyVehicle()` - Remove vehicle

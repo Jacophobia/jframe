@@ -37,6 +37,19 @@ public:
     void checkForReloads() override {}
     void reloadAsset(AssetHandle handle) override {}
 
+    // 3D asset methods (stubs for this demo)
+    const MeshData* getMeshData(AssetHandle handle) const override { return nullptr; }
+    const ModelData* getModelData(AssetHandle handle) const override { return nullptr; }
+    const MaterialData* getMaterialData(AssetHandle handle) const override { return nullptr; }
+    const CubemapData* getCubemapData(AssetHandle handle) const override { return nullptr; }
+    AssetHandle loadMesh(const std::filesystem::path& path) override { return {}; }
+    AssetHandle loadModel(const std::filesystem::path& path) override { return {}; }
+    AssetHandle loadCubemap(const std::filesystem::path& path) override { return {}; }
+    AssetHandle loadCubemap(
+        const std::filesystem::path&, const std::filesystem::path&,
+        const std::filesystem::path&, const std::filesystem::path&,
+        const std::filesystem::path&, const std::filesystem::path&) override { return {}; }
+
 private:
     std::string assetTypeName(AssetType type) const {
         switch (type) {

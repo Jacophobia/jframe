@@ -62,6 +62,22 @@ public:
     virtual bool isMouseButtonDown(int button) const = 0;
 
     //======================================================================
+    // Scroll Wheel
+    //======================================================================
+
+    virtual Vec2 getScrollDelta() const = 0;
+
+    //======================================================================
+    // Text Input
+    //======================================================================
+
+    virtual void enableTextInput() = 0;
+    virtual void disableTextInput() = 0;
+    virtual bool isTextInputEnabled() const = 0;
+    virtual std::string getTextInput() const = 0;
+    virtual void clearTextInput() = 0;
+
+    //======================================================================
     // Controller
     //======================================================================
 

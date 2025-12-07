@@ -24,9 +24,8 @@ export namespace bestow {
 
 #ifdef BESTOW_HAS_RMLUI
 
-// Forward declarations for RmlUi backend integration
-class BestowRenderInterface;
-class BestowSystemInterface;
+// Note: RmlUi render/system interfaces are handled by the graphics system
+// which initializes RmlUi with its OpenGL context
 
 class RmlUISystem : public IUISystem {
 public:
@@ -228,10 +227,6 @@ private:
         void* ptr;
     };
     std::unordered_map<std::string, DataBindingEntry> dataBindings_;
-
-    // Backend interfaces
-    std::unique_ptr<BestowRenderInterface> renderInterface_;
-    std::unique_ptr<BestowSystemInterface> systemInterface_;
 
     // Helper methods
     UIElementHandle registerElement(Rml::Element* elem);

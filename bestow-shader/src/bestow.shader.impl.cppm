@@ -54,7 +54,7 @@ struct ShaderProgramResource {
     }
 };
 
-struct MaterialResource {
+struct ShaderMaterialResource {
     std::string name;
     ShaderProgramHandle shader;
     std::unordered_map<std::string, UniformValue> uniforms;
@@ -101,6 +101,14 @@ class OpenGLShaderSystem : public IShaderSystem {
 public:
     OpenGLShaderSystem() = default;
     ~OpenGLShaderSystem() override {
+        // Clean up cached textures
+        for (auto& [handle, textureId] : textureCache_) {
+            if (textureId != 0) {
+                glDeleteTextures(1, &textureId);
+            }
+        }
+        textureCache_.clear();
+
         // Clean up all shaders and materials
         for (auto& [handle, resource] : shaders_) {
             if (resource.program != 0) {
@@ -309,7 +317,7 @@ public:
         }
 
         MaterialHandle handle = nextMaterialHandle_++;
-        materials_[handle] = MaterialResource{
+        materials_[handle] = ShaderMaterialResource{
             .name = def.name,
             .shader = def.shader,
             .uniforms = def.uniforms,
@@ -359,7 +367,7 @@ public:
             }
 
             MaterialHandle handle = nextMaterialHandle_++;
-            materials_[handle] = MaterialResource{
+            materials_[handle] = ShaderMaterialResource{
                 .name = std::string(luaPath),
                 .shader = *shaderResult,
                 .uniforms = def.uniforms,
@@ -411,7 +419,7 @@ public:
         }
 
         MaterialHandle handle = nextMaterialHandle_++;
-        materials_[handle] = MaterialResource{
+        materials_[handle] = ShaderMaterialResource{
             .name = std::string(name),
             .shader = shader
         };
@@ -581,6 +589,17 @@ public:
             glDisable(GL_DEPTH_TEST);
         }
         glDepthMask(mat.depthWrite ? GL_TRUE : GL_FALSE);
+
+        // Bind textures
+        for (const auto& texBinding : mat.textures) {
+            GLuint textureId = const_cast<OpenGLShaderSystem*>(this)->getOrCreateTexture(texBinding.texture);
+            if (textureId != 0) {
+                glActiveTexture(GL_TEXTURE0 + texBinding.slot);
+                glBindTexture(GL_TEXTURE_2D, textureId);
+                // Set the sampler uniform to point to the correct texture unit
+                setUniform(texBinding.samplerName, static_cast<int>(texBinding.slot));
+            }
+        }
 
         currentMaterial_ = handle;
         stats_.materialBinds++;
@@ -1323,13 +1342,92 @@ void main() {
     }
 
     //======================================================================
+    // Texture Caching Helper
+    //======================================================================
+
+    GLuint getOrCreateTexture(AssetHandle handle) {
+        // Check cache first
+        auto it = textureCache_.find(handle);
+        if (it != textureCache_.end()) {
+            return it->second;
+        }
+
+        // Load texture from asset system
+        if (!assets_) return 0;
+
+        // Ensure asset is loaded
+        if (assets_->getAssetState(handle) != AssetState::Loaded) {
+            assets_->loadAsset(handle);
+        }
+
+        if (assets_->getAssetState(handle) != AssetState::Loaded) {
+            return 0;  // Failed to load
+        }
+
+        // Get texture data
+        const TextureData* texData = assets_->getAsset<TextureData>(handle);
+        if (!texData || texData->pixels.empty()) {
+            return 0;
+        }
+
+        // Create OpenGL texture
+        GLuint textureId;
+        glGenTextures(1, &textureId);
+        glBindTexture(GL_TEXTURE_2D, textureId);
+
+        // Determine format based on channels
+        GLenum format = GL_RGBA;
+        GLenum internalFormat = GL_RGBA;
+        switch (texData->channels) {
+            case 1:
+                format = GL_RED;
+                internalFormat = GL_R8;
+                break;
+            case 2:
+                format = GL_RG;
+                internalFormat = GL_RG8;
+                break;
+            case 3:
+                format = GL_RGB;
+                internalFormat = GL_RGB8;
+                break;
+            case 4:
+            default:
+                format = GL_RGBA;
+                internalFormat = GL_RGBA8;
+                break;
+        }
+
+        glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
+                     texData->width, texData->height, 0,
+                     format, GL_UNSIGNED_BYTE, texData->pixels.data());
+
+        // Generate mipmaps
+        glGenerateMipmap(GL_TEXTURE_2D);
+
+        // Set texture parameters
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        // Cache the texture
+        textureCache_[handle] = textureId;
+
+        return textureId;
+    }
+
+    //======================================================================
     // Data Members
     //======================================================================
 
     std::unordered_map<ShaderProgramHandle, ShaderProgramResource> shaders_;
-    std::unordered_map<MaterialHandle, MaterialResource> materials_;
+    std::unordered_map<MaterialHandle, ShaderMaterialResource> materials_;
     std::unordered_map<std::string, WatchedFile> watchedFiles_;
     std::set<std::string> pendingReloads_;
+    std::unordered_map<AssetHandle, GLuint, AssetHandleHash> textureCache_;  // Maps asset handles to OpenGL texture IDs
 
     IAssetSystem* assets_ = nullptr;
     std::string shaderBasePath_ = "assets/shaders/";
@@ -1364,7 +1462,8 @@ std::unique_ptr<IShaderSystem> createShaderSystem() {
     if (!system->initialize()) {
         return nullptr;
     }
-    return system;
+    // Explicit move to base class pointer for C++ module compatibility
+    return std::unique_ptr<IShaderSystem>(system.release());
 }
 
 }  // namespace bestow

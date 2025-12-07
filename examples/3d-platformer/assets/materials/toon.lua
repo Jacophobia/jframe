@@ -3,23 +3,26 @@
 
 return {
     shader = {
-        vertex = "shaders/basic.vert",
-        fragment = "shaders/toon.frag"
+        vertex = "toon.vert",
+        fragment = "toon.frag"
     },
 
     uniforms = {
-        -- Base color of the material
-        uBaseColor = {0.8, 0.4, 0.2, 1.0},  -- Orange-ish
+        -- Base color of the material (will be overridden per-object)
+        uBaseColor = {0.8, 0.6, 0.4, 1.0},
 
-        -- Number of discrete light bands (more = smoother gradient)
+        -- Number of discrete light bands (2-5 typical, more = smoother)
         uBands = 3,
 
         -- Outline/rim effect
-        uOutlineWidth = 0.03,
-        uOutlineColor = {0.0, 0.0, 0.0},  -- Black outline
+        uOutlineWidth = 0.02,
+        uOutlineColor = {0.1, 0.05, 0.0},  -- Dark brown outline
 
-        -- Specular highlight threshold
-        uSpecularSize = 0.9
+        -- Specular highlight threshold (higher = smaller highlight)
+        uSpecularSize = 0.92,
+
+        -- Shadow tint (cool colors make shadows feel deeper)
+        uShadowTint = {0.4, 0.5, 0.7}  -- Cool blue-ish shadow
     },
 
     blendMode = "opaque",
