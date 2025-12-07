@@ -2386,7 +2386,60 @@ void OpenGLGraphics3DSystem::createDebugResources() {
 }
 
 void OpenGLGraphics3DSystem::updateViewFrustum() {
-    // TODO: Extract frustum planes from view-projection matrix
+    // Extract frustum planes from view-projection matrix using Gribb-Hartmann method
+    // Each row of the combined matrix gives us the plane coefficients
+    const glm::mat4& m = viewProjectionMatrix_;
+
+    // Left plane: row 4 + row 1
+    viewFrustum_.planes[2].normal.x = m[0][3] + m[0][0];
+    viewFrustum_.planes[2].normal.y = m[1][3] + m[1][0];
+    viewFrustum_.planes[2].normal.z = m[2][3] + m[2][0];
+    viewFrustum_.planes[2].distance = m[3][3] + m[3][0];
+
+    // Right plane: row 4 - row 1
+    viewFrustum_.planes[3].normal.x = m[0][3] - m[0][0];
+    viewFrustum_.planes[3].normal.y = m[1][3] - m[1][0];
+    viewFrustum_.planes[3].normal.z = m[2][3] - m[2][0];
+    viewFrustum_.planes[3].distance = m[3][3] - m[3][0];
+
+    // Bottom plane: row 4 + row 2
+    viewFrustum_.planes[5].normal.x = m[0][3] + m[0][1];
+    viewFrustum_.planes[5].normal.y = m[1][3] + m[1][1];
+    viewFrustum_.planes[5].normal.z = m[2][3] + m[2][1];
+    viewFrustum_.planes[5].distance = m[3][3] + m[3][1];
+
+    // Top plane: row 4 - row 2
+    viewFrustum_.planes[4].normal.x = m[0][3] - m[0][1];
+    viewFrustum_.planes[4].normal.y = m[1][3] - m[1][1];
+    viewFrustum_.planes[4].normal.z = m[2][3] - m[2][1];
+    viewFrustum_.planes[4].distance = m[3][3] - m[3][1];
+
+    // Near plane: row 4 + row 3
+    viewFrustum_.planes[0].normal.x = m[0][3] + m[0][2];
+    viewFrustum_.planes[0].normal.y = m[1][3] + m[1][2];
+    viewFrustum_.planes[0].normal.z = m[2][3] + m[2][2];
+    viewFrustum_.planes[0].distance = m[3][3] + m[3][2];
+
+    // Far plane: row 4 - row 3
+    viewFrustum_.planes[1].normal.x = m[0][3] - m[0][2];
+    viewFrustum_.planes[1].normal.y = m[1][3] - m[1][2];
+    viewFrustum_.planes[1].normal.z = m[2][3] - m[2][2];
+    viewFrustum_.planes[1].distance = m[3][3] - m[3][2];
+
+    // Normalize all planes
+    for (int i = 0; i < 6; ++i) {
+        float len = std::sqrt(
+            viewFrustum_.planes[i].normal.x * viewFrustum_.planes[i].normal.x +
+            viewFrustum_.planes[i].normal.y * viewFrustum_.planes[i].normal.y +
+            viewFrustum_.planes[i].normal.z * viewFrustum_.planes[i].normal.z
+        );
+        if (len > 0.0001f) {
+            viewFrustum_.planes[i].normal.x /= len;
+            viewFrustum_.planes[i].normal.y /= len;
+            viewFrustum_.planes[i].normal.z /= len;
+            viewFrustum_.planes[i].distance /= len;
+        }
+    }
 }
 
 glm::mat4 OpenGLGraphics3DSystem::transformToMatrix(const Transform3D& transform) const {
