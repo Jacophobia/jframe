@@ -3,11 +3,14 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
+
 export module bestow.events.impl;
 
 import std;
 import bestow.events;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -115,9 +118,8 @@ private:
     SubscriptionId nextSubscriptionId_ = 1;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IEventSystem> createEventSystem() {
-    return std::make_unique<EventSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides EventSystem as IEventSystem
+struct EventSystemService : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
 
 }  // namespace bestow

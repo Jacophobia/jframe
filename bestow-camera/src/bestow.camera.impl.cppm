@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <glm/glm.hpp>
 // MSVC C++23 module compatibility - use full EnTT header
 #include <bestow/entt_compat.hpp>
@@ -11,6 +12,7 @@ export module bestow.camera.impl;
 
 import bestow.types;
 import bestow.camera;
+import bestow.services;
 import std;
 
 export namespace bestow {
@@ -86,9 +88,9 @@ private:
     Vec2 generateShakeOffset() const;
 };
 
-// Factory function
-inline std::unique_ptr<ICameraSystem> createCameraSystem(Size viewportSize) {
-    return std::make_unique<CameraSystem>(viewportSize);
-}
+// Kangaru service definitions
+// Concrete service - CameraSystem requires a viewport Size to be supplied
+// Use: container.emplace<CameraSystemService>(Size{width, height})
+struct CameraSystemService : kgr::single_service<CameraSystem>, kgr::overrides<ICameraSystemService> {};
 
 }  // namespace bestow

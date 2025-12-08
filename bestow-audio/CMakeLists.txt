@@ -11,6 +11,7 @@ target_sources(bestow-audio
 target_link_libraries(bestow-audio
     PUBLIC
         bestow-contract
+        kangaru
     PRIVATE
         bestow-assets
 )

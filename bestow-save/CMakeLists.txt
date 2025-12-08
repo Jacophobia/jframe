@@ -17,6 +17,7 @@ target_link_libraries(bestow-save
         cereal::cereal
         nlohmann_json::nlohmann_json
         $<TARGET_NAME_IF_EXISTS:zstd::libzstd_shared>
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-save PUBLIC cxx_std_23)

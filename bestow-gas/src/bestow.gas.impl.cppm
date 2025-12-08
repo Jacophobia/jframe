@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.gas.impl;
@@ -10,6 +11,7 @@ export module bestow.gas.impl;
 import std;
 import bestow.gas;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -130,9 +132,8 @@ private:
     bool initialized_ = false;
 };
 
-// Factory function
-inline std::unique_ptr<IGASSystem> createGASSystem() {
-    return std::make_unique<GASSystem>();
-}
+// Kangaru service definitions
+// Concrete service - GASSystem has no dependencies on other game systems
+struct GASSystemService : kgr::single_service<GASSystem>, kgr::overrides<IGASSystemService> {};
 
 }  // namespace bestow

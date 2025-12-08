@@ -6,6 +6,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.audio;
 import bestow.audio.impl;
@@ -16,17 +17,18 @@ namespace bestow::tests {
 class AudioSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        audio_ = createAudioSystem();
+        audio_ = &container_.service<AudioSystemService>();
 
         // Initialize the audio system (works in stub mode)
-        auto* fmodAudio = dynamic_cast<FMODAudioSystem*>(audio_.get());
+        auto* fmodAudio = dynamic_cast<FMODAudioSystem*>(audio_);
         if (fmodAudio) {
             bool initialized = fmodAudio->initialize();
             EXPECT_TRUE(initialized);
         }
     }
 
-    std::unique_ptr<IAudioSystem> audio_;
+    kgr::container container_;
+    IAudioSystem* audio_ = nullptr;
 };
 
 //==========================================================================
@@ -38,12 +40,11 @@ TEST_F(AudioSystemTest, CanCreate) {
 }
 
 TEST_F(AudioSystemTest, InitializeReturnsTrue) {
-    auto audio = createAudioSystem();
-    auto* fmodAudio = dynamic_cast<FMODAudioSystem*>(audio.get());
+    // audio_ is already initialized in SetUp
+    auto* fmodAudio = dynamic_cast<FMODAudioSystem*>(audio_);
     ASSERT_NE(fmodAudio, nullptr);
-
-    bool result = fmodAudio->initialize();
-    EXPECT_TRUE(result);
+    // Already initialized in SetUp, just verify it's working
+    EXPECT_NE(audio_, nullptr);
 }
 
 //==========================================================================
@@ -1229,6 +1230,55 @@ TEST_F(AudioSystemTest, PlayPositionalWithHighVolume) {
     SoundHandle handle = audio_->playPositional(sound);
     // Should handle gracefully
     EXPECT_TRUE(true);
+}
+
+//==========================================================================
+// Kangaru DI Integration Tests
+//==========================================================================
+
+TEST_F(AudioSystemTest, KangaruServiceCanBeInstantiated) {
+    kgr::container container;
+
+    // Instantiate AudioSystemService through Kangaru
+    auto& audioSystem = container.service<AudioSystemService>();
+
+    // Verify it's a valid instance
+    EXPECT_NE(&audioSystem, nullptr);
+}
+
+TEST_F(AudioSystemTest, KangaruServiceIsSingleton) {
+    kgr::container container;
+
+    // Get service twice
+    auto& audioSystem1 = container.service<AudioSystemService>();
+    auto& audioSystem2 = container.service<AudioSystemService>();
+
+    // Should be the same instance (singleton)
+    EXPECT_EQ(&audioSystem1, &audioSystem2);
+}
+
+TEST_F(AudioSystemTest, KangaruServiceCanInitialize) {
+    kgr::container container;
+
+    // Get service and initialize
+    auto& audioSystem = container.service<AudioSystemService>();
+    bool initialized = audioSystem.initialize();
+
+    EXPECT_TRUE(initialized);
+}
+
+TEST_F(AudioSystemTest, KangaruServiceCanPlaySound) {
+    kgr::container container;
+
+    auto& audioSystem = container.service<AudioSystemService>();
+    audioSystem.initialize();
+
+    // Play a sound through the Kangaru-managed instance
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audioSystem.playOnChannel(Channels::Music, sound);
+    EXPECT_TRUE(audioSystem.isChannelPlaying(Channels::Music));
 }
 
 }  // namespace bestow::tests

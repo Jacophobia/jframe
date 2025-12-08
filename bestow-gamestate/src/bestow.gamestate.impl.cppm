@@ -3,11 +3,14 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
+
 export module bestow.gamestate.impl;
 
 import std;
 import bestow.gamestate;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -321,11 +324,10 @@ private:
 };
 
 //==========================================================================
-// Factory Function
+// Kangaru Service Definitions
 //==========================================================================
 
-inline std::unique_ptr<IGameStateSystem> createGameStateSystem() {
-    return std::make_unique<GameStateSystemImpl>();
-}
+// Concrete service that provides GameStateSystemImpl as IGameStateSystem
+struct GameStateSystemService : kgr::single_service<GameStateSystemImpl>, kgr::overrides<IGameStateSystemService> {};
 
 }  // namespace bestow

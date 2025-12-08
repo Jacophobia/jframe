@@ -26,6 +26,8 @@
 // - TriggerEvent
 // - std::any for custom data
 
+#include <kangaru/kangaru.hpp>
+
 import std;
 import bestow.events;
 import bestow.events.impl;
@@ -56,8 +58,9 @@ int main() {
     std::cout << "Bestow Events System - Comprehensive API Demo\n";
     std::cout << "==============================================\n";
 
-    // Create the event system
-    auto events = createEventSystem();
+    // Create the event system using DI container
+    kgr::container container;
+    auto& events = container.service<EventSystemService>();
 
     // Track event counts for demonstration
     int collisionCount = 0;
@@ -73,7 +76,7 @@ int main() {
 
     printSubsection("1.1 Subscribe to Events::Collision");
 
-    auto collisionSubId = events->subscribe(Events::Collision,
+    auto collisionSubId = events.subscribe(Events::Collision,
         [&](const EventData& data) {
             collisionCount++;
             if (std::holds_alternative<CollisionEvent>(data)) {
@@ -102,7 +105,7 @@ int main() {
         .impulse = 150.5f
     };
 
-    events->publish(Events::Collision, collision);
+    events.publish(Events::Collision, collision);
     std::cout << "Total collision events handled: " << collisionCount << "\n";
 
     //==========================================================================
@@ -112,7 +115,7 @@ int main() {
 
     printSubsection("2.1 Add Second Collision Subscriber");
 
-    auto collisionSubId2 = events->subscribe(Events::Collision,
+    auto collisionSubId2 = events.subscribe(Events::Collision,
         [&](const EventData& data) {
             std::cout << "  [CALLBACK 2] Second handler also received collision!\n";
         }
@@ -130,7 +133,7 @@ int main() {
         .impulse = 75.2f
     };
 
-    events->publish(Events::Collision, collision2);
+    events.publish(Events::Collision, collision2);
     std::cout << "Total collision events handled: " << collisionCount << "\n";
 
     //==========================================================================
@@ -140,7 +143,7 @@ int main() {
 
     printSubsection("3.1 Subscribe to Entity Damage Events");
 
-    auto damageSubId = events->subscribe(Events::EntityDamaged,
+    auto damageSubId = events.subscribe(Events::EntityDamaged,
         [&](const EventData& data) {
             damageCount++;
             if (std::holds_alternative<DamageEventData>(data)) {
@@ -164,11 +167,11 @@ int main() {
         .knockback = Vec2{50.0f, -100.0f}
     };
 
-    events->publish(Events::EntityDamaged, damage);
+    events.publish(Events::EntityDamaged, damage);
 
     printSubsection("3.3 Subscribe to Entity Death Events");
 
-    auto deathSubId = events->subscribe(Events::EntityDied,
+    auto deathSubId = events.subscribe(Events::EntityDied,
         [&](const EventData& data) {
             if (std::holds_alternative<EntityEventData>(data)) {
                 const auto& entity = std::get<EntityEventData>(data);
@@ -188,7 +191,7 @@ int main() {
         .otherEntity = Entity{10}
     };
 
-    events->publish(Events::EntityDied, death);
+    events.publish(Events::EntityDied, death);
     std::cout << "Total damage events handled: " << damageCount << "\n";
 
     //==========================================================================
@@ -198,7 +201,7 @@ int main() {
 
     printSubsection("4.1 Subscribe to Trigger Events");
 
-    auto triggerEnterSubId = events->subscribe(Events::TriggerEnter,
+    auto triggerEnterSubId = events.subscribe(Events::TriggerEnter,
         [&](const EventData& data) {
             triggerCount++;
             if (std::holds_alternative<TriggerEvent>(data)) {
@@ -212,7 +215,7 @@ int main() {
         }
     );
 
-    auto triggerExitSubId = events->subscribe(Events::TriggerExit,
+    auto triggerExitSubId = events.subscribe(Events::TriggerExit,
         [&](const EventData& data) {
             if (std::holds_alternative<TriggerEvent>(data)) {
                 const auto& trigger = std::get<TriggerEvent>(data);
@@ -231,14 +234,14 @@ int main() {
         .contactPoint = Vec2{300.0f, 400.0f}
     };
 
-    events->publish(Events::TriggerEnter, enterTrigger);
+    events.publish(Events::TriggerEnter, enterTrigger);
 
     TriggerEvent exitTrigger{
         .entityA = Entity{1},
         .entityB = Entity{20}
     };
 
-    events->publish(Events::TriggerExit, exitTrigger);
+    events.publish(Events::TriggerExit, exitTrigger);
     std::cout << "Total trigger events handled: " << triggerCount << "\n";
 
     //==========================================================================
@@ -248,7 +251,7 @@ int main() {
 
     printSubsection("5.1 Subscribe to Level Events");
 
-    auto levelLoadedSubId = events->subscribe(Events::LevelLoaded,
+    auto levelLoadedSubId = events.subscribe(Events::LevelLoaded,
         [&](const EventData& data) {
             levelLoadCount++;
             if (std::holds_alternative<LevelEventData>(data)) {
@@ -261,7 +264,7 @@ int main() {
         }
     );
 
-    auto levelUnloadedSubId = events->subscribe(Events::LevelUnloaded,
+    auto levelUnloadedSubId = events.subscribe(Events::LevelUnloaded,
         [&](const EventData& data) {
             if (std::holds_alternative<LevelEventData>(data)) {
                 const auto& level = std::get<LevelEventData>(data);
@@ -278,14 +281,14 @@ int main() {
         .event = LevelEvent::LoadCompleted
     };
 
-    events->publish(Events::LevelLoaded, levelLoad);
+    events.publish(Events::LevelLoaded, levelLoad);
 
     LevelEventData levelUnload{
         .levelId = 12345,
         .event = LevelEvent::UnloadCompleted
     };
 
-    events->publish(Events::LevelUnloaded, levelUnload);
+    events.publish(Events::LevelUnloaded, levelUnload);
     std::cout << "Total level load events handled: " << levelLoadCount << "\n";
 
     //==========================================================================
@@ -301,7 +304,7 @@ int main() {
 
     const EventType PLAYER_LEVEL_UP = "player_level_up";
 
-    auto levelUpSubId = events->subscribe(PLAYER_LEVEL_UP,
+    auto levelUpSubId = events.subscribe(PLAYER_LEVEL_UP,
         [&](const EventData& data) {
             customEventCount++;
             if (std::holds_alternative<std::any>(data)) {
@@ -325,7 +328,7 @@ int main() {
         .className = "Warrior"
     };
 
-    events->publish(PLAYER_LEVEL_UP, std::any(levelUpData));
+    events.publish(PLAYER_LEVEL_UP, std::any(levelUpData));
 
     //==========================================================================
     // SECTION 7: Deferred Events (Queue/Process)
@@ -333,7 +336,7 @@ int main() {
     printSection("SECTION 7: Deferred Events (Queue and Process)");
 
     printSubsection("7.1 Check Initial Queue Size");
-    std::cout << "Queue size before queuing: " << events->queueSize() << "\n";
+    std::cout << "Queue size before queuing: " << events.queueSize() << "\n";
 
     printSubsection("7.2 Queue Multiple Events (Not Processed Yet)");
 
@@ -346,19 +349,19 @@ int main() {
             .normal = Vec2{0.0f, -1.0f},
             .impulse = static_cast<float>(i * 5.5f)
         };
-        events->queue(Events::Collision, queuedCollision);
+        events.queue(Events::Collision, queuedCollision);
     }
 
-    std::cout << "Queue size after queuing: " << events->queueSize() << "\n";
+    std::cout << "Queue size after queuing: " << events.queueSize() << "\n";
     std::cout << "Note: Events are queued but not yet processed.\n";
     std::cout << "Collision count (should be unchanged): " << collisionCount << "\n";
 
     printSubsection("7.3 Process Queued Events");
 
     std::cout << "Processing queue...\n\n";
-    events->processQueue();
+    events.processQueue();
 
-    std::cout << "\nQueue size after processing: " << events->queueSize() << "\n";
+    std::cout << "\nQueue size after processing: " << events.queueSize() << "\n";
     std::cout << "Collision count (should be +3): " << collisionCount << "\n";
 
     printSubsection("7.4 Queue Events Then Clear Without Processing");
@@ -371,16 +374,16 @@ int main() {
             .amount = 10 + i * 5,
             .knockback = Vec2{10.0f, -20.0f}
         };
-        events->queue(Events::EntityDamaged, queuedDamage);
+        events.queue(Events::EntityDamaged, queuedDamage);
     }
 
-    std::cout << "Queue size before clear: " << events->queueSize() << "\n";
+    std::cout << "Queue size before clear: " << events.queueSize() << "\n";
     std::cout << "Damage count before clear: " << damageCount << "\n";
 
     std::cout << "\nClearing queue without processing...\n";
-    events->clearQueue();
+    events.clearQueue();
 
-    std::cout << "Queue size after clear: " << events->queueSize() << "\n";
+    std::cout << "Queue size after clear: " << events.queueSize() << "\n";
     std::cout << "Damage count after clear (unchanged): " << damageCount << "\n";
 
     //==========================================================================
@@ -392,7 +395,7 @@ int main() {
 
     std::cout << "Unsubscribing second collision handler (ID: "
               << collisionSubId2 << ")...\n";
-    events->unsubscribe(collisionSubId2);
+    events.unsubscribe(collisionSubId2);
 
     std::cout << "\nPublishing collision event...\n";
     CollisionEvent testCollision{
@@ -403,20 +406,20 @@ int main() {
         .impulse = 25.0f
     };
 
-    events->publish(Events::Collision, testCollision);
+    events.publish(Events::Collision, testCollision);
     std::cout << "Note: Only first handler should have fired.\n";
 
     printSubsection("8.2 Subscribe Multiple, Then Unsubscribe All");
 
     std::cout << "Adding 3 new subscribers to ItemCollected event...\n";
 
-    auto itemSub1 = events->subscribe(Events::ItemCollected,
+    auto itemSub1 = events.subscribe(Events::ItemCollected,
         [](const EventData&) { std::cout << "  [CALLBACK 1] Item collected!\n"; });
 
-    auto itemSub2 = events->subscribe(Events::ItemCollected,
+    auto itemSub2 = events.subscribe(Events::ItemCollected,
         [](const EventData&) { std::cout << "  [CALLBACK 2] Item collected!\n"; });
 
-    auto itemSub3 = events->subscribe(Events::ItemCollected,
+    auto itemSub3 = events.subscribe(Events::ItemCollected,
         [](const EventData&) { std::cout << "  [CALLBACK 3] Item collected!\n"; });
 
     std::cout << "Subscription IDs: " << itemSub1 << ", "
@@ -424,13 +427,13 @@ int main() {
 
     std::cout << "\nPublishing ItemCollected event...\n";
     EntityEventData itemData{.entity = Entity{15}};
-    events->publish(Events::ItemCollected, itemData);
+    events.publish(Events::ItemCollected, itemData);
 
     std::cout << "\nUnsubscribing all ItemCollected listeners...\n";
-    events->unsubscribeAll(Events::ItemCollected);
+    events.unsubscribeAll(Events::ItemCollected);
 
     std::cout << "\nPublishing ItemCollected event again...\n";
-    events->publish(Events::ItemCollected, itemData);
+    events.publish(Events::ItemCollected, itemData);
     std::cout << "Note: No callbacks should have fired.\n";
 
     //==========================================================================
@@ -443,7 +446,7 @@ int main() {
     int checkpointCount = 0;
     int gameSavedCount = 0;
 
-    auto checkpointSubId = events->subscribe(Events::Checkpoint,
+    auto checkpointSubId = events.subscribe(Events::Checkpoint,
         [&](const EventData& data) {
             checkpointCount++;
             std::cout << "  [CALLBACK] Checkpoint reached!\n";
@@ -451,11 +454,11 @@ int main() {
             // Trigger a save game event
             std::cout << "  Triggering game save...\n";
             EntityEventData saveData{.entity = Entity{0}};
-            events->publish(Events::GameSaved, saveData);
+            events.publish(Events::GameSaved, saveData);
         }
     );
 
-    auto gameSavedSubId = events->subscribe(Events::GameSaved,
+    auto gameSavedSubId = events.subscribe(Events::GameSaved,
         [&](const EventData&) {
             gameSavedCount++;
             std::cout << "    [CALLBACK] Game saved successfully!\n";
@@ -465,7 +468,7 @@ int main() {
     printSubsection("9.2 Trigger Checkpoint Event");
 
     EntityEventData checkpointData{.entity = Entity{1}};
-    events->publish(Events::Checkpoint, checkpointData);
+    events.publish(Events::Checkpoint, checkpointData);
 
     std::cout << "\nCheckpoint events: " << checkpointCount << "\n";
     std::cout << "Game saved events: " << gameSavedCount << "\n";

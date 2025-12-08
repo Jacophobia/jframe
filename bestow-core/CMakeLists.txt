@@ -23,7 +23,7 @@ target_link_libraries(bestow-core
         bestow-events
         bestow-entity
         bestow-physics
-        bestow-graphics
+        bestow-opengl
         bestow-audio
         bestow-input
         bestow-assets

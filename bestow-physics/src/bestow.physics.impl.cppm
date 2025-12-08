@@ -3,12 +3,14 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <box2d/box2d.h>
 
 export module bestow.physics.impl;
 
 import std;
 import bestow.physics;
+import bestow.services;
 import bestow.types;
 
 export namespace bestow {
@@ -105,9 +107,8 @@ private:
     static constexpr int SUB_STEP_COUNT = 4;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IPhysicsSystem> createPhysicsSystem() {
-    return std::make_unique<Box2DPhysicsSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides Box2DPhysicsSystem as IPhysicsSystem
+struct PhysicsSystemService : kgr::single_service<Box2DPhysicsSystem>, kgr::overrides<IPhysicsSystemService> {};
 
 }  // namespace bestow

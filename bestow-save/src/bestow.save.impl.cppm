@@ -7,13 +7,14 @@
 
 module;
 
-// No third-party headers in global module fragment for MSVC compatibility
+#include <kangaru/kangaru.hpp>
 
 export module bestow.save.impl;
 
 import std;
 import bestow.save;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -122,9 +123,8 @@ private:
     std::filesystem::path savesDirectory_ = "saves";
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<ISaveSystem> createSaveSystem() {
-    return std::make_unique<SaveSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides SaveSystem as ISaveSystem
+struct SaveSystemService : kgr::single_service<SaveSystem>, kgr::overrides<ISaveSystemService> {};
 
 }  // namespace bestow

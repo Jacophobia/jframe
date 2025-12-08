@@ -14,6 +14,7 @@ target_link_libraries(bestow-shader
         glad::glad
         glfw
         glm::glm
+        kangaru::kangaru
 )
 
 # sol2 for Lua material parsing

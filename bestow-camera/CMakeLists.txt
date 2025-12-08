@@ -14,6 +14,7 @@ target_link_libraries(bestow-camera
         bestow-contract
         glm::glm
         EnTT::EnTT
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-camera PUBLIC cxx_std_23)

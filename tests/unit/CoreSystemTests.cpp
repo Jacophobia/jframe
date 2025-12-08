@@ -10,9 +10,12 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.core;
 import bestow.types;
+import bestow.config;
+import bestow.config.impl;
 
 namespace bestow::tests {
 
@@ -884,6 +887,276 @@ TEST_F(LoggingTest, LogEmptyString) {
 TEST_F(LoggingTest, LogLongString) {
     std::string longMessage(10000, 'A');
     EXPECT_NO_THROW(core::logInfo(longMessage));
+}
+
+//==========================================================================
+// ConfigSystem Tests
+//==========================================================================
+
+class ConfigSystemTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        configSystem_ = std::make_unique<ConfigSystem>();
+        ASSERT_TRUE(configSystem_->initialize());
+    }
+
+    void TearDown() override {
+        if (configSystem_) {
+            configSystem_->shutdown();
+        }
+    }
+
+    std::unique_ptr<ConfigSystem> configSystem_;
+};
+
+TEST_F(ConfigSystemTest, InitializeSucceeds) {
+    // Already initialized in SetUp
+    EXPECT_NE(configSystem_, nullptr);
+}
+
+TEST_F(ConfigSystemTest, HasKeyReturnsFalseForNonExistent) {
+    EXPECT_FALSE(configSystem_->hasKey("nonexistent.key"));
+}
+
+TEST_F(ConfigSystemTest, GetFloatReturnsNulloptForNonExistent) {
+    auto value = configSystem_->getFloat("nonexistent.key");
+    EXPECT_FALSE(value.has_value());
+}
+
+TEST_F(ConfigSystemTest, GetFloatOrReturnsDefaultForNonExistent) {
+    float result = configSystem_->getFloatOr("nonexistent.key", 42.0f);
+    EXPECT_FLOAT_EQ(result, 42.0f);
+}
+
+TEST_F(ConfigSystemTest, GetIntReturnsNulloptForNonExistent) {
+    auto value = configSystem_->getInt("nonexistent.key");
+    EXPECT_FALSE(value.has_value());
+}
+
+TEST_F(ConfigSystemTest, GetIntOrReturnsDefaultForNonExistent) {
+    int result = configSystem_->getIntOr("nonexistent.key", 123);
+    EXPECT_EQ(result, 123);
+}
+
+TEST_F(ConfigSystemTest, GetBoolReturnsNulloptForNonExistent) {
+    auto value = configSystem_->getBool("nonexistent.key");
+    EXPECT_FALSE(value.has_value());
+}
+
+TEST_F(ConfigSystemTest, GetBoolOrReturnsDefaultForNonExistent) {
+    bool result = configSystem_->getBoolOr("nonexistent.key", true);
+    EXPECT_TRUE(result);
+}
+
+TEST_F(ConfigSystemTest, GetStringReturnsNulloptForNonExistent) {
+    auto value = configSystem_->getString("nonexistent.key");
+    EXPECT_FALSE(value.has_value());
+}
+
+TEST_F(ConfigSystemTest, GetStringOrReturnsDefaultForNonExistent) {
+    std::string result = configSystem_->getStringOr("nonexistent.key", "default");
+    EXPECT_EQ(result, "default");
+}
+
+TEST_F(ConfigSystemTest, SetAndGetFloat) {
+    configSystem_->setFloat("test.float", 3.14f);
+
+    EXPECT_TRUE(configSystem_->hasKey("test.float"));
+
+    auto value = configSystem_->getFloat("test.float");
+    EXPECT_TRUE(value.has_value());
+    if (value.has_value()) {
+        EXPECT_FLOAT_EQ(*value, 3.14f);
+    }
+}
+
+TEST_F(ConfigSystemTest, SetAndGetInt) {
+    configSystem_->setInt("test.int", 42);
+
+    EXPECT_TRUE(configSystem_->hasKey("test.int"));
+
+    auto value = configSystem_->getInt("test.int");
+    EXPECT_TRUE(value.has_value());
+    if (value.has_value()) {
+        EXPECT_EQ(*value, 42);
+    }
+}
+
+TEST_F(ConfigSystemTest, SetAndGetBool) {
+    configSystem_->setBool("test.bool", true);
+
+    EXPECT_TRUE(configSystem_->hasKey("test.bool"));
+
+    auto value = configSystem_->getBool("test.bool");
+    EXPECT_TRUE(value.has_value());
+    if (value.has_value()) {
+        EXPECT_TRUE(*value);
+    }
+}
+
+TEST_F(ConfigSystemTest, SetAndGetString) {
+    configSystem_->setString("test.string", "hello");
+
+    EXPECT_TRUE(configSystem_->hasKey("test.string"));
+
+    auto value = configSystem_->getString("test.string");
+    EXPECT_TRUE(value.has_value());
+    if (value.has_value()) {
+        EXPECT_EQ(*value, "hello");
+    }
+}
+
+TEST_F(ConfigSystemTest, GetKeysWithPrefixReturnsEmpty) {
+    auto keys = configSystem_->getKeysWithPrefix("test.");
+    EXPECT_TRUE(keys.empty());
+}
+
+TEST_F(ConfigSystemTest, GetKeysWithPrefixReturnsMatchingKeys) {
+    configSystem_->setFloat("player.speed", 100.0f);
+    configSystem_->setInt("player.health", 100);
+    configSystem_->setBool("player.invincible", false);
+    configSystem_->setString("enemy.type", "goblin");
+
+    auto playerKeys = configSystem_->getKeysWithPrefix("player.");
+    EXPECT_EQ(playerKeys.size(), 3);
+
+    auto enemyKeys = configSystem_->getKeysWithPrefix("enemy.");
+    EXPECT_EQ(enemyKeys.size(), 1);
+}
+
+TEST_F(ConfigSystemTest, GetLoadedConfigsInitiallyEmpty) {
+    auto configs = configSystem_->getLoadedConfigs();
+    EXPECT_TRUE(configs.empty());
+}
+
+TEST_F(ConfigSystemTest, HotReloadInitiallyDisabled) {
+    EXPECT_FALSE(configSystem_->isHotReloadEnabled());
+}
+
+TEST_F(ConfigSystemTest, EnableHotReload) {
+    configSystem_->enableHotReload(true);
+    EXPECT_TRUE(configSystem_->isHotReloadEnabled());
+
+    configSystem_->enableHotReload(false);
+    EXPECT_FALSE(configSystem_->isHotReloadEnabled());
+}
+
+TEST_F(ConfigSystemTest, UpdateDoesNotCrash) {
+    // Update should not crash even with no configs loaded
+    EXPECT_NO_THROW(configSystem_->update(DeltaTime{0.016f}));
+}
+
+TEST_F(ConfigSystemTest, GetIntArrayReturnsEmpty) {
+    auto values = configSystem_->getIntArray("nonexistent.array");
+    EXPECT_TRUE(values.empty());
+}
+
+TEST_F(ConfigSystemTest, GetFloatArrayReturnsEmpty) {
+    auto values = configSystem_->getFloatArray("nonexistent.array");
+    EXPECT_TRUE(values.empty());
+}
+
+TEST_F(ConfigSystemTest, GetStringArrayReturnsEmpty) {
+    auto values = configSystem_->getStringArray("nonexistent.array");
+    EXPECT_TRUE(values.empty());
+}
+
+TEST_F(ConfigSystemTest, SubscribeToConfigChanges) {
+    int callbackCount = 0;
+    std::string changedKey;
+
+    auto id = configSystem_->onConfigChanged([&](const ConfigKey& key) {
+        callbackCount++;
+        changedKey = key;
+    });
+
+    EXPECT_GT(id, 0);
+
+    // Setting a value should trigger the callback
+    configSystem_->setFloat("test.value", 1.0f);
+
+    // Note: Callback may be async or immediate depending on implementation
+    // We just verify subscription ID is valid
+
+    configSystem_->unsubscribe(id);
+}
+
+TEST_F(ConfigSystemTest, SubscribeToKeyChanges) {
+    int callbackCount = 0;
+    std::string changedKey;
+
+    auto id = configSystem_->onKeyChanged("player.", [&](const ConfigKey& key) {
+        callbackCount++;
+        changedKey = key;
+    });
+
+    EXPECT_GT(id, 0);
+
+    configSystem_->unsubscribe(id);
+}
+
+TEST_F(ConfigSystemTest, UnsubscribeInvalidId) {
+    // Should not crash
+    EXPECT_NO_THROW(configSystem_->unsubscribe(99999));
+}
+
+// ============================================================================
+// Kangaru DI Integration Tests for ConfigSystem
+// ============================================================================
+
+TEST_F(ConfigSystemTest, KangaruServiceInstantiation) {
+    // Test that ConfigSystem can be instantiated via Kangaru DI
+    kgr::container container;
+
+    // ConfigSystemService has no dependencies, should instantiate cleanly
+    auto& configSystem = container.service<ConfigSystemService>();
+
+    // Verify the service is valid
+    EXPECT_NE(&configSystem, nullptr);
+
+    // Verify it needs initialization
+    EXPECT_TRUE(configSystem.initialize());
+
+    // Verify it behaves like a ConfigSystem
+    EXPECT_FALSE(configSystem.hasKey("nonexistent.key"));
+
+    // Test that it's a singleton
+    auto& configSystem2 = container.service<ConfigSystemService>();
+    EXPECT_EQ(&configSystem, &configSystem2);
+
+    configSystem.shutdown();
+}
+
+TEST_F(ConfigSystemTest, KangaruServiceWithSetGet) {
+    // Test set/get operations using Kangaru-instantiated service
+    kgr::container container;
+    auto& configSystem = container.service<ConfigSystemService>();
+
+    ASSERT_TRUE(configSystem.initialize());
+
+    configSystem.setFloat("di.test.float", 99.9f);
+    configSystem.setInt("di.test.int", 777);
+    configSystem.setString("di.test.string", "kangaru");
+
+    auto floatVal = configSystem.getFloat("di.test.float");
+    auto intVal = configSystem.getInt("di.test.int");
+    auto stringVal = configSystem.getString("di.test.string");
+
+    EXPECT_TRUE(floatVal.has_value());
+    EXPECT_TRUE(intVal.has_value());
+    EXPECT_TRUE(stringVal.has_value());
+
+    if (floatVal.has_value()) {
+        EXPECT_FLOAT_EQ(*floatVal, 99.9f);
+    }
+    if (intVal.has_value()) {
+        EXPECT_EQ(*intVal, 777);
+    }
+    if (stringVal.has_value()) {
+        EXPECT_EQ(*stringVal, "kangaru");
+    }
+
+    configSystem.shutdown();
 }
 
 }  // namespace bestow::tests

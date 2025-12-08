@@ -3,6 +3,7 @@
 
 module;
 
+#include <filesystem>
 #include <span>
 #include <string>
 #include <functional>
@@ -140,6 +141,8 @@ struct RenderItem {
     RenderLayer layer = 0;
     bool castShadow = true;
     bool receiveShadow = true;
+    Vec4 colorOverride{1.0f, 1.0f, 1.0f, 1.0f};  // Per-item color override
+    std::uint32_t customPipeline = 0;  // Optional custom pipeline handle (Vulkan-specific)
 };
 
 //==========================================================================
@@ -270,12 +273,103 @@ struct RenderStats {
 };
 
 //==========================================================================
+// Graphics3D Configuration
+//==========================================================================
+
+/// Configuration for initializing a 3D graphics system.
+/// Backend-agnostic - works for OpenGL, Vulkan, Metal, etc.
+struct Graphics3DConfig {
+    int windowWidth = 1280;
+    int windowHeight = 720;
+    std::string windowTitle = "Bestow Application";
+    bool vsync = true;
+    bool fullscreen = false;
+    bool enableValidation = false;  // For Vulkan validation layers, OpenGL debug context
+    void* nativeWindowHandle = nullptr;  // Optional: use existing window (GLFW, SDL, etc.)
+};
+
+//==========================================================================
+// Graphics3D Runtime Configuration (Hot-Reloadable)
+//==========================================================================
+
+/// Present mode (V-Sync) - unified setting for all backends
+enum class PresentMode : std::uint8_t {
+    Immediate,  // No sync (may tear, lowest latency)
+    FIFO,       // V-Sync enabled (default, no tearing)
+    Mailbox     // Triple buffering (low latency, no tearing) - "adaptive"
+};
+
+/// Runtime configuration loaded from Lua file (hot-reloadable)
+/// Uses unified settings that apply to all renderer backends (OpenGL, Vulkan, etc.)
+struct Graphics3DRuntimeConfig {
+    //==========================================================================
+    // Unified Rendering Settings (apply to all backends)
+    //==========================================================================
+
+    // Hardware gamma correction
+    // When true: shaders output linear colors, hardware converts to sRGB
+    // When false: shaders must output pre-gamma-corrected colors
+    bool gammaCorrection = true;
+
+    // MSAA samples (1 = disabled, 2, 4, 8)
+    std::uint32_t msaaSamples = 4;
+
+    // V-Sync mode
+    PresentMode vsync = PresentMode::FIFO;
+
+    // Shader paths (in order of priority)
+    std::vector<std::string> shaderPaths;
+
+    //==========================================================================
+    // Backend-Specific Settings (only for features unique to a backend)
+    //==========================================================================
+
+    // Vulkan-only: Enable validation layers in debug builds
+    bool vulkanValidationLayers = true;
+
+    //==========================================================================
+    // Lighting Defaults (values in LINEAR space when gammaCorrection=true)
+    //==========================================================================
+
+    Vec3 lightDirection{0.5f, -1.0f, 0.3f};
+    Vec3 lightColor{1.0f, 0.89f, 0.79f};  // Warm sunlight in linear space
+    Vec3 ambientColor{0.13f, 0.17f, 0.26f};  // Cool sky bounce in linear space
+    float ambientIntensity = 0.3f;
+
+    // Clear color (sky blue in LINEAR space when gammaCorrection=true)
+    Color clearColor{61, 158, 212, 255};  // Approx linear {0.24, 0.62, 0.83}
+
+    //==========================================================================
+    // Debug Options
+    //==========================================================================
+
+    bool debugWireframe = false;
+    bool debugShowNormals = false;
+    bool debugShowFps = true;
+    bool hotReload = true;
+};
+
+//==========================================================================
 // IGraphics3DSystem Interface
 //==========================================================================
 
 class IGraphics3DSystem {
 public:
     virtual ~IGraphics3DSystem() = default;
+
+    //======================================================================
+    // Lifecycle
+    //======================================================================
+
+    /// Initialize the graphics system with the given configuration.
+    /// Returns true on success, false on failure.
+    virtual bool initialize(const Graphics3DConfig& config) = 0;
+
+    /// Shutdown the graphics system and release resources.
+    virtual void shutdown() = 0;
+
+    /// Check if the system is initialized.
+    virtual bool isInitialized() const = 0;
 
     //======================================================================
     // Frame Lifecycle
@@ -525,6 +619,22 @@ public:
     virtual void setVSync(bool enabled) = 0;
     virtual void setRenderScale(float scale) = 0;
     virtual float getRenderScale() const = 0;
+
+    //======================================================================
+    // Runtime Configuration (Hot-Reloadable)
+    //======================================================================
+
+    /// Load runtime configuration from Lua file (config/graphics3d.lua)
+    virtual bool loadRuntimeConfig(const std::filesystem::path& configPath) = 0;
+
+    /// Apply runtime configuration (call after loading or when config changes)
+    virtual void applyRuntimeConfig(const Graphics3DRuntimeConfig& config) = 0;
+
+    /// Get current runtime configuration
+    virtual const Graphics3DRuntimeConfig& getRuntimeConfig() const = 0;
+
+    /// Reload and apply runtime configuration (for hot reload)
+    virtual bool reloadRuntimeConfig() = 0;
 
     //======================================================================
     // Shader System Integration

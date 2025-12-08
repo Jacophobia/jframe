@@ -17,6 +17,7 @@ option(BESTOW_BUILD_EXAMPLES "Build examples" ON)
 option(BESTOW_ENABLE_TRACY "Enable Tracy profiler" ON)
 option(BESTOW_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(BESTOW_DEV_TOOLS "Enable development tools (hot reload, inspector)" ON)
+option(BESTOW_BUILD_VULKAN "Build Vulkan rendering backend (requires vcpkg feature: vulkan)" OFF)
 
 # vcpkg toolchain (if using vcpkg)
 if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -28,13 +29,17 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(CompilerWarnings)
 include(StaticAnalysis)
 include(Dependencies)
-include(StandardLibraryModules)
 
 # Add project-wide include directory (for compatibility headers)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# Find dependencies
+# Find dependencies BEFORE StandardLibraryModules to avoid
+# global compile options interfering with vcpkg try_compile checks
 find_dependencies()
+
+# Now include StandardLibraryModules - this adds -stdlib=libc++ globally
+# but vcpkg has already finished its try_compile checks
+include(StandardLibraryModules)
 
 # Enable C++23 module scanning after dependencies are found
 # (to avoid interference with CMake's internal try_compile checks)
@@ -46,8 +51,7 @@ add_subdirectory(bestow-metrics)
 add_subdirectory(bestow-components)
 add_subdirectory(bestow-core)
 add_subdirectory(bestow-entity)
-add_subdirectory(bestow-graphics)
-add_subdirectory(bestow-graphics3d)
+add_subdirectory(bestow-opengl)
 add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
@@ -64,6 +68,16 @@ add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
 add_subdirectory(bestow-gamestate)
 add_subdirectory(bestow-shader)
+
+# Vulkan rendering backend (optional)
+if(BESTOW_BUILD_VULKAN)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        add_subdirectory(bestow-vulkan)
+    else()
+        message(STATUS "Vulkan not found - skipping bestow-vulkan")
+    endif()
+endif()
 
 # Development tools (only in debug builds)
 if(BESTOW_DEV_TOOLS)
@@ -96,8 +110,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-components
     bestow-core
     bestow-entity
-    bestow-graphics
-    bestow-graphics3d
+    bestow-opengl
     bestow-audio
     bestow-input
     bestow-assets

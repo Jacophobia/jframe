@@ -116,6 +116,16 @@ struct Color {
     static constexpr Color green() { return {0, 255, 0, 255}; }
     static constexpr Color blue() { return {0, 0, 255, 255}; }
     static constexpr Color transparent() { return {0, 0, 0, 0}; }
+
+    /// Create Color from float values (0.0-1.0 range)
+    static constexpr Color fromFloat(float r, float g, float b, float a = 1.0f) {
+        return {
+            static_cast<std::uint8_t>(r * 255.0f),
+            static_cast<std::uint8_t>(g * 255.0f),
+            static_cast<std::uint8_t>(b * 255.0f),
+            static_cast<std::uint8_t>(a * 255.0f)
+        };
+    }
 };
 
 using RenderLayer = std::int32_t;
@@ -789,6 +799,127 @@ enum class BehaviorStatus {
     Success,
     Failure,
     Running
+};
+
+//==========================================================================
+// Path Resolution Utilities
+//==========================================================================
+
+/// Path scheme prefixes for asset resolution
+/// - `:assets:/path` - Resolves to executable directory + path (game-specific assets)
+/// - `:library:/path` - Resolves to Bestow library asset directory (engine shaders, etc.)
+/// - Plain paths are resolved relative to current working directory
+namespace PathScheme {
+    inline constexpr std::string_view Assets = ":assets:/";
+    inline constexpr std::string_view Library = ":library:/";
+}
+
+/// Global path resolver for handling :assets:/ and :library:/ prefixes
+/// This allows assets to be loaded regardless of current working directory
+class PathResolver {
+public:
+    /// Initialize the path resolver with executable directory detection
+    /// Call this early in your application, passing argv[0] or empty string for auto-detect
+    static void initialize(std::string_view executablePath = "") {
+        instance().doInitialize(executablePath);
+    }
+
+    /// Set the library path explicitly (for engine assets like built-in shaders)
+    /// If not set, defaults to "library" subdirectory next to executable
+    static void setLibraryPath(std::string_view path) {
+        auto& inst = instance();
+        inst.libraryPath_ = std::filesystem::path(path);
+        if (!inst.libraryPath_.is_absolute()) {
+            inst.libraryPath_ = inst.assetsPath_ / inst.libraryPath_;
+        }
+    }
+
+    /// Get the resolved assets path (executable directory)
+    static std::filesystem::path getAssetsPath() {
+        return instance().assetsPath_;
+    }
+
+    /// Get the resolved library path
+    static std::filesystem::path getLibraryPath() {
+        return instance().libraryPath_;
+    }
+
+    /// Resolve a path that may contain :assets:/ or :library:/ prefixes
+    /// Returns an absolute path suitable for file operations
+    static std::filesystem::path resolve(std::string_view path) {
+        return instance().doResolve(path);
+    }
+
+    /// Resolve and return as string (convenience method)
+    static std::string resolveString(std::string_view path) {
+        return resolve(path).string();
+    }
+
+    /// Check if a path uses a scheme prefix
+    static bool hasScheme(std::string_view path) {
+        return path.starts_with(PathScheme::Assets) || path.starts_with(PathScheme::Library);
+    }
+
+private:
+    PathResolver() = default;
+
+    static PathResolver& instance() {
+        static PathResolver inst;
+        return inst;
+    }
+
+    void doInitialize(std::string_view executablePath) {
+        initialized_ = true;
+
+        // Try to determine the executable directory
+        std::filesystem::path execPath;
+
+        if (!executablePath.empty()) {
+            execPath = std::filesystem::path(executablePath);
+        }
+
+        // Get the directory containing the executable
+        if (!execPath.empty() && std::filesystem::exists(execPath)) {
+            assetsPath_ = std::filesystem::absolute(execPath).parent_path();
+        } else {
+            // Fall back to current path
+            assetsPath_ = std::filesystem::current_path();
+        }
+
+        // Default library path to a "library" subdirectory (can be overridden)
+        libraryPath_ = assetsPath_ / "library";
+    }
+
+    std::filesystem::path doResolve(std::string_view path) const {
+        if (path.empty()) {
+            return {};
+        }
+
+        // Handle :assets:/ prefix
+        if (path.starts_with(PathScheme::Assets)) {
+            std::string_view remainder = path.substr(PathScheme::Assets.size());
+            return assetsPath_ / std::filesystem::path(remainder);
+        }
+
+        // Handle :library:/ prefix
+        if (path.starts_with(PathScheme::Library)) {
+            std::string_view remainder = path.substr(PathScheme::Library.size());
+            return libraryPath_ / std::filesystem::path(remainder);
+        }
+
+        // Check if already absolute
+        std::filesystem::path p(path);
+        if (p.is_absolute()) {
+            return p;
+        }
+
+        // Relative path - resolve against assets path
+        return assetsPath_ / p;
+    }
+
+    std::filesystem::path assetsPath_;
+    std::filesystem::path libraryPath_;
+    bool initialized_ = false;
 };
 
 }  // namespace bestow

@@ -15,6 +15,7 @@ if(RmlUi_FOUND)
     target_link_libraries(bestow-ui
         PUBLIC
             bestow-contract
+            kangaru::kangaru
             RmlUi::RmlUi
             glfw
             glad::glad
@@ -26,6 +27,7 @@ else()
     target_link_libraries(bestow-ui
         PUBLIC
             bestow-contract
+            kangaru::kangaru
             glfw
     )
     message(STATUS "RmlUi not found - UI system will use stub implementation")

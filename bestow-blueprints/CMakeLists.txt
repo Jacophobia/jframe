@@ -18,12 +18,8 @@ target_link_libraries(bestow-blueprints
         bestow-contract
         bestow-entity
         bestow-physics
+        kangaru::kangaru
     PRIVATE
         sol2::sol2
-        ${LUA_LIBRARIES}
-)
-
-target_include_directories(bestow-blueprints
-    PRIVATE
-        ${LUA_INCLUDE_DIR}
+        lua
 )

@@ -15,7 +15,7 @@ target_use_std_module(graphics-demo)
 target_link_libraries(graphics-demo
     PRIVATE
         bestow-contract
-        bestow-graphics
+        bestow-opengl
         bestow-entity
         bestow-assets
         bestow-core

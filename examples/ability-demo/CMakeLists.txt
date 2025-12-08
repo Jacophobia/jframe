@@ -12,7 +12,7 @@ target_link_libraries(ability-demo
         bestow-contract
         bestow-core
         bestow-entity
-        bestow-graphics
+        bestow-opengl
         bestow-physics
         bestow-audio
         bestow-input

@@ -1,14 +1,17 @@
 // tests/unit/SaveSystemTests.cpp
 // Save system unit tests
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.save;
 import bestow.save.impl;
@@ -46,35 +49,49 @@ public:
 class SaveSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Clean up any leftover saves directory from previous test runs
-        if (std::filesystem::exists("saves")) {
-            std::filesystem::remove_all("saves");
+        // Generate unique profile name for this test to avoid conflicts
+        const ::testing::TestInfo* testInfo = ::testing::UnitTest::GetInstance()->current_test_info();
+        std::string testName = std::string(testInfo->test_suite_name()) + "_" + std::string(testInfo->name());
+
+        // Replace special characters that might cause filesystem issues
+        std::replace(testName.begin(), testName.end(), '/', '_');
+        std::replace(testName.begin(), testName.end(), '\\', '_');
+        std::replace(testName.begin(), testName.end(), ' ', '_');
+
+        uniqueProfile_ = testName;
+
+        // Clean up any leftover profile directory from previous failed test runs
+        // Use std::error_code to avoid exceptions
+        std::error_code ec;
+        auto profilePath = std::filesystem::path("saves") / uniqueProfile_;
+        if (std::filesystem::exists(profilePath, ec)) {
+            std::filesystem::remove_all(profilePath, ec);
+            // Ignore errors - directory might not exist or might be locked
         }
 
-        saveSystem_ = createSaveSystem();
+        saveSystem_ = std::make_unique<SaveSystem>();
 
-        // Create a temp directory for test saves
-        tempDir_ = std::filesystem::temp_directory_path() / "bestow_save_tests";
-        std::filesystem::create_directories(tempDir_);
-
-        // Set the test profile to use temp directory
-        saveSystem_->setActiveProfile("test_profile");
+        // Set unique profile for this test to avoid conflicts
+        saveSystem_->setActiveProfile(uniqueProfile_);
     }
 
     void TearDown() override {
-        // Clean up temp files
-        if (std::filesystem::exists(tempDir_)) {
-            std::filesystem::remove_all(tempDir_);
-        }
+        // Unregister any saveables to avoid dangling pointers
+        saveSystem_.reset();
 
-        // Clean up the actual saves directory created by SaveSystem
-        if (std::filesystem::exists("saves")) {
-            std::filesystem::remove_all("saves");
+        // Clean up only our profile directory
+        // NEVER try to remove the parent "saves" directory as it's shared by all tests
+        // Use std::error_code to avoid exceptions during cleanup
+        std::error_code ec;
+        auto profilePath = std::filesystem::path("saves") / uniqueProfile_;
+        if (std::filesystem::exists(profilePath, ec)) {
+            std::filesystem::remove_all(profilePath, ec);
+            // Ignore errors - directory might be locked or already removed by another thread
         }
     }
 
     std::unique_ptr<ISaveSystem> saveSystem_;
-    std::filesystem::path tempDir_;
+    std::string uniqueProfile_;
 };
 
 // ============================================================================
@@ -82,8 +99,8 @@ protected:
 // ============================================================================
 
 TEST_F(SaveSystemTest, ActiveProfile) {
-    // System should start with default profile
-    EXPECT_EQ(saveSystem_->getActiveProfile(), "test_profile");
+    // System should start with our unique test profile
+    EXPECT_EQ(saveSystem_->getActiveProfile(), uniqueProfile_);
 
     saveSystem_->setActiveProfile("player1");
     EXPECT_EQ(saveSystem_->getActiveProfile(), "player1");
@@ -696,14 +713,18 @@ TEST_F(SaveSystemTest, SetProfileWithSpecialCharacters) {
 }
 
 TEST_F(SaveSystemTest, ProfilesAreIsolated) {
+    // Use unique profile names for this test
+    std::string profileA = uniqueProfile_ + "_profile_a";
+    std::string profileB = uniqueProfile_ + "_profile_b";
+
     // Create a save in profile A
-    saveSystem_->setActiveProfile("profile_a");
+    saveSystem_->setActiveProfile(profileA);
     auto resultA = saveSystem_->save(0, "Save A");
     EXPECT_TRUE(resultA.has_value());
     EXPECT_TRUE(saveSystem_->saveExists(0));
 
     // Switch to profile B - save should not exist
-    saveSystem_->setActiveProfile("profile_b");
+    saveSystem_->setActiveProfile(profileB);
     EXPECT_FALSE(saveSystem_->saveExists(0));
 
     // Create different save in profile B
@@ -712,7 +733,7 @@ TEST_F(SaveSystemTest, ProfilesAreIsolated) {
     EXPECT_TRUE(saveSystem_->saveExists(0));
 
     // Switch back to profile A - original save should still exist
-    saveSystem_->setActiveProfile("profile_a");
+    saveSystem_->setActiveProfile(profileA);
     EXPECT_TRUE(saveSystem_->saveExists(0));
 
     auto metadata = saveSystem_->getSaveMetadata(0);
@@ -720,6 +741,11 @@ TEST_F(SaveSystemTest, ProfilesAreIsolated) {
     if (metadata.has_value()) {
         EXPECT_EQ(metadata->saveName, "Save A");
     }
+
+    // Cleanup
+    std::error_code ec;
+    std::filesystem::remove_all(std::filesystem::path("saves") / profileA, ec);
+    std::filesystem::remove_all(std::filesystem::path("saves") / profileB, ec);
 }
 
 TEST_F(SaveSystemTest, GetProfilesReturnsAllProfiles) {
@@ -879,13 +905,11 @@ TEST_F(SaveSystemTest, LoadWithNoRegisteredSaveables) {
     saveSystem_->unregisterSaveable(&saveable);
 
     // Load with no registered saveables
-    // This should fail because save has data for unregistered saveables
+    // The implementation returns error when save has data for unregistered saveables
+    // (see SaveSystem.cpp line 166-168: returns SerializationError for unknown saveable data)
     auto result = saveSystem_->load(0);
     EXPECT_FALSE(result.has_value());
-
-    if (!result.has_value()) {
-        EXPECT_EQ(result.error(), SaveError::SerializationError);
-    }
+    EXPECT_EQ(result.error(), SaveError::SerializationError);
 }
 
 TEST_F(SaveSystemTest, SaveToHighSlotNumber) {
@@ -944,22 +968,31 @@ TEST_F(SaveSystemTest, DeleteSaveAlsoDeletesMetadata) {
 }
 
 TEST_F(SaveSystemTest, DeleteSaveFromDifferentProfile) {
+    // Use unique profile names for this test
+    std::string profileA = uniqueProfile_ + "_profile_a";
+    std::string profileB = uniqueProfile_ + "_profile_b";
+
     // Create save in profile A
-    saveSystem_->setActiveProfile("profile_a");
+    saveSystem_->setActiveProfile(profileA);
     saveSystem_->save(0, "Profile A Save");
 
     // Switch to profile B
-    saveSystem_->setActiveProfile("profile_b");
+    saveSystem_->setActiveProfile(profileB);
 
     // Try to delete slot 0 from profile B (shouldn't affect profile A)
     bool deleted = saveSystem_->deleteSave(0);
     EXPECT_FALSE(deleted);  // No save exists in profile B slot 0
 
     // Switch back to profile A
-    saveSystem_->setActiveProfile("profile_a");
+    saveSystem_->setActiveProfile(profileA);
 
     // Save should still exist
     EXPECT_TRUE(saveSystem_->saveExists(0));
+
+    // Cleanup: delete test profiles
+    std::error_code ec;
+    std::filesystem::remove_all(std::filesystem::path("saves") / profileA, ec);
+    std::filesystem::remove_all(std::filesystem::path("saves") / profileB, ec);
 }
 
 TEST_F(SaveSystemTest, DeleteQuickSave) {
@@ -1455,6 +1488,65 @@ TEST_F(SaveSystemTest, QuickSaveAndAutoSaveAreIndependent) {
     EXPECT_EQ(saveable.value, 222);
 
     saveSystem_->unregisterSaveable(&saveable);
+}
+
+// ============================================================================
+// Kangaru DI Integration Tests
+// ============================================================================
+
+TEST_F(SaveSystemTest, KangaruServiceInstantiation) {
+    // Test that SaveSystem can be instantiated via Kangaru DI
+    kgr::container container;
+
+    // SaveSystemService has no dependencies, should instantiate cleanly
+    auto& saveSystem = container.service<SaveSystemService>();
+
+    // Set unique profile for this test to avoid conflicts
+    std::string testProfile = uniqueProfile_ + "_kangaru_test";
+    saveSystem.setActiveProfile(testProfile);
+
+    // Verify the service is valid
+    EXPECT_NE(&saveSystem, nullptr);
+
+    // Verify it behaves like a SaveSystem
+    EXPECT_FALSE(saveSystem.saveExists(0));
+
+    // Test that it's a singleton
+    auto& saveSystem2 = container.service<SaveSystemService>();
+    EXPECT_EQ(&saveSystem, &saveSystem2);
+
+    // Cleanup
+    std::error_code ec;
+    std::filesystem::remove_all(std::filesystem::path("saves") / testProfile, ec);
+}
+
+TEST_F(SaveSystemTest, KangaruServiceWithSaveOperations) {
+    // Test full save/load cycle using Kangaru-instantiated service
+    kgr::container container;
+    auto& saveSystem = container.service<SaveSystemService>();
+
+    TestSaveable saveable;
+    saveable.value = 999;
+    saveable.name = "Kangaru Test";
+
+    saveSystem.registerSaveable(&saveable);
+
+    auto saveResult = saveSystem.save(0, "DI Test Save");
+    EXPECT_TRUE(saveResult.has_value());
+
+    // Modify and reload
+    saveable.value = 0;
+    saveable.name = "";
+
+    auto loadResult = saveSystem.load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    if (loadResult.has_value()) {
+        EXPECT_EQ(saveable.value, 999);
+        EXPECT_EQ(saveable.name, "Kangaru Test");
+    }
+
+    saveSystem.unregisterSaveable(&saveable);
 }
 
 }  // namespace bestow::tests

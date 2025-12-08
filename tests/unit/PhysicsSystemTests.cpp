@@ -7,6 +7,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.physics;
 import bestow.physics.impl;
@@ -17,16 +18,17 @@ namespace bestow::tests {
 class PhysicsSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        physics = createPhysicsSystem();
+        physics = &container_.service<PhysicsSystemService>();
 
         // Downcast to access initialize() method
-        auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+        auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
         if (implPtr) {
             implPtr->initialize();
         }
     }
 
-    std::unique_ptr<IPhysicsSystem> physics;
+    kgr::container container_;
+    IPhysicsSystem* physics = nullptr;
 };
 
 //=============================================================================
@@ -855,7 +857,7 @@ TEST_F(PhysicsSystemTest, CanCreateSensorBody) {
 
 TEST_F(PhysicsSystemTest, SensorBodiesDoNotCausePhysicalCollision) {
     // Downcast to access trigger callbacks
-    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
     ASSERT_NE(implPtr, nullptr);
 
     int collisionCount = 0;
@@ -907,7 +909,7 @@ TEST_F(PhysicsSystemTest, SensorBodiesDoNotCausePhysicalCollision) {
 }
 
 TEST_F(PhysicsSystemTest, TriggerEnterCallbackIsInvokedWhenEnteringSensor) {
-    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
     ASSERT_NE(implPtr, nullptr);
 
     int enterCount = 0;
@@ -953,7 +955,7 @@ TEST_F(PhysicsSystemTest, TriggerEnterCallbackIsInvokedWhenEnteringSensor) {
 }
 
 TEST_F(PhysicsSystemTest, TriggerExitCallbackIsInvokedWhenLeavingSensor) {
-    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
     ASSERT_NE(implPtr, nullptr);
 
     int exitCount = 0;
@@ -993,7 +995,7 @@ TEST_F(PhysicsSystemTest, TriggerExitCallbackIsInvokedWhenLeavingSensor) {
 }
 
 TEST_F(PhysicsSystemTest, NonSensorBodiesDoNotTriggerSensorEvents) {
-    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
     ASSERT_NE(implPtr, nullptr);
 
     int triggerCount = 0;
@@ -1032,7 +1034,7 @@ TEST_F(PhysicsSystemTest, NonSensorBodiesDoNotTriggerSensorEvents) {
 }
 
 TEST_F(PhysicsSystemTest, SensorBodiesRespectCollisionFiltering) {
-    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics.get());
+    auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physics);
     ASSERT_NE(implPtr, nullptr);
 
     int triggerCount = 0;
@@ -1498,6 +1500,84 @@ TEST_F(PhysicsSystemTest, CheckGroundedWorksWithDefaultParams) {
     // Should produce a valid result (grounded or not grounded)
     // Default params should be sensible and not crash
     EXPECT_TRUE(result.grounded || !result.grounded);
+}
+
+//=============================================================================
+// Kangaru DI Integration Tests
+//=============================================================================
+
+TEST_F(PhysicsSystemTest, KangaruServiceCanBeInstantiated) {
+    kgr::container container;
+
+    // Instantiate PhysicsSystemService through Kangaru
+    auto& physicsSystem = container.service<PhysicsSystemService>();
+
+    // Verify it's a valid instance
+    EXPECT_NE(&physicsSystem, nullptr);
+}
+
+TEST_F(PhysicsSystemTest, KangaruServiceIsSingleton) {
+    kgr::container container;
+
+    // Get service twice
+    auto& physicsSystem1 = container.service<PhysicsSystemService>();
+    auto& physicsSystem2 = container.service<PhysicsSystemService>();
+
+    // Should be the same instance (singleton)
+    EXPECT_EQ(&physicsSystem1, &physicsSystem2);
+}
+
+TEST_F(PhysicsSystemTest, KangaruServiceCanInitialize) {
+    kgr::container container;
+
+    // Get service and initialize
+    auto& physicsSystem = container.service<PhysicsSystemService>();
+    bool initialized = physicsSystem.initialize();
+
+    EXPECT_TRUE(initialized);
+}
+
+TEST_F(PhysicsSystemTest, KangaruServiceCanCreateBody) {
+    kgr::container container;
+
+    auto& physicsSystem = container.service<PhysicsSystemService>();
+    physicsSystem.initialize();
+
+    // Create a body through the Kangaru-managed instance
+    Entity entity = static_cast<Entity>(1000);
+    PhysicsBodyDef def{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 200.0f}
+    };
+
+    physicsSystem.createBody(entity, def);
+    EXPECT_TRUE(physicsSystem.hasBody(entity));
+}
+
+TEST_F(PhysicsSystemTest, KangaruServiceCanRunSimulation) {
+    kgr::container container;
+
+    auto& physicsSystem = container.service<PhysicsSystemService>();
+    physicsSystem.initialize();
+
+    // Create a dynamic body
+    Entity entity = static_cast<Entity>(1001);
+    PhysicsBodyDef def{
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100.0f, .y = 100.0f}
+    };
+
+    physicsSystem.createBody(entity, def);
+
+    Vec2 initialVelocity = physicsSystem.getVelocity(entity);
+
+    // Simulate
+    physicsSystem.update(1.0f / 60.0f);
+
+    Vec2 finalVelocity = physicsSystem.getVelocity(entity);
+
+    // Velocity should change due to gravity
+    EXPECT_GT(finalVelocity.y, initialVelocity.y);
 }
 
 }  // namespace bestow::tests

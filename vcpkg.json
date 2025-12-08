@@ -33,5 +33,14 @@
         "rmlui",
         "kangaru"
     ],
+    "features": {
+        "vulkan": {
+            "description": "Vulkan rendering backend (requires system Vulkan SDK with glslc)",
+            "dependencies": [
+                "vulkan-memory-allocator",
+                "vk-bootstrap"
+            ]
+        }
+    },
     "builtin-baseline": "9aee6e968f51e15ee93606f064691d8f6d228190"
 }

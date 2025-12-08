@@ -12,6 +12,7 @@ target_link_libraries(bestow-physics
     PUBLIC
         bestow-contract
         box2d::box2d
+        kangaru
 )
 
 target_compile_features(bestow-physics PUBLIC cxx_std_23)

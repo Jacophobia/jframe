@@ -2,6 +2,7 @@
 // Blueprints System Demo - Comprehensive API demonstration
 
 // MSVC C++23 module compatibility for EnTT iterators and sol2 globals
+#include <kangaru/kangaru.hpp>
 #include <bestow/entt_compat.hpp>
 #include <bestow/sol2_compat.hpp>
 
@@ -191,27 +192,18 @@ int main() {
         std::println("Bestow Blueprints System Demo");
         std::println("=============================\n");
 
-        // Create required systems
-        auto eventSystem = createEventSystem();
-        auto entitySystem = createEntitySystem();
-        auto physicsSystem = createPhysicsSystem();
+        // Create DI container - basic systems are resolved through DI
+        kgr::container container;
 
-        if (!eventSystem || !entitySystem || !physicsSystem) {
-            std::println("ERROR: Failed to create required systems");
-            return 1;
-        }
+        // Get basic systems through DI
+        auto& entitySystem = container.service<EntitySystemService>();
+        auto& physicsSystem = container.service<PhysicsSystemService>();
 
-        std::println("Created entity, physics, and event systems");
+        // BlueprintFactory has constructor dependencies that require interface types,
+        // so construct it directly with the DI-resolved dependencies
+        BlueprintFactory blueprintFactory(entitySystem, &physicsSystem);
 
-        // Create blueprint factory
-        auto blueprintFactory = createBlueprintFactory(*entitySystem, physicsSystem.get());
-
-        if (!blueprintFactory) {
-            std::println("ERROR: Failed to create blueprint factory");
-            return 1;
-        }
-
-        std::println("Created blueprint factory");
+        std::println("Systems created (basic systems via DI, BlueprintFactory with DI deps)");
 
         //======================================================================
         // DEMO 1: Component Registration
@@ -219,7 +211,7 @@ int main() {
 
         printSectionHeader("DEMO 1: Component Registration");
 
-        registerCustomComponents(*blueprintFactory, *entitySystem);
+        registerCustomComponents(blueprintFactory, entitySystem);
 
         //======================================================================
         // DEMO 2: Blueprint Loading
@@ -230,7 +222,7 @@ int main() {
         std::println("Loading blueprints from Lua file...");
         std::string luaSource = readFile("blueprints-demo-data/blueprints.lua");
 
-        bool loadSuccess = blueprintFactory->loadBlueprints(luaSource);
+        bool loadSuccess = blueprintFactory.loadBlueprints(luaSource);
 
         if (!loadSuccess) {
             std::println("ERROR: Failed to load blueprints");
@@ -246,7 +238,7 @@ int main() {
         printSectionHeader("DEMO 3: Blueprint Queries");
 
         printSubheader("Getting All Blueprint Names");
-        auto blueprintNames = blueprintFactory->getBlueprintNames();
+        auto blueprintNames = blueprintFactory.getBlueprintNames();
         std::println("Found {} blueprints:", blueprintNames.size());
         for (const auto& name : blueprintNames) {
             std::println("  - {}", name);
@@ -257,12 +249,12 @@ int main() {
             "player", "coin", "fast_enemy", "nonexistent_blueprint"
         };
         for (const auto& name : testNames) {
-            bool exists = blueprintFactory->hasBlueprint(name);
+            bool exists = blueprintFactory.hasBlueprint(name);
             std::println("  hasBlueprint(\"{}\"): {}", name, exists ? "YES" : "NO");
         }
 
         printSubheader("Inspecting Simple Blueprint (coin)");
-        auto coinDef = blueprintFactory->getBlueprint("coin");
+        auto coinDef = blueprintFactory.getBlueprint("coin");
         if (coinDef) {
             printBlueprintDef(*coinDef);
         } else {
@@ -270,13 +262,13 @@ int main() {
         }
 
         printSubheader("Inspecting Complex Blueprint (player)");
-        auto playerDef = blueprintFactory->getBlueprint("player");
+        auto playerDef = blueprintFactory.getBlueprint("player");
         if (playerDef) {
             printBlueprintDef(*playerDef);
         }
 
         printSubheader("Inspecting Inherited Blueprint (flying_enemy)");
-        auto flyingDef = blueprintFactory->getBlueprint("flying_enemy");
+        auto flyingDef = blueprintFactory.getBlueprint("flying_enemy");
         if (flyingDef) {
             printBlueprintDef(*flyingDef);
             std::println("\nNote: This blueprint inherits from 'base_enemy'");
@@ -293,16 +285,16 @@ int main() {
 
         printSubheader("create(name, x, y)");
         std::println("Creating static platform at (100, 50)...");
-        Entity platform1 = blueprintFactory->create("static_platform", 100.0f, 50.0f);
-        if (entitySystem->isValid(platform1)) {
+        Entity platform1 = blueprintFactory.create("static_platform", 100.0f, 50.0f);
+        if (entitySystem.isValid(platform1)) {
             std::println("  Created entity: {} (valid)", "platform1");
             createdEntities.push_back(platform1);
 
-            if (auto* transform = entitySystem->tryGet<Transform2D>(platform1)) {
+            if (auto* transform = entitySystem.tryGet<Transform2D>(platform1)) {
                 std::println("  Transform: ({:.1f}, {:.1f})", transform->x, transform->y);
             }
-            if (physicsSystem->hasBody(platform1)) {
-                auto bodySize = physicsSystem->getBodySize(platform1);
+            if (physicsSystem.hasBody(platform1)) {
+                auto bodySize = physicsSystem.getBodySize(platform1);
                 std::println("  Physics body size: {:.1f} x {:.1f}", bodySize.x, bodySize.y);
             }
         } else {
@@ -311,13 +303,13 @@ int main() {
 
         printSubheader("create(name, x, y, width, height)");
         std::println("Creating crate at (200, 100) with size 60x60...");
-        Entity crate = blueprintFactory->create("crate", 200.0f, 100.0f, 60.0f, 60.0f);
-        if (entitySystem->isValid(crate)) {
+        Entity crate = blueprintFactory.create("crate", 200.0f, 100.0f, 60.0f, 60.0f);
+        if (entitySystem.isValid(crate)) {
             std::println("  Created entity: crate (valid)");
             createdEntities.push_back(crate);
 
-            if (physicsSystem->hasBody(crate)) {
-                auto bodySize = physicsSystem->getBodySize(crate);
+            if (physicsSystem.hasBody(crate)) {
+                auto bodySize = physicsSystem.getBodySize(crate);
                 std::println("  Physics body size (overridden): {:.1f} x {:.1f}", bodySize.x, bodySize.y);
             }
         }
@@ -329,12 +321,12 @@ int main() {
         overrides["DebugRect.fillColor"] = std::vector<double>{0, 255, 0, 255}; // Green
         overrides["metadata.health"] = 15.0; // Lower health
 
-        Entity fastEnemy = blueprintFactory->create("fast_enemy", 300.0f, 150.0f, overrides);
-        if (entitySystem->isValid(fastEnemy)) {
+        Entity fastEnemy = blueprintFactory.create("fast_enemy", 300.0f, 150.0f, overrides);
+        if (entitySystem.isValid(fastEnemy)) {
             std::println("  Created entity: fast_enemy (valid)");
             createdEntities.push_back(fastEnemy);
 
-            if (auto* rect = entitySystem->tryGet<DebugRect>(fastEnemy)) {
+            if (auto* rect = entitySystem.tryGet<DebugRect>(fastEnemy)) {
                 std::println("  DebugRect fillColor: ({}, {}, {}, {})",
                     rect->fillColor.r, rect->fillColor.g,
                     rect->fillColor.b, rect->fillColor.a);
@@ -348,16 +340,16 @@ int main() {
         PropertyMap playerOverrides;
         playerOverrides["DebugRect.fillColor"] = std::vector<double>{255, 0, 255, 255}; // Magenta
 
-        Entity player = blueprintFactory->create("player", 400.0f, 200.0f, 40.0f, 60.0f, playerOverrides);
-        if (entitySystem->isValid(player)) {
+        Entity player = blueprintFactory.create("player", 400.0f, 200.0f, 40.0f, 60.0f, playerOverrides);
+        if (entitySystem.isValid(player)) {
             std::println("  Created entity: player (valid)");
             createdEntities.push_back(player);
 
-            if (physicsSystem->hasBody(player)) {
-                auto bodySize = physicsSystem->getBodySize(player);
+            if (physicsSystem.hasBody(player)) {
+                auto bodySize = physicsSystem.getBodySize(player);
                 std::println("  Physics body size (overridden): {:.1f} x {:.1f}", bodySize.x, bodySize.y);
             }
-            if (auto* rect = entitySystem->tryGet<DebugRect>(player)) {
+            if (auto* rect = entitySystem.tryGet<DebugRect>(player)) {
                 std::println("  DebugRect fillColor: ({}, {}, {}, {})",
                     rect->fillColor.r, rect->fillColor.g,
                     rect->fillColor.b, rect->fillColor.a);
@@ -371,24 +363,24 @@ int main() {
         printSectionHeader("DEMO 5: Blueprint Inheritance");
 
         printSubheader("Creating Base Enemy");
-        Entity baseEnemy = blueprintFactory->create("base_enemy", 100.0f, 300.0f);
-        if (entitySystem->isValid(baseEnemy)) {
+        Entity baseEnemy = blueprintFactory.create("base_enemy", 100.0f, 300.0f);
+        if (entitySystem.isValid(baseEnemy)) {
             std::println("  Created base_enemy entity (valid)");
             createdEntities.push_back(baseEnemy);
 
-            if (auto* rect = entitySystem->tryGet<DebugRect>(baseEnemy)) {
+            if (auto* rect = entitySystem.tryGet<DebugRect>(baseEnemy)) {
                 std::println("  Color: ({}, {}, {}) - Should be RED",
                     rect->fillColor.r, rect->fillColor.g, rect->fillColor.b);
             }
         }
 
         printSubheader("Creating Fast Enemy (inherits from base_enemy)");
-        Entity fastEnemy2 = blueprintFactory->create("fast_enemy", 200.0f, 300.0f);
-        if (entitySystem->isValid(fastEnemy2)) {
+        Entity fastEnemy2 = blueprintFactory.create("fast_enemy", 200.0f, 300.0f);
+        if (entitySystem.isValid(fastEnemy2)) {
             std::println("  Created fast_enemy entity (valid)");
             createdEntities.push_back(fastEnemy2);
 
-            if (auto* rect = entitySystem->tryGet<DebugRect>(fastEnemy2)) {
+            if (auto* rect = entitySystem.tryGet<DebugRect>(fastEnemy2)) {
                 std::println("  Color: ({}, {}, {}) - Should be ORANGE (overridden)",
                     rect->fillColor.r, rect->fillColor.g, rect->fillColor.b);
                 std::println("  Size: {:.1f} x {:.1f} - Should be 32x32 (inherited)",
@@ -397,31 +389,31 @@ int main() {
         }
 
         printSubheader("Creating Flying Enemy (inherits from base_enemy, replaces DebugRect with DebugCircle)");
-        Entity flyingEnemy = blueprintFactory->create("flying_enemy", 300.0f, 300.0f);
-        if (entitySystem->isValid(flyingEnemy)) {
+        Entity flyingEnemy = blueprintFactory.create("flying_enemy", 300.0f, 300.0f);
+        if (entitySystem.isValid(flyingEnemy)) {
             std::println("  Created flying_enemy entity (valid)");
             createdEntities.push_back(flyingEnemy);
 
-            if (auto* circle = entitySystem->tryGet<DebugCircle>(flyingEnemy)) {
+            if (auto* circle = entitySystem.tryGet<DebugCircle>(flyingEnemy)) {
                 std::println("  Shape: DebugCircle (replaced DebugRect)");
                 std::println("  Radius: {:.1f}", circle->radius);
                 std::println("  Color: ({}, {}, {}) - Should be PURPLE",
                     circle->fillColor.r, circle->fillColor.g, circle->fillColor.b);
             }
-            if (physicsSystem->hasBody(flyingEnemy)) {
-                auto bodyType = physicsSystem->getBodyType(flyingEnemy);
+            if (physicsSystem.hasBody(flyingEnemy)) {
+                auto bodyType = physicsSystem.getBodyType(flyingEnemy);
                 std::println("  Body Type: {} (should be Kinematic, overridden from Dynamic)",
                     static_cast<int>(bodyType));
             }
         }
 
         printSubheader("Creating Tank Enemy (inherits from base_enemy, larger size)");
-        Entity tankEnemy = blueprintFactory->create("tank_enemy", 400.0f, 300.0f);
-        if (entitySystem->isValid(tankEnemy)) {
+        Entity tankEnemy = blueprintFactory.create("tank_enemy", 400.0f, 300.0f);
+        if (entitySystem.isValid(tankEnemy)) {
             std::println("  Created tank_enemy entity (valid)");
             createdEntities.push_back(tankEnemy);
 
-            if (auto* rect = entitySystem->tryGet<DebugRect>(tankEnemy)) {
+            if (auto* rect = entitySystem.tryGet<DebugRect>(tankEnemy)) {
                 std::println("  Size: {:.1f} x {:.1f} - Should be 64x64 (overridden)",
                     rect->size.x, rect->size.y);
                 std::println("  Color: ({}, {}, {}) - Should be DARK RED",
@@ -436,21 +428,21 @@ int main() {
         printSectionHeader("DEMO 6: Physics Configuration");
 
         printSubheader("Static Body (platform)");
-        if (entitySystem->isValid(platform1) && physicsSystem->hasBody(platform1)) {
-            auto bodyType = physicsSystem->getBodyType(platform1);
-            auto vel = physicsSystem->getVelocity(platform1);
+        if (entitySystem.isValid(platform1) && physicsSystem.hasBody(platform1)) {
+            auto bodyType = physicsSystem.getBodyType(platform1);
+            auto vel = physicsSystem.getVelocity(platform1);
             std::println("  Body Type: {} (0=Static)", static_cast<int>(bodyType));
             std::println("  Velocity: ({:.2f}, {:.2f})", vel.x, vel.y);
         }
 
         printSubheader("Dynamic Body with High Restitution (bouncy_ball)");
-        Entity bouncyBall = blueprintFactory->create("bouncy_ball", 500.0f, 400.0f);
-        if (entitySystem->isValid(bouncyBall)) {
+        Entity bouncyBall = blueprintFactory.create("bouncy_ball", 500.0f, 400.0f);
+        if (entitySystem.isValid(bouncyBall)) {
             std::println("  Created bouncy_ball entity (valid)");
             createdEntities.push_back(bouncyBall);
 
-            if (physicsSystem->hasBody(bouncyBall)) {
-                auto bodyType = physicsSystem->getBodyType(bouncyBall);
+            if (physicsSystem.hasBody(bouncyBall)) {
+                auto bodyType = physicsSystem.getBodyType(bouncyBall);
                 std::println("  Body Type: {} (1=Dynamic)", static_cast<int>(bodyType));
                 std::println("  Restitution: 0.95 (very bouncy, defined in Lua)");
                 std::println("  Fixed Rotation: false (can rotate)");
@@ -458,12 +450,12 @@ int main() {
         }
 
         printSubheader("Sensor Body (coin)");
-        Entity coin = blueprintFactory->create("coin", 600.0f, 450.0f);
-        if (entitySystem->isValid(coin)) {
+        Entity coin = blueprintFactory.create("coin", 600.0f, 450.0f);
+        if (entitySystem.isValid(coin)) {
             std::println("  Created coin entity (valid)");
             createdEntities.push_back(coin);
 
-            if (physicsSystem->hasBody(coin)) {
+            if (physicsSystem.hasBody(coin)) {
                 std::println("  Is Sensor: true (no collision response)");
                 std::println("  Used for trigger volumes and collectibles");
             }
@@ -476,7 +468,7 @@ int main() {
         printSectionHeader("DEMO 7: Metadata Inspection");
 
         printSubheader("Examining Player Metadata");
-        auto playerDefMeta = blueprintFactory->getBlueprint("player");
+        auto playerDefMeta = blueprintFactory.getBlueprint("player");
         if (playerDefMeta && !playerDefMeta->metadata.empty()) {
             std::println("Player blueprint metadata:");
             for (const auto& [key, value] : playerDefMeta->metadata) {
@@ -486,7 +478,7 @@ int main() {
         }
 
         printSubheader("Examining Tank Enemy Metadata");
-        auto tankDefMeta = blueprintFactory->getBlueprint("tank_enemy");
+        auto tankDefMeta = blueprintFactory.getBlueprint("tank_enemy");
         if (tankDefMeta && !tankDefMeta->metadata.empty()) {
             std::println("Tank enemy blueprint metadata:");
             for (const auto& [key, value] : tankDefMeta->metadata) {
@@ -503,20 +495,20 @@ int main() {
         printSectionHeader("DEMO 8: Blueprint Reloading (Hot Reload Simulation)");
 
         std::println("Clearing all blueprints...");
-        blueprintFactory->clearBlueprints();
+        blueprintFactory.clearBlueprints();
 
-        auto namesAfterClear = blueprintFactory->getBlueprintNames();
+        auto namesAfterClear = blueprintFactory.getBlueprintNames();
         std::println("  Blueprints after clear: {}", namesAfterClear.size());
         std::println("  hasBlueprint(\"player\"): {}",
-            blueprintFactory->hasBlueprint("player") ? "YES" : "NO");
+            blueprintFactory.hasBlueprint("player") ? "YES" : "NO");
 
         std::println("\nReloading blueprints from cached source...");
-        blueprintFactory->reloadBlueprints();
+        blueprintFactory.reloadBlueprints();
 
-        auto namesAfterReload = blueprintFactory->getBlueprintNames();
+        auto namesAfterReload = blueprintFactory.getBlueprintNames();
         std::println("  Blueprints after reload: {}", namesAfterReload.size());
         std::println("  hasBlueprint(\"player\"): {}",
-            blueprintFactory->hasBlueprint("player") ? "YES" : "NO");
+            blueprintFactory.hasBlueprint("player") ? "YES" : "NO");
 
         std::println("\nHot reload would allow you to edit blueprints.lua");
         std::println("and see changes immediately without restarting the game!");
@@ -528,25 +520,25 @@ int main() {
         printSectionHeader("DEMO 9: Edge Cases and Error Handling");
 
         printSubheader("Creating Entity from Non-Existent Blueprint");
-        Entity invalid = blueprintFactory->create("doesnt_exist", 100.0f, 100.0f);
+        Entity invalid = blueprintFactory.create("doesnt_exist", 100.0f, 100.0f);
         std::println("  Result: {} (should be invalid/null)",
-            entitySystem->isValid(invalid) ? "VALID" : "INVALID");
+            entitySystem.isValid(invalid) ? "VALID" : "INVALID");
 
         printSubheader("Creating Minimal Blueprint (marker)");
-        Entity marker = blueprintFactory->create("marker", 700.0f, 500.0f);
-        if (entitySystem->isValid(marker)) {
+        Entity marker = blueprintFactory.create("marker", 700.0f, 500.0f);
+        if (entitySystem.isValid(marker)) {
             std::println("  Created marker entity (valid)");
             std::println("  This blueprint has no components, just a position");
             createdEntities.push_back(marker);
         }
 
         printSubheader("Creating Blueprint with DebugLine");
-        Entity debugLine = blueprintFactory->create("debug_line", 800.0f, 550.0f);
-        if (entitySystem->isValid(debugLine)) {
+        Entity debugLine = blueprintFactory.create("debug_line", 800.0f, 550.0f);
+        if (entitySystem.isValid(debugLine)) {
             std::println("  Created debug_line entity (valid)");
             createdEntities.push_back(debugLine);
 
-            if (auto* line = entitySystem->tryGet<DebugLine>(debugLine)) {
+            if (auto* line = entitySystem.tryGet<DebugLine>(debugLine)) {
                 std::println("  Line end offset: ({:.1f}, {:.1f})",
                     line->endOffset.x, line->endOffset.y);
             }
@@ -559,7 +551,7 @@ int main() {
         printSectionHeader("DEMO COMPLETE - Summary");
 
         std::println("Total entities created: {}", createdEntities.size());
-        std::println("Total blueprints loaded: {}", blueprintFactory->getBlueprintNames().size());
+        std::println("Total blueprints loaded: {}", blueprintFactory.getBlueprintNames().size());
         std::println("\nAll IBlueprintFactory API methods demonstrated:");
         std::println("  [X] loadBlueprints(luaSource)");
         std::println("  [X] reloadBlueprints()");

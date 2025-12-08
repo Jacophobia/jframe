@@ -21,11 +21,9 @@ target_link_libraries(bestow-dev
         efsw::efsw
         glfw
         glad::glad
-        ${LUA_LIBRARIES}
+        lua
         sol2::sol2
 )
-
-target_include_directories(bestow-dev PRIVATE ${LUA_INCLUDE_DIR})
 
 target_compile_definitions(bestow-dev PUBLIC BESTOW_DEV_TOOLS)
 

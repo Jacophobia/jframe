@@ -6,6 +6,7 @@
 #include <string>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.events;
 import bestow.events.impl;
@@ -16,10 +17,11 @@ namespace bestow::tests {
 class EventSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        eventSystem_ = createEventSystem();
+        eventSystem_ = &container_.service<EventSystemService>();
     }
 
-    std::unique_ptr<IEventSystem> eventSystem_;
+    kgr::container container_;
+    IEventSystem* eventSystem_ = nullptr;
 };
 
 TEST_F(EventSystemTest, SubscribeAndPublish) {
@@ -468,6 +470,90 @@ TEST_F(EventSystemTest, LargeQueueSize) {
 
     EXPECT_EQ(callCount, QUEUE_SIZE);
     EXPECT_EQ(eventSystem_->queueSize(), 0);
+}
+
+//==============================================================================
+// KANGARU DI INTEGRATION TESTS
+//==============================================================================
+
+TEST(EventSystemKangaruTest, ServiceInstantiation) {
+    // Test that EventSystemService can be instantiated via Kangaru
+    kgr::container container;
+
+    // Verify the service can be invoked
+    auto& eventSystem = container.service<EventSystemService>();
+
+    // Verify it's the same instance (singleton behavior)
+    auto& eventSystem2 = container.service<EventSystemService>();
+    EXPECT_EQ(&eventSystem, &eventSystem2);
+}
+
+TEST(EventSystemKangaruTest, ServiceFunctionality) {
+    // Test that the service instance works correctly
+    kgr::container container;
+    auto& eventSystem = container.service<EventSystemService>();
+
+    // Test basic subscribe/publish functionality
+    bool called = false;
+    auto id = eventSystem.subscribe("test_event", [&](const EventData& data) {
+        called = true;
+    });
+
+    EXPECT_FALSE(called);
+
+    eventSystem.publish("test_event", EntityEventData{});
+    EXPECT_TRUE(called);
+
+    eventSystem.unsubscribe(id);
+}
+
+TEST(EventSystemKangaruTest, ServiceQueueFunctionality) {
+    // Test queue operations through DI
+    kgr::container container;
+    auto& eventSystem = container.service<EventSystemService>();
+
+    int callCount = 0;
+    eventSystem.subscribe("queued_event", [&](const EventData& data) {
+        callCount++;
+    });
+
+    eventSystem.queue("queued_event", EntityEventData{});
+    eventSystem.queue("queued_event", EntityEventData{});
+
+    EXPECT_EQ(callCount, 0);
+    EXPECT_EQ(eventSystem.queueSize(), 2);
+
+    eventSystem.processQueue();
+
+    EXPECT_EQ(callCount, 2);
+    EXPECT_EQ(eventSystem.queueSize(), 0);
+}
+
+TEST(EventSystemKangaruTest, MultipleContainers) {
+    // Test that different containers have different singleton instances
+    kgr::container container1;
+    kgr::container container2;
+
+    auto& eventSystem1 = container1.service<EventSystemService>();
+    auto& eventSystem2 = container2.service<EventSystemService>();
+
+    // Different containers should have different instances
+    EXPECT_NE(&eventSystem1, &eventSystem2);
+
+    // Each should maintain separate state
+    int count1 = 0;
+    int count2 = 0;
+
+    eventSystem1.subscribe("test", [&](const EventData&) { count1++; });
+    eventSystem2.subscribe("test", [&](const EventData&) { count2++; });
+
+    eventSystem1.publish("test", EntityEventData{});
+    EXPECT_EQ(count1, 1);
+    EXPECT_EQ(count2, 0);
+
+    eventSystem2.publish("test", EntityEventData{});
+    EXPECT_EQ(count1, 1);
+    EXPECT_EQ(count2, 1);
 }
 
 }  // namespace bestow::tests

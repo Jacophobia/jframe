@@ -12,7 +12,7 @@ module bestow.core;
 import bestow.events.impl;
 import bestow.entity.impl;
 import bestow.physics.impl;
-import bestow.graphics.impl;
+import bestow.opengl.impl;
 import bestow.audio.impl;
 import bestow.input.impl;
 import bestow.assets.impl;
@@ -34,7 +34,7 @@ struct Engine::Impl {
     std::unique_ptr<EventSystem> events;
     std::unique_ptr<EntitySystem> entities;
     std::unique_ptr<Box2DPhysicsSystem> physics;
-    std::unique_ptr<GraphicsSystem> graphics;
+    std::unique_ptr<OpenGLGraphicsSystem> graphics;
     std::unique_ptr<FMODAudioSystem> audio;
     std::unique_ptr<InputSystem> input;
     std::unique_ptr<AssetSystem> assets;
@@ -62,7 +62,7 @@ struct EngineBuilder::Impl {
     std::unique_ptr<EventSystem> events;
     std::unique_ptr<EntitySystem> entities;
     std::unique_ptr<Box2DPhysicsSystem> physics;
-    std::unique_ptr<GraphicsSystem> graphics;
+    std::unique_ptr<OpenGLGraphicsSystem> graphics;
     std::unique_ptr<FMODAudioSystem> audio;
     std::unique_ptr<InputSystem> input;
     std::unique_ptr<AssetSystem> assets;
@@ -194,7 +194,7 @@ std::expected<Engine, std::string> EngineBuilder::build() {
 
     // Phase 3: Graphics (needs to create window first)
     if (impl_->enableGraphics) {
-        impl_->graphics = std::make_unique<GraphicsSystem>();
+        impl_->graphics = std::make_unique<OpenGLGraphicsSystem>();
         auto& cfg = impl_->graphicsConfig.value();
         if (!impl_->graphics->initialize(cfg.width, cfg.height, cfg.title)) {
             return std::unexpected("Failed to initialize graphics system");

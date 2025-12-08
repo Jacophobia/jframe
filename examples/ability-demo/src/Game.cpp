@@ -33,7 +33,7 @@ bool Game::initialize(bestow::core::Engine& engine) {
     auto& sys = engine.systems();
 
     // Initialize config system
-    config_ = bestow::createConfigSystem();
+    config_ = std::make_unique<bestow::ConfigSystem>();
     config_->initialize();
     if (!config_->loadConfig("data/config/player.lua")) {
         bestow::core::logWarn("Could not load player config, using defaults");
@@ -47,7 +47,7 @@ bool Game::initialize(bestow::core::Engine& engine) {
     staminaRegenRate_ = config_->getFloatOr("staminaRegen", 20.0f);
 
     // Create the GAS system (it's separate from BestowEngine)
-    gas_ = bestow::createGASSystem();
+    gas_ = std::make_unique<bestow::GASSystem>();
     if (!gas_) {
         bestow::core::logError("Failed to create GAS system");
         return false;
@@ -79,7 +79,7 @@ bool Game::initialize(bestow::core::Engine& engine) {
     playMusic("musicExploration");
 
     // Setup camera system (using the new bestow camera module)
-    camera_ = bestow::createCameraSystem(bestow::Size{800, 600});
+    camera_ = std::make_unique<bestow::CameraSystem>(bestow::Size{800, 600});
     // Smoothing: 0.0 = instant snap, 0.9 = very slow following
     // Values > 1.0 are clamped to 1.0 which means NO movement!
     camera_->setFollowSmoothing(0.1f);
@@ -287,7 +287,7 @@ void Game::setupAudio() {
     auto& sys = engine_->systems();
 
     // Load audio config
-    audioConfig_ = bestow::createConfigSystem();
+    audioConfig_ = std::make_unique<bestow::ConfigSystem>();
     audioConfig_->initialize();
     if (!audioConfig_->loadConfig("data/config/audio.lua")) {
         bestow::core::logWarn("Could not load audio config, sounds disabled");
@@ -547,7 +547,7 @@ void Game::setupBlueprints() {
     auto& sys = engine_->systems();
 
     // Create the blueprint factory with entity and physics systems
-    blueprints_ = bestow::createBlueprintFactory(*sys.entities, sys.physics);
+    blueprints_ = std::make_unique<bestow::BlueprintFactory>(*sys.entities, sys.physics);
 
     // Helper functions for safe any_cast
     auto safeGetInt = [](const bestow::PropertyMap& props, const std::string& key, int defaultVal) -> int {

@@ -15,6 +15,7 @@ target_link_libraries(bestow-level
         bestow-assets
         lua
         sol2::sol2
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-level PUBLIC cxx_std_23)

@@ -26,7 +26,7 @@ bool Game::initialize(bestow::core::Engine& engine) {
     bestow::core::logInfo("Initializing platformer demo");
 
     // Initialize config system
-    config_ = bestow::createConfigSystem();
+    config_ = std::make_unique<bestow::ConfigSystem>();
     config_->initialize();
     if (!config_->loadConfig("data/config/game.lua")) {
         bestow::core::logError("Failed to load game config");

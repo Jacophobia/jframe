@@ -8,12 +8,14 @@ module;
 // The actual nlohmann/json include is in AssetSystem.cpp.
 
 #include <cstddef>  // For size_t
+#include <kangaru/kangaru.hpp>
 
 export module bestow.assets.impl;
 
 import std;
 import bestow.assets;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -150,9 +152,8 @@ private:
     UUID nextUUID_ = 1;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IAssetSystem> createAssetSystem() {
-    return std::make_unique<AssetSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides AssetSystem as IAssetSystem
+struct AssetSystemService : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {};
 
 }  // namespace bestow

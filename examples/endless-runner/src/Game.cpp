@@ -21,7 +21,7 @@ bool Game::initialize(bestow::core::Engine& engine) {
     auto& sys = engine.systems();
     bestow::core::logInfo("Initializing endless runner");
 
-    config_ = bestow::createConfigSystem();
+    config_ = std::make_unique<bestow::ConfigSystem>();
     config_->initialize();
     if (!config_->loadConfig("data/config/game.lua")) {
         bestow::core::logError("Failed to load game config");

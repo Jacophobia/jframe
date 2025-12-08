@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <GLFW/glfw3.h>
 #include <SDL.h>
 
@@ -11,6 +12,7 @@ export module bestow.input.impl;
 import std;
 import bestow.input;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -96,9 +98,8 @@ private:
     bool sdlInitialized_ = false;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IInputSystem> createInputSystem() {
-    return std::make_unique<InputSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides InputSystem as IInputSystem
+struct InputSystemService : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {};
 
 }  // namespace bestow

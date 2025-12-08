@@ -624,6 +624,37 @@ Assign these to 2 different agents simultaneously:
 - Single agent: Core Engine composition
 - Single agent: Platformer example game
 
+### Searching and Research
+
+**Always use explore agents for searching instead of searching directly.** When you need to:
+
+- Search the codebase for specific patterns, files, or implementations
+- Understand how a feature works across multiple files
+- Research external documentation or web resources
+- Find all usages of a function, class, or pattern
+
+Use the Task tool with `subagent_type=Explore` (for codebase exploration) or appropriate web search agents instead of manually running grep/glob commands. This approach:
+
+- **Reduces context usage** - Agents return summarized findings rather than raw search results
+- **Improves accuracy** - Agents can iteratively refine searches based on initial results
+- **Saves time** - Let the agent handle multiple rounds of searching automatically
+- **Maintains focus** - Keep your working context clean for implementation work
+
+Example:
+```
+// Instead of:
+Grep pattern="handleCollision" path="bestow-physics"
+Read file1.cpp
+Read file2.cpp
+Grep pattern="collision" type="cpp"
+
+// Do this:
+Task {
+  subagent_type: "Explore",
+  prompt: "Find all collision handling code in the physics system..."
+}
+```
+
 ### Monitoring Progress
 
 Check these indicators for each system:

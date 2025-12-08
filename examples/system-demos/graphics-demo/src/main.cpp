@@ -8,7 +8,7 @@
 import std;
 import bestow;
 import bestow.graphics;
-import bestow.graphics.impl;
+import bestow.opengl.impl;
 import bestow.entity;
 import bestow.entity.impl;
 import bestow.types;
@@ -305,7 +305,7 @@ int main() {
 
     try {
         // Create the graphics system implementation directly
-        auto graphics = std::make_unique<GraphicsSystem>();
+        auto graphics = std::make_unique<OpenGLGraphicsSystem>();
 
         // Initialize with a window
         if (!graphics->initialize(800, 600, "Graphics Demo - Bestow")) {

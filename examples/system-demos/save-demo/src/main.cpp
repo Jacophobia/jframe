@@ -1,6 +1,8 @@
 // save-demo/src/main.cpp
 // Comprehensive demonstration of the Bestow Save System API
 
+#include <kangaru/kangaru.hpp>
+
 import std;
 import bestow.types;
 import bestow.save;
@@ -243,8 +245,9 @@ int main() {
     std::println("Bestow Save System Demo");
     std::println("Comprehensive demonstration of ISaveSystem API\n");
 
-    // Create save system
-    auto saveSystem = bestow::createSaveSystem();
+    // Create save system using Kangaru DI
+    kgr::container container;
+    auto& saveSystem = container.service<SaveSystemService>();
 
     // Create saveable objects
     PlayerData player;
@@ -288,14 +291,14 @@ int main() {
 
     // Register saveables
     std::println("\n>> Registering saveable objects...");
-    saveSystem->registerSaveable(&player);
-    saveSystem->registerSaveable(&progress);
-    saveSystem->registerSaveable(&settings);
+    saveSystem.registerSaveable(&player);
+    saveSystem.registerSaveable(&progress);
+    saveSystem.registerSaveable(&settings);
     std::println("   Registered 3 saveable objects");
 
     // Save to slot 0
     std::println("\n>> Saving to slot 0...");
-    auto saveResult = saveSystem->save(0, "My First Save");
+    auto saveResult = saveSystem.save(0, "My First Save");
     if (saveResult.has_value()) {
         std::println("   Save successful!");
     } else {
@@ -316,7 +319,7 @@ int main() {
 
     // Load from slot 0
     std::println("\n>> Loading from slot 0...");
-    auto loadResult = saveSystem->load(0);
+    auto loadResult = saveSystem.load(0);
     if (loadResult.has_value()) {
         std::println("   Load successful!");
     } else {
@@ -346,7 +349,7 @@ int main() {
     progress.collectiblesFound = 5;
 
     std::println(">> Saving to slot 1: Beginner Save");
-    saveSystem->save(1, "Beginner Save");
+    saveSystem.save(1, "Beginner Save");
     std::println("   Player: {}, Level {}", player.name, player.level);
 
     // Save 2: Mid-game
@@ -357,7 +360,7 @@ int main() {
     progress.collectiblesFound = 55;
 
     std::println("\n>> Saving to slot 2: Mid-game Save");
-    saveSystem->save(2, "Mid-game Save");
+    saveSystem.save(2, "Mid-game Save");
     std::println("   Player: {}, Level {}", player.name, player.level);
 
     // Save 3: End-game
@@ -370,16 +373,16 @@ int main() {
                                      "Master", "Legend", "Completionist"};
 
     std::println("\n>> Saving to slot 3: End-game Save");
-    saveSystem->save(3, "End-game Save");
+    saveSystem.save(3, "End-game Save");
     std::println("   Player: {}, Level {}", player.name, player.level);
 
     // Test loading from different slots
     std::println("\n>> Testing load from slot 1...");
-    saveSystem->load(1);
+    saveSystem.load(1);
     std::println("   Loaded: {}, Level {}", player.name, player.level);
 
     std::println("\n>> Testing load from slot 3...");
-    saveSystem->load(3);
+    saveSystem.load(3);
     std::println("   Loaded: {}, Level {}", player.name, player.level);
 
     //==========================================================================
@@ -397,7 +400,7 @@ int main() {
     std::println("  Position: ({:.2f}, {:.2f})", player.positionX, player.positionY);
 
     std::println("\n>> Performing quick save...");
-    saveSystem->quickSave();
+    saveSystem.quickSave();
     std::println("   Quick save created (slot: {})", SaveSlots::QuickSave);
 
     // Modify state
@@ -411,7 +414,7 @@ int main() {
     std::println("  Position: ({:.2f}, {:.2f})", player.positionX, player.positionY);
 
     std::println("\n>> Performing quick load...");
-    saveSystem->quickLoad();
+    saveSystem.quickLoad();
     std::println("   State restored from quick save");
 
     std::println("\nRestored state:");
@@ -429,13 +432,13 @@ int main() {
     player.level = 10;
 
     std::println(">> Enabling auto-save (interval: 5 seconds)");
-    saveSystem->enableAutoSave(std::chrono::seconds(5));
+    saveSystem.enableAutoSave(std::chrono::seconds(5));
     std::println("   Auto-save enabled");
 
     std::println("\n>> Simulating game updates...");
     for (int i = 0; i < 8; ++i) {
         // Simulate 1-second updates
-        saveSystem->update(1.0f);
+        saveSystem.update(1.0f);
         player.experience += 100;
 
         if (i == 0 || i == 4 || i == 7) {
@@ -444,22 +447,22 @@ int main() {
     }
 
     std::println("\n>> Checking if auto-save was triggered...");
-    if (saveSystem->saveExists(SaveSlots::AutoSave)) {
+    if (saveSystem.saveExists(SaveSlots::AutoSave)) {
         std::println("   Auto-save file exists!");
 
         // Load auto-save to verify
         player.experience = 0; // Reset
-        saveSystem->load(SaveSlots::AutoSave);
+        saveSystem.load(SaveSlots::AutoSave);
         std::println("   Loaded auto-save: Experience = {}", player.experience);
     }
 
     std::println("\n>> Disabling auto-save...");
-    saveSystem->disableAutoSave();
+    saveSystem.disableAutoSave();
     std::println("   Auto-save disabled");
 
     std::println("\n>> Manual auto-save trigger...");
     player.experience = 12345;
-    saveSystem->autoSave();
+    saveSystem.autoSave();
     std::println("   Auto-save manually triggered");
 
     //==========================================================================
@@ -471,12 +474,12 @@ int main() {
 
     std::println(">> Checking if saves exist:");
     for (SaveSlot slot : {0, 1, 2, 3, 4, 99}) {
-        bool exists = saveSystem->saveExists(slot);
+        bool exists = saveSystem.saveExists(slot);
         std::println("   Slot {}: {}", slot, exists ? "EXISTS" : "NOT FOUND");
     }
 
     std::println("\n>> Getting metadata for slot 0:");
-    auto meta0 = saveSystem->getSaveMetadata(0);
+    auto meta0 = saveSystem.getSaveMetadata(0);
     if (meta0) {
         printMetadata(*meta0);
     } else {
@@ -484,7 +487,7 @@ int main() {
     }
 
     std::println("\n>> Getting metadata for slot 2:");
-    auto meta2 = saveSystem->getSaveMetadata(2);
+    auto meta2 = saveSystem.getSaveMetadata(2);
     if (meta2) {
         printMetadata(*meta2);
     } else {
@@ -492,7 +495,7 @@ int main() {
     }
 
     std::println("\n>> Getting all save metadata:");
-    auto allMeta = saveSystem->getAllSaveMetadata();
+    auto allMeta = saveSystem.getAllSaveMetadata();
     std::println("   Found {} save files", allMeta.size());
     for (const auto& meta : allMeta) {
         std::println("\n   Slot {}:", meta.slot);
@@ -511,39 +514,39 @@ int main() {
     std::println("Testing profile management...\n");
 
     std::println(">> Current active profile:");
-    std::println("   {}", saveSystem->getActiveProfile());
+    std::println("   {}", saveSystem.getActiveProfile());
 
     std::println("\n>> Listing all profiles:");
-    auto profiles = saveSystem->getProfiles();
+    auto profiles = saveSystem.getProfiles();
     for (const auto& profile : profiles) {
         std::println("   - {}", profile);
     }
 
     // Switch to a new profile
     std::println("\n>> Creating and switching to 'player2' profile...");
-    saveSystem->setActiveProfile("player2");
-    std::println("   Active profile: {}", saveSystem->getActiveProfile());
+    saveSystem.setActiveProfile("player2");
+    std::println("   Active profile: {}", saveSystem.getActiveProfile());
 
     // Save in new profile
     player.name = "Player 2 Character";
     player.level = 3;
     std::println("\n>> Saving to slot 0 in player2 profile...");
-    saveSystem->save(0, "Player 2 Save");
+    saveSystem.save(0, "Player 2 Save");
     std::println("   Saved: {}, Level {}", player.name, player.level);
 
     // Switch back to default profile
     std::println("\n>> Switching back to 'default' profile...");
-    saveSystem->setActiveProfile("default");
-    std::println("   Active profile: {}", saveSystem->getActiveProfile());
+    saveSystem.setActiveProfile("default");
+    std::println("   Active profile: {}", saveSystem.getActiveProfile());
 
     // Load from default profile (should be different)
     std::println("\n>> Loading slot 0 from default profile...");
-    saveSystem->load(0);
+    saveSystem.load(0);
     std::println("   Loaded: {}, Level {}", player.name, player.level);
 
     // List profiles again
     std::println("\n>> Listing all profiles after creation:");
-    profiles = saveSystem->getProfiles();
+    profiles = saveSystem.getProfiles();
     for (const auto& profile : profiles) {
         std::println("   - {}", profile);
     }
@@ -556,7 +559,7 @@ int main() {
     std::println("Testing error conditions...\n");
 
     std::println(">> Attempting to load non-existent save (slot 999):");
-    auto loadError = saveSystem->load(999);
+    auto loadError = saveSystem.load(999);
     if (!loadError.has_value()) {
         printError("Load", loadError.error());
     } else {
@@ -564,7 +567,7 @@ int main() {
     }
 
     std::println("\n>> Attempting to get metadata for non-existent save:");
-    auto metaError = saveSystem->getSaveMetadata(999);
+    auto metaError = saveSystem.getSaveMetadata(999);
     if (!metaError) {
         std::println("   Correctly returned std::nullopt");
     } else {
@@ -581,21 +584,21 @@ int main() {
     std::println(">> Saves before deletion:");
     for (SaveSlot slot : {0, 1, 2, 3}) {
         std::println("   Slot {}: {}", slot,
-            saveSystem->saveExists(slot) ? "EXISTS" : "NOT FOUND");
+            saveSystem.saveExists(slot) ? "EXISTS" : "NOT FOUND");
     }
 
     std::println("\n>> Deleting save in slot 1...");
-    bool deleted = saveSystem->deleteSave(1);
+    bool deleted = saveSystem.deleteSave(1);
     std::println("   Deletion {}", deleted ? "SUCCESSFUL" : "FAILED");
 
     std::println("\n>> Saves after deletion:");
     for (SaveSlot slot : {0, 1, 2, 3}) {
         std::println("   Slot {}: {}", slot,
-            saveSystem->saveExists(slot) ? "EXISTS" : "NOT FOUND");
+            saveSystem.saveExists(slot) ? "EXISTS" : "NOT FOUND");
     }
 
     std::println("\n>> Attempting to delete non-existent save (slot 999):");
-    deleted = saveSystem->deleteSave(999);
+    deleted = saveSystem.deleteSave(999);
     std::println("   Result: {}", deleted ? "SUCCESSFUL" : "FAILED (as expected)");
 
     //==========================================================================
@@ -611,22 +614,22 @@ int main() {
     tempPlayer.level = 777;
 
     std::println(">> Saving with 3 registered saveables (to slot 10)...");
-    saveSystem->save(10, "Three Saveables");
+    saveSystem.save(10, "Three Saveables");
 
     std::println("\n>> Unregistering player saveable...");
-    saveSystem->unregisterSaveable(&player);
+    saveSystem.unregisterSaveable(&player);
     std::println("   Player unregistered");
 
     std::println("\n>> Registering temporary player...");
-    saveSystem->registerSaveable(&tempPlayer);
+    saveSystem.registerSaveable(&tempPlayer);
     std::println("   Temporary player registered");
 
     std::println("\n>> Saving with modified registrations (to slot 11)...");
-    saveSystem->save(11, "Modified Saveables");
+    saveSystem.save(11, "Modified Saveables");
 
     std::println("\n>> Re-registering original player...");
-    saveSystem->registerSaveable(&player);
-    saveSystem->unregisterSaveable(&tempPlayer);
+    saveSystem.registerSaveable(&player);
+    saveSystem.unregisterSaveable(&tempPlayer);
     std::println("   Registration restored to original state");
 
     //==========================================================================
@@ -683,13 +686,13 @@ int main() {
     };
 
     ArchiveTestData archiveTest;
-    saveSystem->registerSaveable(&archiveTest);
+    saveSystem.registerSaveable(&archiveTest);
 
     std::println("Original values:");
     archiveTest.print();
 
     std::println("\n>> Saving archive test data...");
-    saveSystem->save(20, "Archive Test");
+    saveSystem.save(20, "Archive Test");
 
     std::println("\n>> Modifying values...");
     archiveTest.intValue = -999;
@@ -703,12 +706,12 @@ int main() {
     archiveTest.print();
 
     std::println("\n>> Loading archive test data...");
-    saveSystem->load(20);
+    saveSystem.load(20);
 
     std::println("\nRestored values:");
     archiveTest.print();
 
-    saveSystem->unregisterSaveable(&archiveTest);
+    saveSystem.unregisterSaveable(&archiveTest);
 
     //==========================================================================
     // Summary

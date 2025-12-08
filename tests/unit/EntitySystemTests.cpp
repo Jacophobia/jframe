@@ -8,6 +8,7 @@
 // Use compatibility header for MSVC C++23 module support
 #include <bestow/entt_compat.hpp>
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.entity;
 import bestow.entity.impl;
@@ -18,7 +19,7 @@ namespace bestow::tests {
 class EntitySystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        entitySystem_ = createEntitySystem();
+        entitySystem_ = std::make_unique<EntitySystem>();
     }
 
     std::unique_ptr<IEntitySystem> entitySystem_;
@@ -722,6 +723,77 @@ TEST_F(EntitySystemTest, ManyComponentsPerEntity) {
 
     EXPECT_TRUE((entitySystem_->allOf<TestComponent, TagA, TagB, TagC>(entity)));
     EXPECT_EQ(entitySystem_->get<TestComponent>(entity).value, 1);
+}
+
+//==============================================================================
+// Kangaru DI Integration Tests
+//==============================================================================
+
+TEST(EntitySystemKangaruTests, ServiceInstantiation) {
+    kgr::container container;
+    auto& system = container.service<EntitySystemService>();
+
+    // Verify the service is functional
+    Entity entity = system.createEntity();
+    EXPECT_TRUE(system.isValid(entity));
+}
+
+TEST(EntitySystemKangaruTests, ServiceIsSingleton) {
+    kgr::container container;
+    auto& system1 = container.service<EntitySystemService>();
+    auto& system2 = container.service<EntitySystemService>();
+
+    // Same instance should be returned (singleton)
+    EXPECT_EQ(&system1, &system2);
+}
+
+TEST(EntitySystemKangaruTests, ServiceRetainsSameRegistry) {
+    kgr::container container;
+    auto& system = container.service<EntitySystemService>();
+
+    Entity e1 = system.createEntity();
+
+    // Access service again - should have same registry with same entity
+    auto& systemAgain = container.service<EntitySystemService>();
+    EXPECT_TRUE(systemAgain.isValid(e1));
+    EXPECT_EQ(systemAgain.entityCount(), 1);
+}
+
+TEST(EntitySystemKangaruTests, ServiceSupportsComponents) {
+    kgr::container container;
+    auto& system = container.service<EntitySystemService>();
+
+    Entity entity = system.createEntity();
+    system.emplace<TestComponent>(entity, 42, 3.14f);
+
+    auto& comp = system.get<TestComponent>(entity);
+    EXPECT_EQ(comp.value, 42);
+    EXPECT_FLOAT_EQ(comp.data, 3.14f);
+}
+
+TEST(EntitySystemKangaruTests, MultipleContainersHaveSeparateServices) {
+    kgr::container container1;
+    kgr::container container2;
+
+    auto& system1 = container1.service<EntitySystemService>();
+    auto& system2 = container2.service<EntitySystemService>();
+
+    // Different containers should have different service instances
+    EXPECT_NE(&system1, &system2);
+
+    // Entities created in one should not exist in the other
+    Entity e1 = system1.createEntity();
+    EXPECT_FALSE(system2.isValid(e1));
+}
+
+TEST(EntitySystemKangaruTests, ServiceSupportsInterfacePolymorphism) {
+    kgr::container container;
+    auto& system = container.service<EntitySystemService>();
+
+    // Can be used through IEntitySystem interface
+    IEntitySystem& interface = system;
+    Entity entity = interface.createEntity();
+    EXPECT_TRUE(interface.isValid(entity));
 }
 
 }  // namespace bestow::tests

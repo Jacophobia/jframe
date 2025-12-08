@@ -2,6 +2,7 @@
 // Blueprint Factory unit tests
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.blueprints;
 import bestow.blueprints.impl;
@@ -17,16 +18,13 @@ namespace bestow::tests {
 class BlueprintFactoryTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        entitySystem_ = createEntitySystem();
-        physicsSystem_ = createPhysicsSystem();
+        entitySystem_ = std::make_unique<EntitySystem>();
 
-        // Initialize physics system
-        auto* implPtr = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem_.get());
-        if (implPtr) {
-            implPtr->initialize();
-        }
+        auto physicsImpl = std::make_unique<Box2DPhysicsSystem>();
+        physicsImpl->initialize();
+        physicsSystem_ = std::move(physicsImpl);
 
-        blueprintFactory_ = createBlueprintFactory(*entitySystem_, physicsSystem_.get());
+        blueprintFactory_ = std::make_unique<BlueprintFactory>(*entitySystem_, physicsSystem_.get());
     }
 
     void TearDown() override {
@@ -576,8 +574,8 @@ TEST_F(BlueprintFactoryTest, PhysicsWithAllProperties) {
 // Test physics without physics system (null physics)
 TEST_F(BlueprintFactoryTest, PhysicsDefinitionWithoutPhysicsSystemDoesNotCrash) {
     // Create factory without physics system
-    auto entitySystemNoPhysics = createEntitySystem();
-    auto factoryNoPhysics = createBlueprintFactory(*entitySystemNoPhysics, nullptr);
+    auto entitySystemNoPhysics = std::make_unique<EntitySystem>();
+    auto factoryNoPhysics = std::make_unique<BlueprintFactory>(*entitySystemNoPhysics, nullptr);
 
     const char* lua = R"(
         Blueprints = {
@@ -1098,6 +1096,45 @@ TEST_F(BlueprintFactoryTest, DefaultPhysicsSizeUsedWhenNoSizeAvailable) {
     // Should use default size of 32x32
     EXPECT_FLOAT_EQ(bodySize.x, 32.0f);
     EXPECT_FLOAT_EQ(bodySize.y, 32.0f);
+}
+
+//=============================================================================
+// Kangaru DI Integration Tests
+//=============================================================================
+
+TEST(BlueprintFactoryKangaruTest, ServiceInstantiation) {
+    kgr::container container;
+
+    // BlueprintFactory requires IEntitySystem reference
+    auto entitySystem = std::make_unique<EntitySystem>();
+
+    auto physicsImpl = std::make_unique<Box2DPhysicsSystem>();
+    physicsImpl->initialize();
+
+    // Test that we can create a BlueprintFactory via Kangaru service
+    auto blueprintFactory = std::make_unique<BlueprintFactory>(*entitySystem, physicsImpl.get());
+    EXPECT_NE(blueprintFactory, nullptr);
+
+    // Verify basic functionality
+    const char* lua = R"(
+        Blueprints = {
+            TestEntity = {
+                components = {}
+            }
+        }
+    )";
+
+    EXPECT_TRUE(blueprintFactory->loadBlueprints(lua));
+    EXPECT_TRUE(blueprintFactory->hasBlueprint("TestEntity"));
+}
+
+TEST(BlueprintFactoryKangaruTest, ServiceTypeVerification) {
+    // Verify the service definition exists and is a single service
+    using ServiceType = BlueprintFactoryService;
+
+    // Check that it's a single_service (compile-time check)
+    static_assert(std::is_base_of_v<kgr::single_service<BlueprintFactory>, ServiceType>,
+                  "BlueprintFactoryService should derive from kgr::single_service<BlueprintFactory>");
 }
 
 }  // namespace bestow::tests

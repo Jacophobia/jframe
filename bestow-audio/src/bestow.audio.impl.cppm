@@ -3,6 +3,8 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
+
 #ifdef BESTOW_HAS_FMOD
 #include <fmod.h>
 #endif
@@ -13,6 +15,7 @@ import std;
 import bestow.audio;
 import bestow.assets;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -100,9 +103,8 @@ private:
 #endif
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IAudioSystem> createAudioSystem() {
-    return std::make_unique<FMODAudioSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides FMODAudioSystem as IAudioSystem
+struct AudioSystemService : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {};
 
 }  // namespace bestow

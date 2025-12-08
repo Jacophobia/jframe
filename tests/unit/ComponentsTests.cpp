@@ -670,6 +670,14 @@ public:
     Vec2 getMouseDelta() const override { return {0, 0}; }
     bool isMouseButtonDown(int button) const override { return false; }
 
+    Vec2 getScrollDelta() const override { return Vec2{0.0f, 0.0f}; }
+
+    void enableTextInput() override {}
+    void disableTextInput() override {}
+    bool isTextInputEnabled() const override { return false; }
+    std::string getTextInput() const override { return ""; }
+    void clearTextInput() override {}
+
     int getConnectedControllerCount() const override { return 0; }
     bool isControllerConnected(int index) const override { return false; }
     std::string getControllerName(int index) const override { return ""; }

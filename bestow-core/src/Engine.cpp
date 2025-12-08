@@ -11,7 +11,7 @@ module bestow.core;
 import bestow.events.impl;
 import bestow.entity.impl;
 import bestow.physics.impl;
-import bestow.graphics.impl;
+import bestow.opengl.impl;
 import bestow.audio.impl;
 import bestow.input.impl;
 import bestow.assets.impl;
@@ -34,7 +34,7 @@ struct Engine::Impl {
     std::unique_ptr<EventSystem> events;
     std::unique_ptr<EntitySystem> entities;
     std::unique_ptr<Box2DPhysicsSystem> physics;
-    std::unique_ptr<GraphicsSystem> graphics;
+    std::unique_ptr<OpenGLGraphicsSystem> graphics;
     std::unique_ptr<FMODAudioSystem> audio;
     std::unique_ptr<InputSystem> input;
     std::unique_ptr<AssetSystem> assets;

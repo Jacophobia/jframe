@@ -13,6 +13,8 @@ target_link_libraries(bestow-input
         bestow-contract
         glfw
         SDL2::SDL2
+    PRIVATE
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-input PUBLIC cxx_std_23)

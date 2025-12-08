@@ -38,9 +38,10 @@ target_link_libraries(bestow-tests
         bestow-events
         bestow-assets
         bestow-save
+        bestow-config
         bestow-input
         bestow-audio
-        bestow-graphics
+        bestow-opengl
         bestow-physics
         bestow-level
         bestow-ai

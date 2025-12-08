@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.level.impl;
@@ -12,6 +13,7 @@ import bestow.level;
 import bestow.types;
 import bestow.assets;
 import bestow.assets.impl;
+import bestow.services;
 
 export namespace bestow {
 
@@ -68,9 +70,8 @@ private:
     UUID nextLevelId_ = 1;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<ILevelSystem> createLevelSystem() {
-    return std::make_unique<LevelSystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides LevelSystem as ILevelSystem
+struct LevelSystemService : kgr::single_service<LevelSystem>, kgr::overrides<ILevelSystemService> {};
 
 }  // namespace bestow

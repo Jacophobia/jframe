@@ -12,6 +12,8 @@ target_link_libraries(bestow-entity
     PUBLIC
         bestow-contract
         EnTT::EnTT
+    PRIVATE
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-entity PUBLIC cxx_std_23)

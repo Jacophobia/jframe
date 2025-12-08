@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.level;
 import bestow.level.impl;
@@ -22,7 +23,7 @@ namespace bestow::tests {
 class LevelSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        levelSystem_ = createLevelSystem();
+        levelSystem_ = std::make_unique<LevelSystem>();
     }
 
     // Helper to create a mock asset handle
@@ -658,16 +659,18 @@ TEST_F(LevelSystemTest, CompleteWorkflow) {
 class LevelSystemLuaTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        assetSystem_ = createAssetSystem();
+        assetSystem_ = &container_.service<AssetSystemService>();
 
         // Create LevelSystem and initialize with AssetSystem
-        auto levelSystemImpl = std::make_unique<LevelSystem>();
-        levelSystemImpl->initialize(assetSystem_.get());
-        levelSystem_ = std::move(levelSystemImpl);
+        levelSystemImpl_ = std::make_unique<LevelSystem>();
+        levelSystemImpl_->initialize(assetSystem_);
+        levelSystem_ = levelSystemImpl_.get();
     }
 
-    std::unique_ptr<IAssetSystem> assetSystem_;
-    std::unique_ptr<ILevelSystem> levelSystem_;
+    kgr::container container_;
+    IAssetSystem* assetSystem_ = nullptr;
+    std::unique_ptr<LevelSystem> levelSystemImpl_;
+    ILevelSystem* levelSystem_ = nullptr;
 };
 
 TEST_F(LevelSystemLuaTest, LoadLevelWithSpawnPoints) {
@@ -1385,6 +1388,39 @@ TEST_F(LevelSystemLuaTest, TransitionBetweenActualLevels) {
     ASSERT_TRUE(spawnPoint.has_value());
     EXPECT_FLOAT_EQ(spawnPoint->x, 500.0f);
     EXPECT_FLOAT_EQ(spawnPoint->y, 400.0f);
+}
+
+//==============================================================================
+// Kangaru DI Integration Tests
+//==============================================================================
+
+TEST(LevelSystemKangaruTest, CanInstantiateViaKangaru) {
+    kgr::container container;
+
+    // Register the LevelSystem service
+    container.emplace<LevelSystemService>();
+
+    // Invoke the service (this creates the instance)
+    auto& levelSystem = container.service<LevelSystemService>();
+
+    // Verify the system was created
+    EXPECT_NE(&levelSystem, nullptr);
+
+    // Verify basic functionality
+    auto asset = AssetHandle{1, AssetType::Level};
+    auto result = levelSystem.loadLevel(asset);
+    EXPECT_TRUE(result.has_value());
+}
+
+TEST(LevelSystemKangaruTest, ServiceIsSingleton) {
+    kgr::container container;
+    container.emplace<LevelSystemService>();
+
+    auto& service1 = container.service<LevelSystemService>();
+    auto& service2 = container.service<LevelSystemService>();
+
+    // Both references should point to the same instance
+    EXPECT_EQ(&service1, &service2);
 }
 
 }  // namespace bestow::tests

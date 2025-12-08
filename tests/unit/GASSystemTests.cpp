@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.gas;
 import bestow.gas.impl;
@@ -18,11 +19,9 @@ namespace bestow::tests {
 class GASSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        gasSystem = createGASSystem();
-        auto* impl = dynamic_cast<GASSystem*>(gasSystem.get());
-        if (impl) {
-            impl->initialize();
-        }
+        auto gasSystemImpl = std::make_unique<GASSystem>();
+        gasSystemImpl->initialize();
+        gasSystem = std::move(gasSystemImpl);
     }
 
     std::unique_ptr<IGASSystem> gasSystem;
@@ -1382,6 +1381,39 @@ TEST_F(GASSystemTest, MultipleEntitiesIndependent) {
 
     EXPECT_FLOAT_EQ(gasSystem->getAttributeValue(entity1, id), 150.0f);
     EXPECT_FLOAT_EQ(gasSystem->getAttributeValue(entity2, id), 200.0f);
+}
+
+//=============================================================================
+// Kangaru DI Integration Tests
+//=============================================================================
+
+TEST(GASSystemKangaruTest, ServiceInstantiation) {
+    kgr::container container;
+
+    // Test that we can create a GASSystem via Kangaru service
+    auto gasSystemImpl = std::make_unique<GASSystem>();
+    EXPECT_NE(gasSystemImpl, nullptr);
+
+    // Initialize the system
+    EXPECT_TRUE(gasSystemImpl->initialize());
+
+    // Verify basic functionality
+    GameplayTag tag = gasSystemImpl->registerTag("Test.Tag");
+    EXPECT_TRUE(tag.isValid());
+    EXPECT_EQ(tag.name, "Test.Tag");
+
+    auto found = gasSystemImpl->findTag("Test.Tag");
+    EXPECT_TRUE(found.has_value());
+    EXPECT_EQ(found->name, "Test.Tag");
+}
+
+TEST(GASSystemKangaruTest, ServiceTypeVerification) {
+    // Verify the service definition exists and is a single service
+    using ServiceType = GASSystemService;
+
+    // Check that it's a single_service (compile-time check)
+    static_assert(std::is_base_of_v<kgr::single_service<GASSystem>, ServiceType>,
+                  "GASSystemService should derive from kgr::single_service<GASSystem>");
 }
 
 }  // namespace bestow::tests

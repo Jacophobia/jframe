@@ -1,69 +1,82 @@
-// template/src/main.cpp
-// Bestow Template Game - Entry Point
-// This file shows how to build a Bestow engine with all systems enabled
+// Bestow Game Template - main.cpp
+// Minimal entry point for a 2D game
 
-// MSVC C++23 module compatibility for EnTT iterators and sol2 globals
+#include <kangaru/kangaru.hpp>
 #include <bestow/entt_compat.hpp>
-#include <bestow/sol2_compat.hpp>
+#include <GLFW/glfw3.h>
 
 import std;
-import bestow;
-import bestow.core;
+import bestow.types;
+import bestow.entity.impl;
+import bestow.physics.impl;
+import bestow.opengl.impl;
+import bestow.input.impl;
+import bestow.assets.impl;
+import bestow.blueprints.impl;
 
 #include "Game.h"
 
-int main(int argc, char* argv[]) {
-    bestow::core::logInfo("Starting Bestow Template Game");
+int main() {
+    // Create DI container and systems
+    kgr::container container;
 
-    // Build the engine with all required systems
-    // The EngineBuilder provides a fluent API for configuring systems
-    auto engineResult = bestow::core::EngineBuilder()
-        // Event System - Pub/sub messaging between systems
-        .withEvents()
+    auto& entities = container.service<bestow::EntitySystemService>();
+    auto& physics = container.service<bestow::PhysicsSystemService>();
+    auto& graphics = container.service<bestow::GraphicsSystemService>();
+    auto& input = container.service<bestow::InputSystemService>();
+    auto& assets = container.service<bestow::AssetSystemService>();
 
-        // Entity System - EnTT-based ECS for game objects
-        .withEntities()
-
-        // Physics System - Box2D integration for 2D physics
-        .withPhysics()
-
-        // Graphics System - OpenGL rendering with debug primitives
-        .withGraphics(bestow::core::GraphicsConfig{
-            .width = 800,
-            .height = 600,
-            .title = "Bestow Template Game",
-            .vsync = true,
-            .clearColor = {40, 40, 50, 255}  // Dark blue-gray background
-        })
-
-        // Input System - Keyboard, mouse, and gamepad input
-        .withInput()
-
-        // Asset System - Loading and managing game assets
-        .withAssets("data")
-
-        // Audio System - FMOD-based audio playback
-        .withAudio()
-
-        // Level System - Lua-based level loading
-        .withLevel()
-
-        // Build the engine (returns std::expected<Engine, std::string>)
-        .build();
-
-    // Check if engine build succeeded
-    if (!engineResult) {
-        bestow::core::logError("Failed to build engine: " + engineResult.error());
+    // Initialize graphics (creates window internally)
+    auto* graphicsImpl = dynamic_cast<bestow::OpenGLGraphicsSystem*>(&graphics);
+    if (!graphicsImpl || !graphicsImpl->initialize(800, 600, "Bestow Game")) {
+        std::println(stderr, "Failed to initialize graphics");
         return 1;
     }
 
-    bestow::core::logInfo("Engine built successfully");
+    // Get the window from graphics and pass to input
+    auto* window = static_cast<GLFWwindow*>(graphics.getNativeWindowHandle());
 
-    // Create the game application and run the game loop
-    // The engine will call initialize(), updateFixed(), render(), and shutdown()
-    template_game::Game game;
-    engineResult.value().run(game);
+    auto* inputImpl = dynamic_cast<bestow::InputSystem*>(&input);
+    if (inputImpl) inputImpl->initialize(window);
 
-    bestow::core::logInfo("Template Game exiting");
+    auto* physicsImpl = dynamic_cast<bestow::Box2DPhysicsSystem*>(&physics);
+    if (physicsImpl) physicsImpl->initialize();
+
+    // Create blueprint factory
+    bestow::BlueprintFactory blueprints(entities, &physics);
+
+    // Create and initialize game
+    Game game(entities, physics, graphics, input, blueprints);
+    game.init();
+
+    // Game loop
+    constexpr float fixedDt = 1.0f / 60.0f;
+    float accumulator = 0.0f;
+    auto lastTime = std::chrono::high_resolution_clock::now();
+
+    while (!glfwWindowShouldClose(window)) {
+        auto now = std::chrono::high_resolution_clock::now();
+        float dt = std::chrono::duration<float>(now - lastTime).count();
+        lastTime = now;
+        accumulator += dt;
+
+        // Note: glfwPollEvents is called by graphics.endFrame()
+        input.update();
+
+        // Fixed timestep updates
+        while (accumulator >= fixedDt) {
+            physics.update(fixedDt);
+            game.update(fixedDt);
+            accumulator -= fixedDt;
+        }
+
+        // Render (endFrame handles buffer swap and event polling)
+        graphics.beginFrame();
+        game.render();
+        graphics.endFrame();
+    }
+
+    game.shutdown();
+    // GraphicsSystem destructor handles cleanup
     return 0;
 }

@@ -17,6 +17,7 @@ target_link_libraries(bestow-gas
         bestow-contract
         lua
         sol2::sol2
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-gas PUBLIC cxx_std_23)

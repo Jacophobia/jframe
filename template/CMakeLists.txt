@@ -19,7 +19,7 @@ target_link_libraries(template-game
         bestow-contract
         bestow-core
         bestow-entity
-        bestow-graphics
+        bestow-opengl
         bestow-physics
         bestow-audio
         bestow-input
@@ -37,11 +37,11 @@ target_link_libraries(template-game
 
 target_compile_features(template-game PRIVATE cxx_std_23)
 
-# Copy data directory to build output
+# Copy assets directory to build output
 add_custom_command(TARGET template-game POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/data
-    $<TARGET_FILE_DIR:template-game>/data
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:template-game>/assets
 )
 
 # Copy FMOD dylib to build output (macOS)

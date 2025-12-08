@@ -45,6 +45,9 @@ module;
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 
+// Kangaru DI framework
+#include <kangaru/kangaru.hpp>
+
 // EnTT for Entity type
 #include <entt/entity/entity.hpp>
 
@@ -53,6 +56,7 @@ export module bestow.physics3d.impl;
 import std;
 import bestow.physics3d;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -2401,13 +2405,10 @@ JPH::Ref<JPH::Shape> JoltPhysics3DSystem::createShape(const PhysicsBodyDef3D& de
 }
 
 //==========================================================================
-// Factory Function
+// Kangaru Service Definitions
 //==========================================================================
 
-inline std::unique_ptr<IPhysics3DSystem> createPhysics3DSystem() {
-    auto system = std::make_unique<JoltPhysics3DSystem>();
-    system->initialize();
-    return std::unique_ptr<IPhysics3DSystem>(system.release());
-}
+// Concrete service that provides JoltPhysics3DSystem as IPhysics3DSystem
+struct Physics3DSystemService : kgr::single_service<JoltPhysics3DSystem>, kgr::overrides<IPhysics3DSystemService> {};
 
 }  // namespace bestow

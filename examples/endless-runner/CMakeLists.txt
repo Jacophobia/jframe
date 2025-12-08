@@ -10,7 +10,7 @@ target_link_libraries(endless-runner
         bestow-contract
         bestow-core
         bestow-entity
-        bestow-graphics
+        bestow-opengl
         bestow-audio
         bestow-input
         bestow-assets

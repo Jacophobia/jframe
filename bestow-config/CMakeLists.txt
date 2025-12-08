@@ -18,6 +18,7 @@ target_link_libraries(bestow-config
         lua
         sol2::sol2
         spdlog::spdlog
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-config PUBLIC cxx_std_23)

@@ -13,12 +13,7 @@ int main() {
         std::println("==========================\n");
 
         // Create the physics system
-        auto physicsSystem = bestow::createPhysicsSystem();
-
-        if (!physicsSystem) {
-            std::println("ERROR: Failed to create physics system");
-            return 1;
-        }
+        auto physicsSystem = std::make_unique<bestow::Box2DPhysicsSystem>();
 
         // Run the comprehensive demo
         demo::PhysicsDemo demo(*physicsSystem);

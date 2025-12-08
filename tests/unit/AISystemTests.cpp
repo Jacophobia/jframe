@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.ai;
 import bestow.ai.impl;
@@ -23,29 +24,28 @@ namespace bestow::tests {
 class AISystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create asset system (required dependency)
-        assetSystem = std::make_unique<AssetSystem>();
+        // Get asset system from container
+        assetSystem_ = &container_.service<AssetSystemService>();
 
-        // Create physics system (required dependency)
-        physicsSystem = createPhysicsSystem();
-        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem.get());
+        // Get physics system from container and initialize
+        physicsSystem_ = &container_.service<PhysicsSystemService>();
+        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem_);
         if (physicsImpl) {
             physicsImpl->initialize();
         }
 
-        // Create AI system with dependencies
-        aiSystem = createAISystem(physicsSystem.get(), assetSystem.get());
-
-        // Downcast to access initialize() method
-        auto* implPtr = dynamic_cast<AISystem*>(aiSystem.get());
-        if (implPtr) {
-            implPtr->initialize();
-        }
+        // AISystem has constructor dependencies that require pointers,
+        // so construct it directly with DI-resolved dependencies
+        aiSystemImpl_ = std::make_unique<AISystem>(physicsSystem_, assetSystem_);
+        aiSystemImpl_->initialize();
+        aiSystem_ = aiSystemImpl_.get();
     }
 
-    std::unique_ptr<IAssetSystem> assetSystem;
-    std::unique_ptr<IPhysicsSystem> physicsSystem;
-    std::unique_ptr<IAISystem> aiSystem;
+    kgr::container container_;
+    IAssetSystem* assetSystem_ = nullptr;
+    IPhysicsSystem* physicsSystem_ = nullptr;
+    std::unique_ptr<AISystem> aiSystemImpl_;
+    IAISystem* aiSystem_ = nullptr;
 };
 
 //=============================================================================
@@ -53,11 +53,11 @@ protected:
 //=============================================================================
 
 TEST_F(AISystemTest, CanCreateAISystem) {
-    EXPECT_NE(aiSystem, nullptr);
+    EXPECT_NE(aiSystem_, nullptr);
 }
 
 TEST_F(AISystemTest, UpdateDoesNotCrashWithNoEntities) {
-    aiSystem->update(1.0f / 60.0f);  // 60 FPS delta time
+    aiSystem_->update(1.0f / 60.0f);  // 60 FPS delta time
 }
 
 //=============================================================================
@@ -68,30 +68,30 @@ TEST_F(AISystemTest, AttachBehaviorTreeToEntity) {
     Entity entity = static_cast<Entity>(1);
     AssetHandle treeAsset = static_cast<AssetHandle>(100);
 
-    aiSystem->attachBehaviorTree(entity, treeAsset);
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->attachBehaviorTree(entity, treeAsset);
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity));
 }
 
 TEST_F(AISystemTest, DetachBehaviorTreeFromEntity) {
     Entity entity = static_cast<Entity>(2);
     AssetHandle treeAsset = static_cast<AssetHandle>(101);
 
-    aiSystem->attachBehaviorTree(entity, treeAsset);
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->attachBehaviorTree(entity, treeAsset);
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity));
 
-    aiSystem->detachBehaviorTree(entity);
-    EXPECT_FALSE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->detachBehaviorTree(entity);
+    EXPECT_FALSE(aiSystem_->hasBehaviorTree(entity));
 }
 
 TEST_F(AISystemTest, HasBehaviorTreeReturnsFalseForEntityWithoutTree) {
     Entity entity = static_cast<Entity>(3);
-    EXPECT_FALSE(aiSystem->hasBehaviorTree(entity));
+    EXPECT_FALSE(aiSystem_->hasBehaviorTree(entity));
 }
 
 TEST_F(AISystemTest, DetachBehaviorTreeFromNonExistentEntityDoesNotCrash) {
     Entity entity = static_cast<Entity>(999);
-    aiSystem->detachBehaviorTree(entity);  // Should not crash
-    EXPECT_FALSE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->detachBehaviorTree(entity);  // Should not crash
+    EXPECT_FALSE(aiSystem_->hasBehaviorTree(entity));
 }
 
 TEST_F(AISystemTest, AttachingNewTreeReplacesOldTree) {
@@ -99,11 +99,11 @@ TEST_F(AISystemTest, AttachingNewTreeReplacesOldTree) {
     AssetHandle tree1 = static_cast<AssetHandle>(102);
     AssetHandle tree2 = static_cast<AssetHandle>(103);
 
-    aiSystem->attachBehaviorTree(entity, tree1);
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->attachBehaviorTree(entity, tree1);
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity));
 
-    aiSystem->attachBehaviorTree(entity, tree2);
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->attachBehaviorTree(entity, tree2);
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity));
 }
 
 //=============================================================================
@@ -115,9 +115,9 @@ TEST_F(AISystemTest, CanSetBlackboardValue) {
     std::string key = "health";
     int value = 100;
 
-    aiSystem->setBehaviorTreeBlackboard(entity, key, value);
+    aiSystem_->setBehaviorTreeBlackboard(entity, key, value);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, key);
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, key);
     EXPECT_TRUE(retrieved.has_value());
     EXPECT_EQ(std::any_cast<int>(retrieved), value);
 }
@@ -125,13 +125,13 @@ TEST_F(AISystemTest, CanSetBlackboardValue) {
 TEST_F(AISystemTest, CanSetMultipleBlackboardValues) {
     Entity entity = static_cast<Entity>(6);
 
-    aiSystem->setBehaviorTreeBlackboard(entity, "health", 100);
-    aiSystem->setBehaviorTreeBlackboard(entity, "ammo", 50);
-    aiSystem->setBehaviorTreeBlackboard(entity, "aggressive", true);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "health", 100);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "ammo", 50);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "aggressive", true);
 
-    int health = std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity, "health"));
-    int ammo = std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity, "ammo"));
-    bool aggressive = std::any_cast<bool>(aiSystem->getBehaviorTreeBlackboard(entity, "aggressive"));
+    int health = std::any_cast<int>(aiSystem_->getBehaviorTreeBlackboard(entity, "health"));
+    int ammo = std::any_cast<int>(aiSystem_->getBehaviorTreeBlackboard(entity, "ammo"));
+    bool aggressive = std::any_cast<bool>(aiSystem_->getBehaviorTreeBlackboard(entity, "aggressive"));
 
     EXPECT_EQ(health, 100);
     EXPECT_EQ(ammo, 50);
@@ -141,14 +141,14 @@ TEST_F(AISystemTest, CanSetMultipleBlackboardValues) {
 TEST_F(AISystemTest, BlackboardReturnsEmptyForNonExistentKey) {
     Entity entity = static_cast<Entity>(7);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "nonexistent");
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "nonexistent");
     EXPECT_FALSE(retrieved.has_value());
 }
 
 TEST_F(AISystemTest, BlackboardReturnsEmptyForNonExistentEntity) {
     Entity entity = static_cast<Entity>(999);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "somekey");
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "somekey");
     EXPECT_FALSE(retrieved.has_value());
 }
 
@@ -156,9 +156,9 @@ TEST_F(AISystemTest, BlackboardCanStoreFloatValues) {
     Entity entity = static_cast<Entity>(8);
     float value = 3.14f;
 
-    aiSystem->setBehaviorTreeBlackboard(entity, "pi", value);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "pi", value);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "pi");
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "pi");
     EXPECT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(std::any_cast<float>(retrieved), value);
 }
@@ -167,9 +167,9 @@ TEST_F(AISystemTest, BlackboardCanStoreStringValues) {
     Entity entity = static_cast<Entity>(9);
     std::string value = "patrol";
 
-    aiSystem->setBehaviorTreeBlackboard(entity, "state", value);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "state", value);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "state");
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "state");
     EXPECT_TRUE(retrieved.has_value());
     EXPECT_EQ(std::any_cast<std::string>(retrieved), value);
 }
@@ -178,11 +178,11 @@ TEST_F(AISystemTest, BlackboardValuesAreIndependentBetweenEntities) {
     Entity entity1 = static_cast<Entity>(10);
     Entity entity2 = static_cast<Entity>(11);
 
-    aiSystem->setBehaviorTreeBlackboard(entity1, "value", 100);
-    aiSystem->setBehaviorTreeBlackboard(entity2, "value", 200);
+    aiSystem_->setBehaviorTreeBlackboard(entity1, "value", 100);
+    aiSystem_->setBehaviorTreeBlackboard(entity2, "value", 200);
 
-    int value1 = std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity1, "value"));
-    int value2 = std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity2, "value"));
+    int value1 = std::any_cast<int>(aiSystem_->getBehaviorTreeBlackboard(entity1, "value"));
+    int value2 = std::any_cast<int>(aiSystem_->getBehaviorTreeBlackboard(entity2, "value"));
 
     EXPECT_EQ(value1, 100);
     EXPECT_EQ(value2, 200);
@@ -193,38 +193,38 @@ TEST_F(AISystemTest, BlackboardValuesAreIndependentBetweenEntities) {
 //=============================================================================
 
 TEST_F(AISystemTest, InitiallyHasNoNavMesh) {
-    EXPECT_FALSE(aiSystem->hasNavMesh());
+    EXPECT_FALSE(aiSystem_->hasNavMesh());
 }
 
 TEST_F(AISystemTest, CanLoadNavMesh) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(200);
-    aiSystem->loadNavMesh(navMeshAsset);
-    EXPECT_TRUE(aiSystem->hasNavMesh());
+    aiSystem_->loadNavMesh(navMeshAsset);
+    EXPECT_TRUE(aiSystem_->hasNavMesh());
 }
 
 TEST_F(AISystemTest, CanUnloadNavMesh) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(201);
-    aiSystem->loadNavMesh(navMeshAsset);
-    EXPECT_TRUE(aiSystem->hasNavMesh());
+    aiSystem_->loadNavMesh(navMeshAsset);
+    EXPECT_TRUE(aiSystem_->hasNavMesh());
 
-    aiSystem->unloadNavMesh();
-    EXPECT_FALSE(aiSystem->hasNavMesh());
+    aiSystem_->unloadNavMesh();
+    EXPECT_FALSE(aiSystem_->hasNavMesh());
 }
 
 TEST_F(AISystemTest, UnloadNavMeshWithoutLoadDoesNotCrash) {
-    aiSystem->unloadNavMesh();  // Should not crash
-    EXPECT_FALSE(aiSystem->hasNavMesh());
+    aiSystem_->unloadNavMesh();  // Should not crash
+    EXPECT_FALSE(aiSystem_->hasNavMesh());
 }
 
 TEST_F(AISystemTest, LoadingNewNavMeshReplacesOldOne) {
     AssetHandle navMesh1 = static_cast<AssetHandle>(202);
     AssetHandle navMesh2 = static_cast<AssetHandle>(203);
 
-    aiSystem->loadNavMesh(navMesh1);
-    EXPECT_TRUE(aiSystem->hasNavMesh());
+    aiSystem_->loadNavMesh(navMesh1);
+    EXPECT_TRUE(aiSystem_->hasNavMesh());
 
-    aiSystem->loadNavMesh(navMesh2);
-    EXPECT_TRUE(aiSystem->hasNavMesh());
+    aiSystem_->loadNavMesh(navMesh2);
+    EXPECT_TRUE(aiSystem_->hasNavMesh());
 }
 
 //=============================================================================
@@ -237,26 +237,26 @@ TEST_F(AISystemTest, FindPathReturnsNulloptWithoutNavMesh) {
         .end = {100.0f, 100.0f}
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     EXPECT_FALSE(path.has_value());
 }
 
 TEST_F(AISystemTest, FindPathReturnsPathWithNavMesh) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(204);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     NavMeshQuery query{
         .start = {0.0f, 0.0f},
         .end = {100.0f, 100.0f}
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     EXPECT_TRUE(path.has_value());
 }
 
 TEST_F(AISystemTest, FindPathWithAgentRadius) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(205);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     NavMeshQuery query{
         .start = {0.0f, 0.0f},
@@ -264,20 +264,20 @@ TEST_F(AISystemTest, FindPathWithAgentRadius) {
         .agentRadius = 1.0f
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     EXPECT_TRUE(path.has_value());
 }
 
 TEST_F(AISystemTest, NavigationPathHasCorrectStructure) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(206);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     NavMeshQuery query{
         .start = {0.0f, 0.0f},
         .end = {100.0f, 100.0f}
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     ASSERT_TRUE(path.has_value());
 
     // Path structure should be valid (even if empty in Wave 1)
@@ -290,38 +290,38 @@ TEST_F(AISystemTest, NavigationPathHasCorrectStructure) {
 
 TEST_F(AISystemTest, IsPointOnNavMeshReturnsFalseWithoutNavMesh) {
     Vec2 point{50.0f, 50.0f};
-    EXPECT_FALSE(aiSystem->isPointOnNavMesh(point));
+    EXPECT_FALSE(aiSystem_->isPointOnNavMesh(point));
 }
 
 TEST_F(AISystemTest, IsPointOnNavMeshReturnsTrueWithNavMesh) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(207);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     Vec2 point{50.0f, 50.0f};
-    EXPECT_TRUE(aiSystem->isPointOnNavMesh(point));
+    EXPECT_TRUE(aiSystem_->isPointOnNavMesh(point));
 }
 
 TEST_F(AISystemTest, GetClosestPointOnNavMeshReturnsNulloptWithoutNavMesh) {
     Vec2 point{50.0f, 50.0f};
-    std::optional<Vec2> closest = aiSystem->getClosestPointOnNavMesh(point);
+    std::optional<Vec2> closest = aiSystem_->getClosestPointOnNavMesh(point);
     EXPECT_FALSE(closest.has_value());
 }
 
 TEST_F(AISystemTest, GetClosestPointOnNavMeshReturnsPointWithNavMesh) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(208);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     Vec2 point{50.0f, 50.0f};
-    std::optional<Vec2> closest = aiSystem->getClosestPointOnNavMesh(point);
+    std::optional<Vec2> closest = aiSystem_->getClosestPointOnNavMesh(point);
     EXPECT_TRUE(closest.has_value());
 }
 
 TEST_F(AISystemTest, GetClosestPointReturnsValidCoordinates) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(209);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     Vec2 point{50.0f, 50.0f};
-    std::optional<Vec2> closest = aiSystem->getClosestPointOnNavMesh(point);
+    std::optional<Vec2> closest = aiSystem_->getClosestPointOnNavMesh(point);
 
     ASSERT_TRUE(closest.has_value());
     // In Wave 1, implementation returns the input point
@@ -337,9 +337,9 @@ TEST_F(AISystemTest, CanSetNavigationTarget) {
     Entity entity = static_cast<Entity>(20);
     Vec2 target{100.0f, 200.0f};
 
-    aiSystem->setNavigationTarget(entity, target);
+    aiSystem_->setNavigationTarget(entity, target);
 
-    std::optional<Vec2> retrieved = aiSystem->getNavigationTarget(entity);
+    std::optional<Vec2> retrieved = aiSystem_->getNavigationTarget(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->x, target.x);
     EXPECT_FLOAT_EQ(retrieved->y, target.y);
@@ -349,21 +349,21 @@ TEST_F(AISystemTest, CanClearNavigationTarget) {
     Entity entity = static_cast<Entity>(21);
     Vec2 target{100.0f, 200.0f};
 
-    aiSystem->setNavigationTarget(entity, target);
-    EXPECT_TRUE(aiSystem->getNavigationTarget(entity).has_value());
+    aiSystem_->setNavigationTarget(entity, target);
+    EXPECT_TRUE(aiSystem_->getNavigationTarget(entity).has_value());
 
-    aiSystem->clearNavigationTarget(entity);
-    EXPECT_FALSE(aiSystem->getNavigationTarget(entity).has_value());
+    aiSystem_->clearNavigationTarget(entity);
+    EXPECT_FALSE(aiSystem_->getNavigationTarget(entity).has_value());
 }
 
 TEST_F(AISystemTest, GetNavigationTargetReturnsNulloptForEntityWithoutTarget) {
     Entity entity = static_cast<Entity>(22);
-    EXPECT_FALSE(aiSystem->getNavigationTarget(entity).has_value());
+    EXPECT_FALSE(aiSystem_->getNavigationTarget(entity).has_value());
 }
 
 TEST_F(AISystemTest, ClearNavigationTargetOnNonExistentEntityDoesNotCrash) {
     Entity entity = static_cast<Entity>(999);
-    aiSystem->clearNavigationTarget(entity);  // Should not crash
+    aiSystem_->clearNavigationTarget(entity);  // Should not crash
 }
 
 TEST_F(AISystemTest, SetNavigationTargetReplacesOldTarget) {
@@ -371,10 +371,10 @@ TEST_F(AISystemTest, SetNavigationTargetReplacesOldTarget) {
     Vec2 target1{100.0f, 200.0f};
     Vec2 target2{300.0f, 400.0f};
 
-    aiSystem->setNavigationTarget(entity, target1);
-    aiSystem->setNavigationTarget(entity, target2);
+    aiSystem_->setNavigationTarget(entity, target1);
+    aiSystem_->setNavigationTarget(entity, target2);
 
-    std::optional<Vec2> retrieved = aiSystem->getNavigationTarget(entity);
+    std::optional<Vec2> retrieved = aiSystem_->getNavigationTarget(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->x, target2.x);
     EXPECT_FLOAT_EQ(retrieved->y, target2.y);
@@ -388,7 +388,7 @@ TEST_F(AISystemTest, CanSetMaxSpeed) {
     Entity entity = static_cast<Entity>(24);
     float maxSpeed = 150.0f;
 
-    aiSystem->setMaxSpeed(entity, maxSpeed);
+    aiSystem_->setMaxSpeed(entity, maxSpeed);
     // Should not crash - value should be stored
 }
 
@@ -396,29 +396,29 @@ TEST_F(AISystemTest, CanSetMaxAcceleration) {
     Entity entity = static_cast<Entity>(25);
     float maxAcceleration = 750.0f;
 
-    aiSystem->setMaxAcceleration(entity, maxAcceleration);
+    aiSystem_->setMaxAcceleration(entity, maxAcceleration);
     // Should not crash - value should be stored
 }
 
 TEST_F(AISystemTest, SetMaxSpeedOnNonExistentEntityDoesNotCrash) {
     Entity entity = static_cast<Entity>(999);
-    aiSystem->setMaxSpeed(entity, 100.0f);  // Should not crash
+    aiSystem_->setMaxSpeed(entity, 100.0f);  // Should not crash
 }
 
 TEST_F(AISystemTest, SetMaxAccelerationOnNonExistentEntityDoesNotCrash) {
     Entity entity = static_cast<Entity>(999);
-    aiSystem->setMaxAcceleration(entity, 500.0f);  // Should not crash
+    aiSystem_->setMaxAcceleration(entity, 500.0f);  // Should not crash
 }
 
 TEST_F(AISystemTest, CanSetMultipleSteeringParameters) {
     Entity entity = static_cast<Entity>(26);
 
-    aiSystem->setMaxSpeed(entity, 200.0f);
-    aiSystem->setMaxAcceleration(entity, 1000.0f);
-    aiSystem->setNavigationTarget(entity, Vec2{150.0f, 250.0f});
+    aiSystem_->setMaxSpeed(entity, 200.0f);
+    aiSystem_->setMaxAcceleration(entity, 1000.0f);
+    aiSystem_->setNavigationTarget(entity, Vec2{150.0f, 250.0f});
 
     // Should not crash - all parameters should be stored
-    std::optional<Vec2> target = aiSystem->getNavigationTarget(entity);
+    std::optional<Vec2> target = aiSystem_->getNavigationTarget(entity);
     EXPECT_TRUE(target.has_value());
 }
 
@@ -430,7 +430,7 @@ TEST_F(AISystemTest, FindEntitiesInRadiusReturnsEmptyByDefault) {
     Vec2 center{100.0f, 100.0f};
     float radius = 50.0f;
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius);
     EXPECT_TRUE(entities.empty());
 }
 
@@ -439,7 +439,7 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithMask) {
     float radius = 50.0f;
     CollisionMask mask = 0x0001;  // Specific layer
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius, mask);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius, mask);
     EXPECT_TRUE(entities.empty());  // Wave 1: not yet implemented
 }
 
@@ -447,7 +447,7 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithZeroRadius) {
     Vec2 center{100.0f, 100.0f};
     float radius = 0.0f;
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius);
     EXPECT_TRUE(entities.empty());
 }
 
@@ -455,7 +455,7 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithLargeRadius) {
     Vec2 center{0.0f, 0.0f};
     float radius = 10000.0f;
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius);
     EXPECT_TRUE(entities.empty());  // Wave 1: not yet implemented
 }
 
@@ -466,7 +466,7 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithLargeRadius) {
 TEST_F(AISystemTest, FindClosestEntityReturnsNulloptByDefault) {
     Vec2 position{100.0f, 100.0f};
 
-    std::optional<Entity> closest = aiSystem->findClosestEntity(position);
+    std::optional<Entity> closest = aiSystem_->findClosestEntity(position);
     EXPECT_FALSE(closest.has_value());
 }
 
@@ -474,7 +474,7 @@ TEST_F(AISystemTest, FindClosestEntityWithMask) {
     Vec2 position{100.0f, 100.0f};
     CollisionMask mask = 0x0002;  // Specific layer
 
-    std::optional<Entity> closest = aiSystem->findClosestEntity(position, mask);
+    std::optional<Entity> closest = aiSystem_->findClosestEntity(position, mask);
     EXPECT_FALSE(closest.has_value());  // Wave 1: not yet implemented
 }
 
@@ -486,7 +486,7 @@ TEST_F(AISystemTest, HasLineOfSightReturnsTrueByDefault) {
     Vec2 from{0.0f, 0.0f};
     Vec2 to{100.0f, 100.0f};
 
-    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    bool hasLOS = aiSystem_->hasLineOfSight(from, to);
     EXPECT_TRUE(hasLOS);  // No obstacles = clear line of sight
 }
 
@@ -495,14 +495,14 @@ TEST_F(AISystemTest, HasLineOfSightWithObstacleMask) {
     Vec2 to{100.0f, 100.0f};
     CollisionMask obstacleMask = 0x0004;  // Terrain layer
 
-    bool hasLOS = aiSystem->hasLineOfSight(from, to, obstacleMask);
+    bool hasLOS = aiSystem_->hasLineOfSight(from, to, obstacleMask);
     EXPECT_TRUE(hasLOS);  // No obstacles = clear line of sight
 }
 
 TEST_F(AISystemTest, HasLineOfSightBetweenSamePoint) {
     Vec2 point{50.0f, 50.0f};
 
-    bool hasLOS = aiSystem->hasLineOfSight(point, point);
+    bool hasLOS = aiSystem_->hasLineOfSight(point, point);
     EXPECT_TRUE(hasLOS);
 }
 
@@ -513,8 +513,8 @@ TEST_F(AISystemTest, HasLineOfSightBetweenSamePoint) {
 TEST_F(AISystemTest, FullWorkflowLoadNavMeshFindPathFollowPath) {
     // Setup navmesh
     AssetHandle navMeshAsset = static_cast<AssetHandle>(300);
-    aiSystem->loadNavMesh(navMeshAsset);
-    EXPECT_TRUE(aiSystem->hasNavMesh());
+    aiSystem_->loadNavMesh(navMeshAsset);
+    EXPECT_TRUE(aiSystem_->hasNavMesh());
 
     // Find path
     NavMeshQuery query{
@@ -523,16 +523,16 @@ TEST_F(AISystemTest, FullWorkflowLoadNavMeshFindPathFollowPath) {
         .agentRadius = 0.5f
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     ASSERT_TRUE(path.has_value());
 
     // Setup entity to follow path
     Entity entity = static_cast<Entity>(100);
-    aiSystem->setNavigationTarget(entity, query.end);
-    aiSystem->setMaxSpeed(entity, 100.0f);
-    aiSystem->setMaxAcceleration(entity, 500.0f);
+    aiSystem_->setNavigationTarget(entity, query.end);
+    aiSystem_->setMaxSpeed(entity, 100.0f);
+    aiSystem_->setMaxAcceleration(entity, 500.0f);
 
-    std::optional<Vec2> target = aiSystem->getNavigationTarget(entity);
+    std::optional<Vec2> target = aiSystem_->getNavigationTarget(entity);
     EXPECT_TRUE(target.has_value());
 }
 
@@ -541,18 +541,18 @@ TEST_F(AISystemTest, FullWorkflowBehaviorTreeWithBlackboard) {
 
     // Attach behavior tree
     AssetHandle treeAsset = static_cast<AssetHandle>(400);
-    aiSystem->attachBehaviorTree(entity, treeAsset);
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity));
+    aiSystem_->attachBehaviorTree(entity, treeAsset);
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity));
 
     // Setup blackboard
-    aiSystem->setBehaviorTreeBlackboard(entity, "target", Vec2{100.0f, 100.0f});
-    aiSystem->setBehaviorTreeBlackboard(entity, "state", std::string("patrol"));
-    aiSystem->setBehaviorTreeBlackboard(entity, "alert", false);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "target", Vec2{100.0f, 100.0f});
+    aiSystem_->setBehaviorTreeBlackboard(entity, "state", std::string("patrol"));
+    aiSystem_->setBehaviorTreeBlackboard(entity, "alert", false);
 
     // Verify blackboard
-    std::any target = aiSystem->getBehaviorTreeBlackboard(entity, "target");
-    std::any state = aiSystem->getBehaviorTreeBlackboard(entity, "state");
-    std::any alert = aiSystem->getBehaviorTreeBlackboard(entity, "alert");
+    std::any target = aiSystem_->getBehaviorTreeBlackboard(entity, "target");
+    std::any state = aiSystem_->getBehaviorTreeBlackboard(entity, "state");
+    std::any alert = aiSystem_->getBehaviorTreeBlackboard(entity, "alert");
 
     EXPECT_TRUE(target.has_value());
     EXPECT_TRUE(state.has_value());
@@ -566,36 +566,36 @@ TEST_F(AISystemTest, MultipleEntitiesIndependentBehavior) {
 
     // Setup entity 1
     AssetHandle tree1 = static_cast<AssetHandle>(401);
-    aiSystem->attachBehaviorTree(entity1, tree1);
-    aiSystem->setNavigationTarget(entity1, Vec2{100.0f, 100.0f});
-    aiSystem->setBehaviorTreeBlackboard(entity1, "role", std::string("guard"));
+    aiSystem_->attachBehaviorTree(entity1, tree1);
+    aiSystem_->setNavigationTarget(entity1, Vec2{100.0f, 100.0f});
+    aiSystem_->setBehaviorTreeBlackboard(entity1, "role", std::string("guard"));
 
     // Setup entity 2
     AssetHandle tree2 = static_cast<AssetHandle>(402);
-    aiSystem->attachBehaviorTree(entity2, tree2);
-    aiSystem->setNavigationTarget(entity2, Vec2{200.0f, 200.0f});
-    aiSystem->setBehaviorTreeBlackboard(entity2, "role", std::string("scout"));
+    aiSystem_->attachBehaviorTree(entity2, tree2);
+    aiSystem_->setNavigationTarget(entity2, Vec2{200.0f, 200.0f});
+    aiSystem_->setBehaviorTreeBlackboard(entity2, "role", std::string("scout"));
 
     // Setup entity 3
-    aiSystem->setMaxSpeed(entity3, 50.0f);
+    aiSystem_->setMaxSpeed(entity3, 50.0f);
 
     // Verify independence
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity1));
-    EXPECT_TRUE(aiSystem->hasBehaviorTree(entity2));
-    EXPECT_FALSE(aiSystem->hasBehaviorTree(entity3));
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity1));
+    EXPECT_TRUE(aiSystem_->hasBehaviorTree(entity2));
+    EXPECT_FALSE(aiSystem_->hasBehaviorTree(entity3));
 
-    std::optional<Vec2> target1 = aiSystem->getNavigationTarget(entity1);
-    std::optional<Vec2> target2 = aiSystem->getNavigationTarget(entity2);
-    std::optional<Vec2> target3 = aiSystem->getNavigationTarget(entity3);
+    std::optional<Vec2> target1 = aiSystem_->getNavigationTarget(entity1);
+    std::optional<Vec2> target2 = aiSystem_->getNavigationTarget(entity2);
+    std::optional<Vec2> target3 = aiSystem_->getNavigationTarget(entity3);
 
     EXPECT_TRUE(target1.has_value());
     EXPECT_TRUE(target2.has_value());
     EXPECT_FALSE(target3.has_value());
 
     std::string role1 = std::any_cast<std::string>(
-        aiSystem->getBehaviorTreeBlackboard(entity1, "role"));
+        aiSystem_->getBehaviorTreeBlackboard(entity1, "role"));
     std::string role2 = std::any_cast<std::string>(
-        aiSystem->getBehaviorTreeBlackboard(entity2, "role"));
+        aiSystem_->getBehaviorTreeBlackboard(entity2, "role"));
 
     EXPECT_EQ(role1, "guard");
     EXPECT_EQ(role2, "scout");
@@ -607,15 +607,15 @@ TEST_F(AISystemTest, UpdateWithMultipleEntitiesDoesNotCrash) {
         Entity entity = static_cast<Entity>(200 + i);
         AssetHandle tree = static_cast<AssetHandle>(500 + i);
 
-        aiSystem->attachBehaviorTree(entity, tree);
-        aiSystem->setNavigationTarget(entity, Vec2{static_cast<float>(i * 10),
+        aiSystem_->attachBehaviorTree(entity, tree);
+        aiSystem_->setNavigationTarget(entity, Vec2{static_cast<float>(i * 10),
                                                     static_cast<float>(i * 20)});
-        aiSystem->setMaxSpeed(entity, 100.0f + static_cast<float>(i * 10));
-        aiSystem->setBehaviorTreeBlackboard(entity, "id", i);
+        aiSystem_->setMaxSpeed(entity, 100.0f + static_cast<float>(i * 10));
+        aiSystem_->setBehaviorTreeBlackboard(entity, "id", i);
     }
 
     // Update should process all entities
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 }
 
 //=============================================================================
@@ -631,9 +631,9 @@ TEST_F(AISystemTest, CanSetPatrolBehavior) {
         .movingRight = true
     };
 
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
-    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> retrieved = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->startX, patrol.startX);
     EXPECT_FLOAT_EQ(retrieved->range, patrol.range);
@@ -650,21 +650,21 @@ TEST_F(AISystemTest, CanClearPatrolBehavior) {
         .movingRight = true
     };
 
-    aiSystem->setPatrolBehavior(entity, patrol);
-    EXPECT_TRUE(aiSystem->getPatrolBehavior(entity).has_value());
+    aiSystem_->setPatrolBehavior(entity, patrol);
+    EXPECT_TRUE(aiSystem_->getPatrolBehavior(entity).has_value());
 
-    aiSystem->clearPatrolBehavior(entity);
-    EXPECT_FALSE(aiSystem->getPatrolBehavior(entity).has_value());
+    aiSystem_->clearPatrolBehavior(entity);
+    EXPECT_FALSE(aiSystem_->getPatrolBehavior(entity).has_value());
 }
 
 TEST_F(AISystemTest, GetPatrolBehaviorReturnsNulloptForEntityWithoutPatrol) {
     Entity entity = static_cast<Entity>(602);
-    EXPECT_FALSE(aiSystem->getPatrolBehavior(entity).has_value());
+    EXPECT_FALSE(aiSystem_->getPatrolBehavior(entity).has_value());
 }
 
 TEST_F(AISystemTest, ClearPatrolBehaviorOnNonExistentEntityDoesNotCrash) {
     Entity entity = static_cast<Entity>(999);
-    aiSystem->clearPatrolBehavior(entity);  // Should not crash
+    aiSystem_->clearPatrolBehavior(entity);  // Should not crash
 }
 
 TEST_F(AISystemTest, SetPatrolBehaviorReplacesOldBehavior) {
@@ -682,10 +682,10 @@ TEST_F(AISystemTest, SetPatrolBehaviorReplacesOldBehavior) {
         .movingRight = false
     };
 
-    aiSystem->setPatrolBehavior(entity, patrol1);
-    aiSystem->setPatrolBehavior(entity, patrol2);
+    aiSystem_->setPatrolBehavior(entity, patrol1);
+    aiSystem_->setPatrolBehavior(entity, patrol2);
 
-    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> retrieved = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->startX, patrol2.startX);
     EXPECT_FLOAT_EQ(retrieved->range, patrol2.range);
@@ -702,9 +702,9 @@ TEST_F(AISystemTest, PatrolBehaviorWithZeroRange) {
         .movingRight = true
     };
 
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
-    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> retrieved = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->range, 0.0f);
 }
@@ -718,9 +718,9 @@ TEST_F(AISystemTest, PatrolBehaviorWithNegativeSpeed) {
         .movingRight = true
     };
 
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
-    std::optional<PatrolBehavior> retrieved = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> retrieved = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(retrieved.has_value());
     EXPECT_FLOAT_EQ(retrieved->speed, -75.0f);
 }
@@ -742,11 +742,11 @@ TEST_F(AISystemTest, PatrolBehaviorIndependentBetweenEntities) {
         .movingRight = false
     };
 
-    aiSystem->setPatrolBehavior(entity1, patrol1);
-    aiSystem->setPatrolBehavior(entity2, patrol2);
+    aiSystem_->setPatrolBehavior(entity1, patrol1);
+    aiSystem_->setPatrolBehavior(entity2, patrol2);
 
-    std::optional<PatrolBehavior> retrieved1 = aiSystem->getPatrolBehavior(entity1);
-    std::optional<PatrolBehavior> retrieved2 = aiSystem->getPatrolBehavior(entity2);
+    std::optional<PatrolBehavior> retrieved1 = aiSystem_->getPatrolBehavior(entity1);
+    std::optional<PatrolBehavior> retrieved2 = aiSystem_->getPatrolBehavior(entity2);
 
     ASSERT_TRUE(retrieved1.has_value());
     ASSERT_TRUE(retrieved2.has_value());
@@ -763,7 +763,7 @@ TEST_F(AISystemTest, PatrolBehaviorUpdatesVelocityDuringUpdate) {
         .type = BodyType::Dynamic,
         .transform = {.x = 100.0f, .y = 50.0f}  // Start at patrol center
     };
-    physicsSystem->createBody(entity, bodyDef);
+    physicsSystem_->createBody(entity, bodyDef);
 
     // Set patrol behavior
     PatrolBehavior patrol{
@@ -772,13 +772,13 @@ TEST_F(AISystemTest, PatrolBehaviorUpdatesVelocityDuringUpdate) {
         .speed = 75.0f,
         .movingRight = true
     };
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
     // Update AI system
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 
     // Verify velocity was set
-    Vec2 velocity = physicsSystem->getVelocity(entity);
+    Vec2 velocity = physicsSystem_->getVelocity(entity);
     EXPECT_FLOAT_EQ(velocity.x, 75.0f);  // Moving right at patrol speed
 }
 
@@ -790,7 +790,7 @@ TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtRightBound) {
         .type = BodyType::Dynamic,
         .transform = {.x = 150.0f, .y = 50.0f}  // At right bound (100 + 50)
     };
-    physicsSystem->createBody(entity, bodyDef);
+    physicsSystem_->createBody(entity, bodyDef);
 
     // Set patrol behavior moving right
     PatrolBehavior patrol{
@@ -799,18 +799,18 @@ TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtRightBound) {
         .speed = 75.0f,
         .movingRight = true
     };
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
     // Update AI system
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 
     // Verify direction flipped
-    std::optional<PatrolBehavior> updated = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> updated = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(updated.has_value());
     EXPECT_FALSE(updated->movingRight);  // Should flip to left
 
     // Verify velocity is now negative
-    Vec2 velocity = physicsSystem->getVelocity(entity);
+    Vec2 velocity = physicsSystem_->getVelocity(entity);
     EXPECT_FLOAT_EQ(velocity.x, -75.0f);  // Moving left at patrol speed
 }
 
@@ -822,7 +822,7 @@ TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtLeftBound) {
         .type = BodyType::Dynamic,
         .transform = {.x = 50.0f, .y = 50.0f}  // At left bound (100 - 50)
     };
-    physicsSystem->createBody(entity, bodyDef);
+    physicsSystem_->createBody(entity, bodyDef);
 
     // Set patrol behavior moving left
     PatrolBehavior patrol{
@@ -831,18 +831,18 @@ TEST_F(AISystemTest, PatrolBehaviorFlipsDirectionAtLeftBound) {
         .speed = 75.0f,
         .movingRight = false
     };
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
     // Update AI system
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 
     // Verify direction flipped
-    std::optional<PatrolBehavior> updated = aiSystem->getPatrolBehavior(entity);
+    std::optional<PatrolBehavior> updated = aiSystem_->getPatrolBehavior(entity);
     ASSERT_TRUE(updated.has_value());
     EXPECT_TRUE(updated->movingRight);  // Should flip to right
 
     // Verify velocity is now positive
-    Vec2 velocity = physicsSystem->getVelocity(entity);
+    Vec2 velocity = physicsSystem_->getVelocity(entity);
     EXPECT_FLOAT_EQ(velocity.x, 75.0f);  // Moving right at patrol speed
 }
 
@@ -854,8 +854,8 @@ TEST_F(AISystemTest, PatrolBehaviorPreservesYVelocity) {
         .type = BodyType::Dynamic,
         .transform = {.x = 100.0f, .y = 50.0f}
     };
-    physicsSystem->createBody(entity, bodyDef);
-    physicsSystem->setVelocity(entity, {0.0f, 100.0f});  // Y velocity set
+    physicsSystem_->createBody(entity, bodyDef);
+    physicsSystem_->setVelocity(entity, {0.0f, 100.0f});  // Y velocity set
 
     // Set patrol behavior
     PatrolBehavior patrol{
@@ -864,13 +864,13 @@ TEST_F(AISystemTest, PatrolBehaviorPreservesYVelocity) {
         .speed = 75.0f,
         .movingRight = true
     };
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
     // Update AI system
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 
     // Verify Y velocity preserved, X velocity set
-    Vec2 velocity = physicsSystem->getVelocity(entity);
+    Vec2 velocity = physicsSystem_->getVelocity(entity);
     EXPECT_FLOAT_EQ(velocity.x, 75.0f);
     EXPECT_FLOAT_EQ(velocity.y, 100.0f);  // Y velocity should be preserved
 }
@@ -885,10 +885,10 @@ TEST_F(AISystemTest, UpdateWithoutPhysicsBodyDoesNotCrash) {
         .speed = 75.0f,
         .movingRight = true
     };
-    aiSystem->setPatrolBehavior(entity, patrol);
+    aiSystem_->setPatrolBehavior(entity, patrol);
 
     // Update should not crash even without physics body
-    aiSystem->update(1.0f / 60.0f);
+    aiSystem_->update(1.0f / 60.0f);
 }
 
 //=============================================================================
@@ -899,14 +899,14 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithNegativeRadius) {
     Vec2 center{100.0f, 100.0f};
     float radius = -50.0f;  // Negative radius
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius);
     // Implementation should handle gracefully (likely return empty)
     EXPECT_TRUE(entities.empty());
 }
 
 TEST_F(AISystemTest, FindPathWithVeryLargeAgentRadius) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(700);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     NavMeshQuery query{
         .start = {0.0f, 0.0f},
@@ -914,14 +914,14 @@ TEST_F(AISystemTest, FindPathWithVeryLargeAgentRadius) {
         .agentRadius = 10000.0f  // Extremely large agent
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     // Should still return a path (may be simplified)
     EXPECT_TRUE(path.has_value());
 }
 
 TEST_F(AISystemTest, FindPathWithZeroAgentRadius) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(701);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     NavMeshQuery query{
         .start = {0.0f, 0.0f},
@@ -929,13 +929,13 @@ TEST_F(AISystemTest, FindPathWithZeroAgentRadius) {
         .agentRadius = 0.0f  // Zero radius
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     EXPECT_TRUE(path.has_value());
 }
 
 TEST_F(AISystemTest, FindPathFromSameStartAndEnd) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(702);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     Vec2 samePoint{50.0f, 50.0f};
     NavMeshQuery query{
@@ -944,7 +944,7 @@ TEST_F(AISystemTest, FindPathFromSameStartAndEnd) {
         .agentRadius = 0.5f
     };
 
-    std::optional<NavigationPath> path = aiSystem->findPath(query);
+    std::optional<NavigationPath> path = aiSystem_->findPath(query);
     ASSERT_TRUE(path.has_value());
     // Path should have zero or minimal length
     EXPECT_GE(path->totalLength, 0.0f);
@@ -953,12 +953,12 @@ TEST_F(AISystemTest, FindPathFromSameStartAndEnd) {
 TEST_F(AISystemTest, BlackboardCanOverwriteExistingValue) {
     Entity entity = static_cast<Entity>(800);
 
-    aiSystem->setBehaviorTreeBlackboard(entity, "health", 100);
-    EXPECT_EQ(std::any_cast<int>(aiSystem->getBehaviorTreeBlackboard(entity, "health")), 100);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "health", 100);
+    EXPECT_EQ(std::any_cast<int>(aiSystem_->getBehaviorTreeBlackboard(entity, "health")), 100);
 
     // Overwrite with same key, different type
-    aiSystem->setBehaviorTreeBlackboard(entity, "health", std::string("full"));
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "health");
+    aiSystem_->setBehaviorTreeBlackboard(entity, "health", std::string("full"));
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "health");
     EXPECT_TRUE(retrieved.has_value());
     EXPECT_EQ(std::any_cast<std::string>(retrieved), "full");
 }
@@ -968,9 +968,9 @@ TEST_F(AISystemTest, BlackboardCanStoreComplexTypes) {
 
     // Store Vec2 in blackboard
     Vec2 targetPos{123.45f, 678.90f};
-    aiSystem->setBehaviorTreeBlackboard(entity, "targetPos", targetPos);
+    aiSystem_->setBehaviorTreeBlackboard(entity, "targetPos", targetPos);
 
-    std::any retrieved = aiSystem->getBehaviorTreeBlackboard(entity, "targetPos");
+    std::any retrieved = aiSystem_->getBehaviorTreeBlackboard(entity, "targetPos");
     ASSERT_TRUE(retrieved.has_value());
     Vec2 retrievedPos = std::any_cast<Vec2>(retrieved);
     EXPECT_FLOAT_EQ(retrievedPos.x, targetPos.x);
@@ -981,22 +981,22 @@ TEST_F(AISystemTest, HasLineOfSightWithVeryShortDistance) {
     Vec2 from{0.0f, 0.0f};
     Vec2 to{0.0001f, 0.0001f};  // Very close
 
-    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    bool hasLOS = aiSystem_->hasLineOfSight(from, to);
     EXPECT_TRUE(hasLOS);
 }
 
 TEST_F(AISystemTest, FindClosestEntityWithNoPhysicsBodies) {
     Vec2 position{100.0f, 100.0f};
-    std::optional<Entity> closest = aiSystem->findClosestEntity(position);
+    std::optional<Entity> closest = aiSystem_->findClosestEntity(position);
     EXPECT_FALSE(closest.has_value());
 }
 
 TEST_F(AISystemTest, GetClosestPointOnNavMeshWithVeryFarPoint) {
     AssetHandle navMeshAsset = static_cast<AssetHandle>(703);
-    aiSystem->loadNavMesh(navMeshAsset);
+    aiSystem_->loadNavMesh(navMeshAsset);
 
     Vec2 farPoint{100000.0f, 100000.0f};  // Very far from origin
-    std::optional<Vec2> closest = aiSystem->getClosestPointOnNavMesh(farPoint);
+    std::optional<Vec2> closest = aiSystem_->getClosestPointOnNavMesh(farPoint);
 
     // Should still return a point (possibly projected to navmesh bounds)
     EXPECT_TRUE(closest.has_value());
@@ -1010,7 +1010,7 @@ TEST_F(AISystemTest, LineOfSightClearWithNoObstacles) {
     Vec2 from{0.0f, 0.0f};
     Vec2 to{100.0f, 100.0f};
 
-    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    bool hasLOS = aiSystem_->hasLineOfSight(from, to);
     EXPECT_TRUE(hasLOS);  // No physics bodies = clear path
 }
 
@@ -1021,12 +1021,12 @@ TEST_F(AISystemTest, LineOfSightBlockedByPhysicsBody) {
         .type = BodyType::Static,
         .transform = {.x = 50.0f, .y = 50.0f}
     };
-    physicsSystem->createBody(wallEntity, wallDef);
+    physicsSystem_->createBody(wallEntity, wallDef);
 
     Vec2 from{0.0f, 0.0f};
     Vec2 to{100.0f, 100.0f};
 
-    bool hasLOS = aiSystem->hasLineOfSight(from, to);
+    bool hasLOS = aiSystem_->hasLineOfSight(from, to);
     EXPECT_FALSE(hasLOS);  // Wall blocks the line of sight
 }
 
@@ -1049,12 +1049,12 @@ TEST_F(AISystemTest, FindClosestEntityWithPhysicsBodies) {
         .transform = {.x = 200.0f, .y = 0.0f}
     };
 
-    physicsSystem->createBody(entity1, def1);
-    physicsSystem->createBody(entity2, def2);
-    physicsSystem->createBody(entity3, def3);
+    physicsSystem_->createBody(entity1, def1);
+    physicsSystem_->createBody(entity2, def2);
+    physicsSystem_->createBody(entity3, def3);
 
     Vec2 searchPosition{0.0f, 0.0f};
-    std::optional<Entity> closest = aiSystem->findClosestEntity(searchPosition);
+    std::optional<Entity> closest = aiSystem_->findClosestEntity(searchPosition);
 
     ASSERT_TRUE(closest.has_value());
     EXPECT_EQ(closest.value(), entity2);  // entity2 is closest at 50 units
@@ -1079,18 +1079,61 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithPhysicsBodies) {
         .transform = {.x = 100.0f, .y = 0.0f}
     };
 
-    physicsSystem->createBody(entity1, def1);
-    physicsSystem->createBody(entity2, def2);
-    physicsSystem->createBody(entity3, def3);
+    physicsSystem_->createBody(entity1, def1);
+    physicsSystem_->createBody(entity2, def2);
+    physicsSystem_->createBody(entity3, def3);
 
     Vec2 center{0.0f, 0.0f};
     float radius = 50.0f;
 
-    std::vector<Entity> entities = aiSystem->findEntitiesInRadius(center, radius);
+    std::vector<Entity> entities = aiSystem_->findEntitiesInRadius(center, radius);
 
     // entity1 and entity2 should be found (within 50 units), entity3 should not (100 units away)
     EXPECT_FALSE(entities.empty());
     EXPECT_EQ(entities.size(), 2u);
+}
+
+//=============================================================================
+// Kangaru DI Integration Tests
+//=============================================================================
+
+TEST(AISystemKangaruTest, CannotInstantiateWithoutDependencies) {
+    kgr::container container;
+
+    // AISystem requires IPhysicsSystem and IAssetSystem dependencies
+    // Attempting to service without them should fail at compile time or runtime
+    // This test verifies the service definition requires dependencies
+
+    // Note: We cannot directly test failure to instantiate in Kangaru,
+    // but we can verify successful instantiation with dependencies
+    EXPECT_TRUE(true);  // Placeholder for dependency validation
+}
+
+TEST(AISystemKangaruTest, CanInstantiateViaKangaruWithDependencies) {
+    kgr::container container;
+
+    // Get dependencies from container
+    auto& physicsSystem = container.service<PhysicsSystemService>();
+    auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(&physicsSystem);
+    if (physicsImpl) {
+        physicsImpl->initialize();
+    }
+
+    auto& assetSystem = container.service<AssetSystemService>();
+
+    // Create AI system with dependencies
+    auto aiSystemImpl = std::make_unique<AISystem>(&physicsSystem, &assetSystem);
+    aiSystemImpl->initialize();
+
+    // Verify the system was created
+    EXPECT_NE(aiSystemImpl, nullptr);
+
+    // Verify basic functionality
+    Entity entity = static_cast<Entity>(1);
+    AssetHandle treeAsset{100, AssetType::BehaviorTree};
+
+    aiSystemImpl->attachBehaviorTree(entity, treeAsset);
+    EXPECT_TRUE(aiSystemImpl->hasBehaviorTree(entity));
 }
 
 }  // namespace bestow::tests

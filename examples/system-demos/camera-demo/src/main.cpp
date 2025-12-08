@@ -22,18 +22,10 @@ int main() {
         std::println("Creating camera system with viewport: {}x{}", viewport.width, viewport.height);
 
         // Create the camera system
-        auto cameraSystem = bestow::createCameraSystem(viewport);
-        if (!cameraSystem) {
-            std::println("ERROR: Failed to create camera system");
-            return 1;
-        }
+        auto cameraSystem = std::make_unique<bestow::CameraSystem>(viewport);
 
         // Create the entity system (needed for target entities)
-        auto entitySystem = bestow::createEntitySystem();
-        if (!entitySystem) {
-            std::println("ERROR: Failed to create entity system");
-            return 1;
-        }
+        auto entitySystem = std::make_unique<bestow::EntitySystem>();
 
         std::println("Systems created successfully!\n");
 

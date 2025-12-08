@@ -6,6 +6,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <kangaru/kangaru.hpp>
 
 import bestow.input;
 import bestow.input.impl;
@@ -16,7 +17,7 @@ namespace bestow::tests {
 class InputSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        inputSystem_ = createInputSystem();
+        inputSystem_ = std::make_unique<InputSystem>();
     }
 
     std::unique_ptr<IInputSystem> inputSystem_;
@@ -619,6 +620,157 @@ TEST_F(InputSystemTest, ActionWithLongName) {
 
     ActionState state = inputSystem_->getActionState(longAction);
     EXPECT_EQ(state.action, longAction);
+}
+
+//======================================================================
+// Scroll Delta Tests
+//======================================================================
+
+TEST_F(InputSystemTest, GetScrollDeltaInitially) {
+    Vec2 scroll = inputSystem_->getScrollDelta();
+    EXPECT_EQ(scroll.x, 0.0f);
+    EXPECT_EQ(scroll.y, 0.0f);
+}
+
+TEST_F(InputSystemTest, ScrollDeltaIsZeroWithoutInput) {
+    inputSystem_->update();
+    Vec2 scroll = inputSystem_->getScrollDelta();
+    EXPECT_EQ(scroll.x, 0.0f);
+    EXPECT_EQ(scroll.y, 0.0f);
+}
+
+//======================================================================
+// Text Input Tests
+//======================================================================
+
+TEST_F(InputSystemTest, TextInputInitiallyDisabled) {
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, EnableTextInput) {
+    inputSystem_->enableTextInput();
+    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, DisableTextInput) {
+    inputSystem_->enableTextInput();
+    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
+
+    inputSystem_->disableTextInput();
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, GetTextInputWhenDisabled) {
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+    std::string text = inputSystem_->getTextInput();
+    EXPECT_TRUE(text.empty());
+}
+
+TEST_F(InputSystemTest, GetTextInputWhenEnabled) {
+    inputSystem_->enableTextInput();
+    std::string text = inputSystem_->getTextInput();
+    // Should be empty if no input received
+    EXPECT_TRUE(text.empty());
+}
+
+TEST_F(InputSystemTest, ClearTextInputWhenDisabled) {
+    // Should be safe to clear when disabled
+    inputSystem_->clearTextInput();
+    EXPECT_TRUE(inputSystem_->getTextInput().empty());
+}
+
+TEST_F(InputSystemTest, ClearTextInputWhenEnabled) {
+    inputSystem_->enableTextInput();
+    inputSystem_->clearTextInput();
+    EXPECT_TRUE(inputSystem_->getTextInput().empty());
+}
+
+TEST_F(InputSystemTest, EnableTextInputMultipleTimes) {
+    inputSystem_->enableTextInput();
+    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
+
+    inputSystem_->enableTextInput();  // Call again
+    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, DisableTextInputMultipleTimes) {
+    inputSystem_->enableTextInput();
+    inputSystem_->disableTextInput();
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+
+    inputSystem_->disableTextInput();  // Call again
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, DisableTextInputWithoutEnabling) {
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+    inputSystem_->disableTextInput();
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+//======================================================================
+// Kangaru DI Integration Tests
+//======================================================================
+
+TEST(InputSystemKangaruTest, ServiceInjection) {
+    kgr::container container;
+
+    // Register the InputSystem service
+    auto& service = container.service<InputSystemService>();
+
+    // Verify we got a valid instance
+    EXPECT_TRUE(service.getMappings().empty());
+}
+
+TEST(InputSystemKangaruTest, SingletonBehavior) {
+    kgr::container container;
+
+    // Get references to the same service multiple times
+    auto& inputSystem1 = container.service<InputSystemService>();
+    auto& inputSystem2 = container.service<InputSystemService>();
+
+    // Should be the same instance (same memory address)
+    EXPECT_EQ(&inputSystem1, &inputSystem2);
+}
+
+TEST(InputSystemKangaruTest, ServicePersistsState) {
+    kgr::container container;
+
+    auto& inputSystem1 = container.service<InputSystemService>();
+
+    // Register a mapping
+    InputMapping mapping{
+        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
+        .action = "jump"
+    };
+    inputSystem1.registerMapping(mapping);
+
+    // Get the service again
+    auto& inputSystem2 = container.service<InputSystemService>();
+
+    // State should be preserved (same instance)
+    EXPECT_EQ(inputSystem2.getMappings().size(), 1);
+    EXPECT_EQ(inputSystem2.getMappings()[0].action, "jump");
+}
+
+TEST(InputSystemKangaruTest, InterfacePointer) {
+    kgr::container container;
+
+    // Get as interface pointer
+    IInputSystem* inputSystemPtr = &container.service<InputSystemService>();
+
+    EXPECT_NE(inputSystemPtr, nullptr);
+    EXPECT_TRUE(inputSystemPtr->getMappings().empty());
+}
+
+TEST(InputSystemKangaruTest, ServiceUpdate) {
+    kgr::container container;
+
+    auto& inputSystem = container.service<InputSystemService>();
+
+    // Should not crash when calling update
+    inputSystem.update();
+    SUCCEED();
 }
 
 }  // namespace bestow::tests

@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Find Lua (same as bestow-blueprints)
-find_package(Lua REQUIRED)
+find_package(unofficial-lua CONFIG REQUIRED)
 
 # Blueprints demo executable
 add_executable(blueprints-demo
@@ -22,7 +22,7 @@ target_link_libraries(blueprints-demo
         bestow-physics
         bestow-events
         bestow-blueprints
-        ${LUA_LIBRARIES}
+        lua
         sol2::sol2
 )
 

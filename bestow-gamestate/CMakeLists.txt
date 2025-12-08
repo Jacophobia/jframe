@@ -11,6 +11,7 @@ target_sources(bestow-gamestate
 target_link_libraries(bestow-gamestate
     PUBLIC
         bestow-contract
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-gamestate PUBLIC cxx_std_23)

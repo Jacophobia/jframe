@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 // Use compatibility header for MSVC C++23 module support
 #include <bestow/entt_compat.hpp>
 
@@ -11,6 +12,7 @@ export module bestow.entity.impl;
 import std;
 import bestow.entity;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -143,9 +145,8 @@ private:
     entt::registry registry_;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IEntitySystem> createEntitySystem() {
-    return std::make_unique<EntitySystem>();
-}
+// Kangaru service definitions
+// Concrete service that provides EntitySystem as IEntitySystem
+struct EntitySystemService : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
 
 }  // namespace bestow

@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.blueprints.impl;
@@ -11,7 +12,9 @@ import std;
 import bestow.types;
 import bestow.blueprints;
 import bestow.entity;
+import bestow.entity.impl;
 import bestow.physics;
+import bestow.physics.impl;
 
 export namespace bestow {
 
@@ -90,12 +93,12 @@ private:
     void registerBuiltinComponents();
 };
 
-// Factory function
-inline std::unique_ptr<IBlueprintFactory> createBlueprintFactory(
-    IEntitySystem& entities,
-    IPhysicsSystem* physics = nullptr)
-{
-    return std::make_unique<BlueprintFactory>(entities, physics);
-}
+// Kangaru service definitions
+// BlueprintFactory has constructor dependencies (IEntitySystem&, IPhysicsSystem*)
+// that require interface types, so it must be emplaced manually with dependencies:
+//   auto& entity = container.service<EntitySystemService>();
+//   auto& physics = container.service<PhysicsSystemService>();
+//   container.emplace<BlueprintFactoryService>(entity, &physics);
+struct BlueprintFactoryService : kgr::single_service<BlueprintFactory> {};
 
 }  // namespace bestow

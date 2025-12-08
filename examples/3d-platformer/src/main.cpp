@@ -11,7 +11,10 @@
 #define SDL_MAIN_HANDLED
 #define GLM_ENABLE_EXPERIMENTAL
 
-#include <glad/glad.h>
+#include <kangaru/kangaru.hpp>
+#ifndef USE_VULKAN_RENDERER
+#include <glad/glad.h>  // Must come before GLFW to prevent GL header conflicts
+#endif
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -23,11 +26,18 @@ import bestow.types;
 import bestow.input;
 import bestow.input.impl;
 import bestow.graphics3d;
-import bestow.graphics3d.impl;
 import bestow.physics3d;
 import bestow.physics3d.impl;
 import bestow.shader;
 import bestow.shader.impl;
+import bestow.services;  // Abstract services for DI
+import bestow.dev;       // Hot reload manager for config files
+
+#ifdef USE_VULKAN_RENDERER
+import bestow.vulkan.impl;  // Provides VulkanGraphics3DSystemService
+#else
+import bestow.opengl.impl;  // Provides Graphics3DSystemService (OpenGL)
+#endif
 
 using namespace bestow;
 
@@ -131,35 +141,6 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     }
 }
 
-// Create the game window
-GLFWwindow* createWindow() {
-    if (!glfwInit()) {
-        std::println("Failed to initialize GLFW");
-        return nullptr;
-    }
-
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT,
-                                           "Bestow 3D Platformer Demo", nullptr, nullptr);
-    if (!window) {
-        std::println("Failed to create GLFW window");
-        glfwTerminate();
-        return nullptr;
-    }
-
-    glfwMakeContextCurrent(window);
-    glfwSetCursorPosCallback(window, mouseCallback);
-    glfwSetKeyCallback(window, keyCallback);
-    glfwSetMouseButtonCallback(window, mouseButtonCallback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    return window;
-}
-
 // Setup input mappings
 void setupInput(IInputSystem* input) {
     // Movement - ,AOE (Dvorak equivalent of WASD)
@@ -214,8 +195,8 @@ std::vector<Platform> createPlatforms(IGraphics3DSystem* graphics, IPhysics3DSys
         {{-2.0f, 7.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.7f, 0.4f, 0.8f}, "toon.lua"},    // Purple
         {{-6.0f, 8.5f, 3.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.6f, 0.3f}, "toon.lua"},    // Orange
 
-        // Goal platform - glowing gold with special effect!
-        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {1.0f, 0.85f, 0.2f}, "glow.lua"},
+        // Goal platform - shiny metallic chrome!
+        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {0.8f, 0.8f, 0.85f}, "metallic.lua"},
 
         // Side platforms - cel-shaded pastels
         {{-5.0f, 2.0f, -3.0f}, {2.5f, 0.5f, 2.5f}, {0.7f, 0.5f, 0.7f}, "toon.lua"},   // Lavender
@@ -483,8 +464,21 @@ Camera3D getPlayerCamera(const Player& player) {
     return camera;
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Initialize path resolver for :assets:/ and :library:/ scheme support
+    // This ensures paths work correctly regardless of working directory
+    if (argc > 0 && argv[0] != nullptr) {
+        PathResolver::initialize(argv[0]);
+    } else {
+        PathResolver::initialize();
+    }
+
     std::println("Bestow 3D Platformer Demo");
+#ifdef USE_VULKAN_RENDERER
+    std::println("Renderer: Vulkan");
+#else
+    std::println("Renderer: OpenGL");
+#endif
     std::println("==========================");
     std::println("Controls (Dvorak layout):");
     std::println("  ,AOE  - Move");
@@ -494,62 +488,100 @@ int main() {
     std::println("  Esc   - Release mouse / Exit");
     std::println("");
 
-    // Create window
-    g_window = createWindow();
-    if (!g_window) {
-        return 1;
-    }
+    // Create DI container and initialize systems
+    kgr::container container;
 
-    // Initialize systems
-    auto graphics = createGraphics3DSystem();
-    auto graphicsImpl = dynamic_cast<OpenGLGraphics3DSystem*>(graphics.get());
-    if (!graphicsImpl || !graphicsImpl->initialize(g_window)) {
+    // Register the graphics backend (this determines which implementation is used)
+#ifdef USE_VULKAN_RENDERER
+    container.service<vulkan::VulkanGraphics3DSystemService>();
+#else
+    container.service<Graphics3DSystemService>();
+#endif
+
+    // Create graphics configuration (works for both OpenGL and Vulkan)
+    Graphics3DConfig graphicsConfig;
+    graphicsConfig.windowWidth = WINDOW_WIDTH;
+    graphicsConfig.windowHeight = WINDOW_HEIGHT;
+    graphicsConfig.windowTitle = "Bestow 3D Platformer Demo";
+    graphicsConfig.vsync = true;
+    graphicsConfig.enableValidation = true;  // Debug context for OpenGL, validation layers for Vulkan
+
+    // Get graphics system via the abstract interface
+    auto& graphics = container.service<IGraphics3DSystemService>();
+
+    // Initialize graphics system - both backends use the same interface
+    if (!graphics.initialize(graphicsConfig)) {
         std::println("Failed to initialize graphics system");
-        glfwTerminate();
         return 1;
     }
+    g_window = static_cast<GLFWwindow*>(graphics.getNativeWindowHandle());
 
-    auto physics = createPhysics3DSystem();
-    if (!physics) {
+    // Set up GLFW callbacks (works for both OpenGL and Vulkan window)
+    glfwSetCursorPosCallback(g_window, mouseCallback);
+    glfwSetKeyCallback(g_window, keyCallback);
+    glfwSetMouseButtonCallback(g_window, mouseButtonCallback);
+    glfwSetInputMode(g_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    // Get physics system from container and initialize
+    auto& physics = container.service<Physics3DSystemService>();
+    if (!physics.initialize()) {
         std::println("Failed to initialize physics system");
         glfwTerminate();
         return 1;
     }
 
-    // Create shader system and connect to graphics
-    auto shaderSystem = createShaderSystem();
-    graphics->setShaderSystem(shaderSystem.get());
-    shaderSystem->setShaderBasePath("assets/shaders/");
-    shaderSystem->setMaterialBasePath("assets/materials/");
+    // Get shader system from container and connect to graphics
+    auto& shaderSystem = container.service<ShaderSystemService>();
+    graphics.setShaderSystem(&shaderSystem);
+    shaderSystem.setShaderBasePath("assets/shaders/");
+    shaderSystem.setMaterialBasePath("assets/materials/");
     std::println("Shader system initialized with hot reload support");
 
-    auto inputPtr = createInputSystem();
-    auto* inputImpl = dynamic_cast<InputSystem*>(inputPtr.get());
-    if (!inputImpl || !inputImpl->initialize(g_window)) {
+    // Load runtime graphics config from Lua file
+    std::filesystem::path configPath = "assets/config/graphics3d.lua";
+    if (graphics.loadRuntimeConfig(configPath)) {
+        std::println("Loaded graphics config from {}", configPath.string());
+    } else {
+        std::println("Using default graphics config (no {} found)", configPath.string());
+    }
+
+    // Set up hot reload manager for config files
+    dev::HotReloadManager hotReload;
+    hotReload.watchDirectory("assets");
+
+    // Wire up config file change callback
+    hotReload.onConfigChanged = [&graphics](const std::filesystem::path& path) {
+        // Check if this is the graphics config file
+        if (path.filename() == "graphics3d.lua") {
+            std::println("Hot reloading graphics config...");
+            if (graphics.reloadRuntimeConfig()) {
+                std::println("Graphics config reloaded successfully");
+            } else {
+                std::println("Failed to reload graphics config");
+            }
+        }
+    };
+    std::println("Hot reload enabled for assets/config/graphics3d.lua");
+
+    // Get input system from container and initialize
+    auto& input = container.service<InputSystemService>();
+    if (!input.initialize(g_window)) {
         std::println("Failed to initialize input system");
         glfwTerminate();
         return 1;
     }
-    auto& input = inputPtr;  // Keep using input variable name for consistency
 
     // Setup
-    setupInput(input.get());
-    physics->setGravity(Vec3{0.0f, GRAVITY, 0.0f});
+    setupInput(&input);
+    physics.setGravity(Vec3{0.0f, GRAVITY, 0.0f});
 
     // Create game objects
-    auto platforms = createPlatforms(graphics.get(), physics.get());
-    auto player = createPlayer(graphics.get(), physics.get());
+    auto platforms = createPlatforms(&graphics, &physics);
+    auto player = createPlayer(&graphics, &physics);
 
-    // Setup lighting
-    DirectionalLight sunLight;
-    sunLight.direction = glm::normalize(Vec3{-0.5f, -1.0f, -0.3f});
-    sunLight.color = Vec3{1.0f, 0.95f, 0.9f};
-    sunLight.intensity = 1.2f;
-    graphics->setDirectionalLight(sunLight);
-    graphics->setAmbientLight(Vec3{0.4f, 0.45f, 0.5f}, 0.3f);
-
-    // Sky color (Color uses 0-255)
-    graphics->setClearColor(Color{128, 179, 230, 255});
+    // Note: Lighting and clear color are now controlled by assets/config/graphics3d.lua
+    // The loadRuntimeConfig() call above applies these settings automatically.
+    // Modify graphics3d.lua to change lighting, ambient, and clear color settings.
 
     std::println("Starting game loop...");
 
@@ -567,27 +599,30 @@ int main() {
         // Poll events
         glfwPollEvents();
 
+        // Update hot reload manager (check for config file changes)
+        hotReload.update();
+
         // Update input
-        input->update();
+        input.update();
 
         // Update physics
-        physics->update(dt, 4);
+        physics.update(dt, 4);
 
         // Update player
-        updatePlayer(player, input.get(), physics.get(), dt);
+        updatePlayer(player, &input, &physics, dt);
 
         // Update third-person camera collision (telescoping behind walls)
-        updateCameraCollision(player, physics.get(), dt);
+        updateCameraCollision(player, &physics, dt);
 
         // Begin frame
-        graphics->beginFrame();
+        graphics.beginFrame();
 
         // Set camera (third-person with wall avoidance)
         Camera3D camera = getPlayerCamera(player);
-        graphics->setCamera(camera);
+        graphics.setCamera(camera);
 
         // Check for shader hot reload
-        graphics->updateShaders();
+        graphics.updateShaders();
 
         // Render platforms
         for (const auto& platform : platforms) {
@@ -603,15 +638,15 @@ int main() {
 
                 // Pass per-object color to the shader
                 Vec4 colorOverride{platform.color.x, platform.color.y, platform.color.z, 1.0f};
-                auto result = graphics->drawMeshWithLuaMaterial(
+                auto result = graphics.drawMeshWithLuaMaterial(
                     platform.mesh, platform.luaMaterial, worldMatrix, colorOverride);
 
                 if (!result) {
                     // Fallback to regular PBR if shader fails
-                    graphics->drawMesh(platform.mesh, platform.material, transform);
+                    graphics.drawMesh(platform.mesh, platform.material, transform);
                 }
             } else {
-                graphics->drawMesh(platform.mesh, platform.material, transform);
+                graphics.drawMesh(platform.mesh, platform.material, transform);
             }
         }
 
@@ -624,23 +659,23 @@ int main() {
             if (!player.luaMaterial.empty()) {
                 Mat4 worldMatrix = glm::translate(Mat4(1.0f), player.position);
                 Vec4 playerColor{0.3f, 0.5f, 0.95f, 1.0f};  // Bright cartoon blue
-                auto result = graphics->drawMeshWithLuaMaterial(
+                auto result = graphics.drawMeshWithLuaMaterial(
                     player.mesh, player.luaMaterial, worldMatrix, playerColor);
 
                 if (!result) {
                     // Fallback to PBR if shader fails
-                    graphics->drawMesh(player.mesh, player.material, transform);
+                    graphics.drawMesh(player.mesh, player.material, transform);
                 }
             } else {
-                graphics->drawMesh(player.mesh, player.material, transform);
+                graphics.drawMesh(player.mesh, player.material, transform);
             }
         }
 
         // Debug: draw some coordinate axes at origin (disabled - causes rendering artifacts)
-        // graphics->debugDrawAxes(Transform3D{}, 2.0f);
+        // graphics.debugDrawAxes(Transform3D{}, 2.0f);
 
         // End frame
-        graphics->endFrame();
+        graphics.endFrame();
     }
 
     std::println("Shutting down...");

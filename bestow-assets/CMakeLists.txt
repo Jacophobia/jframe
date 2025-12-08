@@ -15,6 +15,7 @@ target_link_libraries(bestow-assets
     PUBLIC
         bestow-contract
         Taskflow::Taskflow
+        kangaru::kangaru
         $<TARGET_NAME_IF_EXISTS:zstd::libzstd_shared>
 )
 

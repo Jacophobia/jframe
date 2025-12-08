@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
 #include <DetourStatus.h>
@@ -14,6 +15,7 @@ import bestow.ai;
 import bestow.assets;
 import bestow.assets.impl;
 import bestow.physics;
+import bestow.physics.impl;
 import bestow.types;
 
 export namespace bestow {
@@ -85,9 +87,12 @@ private:
     dtNavMeshQuery* navQuery_ = nullptr;
 };
 
-// Factory function (exported via namespace)
-inline std::unique_ptr<IAISystem> createAISystem(IPhysicsSystem* physicsSystem, IAssetSystem* assetSystem) {
-    return std::make_unique<AISystem>(physicsSystem, assetSystem);
-}
+// Kangaru service definitions
+// AISystem has constructor dependencies (IPhysicsSystem*, IAssetSystem*)
+// that require interface pointers, so it must be emplaced manually with dependencies:
+//   auto& physics = container.service<PhysicsSystemService>();
+//   auto& assets = container.service<AssetSystemService>();
+//   container.emplace<AISystemService>(&physics, &assets);
+struct AISystemService : kgr::single_service<AISystem> {};
 
 }  // namespace bestow

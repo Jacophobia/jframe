@@ -3,6 +3,7 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 
@@ -11,6 +12,7 @@ export module bestow.config.impl;
 import std;
 import bestow.types;
 import bestow.config;
+import bestow.services;
 
 export namespace bestow {
 
@@ -149,9 +151,8 @@ private:
     Timestamp currentTime_ = 0.0f;
 };
 
-// Factory function
-inline std::unique_ptr<IConfigSystem> createConfigSystem() {
-    return std::make_unique<ConfigSystem>();
-}
+// Kangaru service definitions
+// Concrete service - ConfigSystem has no dependencies on other game systems
+struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {};
 
 }  // namespace bestow

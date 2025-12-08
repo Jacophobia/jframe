@@ -22,6 +22,7 @@ target_sources(bestow-contract
         src/bestow.ui.cppm
         src/bestow.gamestate.cppm
         src/bestow.shader.cppm
+        src/bestow.services.cppm
         src/bestow.cppm
 )
 
@@ -29,6 +30,7 @@ target_link_libraries(bestow-contract
     PUBLIC
         glm::glm
         EnTT::EnTT
+        kangaru::kangaru
 )
 
 target_compile_features(bestow-contract PUBLIC cxx_std_23)

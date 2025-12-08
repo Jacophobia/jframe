@@ -10,7 +10,7 @@ target_link_libraries(platformer-demo
         bestow-contract
         bestow-core
         bestow-entity
-        bestow-graphics
+        bestow-opengl
         bestow-audio
         bestow-input
         bestow-assets

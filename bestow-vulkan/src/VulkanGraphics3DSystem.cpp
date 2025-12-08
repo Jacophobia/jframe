@@ -1,0 +1,2230 @@
+// bestow-vulkan/src/VulkanGraphics3DSystem.cpp
+// Vulkan 3D graphics system implementation
+
+module;
+
+#include <vulkan/vulkan.h>
+#include <vk_mem_alloc.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <bestow/sol2_compat.hpp>
+
+module bestow.vulkan.impl;
+
+import std;
+import bestow.graphics3d;
+import bestow.types;
+import bestow.assets;
+import bestow.entity;
+import bestow.shader;
+
+namespace bestow::vulkan {
+
+namespace {
+    // GLSL to SPIR-V compiler using glslc subprocess
+    class GLSLCompiler {
+    public:
+        static bool initialize() {
+            // Check if glslc is available
+#ifdef BESTOW_HAS_GLSLC
+            glslcPath_ = BESTOW_HAS_GLSLC;
+#else
+            // Try to find glslc in PATH
+            glslcPath_ = "glslc";
+#endif
+            initialized_ = true;
+            return true;
+        }
+
+        static void shutdown() {
+            initialized_ = false;
+        }
+
+        static std::vector<std::uint32_t> compileFile(const std::string& inputPath) {
+            if (!initialized_) {
+                initialize();
+            }
+
+            // Create a temporary file for SPIR-V output
+            std::string outputPath = inputPath + ".tmp.spv";
+
+            // Build glslc command
+            std::string command = glslcPath_ + " -c \"" + inputPath + "\" -o \"" + outputPath + "\" 2>&1";
+
+            // Execute glslc
+            FILE* pipe = popen(command.c_str(), "r");
+            if (!pipe) {
+                std::fprintf(stderr, "[GLSLCompiler] Failed to run glslc\n");
+                return {};
+            }
+
+            // Read compiler output (for error messages)
+            std::string compilerOutput;
+            char buffer[256];
+            while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+                compilerOutput += buffer;
+            }
+
+            int result = pclose(pipe);
+            if (result != 0) {
+                std::fprintf(stderr, "[GLSLCompiler] Compilation failed for %s:\n%s\n",
+                    inputPath.c_str(), compilerOutput.c_str());
+                std::filesystem::remove(outputPath);
+                return {};
+            }
+
+            // Read the compiled SPIR-V file
+            std::ifstream spirvFile(outputPath, std::ios::ate | std::ios::binary);
+            if (!spirvFile.is_open()) {
+                std::fprintf(stderr, "[GLSLCompiler] Failed to read compiled SPIR-V: %s\n", outputPath.c_str());
+                return {};
+            }
+
+            std::size_t fileSize = static_cast<std::size_t>(spirvFile.tellg());
+            std::vector<std::uint32_t> spirv(fileSize / sizeof(std::uint32_t));
+            spirvFile.seekg(0);
+            spirvFile.read(reinterpret_cast<char*>(spirv.data()), static_cast<std::streamsize>(fileSize));
+            spirvFile.close();
+
+            // Clean up temporary file
+            std::filesystem::remove(outputPath);
+
+            return spirv;
+        }
+
+    private:
+        static inline bool initialized_ = false;
+        static inline std::string glslcPath_;
+    };
+
+    // Helper to load SPIR-V shader file
+    std::vector<std::uint32_t> loadSpirv(const std::string& path) {
+        std::ifstream file(path, std::ios::ate | std::ios::binary);
+        if (!file.is_open()) {
+            std::fprintf(stderr, "[Vulkan] Failed to open shader file: %s\n", path.c_str());
+            return {};
+        }
+
+        std::size_t fileSize = static_cast<std::size_t>(file.tellg());
+        std::vector<std::uint32_t> buffer(fileSize / sizeof(std::uint32_t));
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(fileSize));
+        return buffer;
+    }
+
+    // Helper to load shader - tries GLSL first, falls back to SPIR-V
+    std::vector<std::uint32_t> loadShader(const std::string& basePath, bool isFragment) {
+        // First try to compile GLSL source
+        std::string glslPath = basePath;
+        // Remove .spv extension if present
+        if (glslPath.ends_with(".spv")) {
+            glslPath = glslPath.substr(0, glslPath.size() - 4);
+        }
+
+        if (std::filesystem::exists(glslPath)) {
+            auto spirv = GLSLCompiler::compileFile(glslPath);
+            if (!spirv.empty()) {
+                std::fprintf(stderr, "[Vulkan] Compiled GLSL shader: %s\n", glslPath.c_str());
+                return spirv;
+            }
+        }
+
+        // Fall back to pre-compiled SPIR-V
+        std::string spvPath = basePath;
+        if (!spvPath.ends_with(".spv")) {
+            spvPath += ".spv";
+        }
+        if (std::filesystem::exists(spvPath)) {
+            return loadSpirv(spvPath);
+        }
+
+        std::fprintf(stderr, "[Vulkan] No shader found for: %s\n", basePath.c_str());
+        return {};
+    }
+
+    // Helper to find a shader file by searching through configured shader paths
+    // Uses PathResolver to handle :assets:/ and :library:/ prefixes
+    std::optional<std::string> findShaderInPaths(
+        const std::vector<std::string>& shaderPaths,
+        std::string_view shaderFilename)
+    {
+        // Search through shader paths in order of priority
+        for (const auto& basePath : shaderPaths) {
+            // Resolve the base path (handles :assets:/, :library:/ prefixes)
+            auto resolvedBase = bestow::PathResolver::resolve(basePath);
+            auto fullPath = resolvedBase / std::filesystem::path(shaderFilename);
+
+            if (std::filesystem::exists(fullPath)) {
+                return fullPath.string();
+            }
+        }
+
+        // Fall back to relative path if nothing found
+        return std::nullopt;
+    }
+}  // anonymous namespace
+
+VulkanGraphics3DSystem::VulkanGraphics3DSystem() = default;
+
+VulkanGraphics3DSystem::~VulkanGraphics3DSystem() {
+    shutdown();
+}
+
+void VulkanGraphics3DSystem::shutdown() {
+    if (!initialized_) return;
+
+    // Wait for GPU to finish all work before destroying resources
+    if (context_.getDevice() != VK_NULL_HANDLE) {
+        vkDeviceWaitIdle(context_.getDevice());
+    }
+
+    // Cleanup meshes
+    for (auto& [handle, mesh] : meshes_) {
+        if (mesh.vertexBuffer != 0) context_.destroyBuffer(mesh.vertexBuffer);
+        if (mesh.indexBuffer != 0) context_.destroyBuffer(mesh.indexBuffer);
+    }
+    meshes_.clear();
+
+    // Cleanup uniform buffers
+    if (cameraUBO_ != 0) {
+        context_.destroyBuffer(cameraUBO_);
+        cameraUBO_ = 0;
+    }
+    if (lightUBO_ != 0) {
+        context_.destroyBuffer(lightUBO_);
+        lightUBO_ = 0;
+    }
+
+    // Cleanup pipelines
+    if (pbrPipeline_ != 0) {
+        context_.destroyPipeline(pbrPipeline_);
+        pbrPipeline_ = 0;
+    }
+    if (unlitPipeline_ != 0) {
+        context_.destroyPipeline(unlitPipeline_);
+        unlitPipeline_ = 0;
+    }
+    if (debugPipeline_ != 0) {
+        context_.destroyPipeline(debugPipeline_);
+        debugPipeline_ = 0;
+    }
+    if (skyboxPipeline_ != 0) {
+        context_.destroyPipeline(skyboxPipeline_);
+        skyboxPipeline_ = 0;
+    }
+
+    // Cleanup glslang if we initialized it
+    if (glslangInitialized_) {
+        GLSLCompiler::shutdown();
+        glslangInitialized_ = false;
+    }
+
+    context_.shutdown();
+    initialized_ = false;
+}
+
+bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
+    if (initialized_) return true;
+
+    // Convert Graphics3DConfig to VulkanConfig
+    VulkanConfig vulkanConfig;
+    vulkanConfig.windowWidth = config.windowWidth;
+    vulkanConfig.windowHeight = config.windowHeight;
+    vulkanConfig.windowTitle = config.windowTitle;
+    vulkanConfig.vsync = config.vsync;
+    vulkanConfig.enableValidation = config.enableValidation;
+    vulkanConfig.headless = false;
+
+    // If a native window handle is provided, use it
+    if (config.nativeWindowHandle) {
+        vulkanConfig.window = static_cast<GLFWwindow*>(config.nativeWindowHandle);
+    }
+
+    auto result = context_.initialize(vulkanConfig);
+    if (!result) {
+        return false;
+    }
+
+    // Create uniform buffers
+    VulkanBufferDef uboDesc{};
+    uboDesc.size = sizeof(CameraUBO);
+    uboDesc.usage = VulkanBufferUsage::Uniform;
+    uboDesc.hostVisible = true;
+    uboDesc.persistentlyMapped = true;
+
+    auto bufferResult = context_.createBuffer(uboDesc);
+    if (!bufferResult) {
+        context_.shutdown();
+        return false;
+    }
+    cameraUBO_ = *bufferResult;
+
+    uboDesc.size = sizeof(LightUBO) + 16 * sizeof(glm::vec4) * 2;  // Room for lights
+    bufferResult = context_.createBuffer(uboDesc);
+    if (!bufferResult) {
+        context_.destroyBuffer(cameraUBO_);
+        context_.shutdown();
+        return false;
+    }
+    lightUBO_ = *bufferResult;
+
+    // Initialize glslang for runtime GLSL compilation
+    if (GLSLCompiler::initialize()) {
+        glslangInitialized_ = true;
+        std::fprintf(stderr, "[Vulkan] glslang initialized for runtime shader compilation\n");
+    }
+
+    createDefaultMaterials();
+    createPipelines();
+
+    initialized_ = true;
+    return true;
+}
+
+void VulkanGraphics3DSystem::beginFrame() {
+    renderQueue_.clear();
+    context_.beginFrame();
+    updateCameraUBO();
+    updateLightUBO();
+    checkShaderHotReload();
+}
+
+void VulkanGraphics3DSystem::endFrame() {
+    flushRenderQueue();
+    renderDebugLines();
+    context_.endFrame();
+
+    // Update timed debug lines
+    for (auto& line : debugLines_) {
+        line.timeRemaining -= 1.0f / 60.0f;
+    }
+    std::erase_if(debugLines_, [](const DebugLine& l) { return l.timeRemaining <= 0; });
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMesh(const MeshDef& def) {
+    VulkanMesh mesh;
+    mesh.vertexCount = static_cast<std::uint32_t>(def.vertices.size());
+    mesh.indexCount = static_cast<std::uint32_t>(def.indices.size());
+    mesh.bounds = def.bounds;
+    mesh.isDynamic = def.isDynamic;
+
+    // Create vertex buffer
+    VulkanBufferDef vertexDef{};
+    vertexDef.size = def.vertices.size() * sizeof(Vertex3D);
+    vertexDef.usage = VulkanBufferUsage::Vertex | VulkanBufferUsage::TransferDst;
+    vertexDef.hostVisible = def.isDynamic;
+
+    auto vertexResult = context_.createBuffer(vertexDef);
+    if (!vertexResult) {
+        return std::unexpected(Graphics3DError::OutOfMemory);
+    }
+    mesh.vertexBuffer = *vertexResult;
+
+    // Upload vertex data
+    context_.uploadToBuffer(mesh.vertexBuffer, def.vertices.data(),
+                            def.vertices.size() * sizeof(Vertex3D));
+
+    // Create index buffer
+    if (!def.indices.empty()) {
+        VulkanBufferDef indexDef{};
+        indexDef.size = def.indices.size() * sizeof(std::uint32_t);
+        indexDef.usage = VulkanBufferUsage::Index | VulkanBufferUsage::TransferDst;
+        indexDef.hostVisible = false;
+
+        auto indexResult = context_.createBuffer(indexDef);
+        if (!indexResult) {
+            context_.destroyBuffer(mesh.vertexBuffer);
+            return std::unexpected(Graphics3DError::OutOfMemory);
+        }
+        mesh.indexBuffer = *indexResult;
+
+        context_.uploadToBuffer(mesh.indexBuffer, def.indices.data(),
+                                def.indices.size() * sizeof(std::uint32_t));
+    }
+
+    MeshHandle handle = nextMeshHandle_++;
+    meshes_[handle] = mesh;
+    return handle;
+}
+
+void VulkanGraphics3DSystem::destroyMesh(MeshHandle handle) {
+    auto it = meshes_.find(handle);
+    if (it != meshes_.end()) {
+        context_.destroyBuffer(it->second.vertexBuffer);
+        if (it->second.indexBuffer != 0) {
+            context_.destroyBuffer(it->second.indexBuffer);
+        }
+        meshes_.erase(it);
+    }
+}
+
+bool VulkanGraphics3DSystem::hasMesh(MeshHandle handle) const {
+    return meshes_.contains(handle);
+}
+
+AABB3D VulkanGraphics3DSystem::getMeshBounds(MeshHandle handle) const {
+    auto it = meshes_.find(handle);
+    if (it != meshes_.end()) {
+        return it->second.bounds;
+    }
+    return AABB3D{};
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::updateMeshVertices(
+    MeshHandle handle, std::span<const Vertex3D> vertices, std::uint32_t offset) {
+    auto it = meshes_.find(handle);
+    if (it == meshes_.end()) {
+        return std::unexpected(Graphics3DError::InvalidMesh);
+    }
+
+    if (!it->second.isDynamic) {
+        return std::unexpected(Graphics3DError::InvalidMesh);
+    }
+
+    auto result = context_.uploadToBuffer(it->second.vertexBuffer,
+                                          vertices.data(),
+                                          vertices.size() * sizeof(Vertex3D),
+                                          offset * sizeof(Vertex3D));
+    if (!result) {
+        return std::unexpected(Graphics3DError::OutOfMemory);
+    }
+
+    return {};
+}
+
+// Primitive mesh generation helper
+namespace {
+    std::vector<Vertex3D> generateCubeVertices(float size) {
+        float h = size / 2.0f;
+        std::vector<Vertex3D> vertices;
+
+        // Each face has 4 vertices
+        // Front face
+        vertices.push_back({{-h, -h, h}, {0, 0, 1}, {0, 0}});
+        vertices.push_back({{h, -h, h}, {0, 0, 1}, {1, 0}});
+        vertices.push_back({{h, h, h}, {0, 0, 1}, {1, 1}});
+        vertices.push_back({{-h, h, h}, {0, 0, 1}, {0, 1}});
+
+        // Back face
+        vertices.push_back({{h, -h, -h}, {0, 0, -1}, {0, 0}});
+        vertices.push_back({{-h, -h, -h}, {0, 0, -1}, {1, 0}});
+        vertices.push_back({{-h, h, -h}, {0, 0, -1}, {1, 1}});
+        vertices.push_back({{h, h, -h}, {0, 0, -1}, {0, 1}});
+
+        // Top face
+        vertices.push_back({{-h, h, h}, {0, 1, 0}, {0, 0}});
+        vertices.push_back({{h, h, h}, {0, 1, 0}, {1, 0}});
+        vertices.push_back({{h, h, -h}, {0, 1, 0}, {1, 1}});
+        vertices.push_back({{-h, h, -h}, {0, 1, 0}, {0, 1}});
+
+        // Bottom face
+        vertices.push_back({{-h, -h, -h}, {0, -1, 0}, {0, 0}});
+        vertices.push_back({{h, -h, -h}, {0, -1, 0}, {1, 0}});
+        vertices.push_back({{h, -h, h}, {0, -1, 0}, {1, 1}});
+        vertices.push_back({{-h, -h, h}, {0, -1, 0}, {0, 1}});
+
+        // Right face
+        vertices.push_back({{h, -h, h}, {1, 0, 0}, {0, 0}});
+        vertices.push_back({{h, -h, -h}, {1, 0, 0}, {1, 0}});
+        vertices.push_back({{h, h, -h}, {1, 0, 0}, {1, 1}});
+        vertices.push_back({{h, h, h}, {1, 0, 0}, {0, 1}});
+
+        // Left face
+        vertices.push_back({{-h, -h, -h}, {-1, 0, 0}, {0, 0}});
+        vertices.push_back({{-h, -h, h}, {-1, 0, 0}, {1, 0}});
+        vertices.push_back({{-h, h, h}, {-1, 0, 0}, {1, 1}});
+        vertices.push_back({{-h, h, -h}, {-1, 0, 0}, {0, 1}});
+
+        return vertices;
+    }
+
+    std::vector<std::uint32_t> generateCubeIndices() {
+        std::vector<std::uint32_t> indices;
+        for (std::uint32_t face = 0; face < 6; ++face) {
+            std::uint32_t base = face * 4;
+            indices.push_back(base);
+            indices.push_back(base + 1);
+            indices.push_back(base + 2);
+            indices.push_back(base);
+            indices.push_back(base + 2);
+            indices.push_back(base + 3);
+        }
+        return indices;
+    }
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createCubeMesh(float size) {
+    auto vertices = generateCubeVertices(size);
+    auto indices = generateCubeIndices();
+
+    float h = size / 2.0f;
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = indices;
+    def.bounds = AABB3D{Vec3{-h, -h, -h}, Vec3{h, h, h}};
+
+    return createMesh(def);
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createSphereMesh(
+    float radius, std::uint32_t segments, std::uint32_t rings) {
+    std::vector<Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+
+    for (std::uint32_t r = 0; r <= rings; ++r) {
+        float phi = 3.14159f * r / rings;
+        for (std::uint32_t s = 0; s <= segments; ++s) {
+            float theta = 2.0f * 3.14159f * s / segments;
+
+            Vec3 pos{
+                radius * std::sin(phi) * std::cos(theta),
+                radius * std::cos(phi),
+                radius * std::sin(phi) * std::sin(theta)
+            };
+            Vec3 normal = pos;
+            float len = std::sqrt(normal.x * normal.x + normal.y * normal.y + normal.z * normal.z);
+            normal = Vec3{normal.x / len, normal.y / len, normal.z / len};
+            Vec2 uv{static_cast<float>(s) / segments, static_cast<float>(r) / rings};
+
+            vertices.push_back({pos, normal, uv});
+        }
+    }
+
+    for (std::uint32_t r = 0; r < rings; ++r) {
+        for (std::uint32_t s = 0; s < segments; ++s) {
+            std::uint32_t i0 = r * (segments + 1) + s;
+            std::uint32_t i1 = i0 + 1;
+            std::uint32_t i2 = i0 + (segments + 1);
+            std::uint32_t i3 = i2 + 1;
+
+            indices.push_back(i0);
+            indices.push_back(i2);
+            indices.push_back(i1);
+
+            indices.push_back(i1);
+            indices.push_back(i2);
+            indices.push_back(i3);
+        }
+    }
+
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = indices;
+    def.bounds = AABB3D{Vec3{-radius, -radius, -radius}, Vec3{radius, radius, radius}};
+
+    return createMesh(def);
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createCylinderMesh(
+    float radius, float height, std::uint32_t segments) {
+    // Simplified cylinder generation
+    std::vector<Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+
+    // Top and bottom circles plus sides
+    for (std::uint32_t i = 0; i <= segments; ++i) {
+        float angle = 2.0f * 3.14159f * i / segments;
+        float x = radius * std::cos(angle);
+        float z = radius * std::sin(angle);
+
+        // Top circle
+        vertices.push_back({{x, height, z}, {0, 1, 0}, {static_cast<float>(i) / segments, 0}});
+        // Bottom circle
+        vertices.push_back({{x, 0, z}, {0, -1, 0}, {static_cast<float>(i) / segments, 1}});
+        // Side top
+        Vec3 normal{std::cos(angle), 0, std::sin(angle)};
+        vertices.push_back({{x, height, z}, normal, {static_cast<float>(i) / segments, 0}});
+        // Side bottom
+        vertices.push_back({{x, 0, z}, normal, {static_cast<float>(i) / segments, 1}});
+    }
+
+    // Generate indices for sides
+    for (std::uint32_t i = 0; i < segments; ++i) {
+        std::uint32_t base = i * 4;
+        // Side quad
+        indices.push_back(base + 2);
+        indices.push_back(base + 6);
+        indices.push_back(base + 3);
+
+        indices.push_back(base + 3);
+        indices.push_back(base + 6);
+        indices.push_back(base + 7);
+    }
+
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = indices;
+    def.bounds = AABB3D{Vec3{-radius, 0, -radius}, Vec3{radius, height, radius}};
+
+    return createMesh(def);
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createCapsuleMesh(
+    float radius, float height, std::uint32_t segments, std::uint32_t rings) {
+    std::vector<Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+
+    constexpr float PI = 3.14159265359f;
+
+    // Capsule consists of: top hemisphere + cylinder + bottom hemisphere
+    // Match OpenGL behavior: height parameter is the cylinder portion height
+    // Total capsule height = height + 2*radius
+    float halfHeight = height * 0.5f;
+
+    // Top hemisphere (centered at +halfHeight)
+    for (std::uint32_t r = 0; r <= rings; ++r) {
+        float v = static_cast<float>(r) / rings;
+        float phi = v * PI * 0.5f;  // 0 to PI/2 (top half of sphere)
+
+        for (std::uint32_t s = 0; s <= segments; ++s) {
+            float u = static_cast<float>(s) / segments;
+            float theta = u * 2.0f * PI;
+
+            float sinPhi = std::sin(phi);
+            float cosPhi = std::cos(phi);
+            float sinTheta = std::sin(theta);
+            float cosTheta = std::cos(theta);
+
+            Vec3 normal{sinPhi * cosTheta, cosPhi, sinPhi * sinTheta};
+            Vec3 pos = normal * radius + Vec3{0.0f, halfHeight, 0.0f};
+            Vec2 uv{u, v * 0.25f};  // Top quarter of texture
+
+            vertices.push_back({pos, normal, uv});
+        }
+    }
+
+    std::uint32_t topHemisphereVertices = (rings + 1) * (segments + 1);
+
+    // Cylinder section (two rings connecting hemispheres)
+    for (std::uint32_t s = 0; s <= segments; ++s) {
+        float u = static_cast<float>(s) / segments;
+        float theta = u * 2.0f * PI;
+        float x = std::cos(theta);
+        float z = std::sin(theta);
+
+        // Top of cylinder at y = halfHeight
+        Vec3 topPos{x * radius, halfHeight, z * radius};
+        Vec3 normal = glm::normalize(Vec3{x, 0.0f, z});
+        Vec2 topUv{u, 0.25f};
+        vertices.push_back({topPos, normal, topUv});
+
+        // Bottom of cylinder at y = -halfHeight
+        Vec3 botPos{x * radius, -halfHeight, z * radius};
+        Vec2 botUv{u, 0.75f};
+        vertices.push_back({botPos, normal, botUv});
+    }
+
+    std::uint32_t cylinderVertices = 2 * (segments + 1);
+
+    // Bottom hemisphere (centered at -halfHeight)
+    for (std::uint32_t r = 0; r <= rings; ++r) {
+        float v = static_cast<float>(r) / rings;
+        float phi = PI * 0.5f + v * PI * 0.5f;  // PI/2 to PI (bottom half)
+
+        for (std::uint32_t s = 0; s <= segments; ++s) {
+            float u = static_cast<float>(s) / segments;
+            float theta = u * 2.0f * PI;
+
+            float sinPhi = std::sin(phi);
+            float cosPhi = std::cos(phi);
+            float sinTheta = std::sin(theta);
+            float cosTheta = std::cos(theta);
+
+            Vec3 normal{sinPhi * cosTheta, cosPhi, sinPhi * sinTheta};
+            Vec3 pos = normal * radius + Vec3{0.0f, -halfHeight, 0.0f};
+            Vec2 uv{u, 0.75f + v * 0.25f};  // Bottom quarter of texture
+
+            vertices.push_back({pos, normal, uv});
+        }
+    }
+
+    // Generate indices for top hemisphere (CCW winding for outward-facing normals)
+    for (std::uint32_t r = 0; r < rings; ++r) {
+        for (std::uint32_t s = 0; s < segments; ++s) {
+            std::uint32_t i0 = r * (segments + 1) + s;
+            std::uint32_t i1 = i0 + 1;
+            std::uint32_t i2 = i0 + (segments + 1);
+            std::uint32_t i3 = i2 + 1;
+
+            // CCW winding: i0 → i1 → i2, i1 → i3 → i2
+            indices.push_back(i0);
+            indices.push_back(i1);
+            indices.push_back(i2);
+
+            indices.push_back(i1);
+            indices.push_back(i3);
+            indices.push_back(i2);
+        }
+    }
+
+    // Generate indices for cylinder (interleaved top/bottom pairs, CCW winding)
+    std::uint32_t cylBase = topHemisphereVertices;
+    for (std::uint32_t s = 0; s < segments; ++s) {
+        // Each segment has 2 vertices: top and bottom
+        std::uint32_t topCurr = cylBase + s * 2;
+        std::uint32_t botCurr = cylBase + s * 2 + 1;
+        std::uint32_t topNext = cylBase + (s + 1) * 2;
+        std::uint32_t botNext = cylBase + (s + 1) * 2 + 1;
+
+        // CCW winding for outward-facing cylinder
+        indices.push_back(topCurr);
+        indices.push_back(topNext);
+        indices.push_back(botCurr);
+
+        indices.push_back(topNext);
+        indices.push_back(botNext);
+        indices.push_back(botCurr);
+    }
+
+    // Generate indices for bottom hemisphere (CCW winding for outward-facing normals)
+    std::uint32_t botBase = topHemisphereVertices + cylinderVertices;
+    for (std::uint32_t r = 0; r < rings; ++r) {
+        for (std::uint32_t s = 0; s < segments; ++s) {
+            std::uint32_t i0 = botBase + r * (segments + 1) + s;
+            std::uint32_t i1 = i0 + 1;
+            std::uint32_t i2 = i0 + (segments + 1);
+            std::uint32_t i3 = i2 + 1;
+
+            // CCW winding: i0 → i1 → i2, i1 → i3 → i2
+            indices.push_back(i0);
+            indices.push_back(i1);
+            indices.push_back(i2);
+
+            indices.push_back(i1);
+            indices.push_back(i3);
+            indices.push_back(i2);
+        }
+    }
+
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = indices;
+    // Bounds: total height is height (cylinder) + 2*radius (hemispheres)
+    def.bounds = AABB3D{
+        Vec3{-radius, -halfHeight - radius, -radius},
+        Vec3{radius, halfHeight + radius, radius}
+    };
+
+    return createMesh(def);
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createPlaneMesh(
+    float width, float height, std::uint32_t widthSegments, std::uint32_t heightSegments) {
+    std::vector<Vertex3D> vertices;
+    std::vector<std::uint32_t> indices;
+
+    float halfW = width / 2.0f;
+    float halfH = height / 2.0f;
+
+    for (std::uint32_t y = 0; y <= heightSegments; ++y) {
+        for (std::uint32_t x = 0; x <= widthSegments; ++x) {
+            float u = static_cast<float>(x) / widthSegments;
+            float v = static_cast<float>(y) / heightSegments;
+
+            vertices.push_back({
+                {-halfW + u * width, 0, -halfH + v * height},
+                {0, 1, 0},
+                {u, v}
+            });
+        }
+    }
+
+    for (std::uint32_t y = 0; y < heightSegments; ++y) {
+        for (std::uint32_t x = 0; x < widthSegments; ++x) {
+            std::uint32_t i0 = y * (widthSegments + 1) + x;
+            std::uint32_t i1 = i0 + 1;
+            std::uint32_t i2 = i0 + (widthSegments + 1);
+            std::uint32_t i3 = i2 + 1;
+
+            indices.push_back(i0);
+            indices.push_back(i2);
+            indices.push_back(i1);
+
+            indices.push_back(i1);
+            indices.push_back(i2);
+            indices.push_back(i3);
+        }
+    }
+
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = indices;
+    def.bounds = AABB3D{Vec3{-halfW, 0, -halfH}, Vec3{halfW, 0, halfH}};
+
+    return createMesh(def);
+}
+
+Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createMaterial(const PBRMaterial& mat) {
+    VulkanMaterial material;
+    material.pbrData = mat;
+    material.isPBR = true;
+
+    MaterialHandle handle = nextMaterialHandle_++;
+    materials_[handle] = material;
+    return handle;
+}
+
+Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createUnlitMaterial(const UnlitMaterial& mat) {
+    VulkanMaterial material;
+    material.pbrData.baseColorFactor = mat.color;
+    material.pbrData.blendMode = mat.blendMode;
+    material.pbrData.cullMode = mat.cullMode;
+    material.isPBR = false;
+
+    MaterialHandle handle = nextMaterialHandle_++;
+    materials_[handle] = material;
+    return handle;
+}
+
+void VulkanGraphics3DSystem::destroyMaterial(MaterialHandle handle) {
+    materials_.erase(handle);
+}
+
+bool VulkanGraphics3DSystem::hasMaterial(MaterialHandle handle) const {
+    return materials_.contains(handle);
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::setMaterialTexture(
+    MaterialHandle handle, std::uint32_t slot, AssetHandle texture) {
+    auto it = materials_.find(handle);
+    if (it == materials_.end()) {
+        return std::unexpected(Graphics3DError::InvalidMaterial);
+    }
+    // Would set texture in descriptor set
+    return {};
+}
+
+MaterialHandle VulkanGraphics3DSystem::getDefaultPBRMaterial() const {
+    return defaultPBRMaterial_;
+}
+
+MaterialHandle VulkanGraphics3DSystem::getDefaultUnlitMaterial() const {
+    return defaultUnlitMaterial_;
+}
+
+MaterialHandle VulkanGraphics3DSystem::getErrorMaterial() const {
+    return errorMaterial_;
+}
+
+void VulkanGraphics3DSystem::drawMesh(
+    MeshHandle mesh, MaterialHandle material, const Mat4& worldMatrix,
+    bool castShadow, bool receiveShadow) {
+    queueRenderItem(RenderItem{
+        .mesh = mesh,
+        .material = material,
+        .worldMatrix = worldMatrix,
+        .castShadow = castShadow,
+        .receiveShadow = receiveShadow
+    });
+}
+
+void VulkanGraphics3DSystem::drawMesh(
+    MeshHandle mesh, MaterialHandle material, const Transform3D& transform,
+    bool castShadow, bool receiveShadow) {
+    // Convert transform to matrix
+    glm::mat4 worldMatrix = glm::mat4(1.0f);
+    worldMatrix = glm::translate(worldMatrix, glm::vec3{transform.position.x, transform.position.y, transform.position.z});
+    worldMatrix = worldMatrix * glm::mat4_cast(glm::quat{transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z});
+    worldMatrix = glm::scale(worldMatrix, glm::vec3{transform.scale.x, transform.scale.y, transform.scale.z});
+
+    Mat4 mat;
+    std::memcpy(&mat, &worldMatrix, sizeof(Mat4));
+
+    drawMesh(mesh, material, mat, castShadow, receiveShadow);
+}
+
+void VulkanGraphics3DSystem::queueRenderItem(const RenderItem& item) {
+    renderQueue_.push_back(item);
+}
+
+void VulkanGraphics3DSystem::queueRenderItems(std::span<const RenderItem> items) {
+    for (const auto& item : items) {
+        renderQueue_.push_back(item);
+    }
+}
+
+void VulkanGraphics3DSystem::flushRenderQueue() {
+    static int frameCount = 0;
+    frameCount++;
+
+    if (renderQueue_.empty()) {
+        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Render queue is empty\n", frameCount);
+        return;
+    }
+
+    VkCommandBuffer cmd = context_.getCurrentCommandBuffer();
+    if (cmd == VK_NULL_HANDLE || pbrPipeline_ == 0) {
+        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: cmd=%p, pbrPipeline=%u\n",
+                                          frameCount, (void*)cmd, pbrPipeline_);
+        renderQueue_.clear();
+        return;
+    }
+
+    if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Rendering %zu items\n",
+                                      frameCount, renderQueue_.size());
+
+    // Sort by material for batching
+    std::sort(renderQueue_.begin(), renderQueue_.end(),
+              [](const RenderItem& a, const RenderItem& b) {
+                  return a.material < b.material;
+              });
+
+    // Compute view-projection matrix
+    Size windowSize = getWindowSize();
+    auto& pos = camera_.transform.position;
+    glm::quat rot{camera_.transform.rotation.w, camera_.transform.rotation.x,
+                  camera_.transform.rotation.y, camera_.transform.rotation.z};
+    glm::vec3 cameraPos{pos.x, pos.y, pos.z};
+    glm::vec3 forward = rot * glm::vec3{0.0f, 0.0f, -1.0f};
+    glm::vec3 up = rot * glm::vec3{0.0f, 1.0f, 0.0f};
+    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + forward, up);
+    float aspect = windowSize.height > 0 ?
+        static_cast<float>(windowSize.width) / static_cast<float>(windowSize.height) : 1.0f;
+    glm::mat4 projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
+    projection[1][1] *= -1;  // Flip Y for Vulkan
+    glm::mat4 viewProjection = projection * view;
+
+    // Bind PBR pipeline
+    context_.bindPipeline(pbrPipeline_);
+    VkPipelineLayout layout = context_.getPipelineLayout(pbrPipeline_);
+
+    // Get light direction from directional light or use default
+    glm::vec4 lightDir{0.5f, -1.0f, 0.3f, 0.0f};
+    glm::vec4 lightColor{1.0f, 1.0f, 1.0f, 1.0f};
+    if (hasDirectionalLight_) {
+        lightDir = glm::vec4{directionalLight_.direction.x, directionalLight_.direction.y,
+                            directionalLight_.direction.z, 0.0f};
+        lightColor = glm::vec4{directionalLight_.color.r, directionalLight_.color.g,
+                              directionalLight_.color.b, directionalLight_.intensity};
+    }
+    glm::vec4 ambientColor{ambientColor_.x, ambientColor_.y, ambientColor_.z, ambientIntensity_};
+
+    // Track current pipeline to minimize rebinds
+    VulkanPipelineHandle currentPipeline = pbrPipeline_;
+
+    // Draw each item
+    for (const auto& item : renderQueue_) {
+        auto meshIt = meshes_.find(item.mesh);
+        if (meshIt == meshes_.end()) continue;
+
+        const auto& mesh = meshIt->second;
+        if (mesh.vertexBuffer == 0) continue;
+
+        // Use custom pipeline if specified, otherwise use PBR pipeline
+        VulkanPipelineHandle itemPipeline = (item.customPipeline != 0) ?
+            static_cast<VulkanPipelineHandle>(item.customPipeline) : pbrPipeline_;
+
+        // Rebind pipeline if changed
+        if (itemPipeline != currentPipeline) {
+            context_.bindPipeline(itemPipeline);
+            layout = context_.getPipelineLayout(itemPipeline);
+            currentPipeline = itemPipeline;
+        }
+
+        // Get model matrix from RenderItem worldMatrix
+        glm::mat4 model;
+        std::memcpy(&model, &item.worldMatrix, sizeof(glm::mat4));
+
+        // Get material color, then apply color override
+        glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+        auto matIt = materials_.find(item.material);
+        if (matIt != materials_.end()) {
+            const auto& bc = matIt->second.pbrData.baseColorFactor;
+            baseColor = glm::vec4{bc.x, bc.y, bc.z, bc.w};
+        }
+
+        // Apply color override from RenderItem
+        baseColor.r *= item.colorOverride.x;
+        baseColor.g *= item.colorOverride.y;
+        baseColor.b *= item.colorOverride.z;
+        baseColor.a *= item.colorOverride.w;
+
+        // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
+        glm::vec4 camPos{cameraPos.x, cameraPos.y, cameraPos.z, 1.0f};
+        struct PushData {
+            glm::mat4 model;
+            glm::mat4 viewProjection;
+            glm::vec4 baseColor;
+            glm::vec4 lightDir;
+            glm::vec4 lightColor;
+            glm::vec4 ambientColor;
+            glm::vec4 cameraPos;
+        } pushData = {model, viewProjection, baseColor, lightDir, lightColor, ambientColor, camPos};
+
+        vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                          sizeof(pushData), &pushData);
+
+        // Bind vertex buffer
+        VkBuffer vertexBuffer = context_.getBuffer(mesh.vertexBuffer);
+        if (vertexBuffer == VK_NULL_HANDLE) continue;
+
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, &offset);
+
+        // Draw
+        if (mesh.indexBuffer != 0 && mesh.indexCount > 0) {
+            VkBuffer indexBuffer = context_.getBuffer(mesh.indexBuffer);
+            if (indexBuffer != VK_NULL_HANDLE) {
+                vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+            }
+        } else if (mesh.vertexCount > 0) {
+            vkCmdDraw(cmd, mesh.vertexCount, 1, 0, 0);
+        }
+    }
+
+    renderQueue_.clear();
+}
+
+void VulkanGraphics3DSystem::renderEntities(IEntitySystem& entities) {
+    // Iterate through entities with Mesh3DComponent and Transform3D components
+    auto meshView = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : meshView) {
+        const auto& meshComp = entities.get<Mesh3DComponent>(entity);
+        const auto& transform = entities.get<Transform3D>(entity);
+
+        if (!meshComp.visible) continue;
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = glm::mat4(1.0f);
+        worldMatrix = glm::translate(worldMatrix, glm::vec3{transform.position.x, transform.position.y, transform.position.z});
+        worldMatrix = worldMatrix * glm::mat4_cast(glm::quat{transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z});
+        worldMatrix = glm::scale(worldMatrix, glm::vec3{transform.scale.x, transform.scale.y, transform.scale.z});
+
+        Mat4 mat;
+        std::memcpy(&mat, &worldMatrix, sizeof(Mat4));
+
+        queueRenderItem(RenderItem{
+            .mesh = meshComp.mesh,
+            .material = meshComp.material,
+            .worldMatrix = mat,
+            .layer = meshComp.layer,
+            .castShadow = meshComp.castShadow,
+            .receiveShadow = meshComp.receiveShadow
+        });
+    }
+}
+
+void VulkanGraphics3DSystem::renderEntities(IEntitySystem& entities, const Frustum& frustum) {
+    // Render with frustum culling
+    auto meshView = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : meshView) {
+        const auto& meshComp = entities.get<Mesh3DComponent>(entity);
+        const auto& transform = entities.get<Transform3D>(entity);
+
+        if (!meshComp.visible) continue;
+
+        // Frustum culling - check if entity bounds are in frustum
+        if (frustumCullingEnabled_ && meshComp.mesh != 0) {
+            AABB3D bounds = getMeshBounds(meshComp.mesh);
+            // Transform AABB by entity transform (simplified - center point test)
+            Vec3 center{
+                (bounds.min.x + bounds.max.x) * 0.5f + transform.position.x,
+                (bounds.min.y + bounds.max.y) * 0.5f + transform.position.y,
+                (bounds.min.z + bounds.max.z) * 0.5f + transform.position.z
+            };
+
+            // Simple point-in-frustum test using all 6 planes
+            bool inFrustum = true;
+            for (int i = 0; i < 6 && inFrustum; ++i) {
+                const auto& plane = frustum.planes[i];
+                float dist = plane.normal.x * center.x + plane.normal.y * center.y +
+                            plane.normal.z * center.z + plane.distance;
+                if (dist < -bounds.max.x) {  // Use max extent as radius approximation
+                    inFrustum = false;
+                }
+            }
+
+            if (!inFrustum) continue;
+        }
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = glm::mat4(1.0f);
+        worldMatrix = glm::translate(worldMatrix, glm::vec3{transform.position.x, transform.position.y, transform.position.z});
+        worldMatrix = worldMatrix * glm::mat4_cast(glm::quat{transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z});
+        worldMatrix = glm::scale(worldMatrix, glm::vec3{transform.scale.x, transform.scale.y, transform.scale.z});
+
+        Mat4 mat;
+        std::memcpy(&mat, &worldMatrix, sizeof(Mat4));
+
+        queueRenderItem(RenderItem{
+            .mesh = meshComp.mesh,
+            .material = meshComp.material,
+            .worldMatrix = mat,
+            .layer = meshComp.layer,
+            .castShadow = meshComp.castShadow,
+            .receiveShadow = meshComp.receiveShadow
+        });
+    }
+}
+
+void VulkanGraphics3DSystem::renderEntities(
+    IEntitySystem& entities, RenderLayer minLayer, RenderLayer maxLayer) {
+    // Render layer range
+    auto meshView = entities.view<Mesh3DComponent, Transform3D>();
+
+    for (auto entity : meshView) {
+        const auto& meshComp = entities.get<Mesh3DComponent>(entity);
+        const auto& transform = entities.get<Transform3D>(entity);
+
+        if (!meshComp.visible) continue;
+        if (meshComp.layer < minLayer || meshComp.layer > maxLayer) continue;
+
+        // Convert transform to matrix
+        glm::mat4 worldMatrix = glm::mat4(1.0f);
+        worldMatrix = glm::translate(worldMatrix, glm::vec3{transform.position.x, transform.position.y, transform.position.z});
+        worldMatrix = worldMatrix * glm::mat4_cast(glm::quat{transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z});
+        worldMatrix = glm::scale(worldMatrix, glm::vec3{transform.scale.x, transform.scale.y, transform.scale.z});
+
+        Mat4 mat;
+        std::memcpy(&mat, &worldMatrix, sizeof(Mat4));
+
+        queueRenderItem(RenderItem{
+            .mesh = meshComp.mesh,
+            .material = meshComp.material,
+            .worldMatrix = mat,
+            .layer = meshComp.layer,
+            .castShadow = meshComp.castShadow,
+            .receiveShadow = meshComp.receiveShadow
+        });
+    }
+}
+
+void VulkanGraphics3DSystem::setCamera(const Camera3D& camera) {
+    camera_ = camera;
+}
+
+Camera3D VulkanGraphics3DSystem::getCamera() const {
+    return camera_;
+}
+
+Ray3D VulkanGraphics3DSystem::screenToWorldRay(Vec2 screenPos) const {
+    // Convert screen pos to normalized device coordinates
+    Size windowSize = context_.getWindowSize();
+    float x = (2.0f * screenPos.x) / windowSize.width - 1.0f;
+    float y = 1.0f - (2.0f * screenPos.y) / windowSize.height;
+
+    // Create ray from camera
+    return Ray3D{camera_.transform.position, Vec3{x, y, -1.0f}};  // Simplified
+}
+
+std::optional<Vec2> VulkanGraphics3DSystem::worldToScreen(const Vec3& worldPos) const {
+    // Would project world position using view-projection matrix
+    Size windowSize = context_.getWindowSize();
+    return Vec2{windowSize.width / 2.0f, windowSize.height / 2.0f};  // Placeholder
+}
+
+void VulkanGraphics3DSystem::setDirectionalLight(const DirectionalLight& light) {
+    directionalLight_ = light;
+    hasDirectionalLight_ = true;
+}
+
+void VulkanGraphics3DSystem::clearDirectionalLight() {
+    hasDirectionalLight_ = false;
+}
+
+std::uint32_t VulkanGraphics3DSystem::addPointLight(const PointLight& light, const Vec3& position) {
+    std::uint32_t id = nextLightId_++;
+    pointLights_[id] = {light, position};
+    return id;
+}
+
+std::uint32_t VulkanGraphics3DSystem::addSpotLight(const SpotLight& light, const Vec3& position) {
+    std::uint32_t id = nextLightId_++;
+    spotLights_[id] = {light, position};
+    return id;
+}
+
+void VulkanGraphics3DSystem::setLightPosition(std::uint32_t lightId, const Vec3& position) {
+    if (auto it = pointLights_.find(lightId); it != pointLights_.end()) {
+        it->second.second = position;
+    }
+    if (auto it = spotLights_.find(lightId); it != spotLights_.end()) {
+        it->second.second = position;
+    }
+}
+
+void VulkanGraphics3DSystem::removeLight(std::uint32_t lightId) {
+    pointLights_.erase(lightId);
+    spotLights_.erase(lightId);
+}
+
+void VulkanGraphics3DSystem::clearLights() {
+    pointLights_.clear();
+    spotLights_.clear();
+}
+
+void VulkanGraphics3DSystem::setAmbientLight(const Vec3& color, float intensity) {
+    ambientColor_ = color;
+    ambientIntensity_ = intensity;
+}
+
+void VulkanGraphics3DSystem::updateEntityLights(IEntitySystem& entities) {
+    // Would update lights from entities with light components
+}
+
+void VulkanGraphics3DSystem::setSkybox(const Skybox& skybox) {
+    skybox_ = skybox;
+    hasSkybox_ = true;
+}
+
+void VulkanGraphics3DSystem::clearSkybox() {
+    hasSkybox_ = false;
+}
+
+void VulkanGraphics3DSystem::setEnvironmentMap(const EnvironmentMap& envMap) {
+    environmentMap_ = envMap;
+    hasEnvironmentMap_ = true;
+}
+
+void VulkanGraphics3DSystem::clearEnvironmentMap() {
+    hasEnvironmentMap_ = false;
+}
+
+void VulkanGraphics3DSystem::setFog(const Fog& fog) {
+    fog_ = fog;
+}
+
+void VulkanGraphics3DSystem::setShadowsEnabled(bool enabled) {
+    shadowsEnabled_ = enabled;
+}
+
+bool VulkanGraphics3DSystem::areShadowsEnabled() const {
+    return shadowsEnabled_;
+}
+
+void VulkanGraphics3DSystem::setDirectionalShadowResolution(int resolution) {
+    shadowResolution_ = resolution;
+}
+
+void VulkanGraphics3DSystem::setShadowDistance(float distance) {
+    shadowDistance_ = distance;
+}
+
+void VulkanGraphics3DSystem::debugDrawLine(
+    const Vec3& start, const Vec3& end, const Color& color,
+    float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    debugLines_.push_back({start, end, color, duration, depthTest, duration});
+}
+
+void VulkanGraphics3DSystem::debugDrawBox(
+    const Vec3& center, const Vec3& halfExtents, const Quat& rotation,
+    const Color& color, float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    // Draw 12 edges of the box
+    Vec3 corners[8];
+    for (int i = 0; i < 8; ++i) {
+        corners[i] = Vec3{
+            center.x + halfExtents.x * ((i & 1) ? 1 : -1),
+            center.y + halfExtents.y * ((i & 2) ? 1 : -1),
+            center.z + halfExtents.z * ((i & 4) ? 1 : -1)
+        };
+    }
+
+    // Bottom face
+    debugDrawLine(corners[0], corners[1], color, duration, depthTest);
+    debugDrawLine(corners[1], corners[3], color, duration, depthTest);
+    debugDrawLine(corners[3], corners[2], color, duration, depthTest);
+    debugDrawLine(corners[2], corners[0], color, duration, depthTest);
+
+    // Top face
+    debugDrawLine(corners[4], corners[5], color, duration, depthTest);
+    debugDrawLine(corners[5], corners[7], color, duration, depthTest);
+    debugDrawLine(corners[7], corners[6], color, duration, depthTest);
+    debugDrawLine(corners[6], corners[4], color, duration, depthTest);
+
+    // Vertical edges
+    debugDrawLine(corners[0], corners[4], color, duration, depthTest);
+    debugDrawLine(corners[1], corners[5], color, duration, depthTest);
+    debugDrawLine(corners[2], corners[6], color, duration, depthTest);
+    debugDrawLine(corners[3], corners[7], color, duration, depthTest);
+}
+
+void VulkanGraphics3DSystem::debugDrawSphere(
+    const Vec3& center, float radius, const Color& color,
+    float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    // Draw circles in 3 planes
+    const int segments = 16;
+    for (int i = 0; i < segments; ++i) {
+        float a1 = 2.0f * 3.14159f * i / segments;
+        float a2 = 2.0f * 3.14159f * (i + 1) / segments;
+
+        // XY plane
+        debugDrawLine(
+            Vec3{center.x + radius * std::cos(a1), center.y + radius * std::sin(a1), center.z},
+            Vec3{center.x + radius * std::cos(a2), center.y + radius * std::sin(a2), center.z},
+            color, duration, depthTest);
+
+        // XZ plane
+        debugDrawLine(
+            Vec3{center.x + radius * std::cos(a1), center.y, center.z + radius * std::sin(a1)},
+            Vec3{center.x + radius * std::cos(a2), center.y, center.z + radius * std::sin(a2)},
+            color, duration, depthTest);
+
+        // YZ plane
+        debugDrawLine(
+            Vec3{center.x, center.y + radius * std::cos(a1), center.z + radius * std::sin(a1)},
+            Vec3{center.x, center.y + radius * std::cos(a2), center.z + radius * std::sin(a2)},
+            color, duration, depthTest);
+    }
+}
+
+void VulkanGraphics3DSystem::debugDrawCapsule(
+    const Vec3& start, const Vec3& end, float radius,
+    const Color& color, float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    debugDrawSphere(start, radius, color, duration, depthTest);
+    debugDrawSphere(end, radius, color, duration, depthTest);
+    debugDrawLine(start, end, color, duration, depthTest);
+}
+
+void VulkanGraphics3DSystem::debugDrawFrustum(
+    const Frustum& frustum, const Color& color,
+    float duration, bool depthTest) {
+    // Would draw frustum from plane intersections
+}
+
+void VulkanGraphics3DSystem::debugDrawRay(
+    const Vec3& origin, const Vec3& direction, float length,
+    const Color& color, float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    Vec3 end{origin.x + direction.x * length, origin.y + direction.y * length, origin.z + direction.z * length};
+    debugDrawLine(origin, end, color, duration, depthTest);
+}
+
+void VulkanGraphics3DSystem::debugDrawAxes(
+    const Transform3D& transform, float size, float duration, bool depthTest) {
+    if (!debugRenderingEnabled_) return;
+    debugDrawLine(transform.position,
+                  Vec3{transform.position.x + size, transform.position.y, transform.position.z},
+                  Color::red(), duration, depthTest);
+    debugDrawLine(transform.position,
+                  Vec3{transform.position.x, transform.position.y + size, transform.position.z},
+                  Color::green(), duration, depthTest);
+    debugDrawLine(transform.position,
+                  Vec3{transform.position.x, transform.position.y, transform.position.z + size},
+                  Color::blue(), duration, depthTest);
+}
+
+void VulkanGraphics3DSystem::debugDrawAABB(
+    const AABB3D& aabb, const Color& color, float duration, bool depthTest) {
+    Vec3 center{(aabb.min.x + aabb.max.x) / 2, (aabb.min.y + aabb.max.y) / 2, (aabb.min.z + aabb.max.z) / 2};
+    Vec3 halfExtents{(aabb.max.x - aabb.min.x) / 2, (aabb.max.y - aabb.min.y) / 2, (aabb.max.z - aabb.min.z) / 2};
+    debugDrawBox(center, halfExtents, Quat{1, 0, 0, 0}, color, duration, depthTest);
+}
+
+void VulkanGraphics3DSystem::debugClear() {
+    debugLines_.clear();
+}
+
+void VulkanGraphics3DSystem::setDebugRenderingEnabled(bool enabled) {
+    debugRenderingEnabled_ = enabled;
+}
+
+bool VulkanGraphics3DSystem::isDebugRenderingEnabled() const {
+    return debugRenderingEnabled_;
+}
+
+Size VulkanGraphics3DSystem::getWindowSize() const {
+    return context_.getWindowSize();
+}
+
+void VulkanGraphics3DSystem::setWindowSize(Size size) {
+    context_.setWindowSize(size);
+}
+
+bool VulkanGraphics3DSystem::isFullscreen() const {
+    return isFullscreen_;
+}
+
+void VulkanGraphics3DSystem::setFullscreen(bool fullscreen) {
+    isFullscreen_ = fullscreen;
+    // Would switch window mode
+}
+
+bool VulkanGraphics3DSystem::shouldClose() const {
+    GLFWwindow* window = context_.getWindow();
+    return window ? glfwWindowShouldClose(window) : false;
+}
+
+void* VulkanGraphics3DSystem::getNativeWindowHandle() const {
+    return context_.getWindow();
+}
+
+void VulkanGraphics3DSystem::setClearColor(const Color& color) {
+    clearColor_ = color;
+    // Forward to context (convert from 0-255 to 0.0-1.0)
+    context_.setClearColor(
+        static_cast<float>(color.r) / 255.0f,
+        static_cast<float>(color.g) / 255.0f,
+        static_cast<float>(color.b) / 255.0f,
+        static_cast<float>(color.a) / 255.0f
+    );
+}
+
+void VulkanGraphics3DSystem::setVSync(bool enabled) {
+    // Would recreate swapchain
+}
+
+void VulkanGraphics3DSystem::setRenderScale(float scale) {
+    renderScale_ = scale;
+}
+
+float VulkanGraphics3DSystem::getRenderScale() const {
+    return renderScale_;
+}
+
+//==========================================================================
+// Runtime Configuration
+//==========================================================================
+
+bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& configPath) {
+    configPath_ = configPath;
+
+    if (!std::filesystem::exists(configPath)) {
+        std::fprintf(stderr, "[Vulkan] Config file not found: %s\n", configPath.string().c_str());
+        return false;
+    }
+
+    try {
+        sol::state lua;
+        lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
+
+        // Sandbox
+        lua["os"] = sol::lua_nil;
+        lua["io"] = sol::lua_nil;
+        lua["loadfile"] = sol::lua_nil;
+        lua["dofile"] = sol::lua_nil;
+        lua["load"] = sol::lua_nil;
+
+        sol::protected_function_result result = lua.safe_script_file(configPath.string());
+        if (!result.valid()) {
+            sol::error err = result;
+            std::fprintf(stderr, "[Vulkan] Failed to load config: %s\n", err.what());
+            return false;
+        }
+
+        sol::table config = result;
+        Graphics3DRuntimeConfig newConfig;
+
+        //======================================================================
+        // Unified Rendering Settings
+        //======================================================================
+
+        // Gamma correction (unified setting)
+        if (auto gamma = config["gammaCorrection"]; gamma.valid()) {
+            newConfig.gammaCorrection = gamma.get<bool>();
+        }
+
+        // MSAA samples (unified setting)
+        if (auto msaa = config["msaaSamples"]; msaa.valid()) {
+            newConfig.msaaSamples = msaa.get<std::uint32_t>();
+        }
+
+        // V-Sync (unified setting)
+        if (auto vsync = config["vsync"]; vsync.valid()) {
+            std::string mode = vsync.get<std::string>();
+            if (mode == "off") {
+                newConfig.vsync = PresentMode::Immediate;
+            } else if (mode == "adaptive") {
+                newConfig.vsync = PresentMode::Mailbox;
+            } else {
+                newConfig.vsync = PresentMode::FIFO;  // "on" or default
+            }
+        }
+
+        // Shader paths
+        if (auto shaderPaths = config["shaderPaths"]; shaderPaths.valid()) {
+            sol::table paths = shaderPaths;
+            for (auto& kv : paths) {
+                newConfig.shaderPaths.push_back(kv.second.as<std::string>());
+            }
+        }
+
+        //======================================================================
+        // Backend-Specific Settings (Vulkan-only features)
+        //======================================================================
+
+        if (auto vulkan = config["vulkan"]; vulkan.valid()) {
+            sol::table vk = vulkan;
+
+            if (auto val = vk["validationLayers"]; val.valid()) {
+                newConfig.vulkanValidationLayers = val.get<bool>();
+            }
+        }
+
+        //======================================================================
+        // Lighting
+        if (auto lighting = config["lighting"]; lighting.valid()) {
+            sol::table lt = lighting;
+
+            if (auto dir = lt["lightDirection"]; dir.valid()) {
+                sol::table d = dir;
+                newConfig.lightDirection = Vec3{
+                    d[1].get_or(0.5f),
+                    d[2].get_or(-1.0f),
+                    d[3].get_or(0.3f)
+                };
+            }
+
+            if (auto col = lt["lightColor"]; col.valid()) {
+                sol::table c = col;
+                newConfig.lightColor = Vec3{
+                    c[1].get_or(1.0f),
+                    c[2].get_or(0.98f),
+                    c[3].get_or(0.95f)
+                };
+            }
+
+            if (auto amb = lt["ambientColor"]; amb.valid()) {
+                sol::table a = amb;
+                newConfig.ambientColor = Vec3{
+                    a[1].get_or(0.15f),
+                    a[2].get_or(0.18f),
+                    a[3].get_or(0.22f)
+                };
+            }
+
+            if (auto intensity = lt["ambientIntensity"]; intensity.valid()) {
+                newConfig.ambientIntensity = intensity.get<float>();
+            }
+        }
+
+        // Clear color
+        if (auto clearColor = config["clearColor"]; clearColor.valid()) {
+            sol::table cc = clearColor;
+            newConfig.clearColor = Color::fromFloat(
+                cc[1].get_or(0.529f),
+                cc[2].get_or(0.808f),
+                cc[3].get_or(0.922f),
+                cc[4].get_or(1.0f)
+            );
+        }
+
+        // Debug
+        if (auto debug = config["debug"]; debug.valid()) {
+            sol::table d = debug;
+
+            if (auto wireframe = d["wireframe"]; wireframe.valid()) {
+                newConfig.debugWireframe = wireframe.get<bool>();
+            }
+            if (auto normals = d["showNormals"]; normals.valid()) {
+                newConfig.debugShowNormals = normals.get<bool>();
+            }
+            if (auto fps = d["showFps"]; fps.valid()) {
+                newConfig.debugShowFps = fps.get<bool>();
+            }
+            if (auto hr = d["hotReload"]; hr.valid()) {
+                newConfig.hotReload = hr.get<bool>();
+            }
+        }
+
+        applyRuntimeConfig(newConfig);
+        std::printf("[Vulkan] Loaded graphics config: %s\n", configPath.string().c_str());
+        return true;
+
+    } catch (const std::exception& e) {
+        std::fprintf(stderr, "[Vulkan] Exception loading config: %s\n", e.what());
+        return false;
+    }
+}
+
+void VulkanGraphics3DSystem::applyRuntimeConfig(const Graphics3DRuntimeConfig& config) {
+    runtimeConfig_ = config;
+
+    // Apply clear color
+    setClearColor(config.clearColor);
+
+    // Apply lighting defaults
+    if (!hasDirectionalLight_) {
+        DirectionalLight light;
+        light.direction = config.lightDirection;
+        light.color = config.lightColor;
+        setDirectionalLight(light);
+    }
+
+    setAmbientLight(config.ambientColor, config.ambientIntensity);
+
+    // Note: Swapchain format changes require full swapchain recreation
+    // which is more involved - for now we apply what we can at runtime
+}
+
+const Graphics3DRuntimeConfig& VulkanGraphics3DSystem::getRuntimeConfig() const {
+    return runtimeConfig_;
+}
+
+bool VulkanGraphics3DSystem::reloadRuntimeConfig() {
+    if (configPath_.empty()) {
+        return false;
+    }
+    return loadRuntimeConfig(configPath_);
+}
+
+void VulkanGraphics3DSystem::setShaderSystem(IShaderSystem* shaders) {
+    shaderSystem_ = shaders;
+}
+
+IShaderSystem* VulkanGraphics3DSystem::getShaderSystem() const {
+    return shaderSystem_;
+}
+
+void VulkanGraphics3DSystem::drawMeshWithShaderMaterial(
+    MeshHandle mesh, ShaderProgramHandle shader, const Mat4& worldMatrix,
+    bool castShadow, bool receiveShadow) {
+    // Would bind shader and draw
+}
+
+VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
+    std::string_view vertPath, std::string_view fragPath) {
+    auto vertSpirv = loadSpirv(std::string(vertPath));
+    auto fragSpirv = loadSpirv(std::string(fragPath));
+
+    if (vertSpirv.empty() || fragSpirv.empty()) {
+        return 0;
+    }
+
+    VulkanPipelineDef def;
+    def.shaderStages = {
+        {VK_SHADER_STAGE_VERTEX_BIT, vertSpirv, "main"},
+        {VK_SHADER_STAGE_FRAGMENT_BIT, fragSpirv, "main"}
+    };
+
+    // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
+    def.vertexBindings = {
+        {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
+    };
+    def.vertexAttributes = {
+        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+    };
+
+    // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
+    def.pushConstantRanges = {
+        {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+    };
+
+    def.depthTestEnable = true;
+    def.depthWriteEnable = true;
+    def.cullMode = VK_CULL_MODE_BACK_BIT;
+    def.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+    auto result = context_.createPipeline(def);
+    VulkanPipelineHandle pipeline = result ? *result : 0;
+
+    // Track GLSL source files for hot reload (not SPV files)
+    if (pipeline != 0 && hotReloadEnabled_) {
+        ShaderFileInfo info;
+        // Convert SPV paths to GLSL paths for hot reload tracking
+        std::string vertGlsl = std::string(vertPath);
+        std::string fragGlsl = std::string(fragPath);
+        if (vertGlsl.ends_with(".spv")) {
+            vertGlsl = vertGlsl.substr(0, vertGlsl.size() - 4);
+        }
+        if (fragGlsl.ends_with(".spv")) {
+            fragGlsl = fragGlsl.substr(0, fragGlsl.size() - 4);
+        }
+
+        // Only track if GLSL source files exist
+        if (std::filesystem::exists(vertGlsl) && std::filesystem::exists(fragGlsl)) {
+            info.vertGlslPath = vertGlsl;
+            info.fragGlslPath = fragGlsl;
+            std::error_code ec;
+            info.vertLastModified = std::filesystem::last_write_time(info.vertGlslPath, ec);
+            if (!ec) {
+                info.fragLastModified = std::filesystem::last_write_time(info.fragGlslPath, ec);
+            }
+            if (!ec) {
+                pipelineShaderFiles_[pipeline] = std::move(info);
+                std::fprintf(stderr, "[Vulkan] Tracking GLSL for hot reload: %s, %s\n",
+                    vertGlsl.c_str(), fragGlsl.c_str());
+            }
+        }
+    }
+
+    return pipeline;
+}
+
+void VulkanGraphics3DSystem::checkShaderHotReload() {
+    if (!hotReloadEnabled_) return;
+
+    auto now = std::chrono::steady_clock::now();
+    if (now - lastHotReloadCheck_ < hotReloadCheckInterval_) return;
+    lastHotReloadCheck_ = now;
+
+    // Check each tracked pipeline's shader files (GLSL sources)
+    std::vector<std::pair<VulkanPipelineHandle, ShaderFileInfo>> toReload;
+
+    for (auto& [pipeline, info] : pipelineShaderFiles_) {
+        std::error_code ec;
+        auto vertTime = std::filesystem::last_write_time(info.vertGlslPath, ec);
+        if (ec) continue;
+
+        auto fragTime = std::filesystem::last_write_time(info.fragGlslPath, ec);
+        if (ec) continue;
+
+        if (vertTime != info.vertLastModified || fragTime != info.fragLastModified) {
+            toReload.emplace_back(pipeline, info);
+            info.vertLastModified = vertTime;
+            info.fragLastModified = fragTime;
+        }
+    }
+
+    if (toReload.empty()) return;
+
+    // Wait for GPU to be idle before destroying pipelines
+    vkDeviceWaitIdle(context_.getDevice());
+
+    for (const auto& [oldPipeline, info] : toReload) {
+        std::fprintf(stderr, "[Vulkan] Hot reloading GLSL shader: %s + %s\n",
+                    info.vertGlslPath.c_str(), info.fragGlslPath.c_str());
+
+        // Compile GLSL to SPIR-V at runtime
+        auto vertSpirv = GLSLCompiler::compileFile(info.vertGlslPath);
+        auto fragSpirv = GLSLCompiler::compileFile(info.fragGlslPath);
+
+        if (vertSpirv.empty() || fragSpirv.empty()) {
+            std::fprintf(stderr, "[Vulkan] Hot reload failed: could not load shader files\n");
+            continue;
+        }
+
+        VulkanPipelineDef def;
+        def.shaderStages = {
+            {VK_SHADER_STAGE_VERTEX_BIT, vertSpirv, "main"},
+            {VK_SHADER_STAGE_FRAGMENT_BIT, fragSpirv, "main"}
+        };
+        def.vertexBindings = {{0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}};
+        def.vertexAttributes = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+            {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+        };
+        def.pushConstantRanges = {
+            {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+        };
+        def.depthTestEnable = true;
+        def.depthWriteEnable = true;
+        def.cullMode = VK_CULL_MODE_BACK_BIT;
+        def.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+        auto result = context_.createPipeline(def);
+        if (!result) {
+            std::fprintf(stderr, "[Vulkan] Hot reload failed: could not create new pipeline\n");
+            continue;
+        }
+
+        VulkanPipelineHandle newPipeline = *result;
+
+        // Update material pipeline cache to use new pipeline
+        for (auto& [name, cachedPipeline] : materialPipelineCache_) {
+            if (cachedPipeline == oldPipeline) {
+                cachedPipeline = newPipeline;
+            }
+        }
+
+        // Update tracked shader files with CURRENT timestamps to prevent re-triggering
+        ShaderFileInfo newInfo = info;
+        std::error_code ec;
+        newInfo.vertLastModified = std::filesystem::last_write_time(info.vertGlslPath, ec);
+        newInfo.fragLastModified = std::filesystem::last_write_time(info.fragGlslPath, ec);
+        pipelineShaderFiles_.erase(oldPipeline);
+        pipelineShaderFiles_[newPipeline] = newInfo;
+
+        // Destroy old pipeline
+        context_.destroyPipeline(oldPipeline);
+
+        std::fprintf(stderr, "[Vulkan] Hot reload successful\n");
+    }
+}
+
+VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::string_view materialPath) {
+    std::string key{materialPath};
+
+    // Check cache first
+    auto it = materialPipelineCache_.find(key);
+    if (it != materialPipelineCache_.end()) {
+        return it->second;
+    }
+
+    // Determine shader paths from material name
+    // Material paths are like "materials/toon.lua" - extract shader name
+    std::string shaderName;
+    std::size_t lastSlash = key.rfind('/');
+    if (lastSlash != std::string::npos) {
+        shaderName = key.substr(lastSlash + 1);
+    } else {
+        shaderName = key;
+    }
+
+    // Remove .lua extension
+    std::size_t dotPos = shaderName.rfind('.');
+    if (dotPos != std::string::npos) {
+        shaderName = shaderName.substr(0, dotPos);
+    }
+
+    // Get shader paths from config, with fallback to "shaders"
+    std::vector<std::string> searchPaths = runtimeConfig_.shaderPaths;
+    if (searchPaths.empty()) {
+        searchPaths.push_back("shaders");
+    }
+
+    // Try to find material-specific shaders (e.g., toon.vert.spv, toon.frag.spv)
+    std::string vertFilename = shaderName + ".vert.spv";
+    std::string fragFilename = shaderName + ".frag.spv";
+
+    // Find vertex shader, falling back to basic3d.vert.spv
+    auto vertResult = findShaderInPaths(searchPaths, vertFilename);
+    std::string vertPath;
+    if (vertResult) {
+        vertPath = *vertResult;
+    } else {
+        auto fallback = findShaderInPaths(searchPaths, "basic3d.vert.spv");
+        vertPath = fallback.value_or("shaders/basic3d.vert.spv");
+    }
+
+    // Find fragment shader, falling back to basic3d.frag.spv
+    auto fragResult = findShaderInPaths(searchPaths, fragFilename);
+    std::string fragPath;
+    if (fragResult) {
+        fragPath = *fragResult;
+    } else {
+        auto fallback = findShaderInPaths(searchPaths, "basic3d.frag.spv");
+        fragPath = fallback.value_or("shaders/basic3d.frag.spv");
+    }
+
+    VulkanPipelineHandle pipeline = loadShaderPipeline(vertPath, fragPath);
+
+    // Cache even if failed (as 0) to avoid repeated attempts
+    materialPipelineCache_[key] = pipeline;
+
+    if (pipeline != 0) {
+        std::fprintf(stderr, "[Vulkan] Loaded material pipeline for '%s': %s + %s\n",
+                     key.c_str(), vertPath.c_str(), fragPath.c_str());
+    }
+
+    return pipeline;
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
+    MeshHandle mesh, std::string_view materialPath, const Mat4& worldMatrix) {
+    return drawMeshWithLuaMaterial(mesh, materialPath, worldMatrix, Vec4{1.0f, 1.0f, 1.0f, 1.0f});
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
+    MeshHandle mesh, std::string_view materialPath, const Mat4& worldMatrix,
+    const Vec4& colorOverride) {
+    // Get or create pipeline for this material
+    VulkanPipelineHandle pipeline = getOrCreateMaterialPipeline(materialPath);
+
+    if (pipeline == 0) {
+        // Fall back to default PBR pipeline
+        return std::unexpected(Graphics3DError::InvalidShader);
+    }
+
+    // For now, use the PBR material system with the custom pipeline
+    // We'll queue a special render item that uses the material pipeline
+    auto matIt = materials_.find(defaultPBRMaterial_);
+    MaterialHandle material = defaultPBRMaterial_;
+
+    // Queue render item - we need to track the pipeline to use
+    // For now, we store the pipeline handle in a separate map keyed by mesh+material
+    // Actually, we'll just render directly using the pipeline
+
+    // Queue the item (will be rendered with this pipeline by modifying flushRenderQueue)
+    queueRenderItem(RenderItem{
+        .mesh = mesh,
+        .material = material,
+        .worldMatrix = worldMatrix,
+        .layer = 0,
+        .castShadow = true,
+        .receiveShadow = true,
+        .colorOverride = colorOverride,
+        .customPipeline = static_cast<std::uint32_t>(pipeline)
+    });
+
+    return {};
+}
+
+void VulkanGraphics3DSystem::updateShaders() {
+    if (shaderSystem_) {
+        shaderSystem_->update();
+    }
+}
+
+void VulkanGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
+    assetSystem_ = assets;
+}
+
+Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {
+    // Convert Vertex3DData to Vertex3D
+    std::vector<Vertex3D> vertices;
+    vertices.reserve(data.vertices.size());
+    for (const auto& v : data.vertices) {
+        vertices.push_back({
+            Vec3{v.position[0], v.position[1], v.position[2]},
+            Vec3{v.normal[0], v.normal[1], v.normal[2]},
+            Vec2{v.texCoord[0], v.texCoord[1]}
+        });
+    }
+
+    MeshDef def;
+    def.vertices = vertices;
+    def.indices = data.indices;
+    def.bounds = AABB3D{
+        Vec3{data.boundsMin[0], data.boundsMin[1], data.boundsMin[2]},
+        Vec3{data.boundsMax[0], data.boundsMax[1], data.boundsMax[2]}
+    };
+    return createMesh(def);
+}
+
+Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createMaterialFromData(const MaterialData& data) {
+    PBRMaterial mat;
+    mat.baseColorFactor = Vec4{data.baseColorFactor[0], data.baseColorFactor[1],
+                               data.baseColorFactor[2], data.baseColorFactor[3]};
+    mat.metallicFactor = data.metallicFactor;
+    mat.roughnessFactor = data.roughnessFactor;
+    return createMaterial(mat);
+}
+
+Result<std::vector<MaterialHandle>, Graphics3DError> VulkanGraphics3DSystem::createMaterialsFromModel(const ModelData& data) {
+    std::vector<MaterialHandle> handles;
+    for (const auto& matData : data.materials) {
+        auto result = createMaterialFromData(matData);
+        if (result) {
+            handles.push_back(*result);
+        }
+    }
+    return handles;
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::createSkyboxFromData(const CubemapData& data) {
+    // Would create cubemap texture
+    return {};
+}
+
+void VulkanGraphics3DSystem::setFrustumCulling(bool enabled) {
+    frustumCullingEnabled_ = enabled;
+}
+
+bool VulkanGraphics3DSystem::isFrustumCullingEnabled() const {
+    return frustumCullingEnabled_;
+}
+
+void VulkanGraphics3DSystem::setToneMapping(bool enabled) {
+    toneMappingEnabled_ = enabled;
+}
+
+void VulkanGraphics3DSystem::setExposure(float exposure) {
+    exposure_ = exposure;
+}
+
+void VulkanGraphics3DSystem::setBloom(bool enabled, float threshold, float intensity) {
+    bloomEnabled_ = enabled;
+    bloomThreshold_ = threshold;
+    bloomIntensity_ = intensity;
+}
+
+void VulkanGraphics3DSystem::setSSAO(bool enabled, float radius, float intensity) {
+    ssaoEnabled_ = enabled;
+    ssaoRadius_ = radius;
+    ssaoIntensity_ = intensity;
+}
+
+RenderStats VulkanGraphics3DSystem::getStats() const {
+    auto vulkanStats = context_.getStats();
+    return RenderStats{
+        .drawCalls = static_cast<std::uint32_t>(renderQueue_.size()),
+        .triangles = 0,  // Would track
+        .vertices = 0,
+        .meshes = static_cast<std::uint32_t>(meshes_.size()),
+        .materials = static_cast<std::uint32_t>(materials_.size()),
+        .textures = 0,
+        .lights = static_cast<std::uint32_t>(pointLights_.size() + spotLights_.size()),
+        .visibleObjects = static_cast<std::uint32_t>(renderQueue_.size()),
+        .culledObjects = 0,
+        .frameTimeMs = 16.67f,
+        .gpuTimeMs = static_cast<float>(vulkanStats.gpuFrameTimeMs)
+    };
+}
+
+// Remaining stub implementations for less common features
+Result<InstanceBufferHandle, Graphics3DError> VulkanGraphics3DSystem::createInstanceBuffer(
+    std::uint32_t maxInstances, bool dynamic) {
+    return nextInstanceBufferHandle_++;
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::updateInstanceBuffer(
+    InstanceBufferHandle buffer, std::span<const InstanceData> data, std::uint32_t offset) {
+    return {};
+}
+
+void VulkanGraphics3DSystem::destroyInstanceBuffer(InstanceBufferHandle buffer) {
+    instanceBuffers_.erase(buffer);
+}
+
+void VulkanGraphics3DSystem::drawInstanced(const InstancedRenderItem& item) {}
+void VulkanGraphics3DSystem::queueInstancedRenderItem(const InstancedRenderItem& item) {}
+
+Result<SkeletonHandle, Graphics3DError> VulkanGraphics3DSystem::createSkeleton(const ModelData& modelData) {
+    return nextSkeletonHandle_++;
+}
+
+Result<AnimationClipHandle, Graphics3DError> VulkanGraphics3DSystem::createAnimationClip(
+    SkeletonHandle skeleton, const std::string& clipName, const ModelData& modelData) {
+    AnimationClipHandle handle = nextAnimationClipHandle_++;
+    animationClips_[handle] = AnimationClip{clipName, 1.0f, true, 30.0f};
+    return handle;
+}
+
+void VulkanGraphics3DSystem::destroySkeleton(SkeletonHandle skeleton) {
+    skeletons_.erase(skeleton);
+}
+
+void VulkanGraphics3DSystem::destroyAnimationClip(AnimationClipHandle clip) {
+    animationClips_.erase(clip);
+}
+
+std::vector<std::string> VulkanGraphics3DSystem::getAnimationClipNames(SkeletonHandle skeleton) const {
+    return {};
+}
+
+AnimationClip VulkanGraphics3DSystem::getAnimationClipInfo(AnimationClipHandle clip) const {
+    auto it = animationClips_.find(clip);
+    if (it != animationClips_.end()) return it->second;
+    return AnimationClip{};
+}
+
+std::vector<Mat4> VulkanGraphics3DSystem::sampleAnimation(AnimationClipHandle clip, float time, bool loop) {
+    return std::vector<Mat4>(64);
+}
+
+std::vector<Mat4> VulkanGraphics3DSystem::blendAnimations(const BlendedAnimation& blend) {
+    return std::vector<Mat4>(64);
+}
+
+void VulkanGraphics3DSystem::drawSkinnedMesh(
+    MeshHandle mesh, MaterialHandle material, const Mat4& worldMatrix,
+    std::span<const Mat4> boneTransforms) {
+    drawMesh(mesh, material, worldMatrix, true, true);
+}
+
+Result<Font3DHandle, Graphics3DError> VulkanGraphics3DSystem::loadFont3D(AssetHandle fontAsset) {
+    return nextFont3DHandle_++;
+}
+
+void VulkanGraphics3DSystem::destroyFont3D(Font3DHandle font) {
+    fonts3D_.erase(font);
+}
+
+void VulkanGraphics3DSystem::drawText3D(const Text3DItem& item) {}
+void VulkanGraphics3DSystem::drawText3D(const std::string& text, const Vec3& position,
+                                         Font3DHandle font, float fontSize, const Color& color) {}
+
+AABB3D VulkanGraphics3DSystem::measureText3D(const std::string& text, Font3DHandle font, float fontSize) {
+    return AABB3D{};
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::setMaterialBaseColor(MaterialHandle handle, const Vec4& color) {
+    auto it = materials_.find(handle);
+    if (it == materials_.end()) return std::unexpected(Graphics3DError::InvalidMaterial);
+    it->second.pbrData.baseColorFactor = color;
+    return {};
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::setMaterialMetallicRoughness(
+    MaterialHandle handle, float metallic, float roughness) {
+    auto it = materials_.find(handle);
+    if (it == materials_.end()) return std::unexpected(Graphics3DError::InvalidMaterial);
+    it->second.pbrData.metallicFactor = metallic;
+    it->second.pbrData.roughnessFactor = roughness;
+    return {};
+}
+
+Result<void, Graphics3DError> VulkanGraphics3DSystem::setMaterialEmissive(MaterialHandle handle, const Vec3& emissive) {
+    auto it = materials_.find(handle);
+    if (it == materials_.end()) return std::unexpected(Graphics3DError::InvalidMaterial);
+    it->second.pbrData.emissiveFactor = emissive;
+    return {};
+}
+
+std::optional<PBRMaterial> VulkanGraphics3DSystem::getMaterialProperties(MaterialHandle handle) const {
+    auto it = materials_.find(handle);
+    if (it != materials_.end()) return it->second.pbrData;
+    return std::nullopt;
+}
+
+void VulkanGraphics3DSystem::setLODDistances(std::span<const float> distances) {
+    lodDistances_.assign(distances.begin(), distances.end());
+}
+
+void VulkanGraphics3DSystem::registerLODMeshes(MeshHandle primaryMesh, std::span<const MeshHandle> lodMeshes) {
+    lodMeshRegistry_[primaryMesh].assign(lodMeshes.begin(), lodMeshes.end());
+}
+
+void VulkanGraphics3DSystem::setLODBias(float bias) {
+    lodBias_ = bias;
+}
+
+void VulkanGraphics3DSystem::createDefaultMaterials() {
+    auto pbrResult = createMaterial(PBRMaterial{});
+    if (pbrResult) defaultPBRMaterial_ = *pbrResult;
+
+    auto unlitResult = createUnlitMaterial(UnlitMaterial{});
+    if (unlitResult) defaultUnlitMaterial_ = *unlitResult;
+
+    // Error material - magenta checkerboard
+    PBRMaterial errorMat;
+    errorMat.baseColorFactor = Vec4{1.0f, 0.0f, 1.0f, 1.0f};
+    auto errorResult = createMaterial(errorMat);
+    if (errorResult) errorMaterial_ = *errorResult;
+}
+
+void VulkanGraphics3DSystem::createPipelines() {
+    // Get shader paths from config, with fallback
+    std::vector<std::string> searchPaths = runtimeConfig_.shaderPaths;
+    if (searchPaths.empty()) {
+        searchPaths.push_back("shaders");
+    }
+
+    // Find debug shaders using PathResolver
+    auto debugVertPath = findShaderInPaths(searchPaths, "debug.vert.spv");
+    auto debugFragPath = findShaderInPaths(searchPaths, "debug.frag.spv");
+
+    // Load debug pipeline shaders (for debug line rendering)
+    auto debugVertSpirv = debugVertPath ? loadSpirv(*debugVertPath) : std::vector<std::uint32_t>{};
+    auto debugFragSpirv = debugFragPath ? loadSpirv(*debugFragPath) : std::vector<std::uint32_t>{};
+
+    if (!debugVertSpirv.empty() && !debugFragSpirv.empty()) {
+        VulkanPipelineDef debugDef;
+        debugDef.shaderStages = {
+            {VK_SHADER_STAGE_VERTEX_BIT, debugVertSpirv, "main"},
+            {VK_SHADER_STAGE_FRAGMENT_BIT, debugFragSpirv, "main"}
+        };
+
+        // Debug vertex layout: position (vec3) + color (vec4)
+        debugDef.vertexBindings = {
+            {0, sizeof(float) * 7, VK_VERTEX_INPUT_RATE_VERTEX}  // pos(3) + color(4)
+        };
+        debugDef.vertexAttributes = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},                       // position
+            {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 3}     // color
+        };
+
+        // Push constants: mat4 viewProjection (64 bytes)
+        debugDef.pushConstantRanges = {
+            {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)}
+        };
+
+        debugDef.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        debugDef.depthTestEnable = true;
+        debugDef.depthWriteEnable = false;
+        debugDef.cullMode = VK_CULL_MODE_NONE;
+
+        auto result = context_.createPipeline(debugDef);
+        if (result) {
+            debugPipeline_ = *result;
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to create debug pipeline\n");
+        }
+    }
+
+    // Find and load basic 3D pipeline shaders (for mesh rendering)
+    auto basic3dVertPath = findShaderInPaths(searchPaths, "basic3d.vert.spv");
+    auto basic3dFragPath = findShaderInPaths(searchPaths, "basic3d.frag.spv");
+
+    auto basic3dVertSpirv = basic3dVertPath ? loadSpirv(*basic3dVertPath) : std::vector<std::uint32_t>{};
+    auto basic3dFragSpirv = basic3dFragPath ? loadSpirv(*basic3dFragPath) : std::vector<std::uint32_t>{};
+
+    if (!basic3dVertSpirv.empty() && !basic3dFragSpirv.empty()) {
+        VulkanPipelineDef pbrDef;
+        pbrDef.shaderStages = {
+            {VK_SHADER_STAGE_VERTEX_BIT, basic3dVertSpirv, "main"},
+            {VK_SHADER_STAGE_FRAGMENT_BIT, basic3dFragSpirv, "main"}
+        };
+
+        // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
+        pbrDef.vertexBindings = {
+            {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
+        };
+        pbrDef.vertexAttributes = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+            {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+        };
+
+        // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
+        pbrDef.pushConstantRanges = {
+            {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+        };
+
+        pbrDef.depthTestEnable = true;
+        pbrDef.depthWriteEnable = true;
+        pbrDef.cullMode = VK_CULL_MODE_BACK_BIT;
+        pbrDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+        auto result = context_.createPipeline(pbrDef);
+        if (result) {
+            pbrPipeline_ = *result;
+            unlitPipeline_ = *result;  // Use same pipeline for now
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
+        }
+    }
+}
+
+void VulkanGraphics3DSystem::updateCameraUBO() {
+    // Compute forward and up vectors from quaternion rotation
+    glm::quat rot{camera_.transform.rotation.w, camera_.transform.rotation.x,
+                  camera_.transform.rotation.y, camera_.transform.rotation.z};
+    glm::vec3 forward = rot * glm::vec3{0.0f, 0.0f, -1.0f};  // Default forward is -Z
+    glm::vec3 up = rot * glm::vec3{0.0f, 1.0f, 0.0f};        // Default up is +Y
+
+    glm::vec3 pos{camera_.transform.position.x, camera_.transform.position.y, camera_.transform.position.z};
+    glm::mat4 view = glm::lookAt(pos, pos + forward, up);
+
+    Size windowSize = context_.getWindowSize();
+    float aspect = static_cast<float>(windowSize.width) / static_cast<float>(windowSize.height);
+    glm::mat4 projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
+    projection[1][1] *= -1;  // Flip Y for Vulkan
+
+    CameraUBO ubo;
+    std::memcpy(&ubo.view, &view, sizeof(glm::mat4));
+    std::memcpy(&ubo.projection, &projection, sizeof(glm::mat4));
+    glm::mat4 viewProjection = projection * view;
+    std::memcpy(&ubo.viewProjection, &viewProjection, sizeof(glm::mat4));
+    ubo.cameraPosition = glm::vec4{pos.x, pos.y, pos.z, 1.0f};
+
+    context_.uploadToBuffer(cameraUBO_, &ubo, sizeof(CameraUBO));
+}
+
+void VulkanGraphics3DSystem::updateLightUBO() {
+    LightUBO ubo;
+    if (hasDirectionalLight_) {
+        ubo.directionalDir = glm::vec4{directionalLight_.direction.x,
+                                       directionalLight_.direction.y,
+                                       directionalLight_.direction.z, 0};
+        ubo.directionalColor = glm::vec4{directionalLight_.color.x,
+                                         directionalLight_.color.y,
+                                         directionalLight_.color.z,
+                                         directionalLight_.intensity};
+    }
+    ubo.ambientColor = glm::vec4{ambientColor_.x, ambientColor_.y, ambientColor_.z, ambientIntensity_};
+    ubo.lightCounts = glm::ivec4{static_cast<int>(pointLights_.size()),
+                                 static_cast<int>(spotLights_.size()), 0, 0};
+
+    context_.uploadToBuffer(lightUBO_, &ubo, sizeof(LightUBO));
+}
+
+void VulkanGraphics3DSystem::renderDebugLines() {
+    if (debugLines_.empty() || !debugRenderingEnabled_) return;
+
+    // Would upload debug line vertices and draw with debug pipeline
+}
+
+}  // namespace bestow::vulkan

@@ -3,6 +3,9 @@
 
 module;
 
+// Kangaru DI
+#include <kangaru/kangaru.hpp>
+
 // OpenGL headers - MUST be in global module fragment
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -28,6 +31,7 @@ import std;
 import bestow.shader;
 import bestow.types;
 import bestow.assets;
+import bestow.services;
 
 export namespace bestow {
 
@@ -856,9 +860,24 @@ private:
 
     std::string resolvePath(const std::string& basePath, std::string_view relativePath) {
         if (relativePath.empty()) return "";
-        if (relativePath[0] == '/' || relativePath.find(':') != std::string_view::npos) {
-            return std::string(relativePath);  // Already absolute
+
+        // Check if path uses :assets:/ or :library:/ scheme - resolve via PathResolver
+        if (PathResolver::hasScheme(relativePath)) {
+            return PathResolver::resolveString(relativePath);
         }
+
+        // Check if already an absolute system path
+        if (relativePath[0] == '/') {
+            return std::string(relativePath);
+        }
+
+        // If basePath uses a scheme, resolve it first then append relative path
+        if (PathResolver::hasScheme(basePath)) {
+            auto resolvedBase = PathResolver::resolve(basePath);
+            return (resolvedBase / std::filesystem::path(relativePath)).string();
+        }
+
+        // Plain relative path - use basePath directly
         return basePath + std::string(relativePath);
     }
 
@@ -1454,16 +1473,10 @@ void main() {
 };
 
 //==========================================================================
-// Factory Function
+// Kangaru Service Definitions
 //==========================================================================
 
-std::unique_ptr<IShaderSystem> createShaderSystem() {
-    auto system = std::make_unique<OpenGLShaderSystem>();
-    if (!system->initialize()) {
-        return nullptr;
-    }
-    // Explicit move to base class pointer for C++ module compatibility
-    return std::unique_ptr<IShaderSystem>(system.release());
-}
+// Concrete service that provides OpenGLShaderSystem as IShaderSystem
+struct ShaderSystemService : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {};
 
 }  // namespace bestow

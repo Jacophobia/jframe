@@ -16,12 +16,7 @@ int main() {
         std::println("=========================\n");
 
         // Create the entity system
-        auto entitySystem = bestow::createEntitySystem();
-
-        if (!entitySystem) {
-            std::println("ERROR: Failed to create entity system");
-            return 1;
-        }
+        auto entitySystem = std::make_unique<bestow::EntitySystem>();
 
         // Run the comprehensive demo
         demo::EntityDemo demo(*entitySystem);

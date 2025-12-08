@@ -3,6 +3,8 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
+
 #ifdef BESTOW_HAS_RMLUI
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
@@ -15,6 +17,7 @@ export module bestow.ui.impl;
 import std;
 import bestow.ui;
 import bestow.types;
+import bestow.services;
 
 export namespace bestow {
 
@@ -893,15 +896,14 @@ Rml::ElementDocument* RmlUISystem::getDocument(UIDocumentHandle handle) {
 #endif // BESTOW_HAS_RMLUI
 
 //==========================================================================
-// Factory Functions
+// Kangaru Service Definitions
 //==========================================================================
 
-inline std::unique_ptr<IUISystem> createUISystem() {
+// Concrete service that provides UISystem as IUISystem
 #ifdef BESTOW_HAS_RMLUI
-    return std::make_unique<RmlUISystem>();
+struct UISystemService : kgr::single_service<RmlUISystem>, kgr::overrides<IUISystemService> {};
 #else
-    return std::make_unique<StubUISystem>();
+struct UISystemService : kgr::single_service<StubUISystem>, kgr::overrides<IUISystemService> {};
 #endif
-}
 
 }  // namespace bestow
