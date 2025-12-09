@@ -164,6 +164,64 @@ inline float easeInBounce(float t) {
 }  // namespace Easing
 
 //==========================================================================
+// Math Utilities
+//==========================================================================
+
+namespace Math {
+
+// Constants
+inline constexpr float PI = std::numbers::pi_v<float>;
+inline constexpr float TWO_PI = 2.0f * PI;
+inline constexpr float HALF_PI = PI / 2.0f;
+inline constexpr float DEG_TO_RAD = PI / 180.0f;
+inline constexpr float RAD_TO_DEG = 180.0f / PI;
+
+// Angle conversion
+[[nodiscard]] constexpr float degreesToRadians(float degrees) noexcept {
+    return degrees * DEG_TO_RAD;
+}
+
+[[nodiscard]] constexpr float radiansToDegrees(float radians) noexcept {
+    return radians * RAD_TO_DEG;
+}
+
+// Linear interpolation
+[[nodiscard]] constexpr float lerp(float a, float b, float t) noexcept {
+    return a + t * (b - a);
+}
+
+[[nodiscard]] inline Vec2 lerp(Vec2 a, Vec2 b, float t) noexcept {
+    return Vec2{lerp(a.x, b.x, t), lerp(a.y, b.y, t)};
+}
+
+[[nodiscard]] inline Vec3 lerp(Vec3 a, Vec3 b, float t) noexcept {
+    return Vec3{lerp(a.x, b.x, t), lerp(a.y, b.y, t), lerp(a.z, b.z, t)};
+}
+
+// Smoothstep interpolation
+[[nodiscard]] constexpr float smoothstep(float edge0, float edge1, float x) noexcept {
+    float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
+    return t * t * (3.0f - 2.0f * t);
+}
+
+// Random number generation
+[[nodiscard]] inline float randomFloat(float min = -1.0f, float max = 1.0f) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dist(min, max);
+    return dist(gen);
+}
+
+[[nodiscard]] inline int randomInt(int min, int max) {
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    std::uniform_int_distribution<int> dist(min, max);
+    return dist(gen);
+}
+
+}  // namespace Math
+
+//==========================================================================
 // Engine Configuration
 //==========================================================================
 

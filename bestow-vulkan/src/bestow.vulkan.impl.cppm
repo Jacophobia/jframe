@@ -21,6 +21,7 @@ import bestow.types;
 import bestow.assets;
 import bestow.entity;
 import bestow.shader;
+import bestow.config;
 import bestow.services;
 
 export namespace bestow::vulkan {
@@ -619,6 +620,7 @@ public:
     //======================================================================
 
     void setAssetSystem(IAssetSystem* assets) override;
+    void setConfigSystem(IConfigSystem* config);
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override;
     Result<MaterialHandle, Graphics3DError> createMaterialFromData(const MaterialData& data) override;
@@ -727,6 +729,7 @@ private:
     Color clearColor_ = Color::black();
     IAssetSystem* assetSystem_ = nullptr;
     IShaderSystem* shaderSystem_ = nullptr;
+    IConfigSystem* configSystem_ = nullptr;
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
 
@@ -854,7 +857,6 @@ private:
     std::chrono::steady_clock::time_point lastHotReloadCheck_{};
     std::chrono::steady_clock::time_point lastSuccessfulReload_{};  // Cooldown after reload
     std::chrono::milliseconds reloadCooldown_{1000};  // Wait 1s after reload before checking again
-    bool glslangInitialized_ = false;
 
     // Asset system subscription for shader hot reload
     SubscriptionId shaderSubscriptionId_ = InvalidSubscriptionId;

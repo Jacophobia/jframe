@@ -9,6 +9,8 @@ module;
 #include <string>
 #include <vector>
 
+#include <sol/sol.hpp>
+
 export module bestow.config;
 
 import bestow.types;
@@ -52,6 +54,13 @@ public:
 
     /// Shutdown and release resources
     virtual void shutdown() = 0;
+
+    //==========================================================================
+    // EventSystem Integration
+    //==========================================================================
+
+    /// Set the event system for publishing config change events
+    virtual void setEventSystem(class IEventSystem* events) = 0;
 
     //==========================================================================
     // Configuration Loading
@@ -167,6 +176,41 @@ public:
 
     /// Unsubscribe from notifications
     virtual void unsubscribe(SubscriptionId id) = 0;
+
+    //==========================================================================
+    // Unified Lua Parsing (all systems should use these instead of creating sol::state)
+    //==========================================================================
+
+    /// Parse a Lua string and return the result as a sol::object
+    /// The Lua state is sandboxed (dangerous functions removed)
+    /// @param luaCode The Lua source code to parse
+    /// @param description Human-readable description for error messages
+    /// @return The parsed result, or nullopt on error
+    virtual std::optional<sol::object> parseLuaString(
+        const std::string& luaCode,
+        const std::string& description = "lua") = 0;
+
+    /// Parse a Lua file loaded as an asset
+    /// Integrates with AssetSystem for hot reload support
+    /// @param luaAsset Handle to a loaded Lua/Data asset
+    /// @param description Human-readable description for error messages
+    /// @return The parsed result, or nullopt on error
+    virtual std::optional<sol::object> parseLuaAsset(
+        AssetHandle luaAsset,
+        const std::string& description = "lua") = 0;
+
+    /// Execute Lua code for side effects (defining globals, functions, etc.)
+    /// @param luaCode The Lua source code to execute
+    /// @param description Human-readable description for error messages
+    /// @return true if execution succeeded
+    virtual bool executeLuaString(
+        const std::string& luaCode,
+        const std::string& description = "lua") = 0;
+
+    /// Get direct access to the sandboxed Lua state for advanced use cases
+    /// WARNING: The state is shared; be careful with modifications
+    /// @return Pointer to the internal sol::state
+    virtual sol::state* getLuaState() = 0;
 };
 
 }  // namespace bestow

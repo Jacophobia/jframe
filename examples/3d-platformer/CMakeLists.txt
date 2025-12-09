@@ -16,6 +16,7 @@ target_link_libraries(3d-platformer_gl
         bestow-input
         bestow-dev
         bestow-assets
+        bestow-config
         glfw
         glm::glm
 )
@@ -49,6 +50,7 @@ target_link_libraries(3d-platformer_vk
         bestow-input
         bestow-dev
         bestow-assets
+        bestow-config
         glfw
         glm::glm
 )

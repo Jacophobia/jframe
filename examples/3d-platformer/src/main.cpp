@@ -32,6 +32,8 @@ import bestow.shader;
 import bestow.shader.impl;
 import bestow.assets;
 import bestow.assets.impl;  // AssetSystemService for event-driven hot reload
+import bestow.config;
+import bestow.config.impl;  // ConfigSystemService for Lua parsing
 import bestow.services;  // Abstract services for DI
 import bestow.dev;       // Hot reload manager for config files
 
@@ -582,6 +584,11 @@ int main(int argc, char* argv[]) {
     assetSystem.enableHotReload(true);  // Enable efsw file watcher
     graphics.setAssetSystem(&assetSystem);
     std::println("Asset system initialized with event-driven file watching");
+
+    // Get config system from container and connect to graphics for Lua parsing
+    auto& configSystem = container.service<ConfigSystemService>();
+    graphics.setConfigSystem(&configSystem);
+    std::println("Config system connected to graphics for Lua material parsing");
 
     // Load runtime graphics config from Lua file
     std::filesystem::path configPath = "assets/config/graphics3d.lua";

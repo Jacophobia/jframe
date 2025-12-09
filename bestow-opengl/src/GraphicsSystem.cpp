@@ -27,6 +27,7 @@ module;
 module bestow.opengl.impl;
 
 import bestow.assets;  // For IAssetSystem interface, TextureData, and FontData types
+import bestow.core;
 
 namespace bestow {
 
@@ -463,7 +464,7 @@ void OpenGLGraphicsSystem::drawCircle(Vec2 center, float radius, const Color& co
     vertices.reserve(segments * 2);
 
     for (int i = 0; i < segments; ++i) {
-        float angle = (2.0f * 3.14159265359f * i) / segments;
+        float angle = (core::Math::TWO_PI * i) / segments;
         vertices.push_back(center.x + radius * std::cos(angle));
         vertices.push_back(center.y + radius * std::sin(angle));
     }

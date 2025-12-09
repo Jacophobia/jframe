@@ -31,6 +31,7 @@ import bestow.types;
 import bestow.assets;
 import bestow.entity;
 import bestow.shader;
+import bestow.config;
 import bestow.services;
 
 export namespace bestow {
@@ -860,6 +861,7 @@ public:
     //======================================================================
 
     void setAssetSystem(IAssetSystem* assets) override;
+    void setConfigSystem(IConfigSystem* config) override;
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override;
     Result<MaterialHandle, Graphics3DError> createMaterialFromData(const MaterialData& data) override;
@@ -1093,6 +1095,9 @@ private:
     // Shader system
     IShaderSystem* shaderSystem_ = nullptr;
     std::unordered_map<std::string, MaterialHandle> luaMaterialCache_;
+
+    // Config system (for Lua parsing)
+    IConfigSystem* configSystem_ = nullptr;
 
     // Runtime configuration
     Graphics3DRuntimeConfig runtimeConfig_;
@@ -2554,6 +2559,10 @@ float OpenGLGraphics3DSystem::getRenderScale() const {
 
 void OpenGLGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
     assetSystem_ = assets;
+}
+
+void OpenGLGraphics3DSystem::setConfigSystem(IConfigSystem* config) {
+    configSystem_ = config;
 }
 
 //==========================================================================
@@ -4326,26 +4335,30 @@ AABB3D OpenGLGraphics3DSystem::transformAABB(const AABB3D& aabb, const glm::mat4
 bool OpenGLGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& configPath) {
     configPath_ = configPath;
 
-    // Create sandboxed Lua state
-    sol::state lua;
-    lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::string, sol::lib::table);
-
-    // Sandbox: remove dangerous functions
-    lua["os"] = sol::lua_nil;
-    lua["io"] = sol::lua_nil;
-    lua["loadfile"] = sol::lua_nil;
-    lua["dofile"] = sol::lua_nil;
-    lua["load"] = sol::lua_nil;
+    // Load config file content
+    std::ifstream file(configPath);
+    if (!file) {
+        std::cerr << "[OpenGL Graphics3D] Cannot open config file: " << configPath << std::endl;
+        return false;
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string luaContent = buffer.str();
 
     try {
-        sol::protected_function_result result = lua.safe_script_file(configPath.string());
-        if (!result.valid()) {
-            sol::error err = result;
-            std::cerr << "[OpenGL Graphics3D] Error loading config: " << err.what() << std::endl;
+        // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
+        if (!configSystem_) {
+            std::cerr << "[OpenGL Graphics3D] ERROR: ConfigSystem is required for loading config" << std::endl;
             return false;
         }
 
-        sol::table config = result;
+        auto result = configSystem_->parseLuaString(luaContent, configPath.string());
+        if (!result) {
+            std::cerr << "[OpenGL Graphics3D] Failed to load config: " << configPath << std::endl;
+            return false;
+        }
+
+        sol::table config = result->as<sol::table>();
         Graphics3DRuntimeConfig runtimeConfig;
 
         //======================================================================

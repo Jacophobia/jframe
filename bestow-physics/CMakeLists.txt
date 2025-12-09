@@ -11,6 +11,8 @@ target_sources(bestow-physics
 target_link_libraries(bestow-physics
     PUBLIC
         bestow-contract
+        bestow-core
+        bestow-physics-common
         box2d::box2d
         kangaru
 )

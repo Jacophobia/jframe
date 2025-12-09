@@ -101,6 +101,7 @@ target_sources(bestow-vulkan
 target_link_libraries(bestow-vulkan
     PUBLIC
         bestow-contract
+        bestow-core
         kangaru::kangaru
         Vulkan::Vulkan
         GPUOpen::VulkanMemoryAllocator

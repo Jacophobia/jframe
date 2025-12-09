@@ -50,6 +50,10 @@ public:
         const std::filesystem::path&, const std::filesystem::path&,
         const std::filesystem::path&, const std::filesystem::path&) override { return {}; }
 
+    // System integration (stubs for this demo)
+    void setEventSystem(class IEventSystem*) override {}
+    void setJobSystem(void*) override {}
+
     // Subscription methods (stubs for this demo)
     SubscriptionId subscribe(AssetHandle, AssetChangeCallback) override { return 0; }
     SubscriptionId subscribeToType(AssetType, AssetChangeCallback) override { return 0; }

@@ -757,12 +757,52 @@ struct DamageEventData {
     Vec2 knockback;
 };
 
+// Asset event data
+struct AssetEventData {
+    AssetHandle handle;
+    AssetType type;
+    AssetState state;
+    std::string error;  // Empty if no error
+};
+
+// Config event data
+struct ConfigEventData {
+    std::string key;
+    std::string section;
+};
+
+// Shader/Material reload event data
+struct ShaderReloadEventData {
+    std::uint64_t handle;  // ShaderProgramHandle or MaterialHandle
+    bool success;
+    std::string error;
+};
+
+// Game state event data
+struct StateChangeEventData {
+    std::string oldStateName;
+    std::string newStateName;
+};
+
+// File change event data (dev tools)
+struct FileChangeEventData {
+    std::string path;
+    std::string fileType;  // "shader", "config", "texture", etc.
+};
+
 using EventData = std::variant<
     EntityEventData,
     DamageEventData,
     LevelEventData,
     CollisionEvent,
     TriggerEvent,
+    CollisionEvent3D,
+    TriggerEvent3D,
+    AssetEventData,
+    ConfigEventData,
+    ShaderReloadEventData,
+    StateChangeEventData,
+    FileChangeEventData,
     std::any
 >;
 

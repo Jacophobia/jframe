@@ -10,6 +10,7 @@ module;
 module bestow.camera.impl;
 
 import std;
+import bestow.core;
 
 namespace bestow {
 
@@ -17,23 +18,6 @@ namespace {
     constexpr float kDefaultZoom = 1.0f;
     constexpr float kMinZoom = 0.1f;
     constexpr float kMaxZoom = 10.0f;
-
-    // Linear interpolation for smooth camera movement
-    float lerp(float a, float b, float t) {
-        return a + (b - a) * t;
-    }
-
-    Vec2 lerp(Vec2 a, Vec2 b, float t) {
-        return Vec2{lerp(a.x, b.x, t), lerp(a.y, b.y, t)};
-    }
-
-    // Random float in range [-1, 1]
-    float randomFloat() {
-        static std::random_device rd;
-        static std::mt19937 gen(rd());
-        static std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-        return dist(gen);
-    }
 }
 
 CameraSystem::CameraSystem(Size viewportSize)
@@ -216,7 +200,7 @@ void CameraSystem::applySmoothing(DeltaTime dt, Vec2 target) {
         // Smooth interpolation
         // Higher smoothing = slower movement
         float lerpFactor = 1.0f - std::pow(smoothing_, dt * 60.0f);
-        position_ = lerp(position_, target, lerpFactor);
+        position_ = core::Math::lerp(position_, target, lerpFactor);
     }
 }
 
@@ -287,7 +271,7 @@ void CameraSystem::applyBounds() {
 }
 
 Vec2 CameraSystem::generateShakeOffset() const {
-    return Vec2{randomFloat(), randomFloat()};
+    return Vec2{core::Math::randomFloat(), core::Math::randomFloat()};
 }
 
 }  // namespace bestow

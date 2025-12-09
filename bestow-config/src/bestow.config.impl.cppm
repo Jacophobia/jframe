@@ -52,6 +52,12 @@ public:
     void setAssetSystem(IAssetSystem* assetSystem) { assetSystem_ = assetSystem; }
 
     //==========================================================================
+    // EventSystem Integration
+    //==========================================================================
+
+    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
+
+    //==========================================================================
     // Configuration Loading
     //==========================================================================
 
@@ -117,6 +123,28 @@ public:
                                  ConfigChangeCallback callback) override;
     void unsubscribe(SubscriptionId id) override;
 
+    //==========================================================================
+    // Unified Lua Parsing (For other systems to use)
+    //==========================================================================
+
+    /// Parse Lua code string and return the result object
+    std::optional<sol::object> parseLuaString(
+        const std::string& luaCode,
+        const std::string& description = "lua") override;
+
+    /// Parse Lua asset and return the result object
+    std::optional<sol::object> parseLuaAsset(
+        AssetHandle luaAsset,
+        const std::string& description = "lua") override;
+
+    /// Execute Lua code string (no return value expected)
+    bool executeLuaString(
+        const std::string& luaCode,
+        const std::string& description = "lua") override;
+
+    /// Get direct access to Lua state (use with caution)
+    sol::state* getLuaState() override;
+
 private:
     // Lua parsing helpers
     void parseLuaTable(sol::table& table, const std::string& prefix,
@@ -132,6 +160,9 @@ private:
 
     // Asset system integration
     IAssetSystem* assetSystem_ = nullptr;
+
+    // Event system integration
+    IEventSystem* eventSystem_ = nullptr;
 
     // Loaded file tracking
     struct LoadedFile {

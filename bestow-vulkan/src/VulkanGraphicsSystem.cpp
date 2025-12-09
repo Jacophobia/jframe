@@ -16,6 +16,7 @@ import bestow.graphics;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
+import bestow.core;
 
 namespace bestow::vulkan {
 
@@ -250,11 +251,12 @@ void VulkanGraphicsSystem::drawLine(Vec2 from, Vec2 to, const Color& color, floa
 void VulkanGraphicsSystem::drawCircle(Vec2 center, float radius, const Color& color,
                                        bool filled, int segments) {
     glm::vec4 col{color.r / 255.0f, color.g / 255.0f, color.b / 255.0f, color.a / 255.0f};
+    using bestow::core::Math::TWO_PI;
 
     if (filled) {
         for (int i = 0; i < segments; ++i) {
-            float angle1 = 2.0f * 3.14159f * i / segments;
-            float angle2 = 2.0f * 3.14159f * (i + 1) / segments;
+            float angle1 = TWO_PI * i / segments;
+            float angle2 = TWO_PI * (i + 1) / segments;
 
             primitiveVertices_.push_back({center.x, center.y});
             primitiveVertices_.push_back({center.x + radius * std::cos(angle1),
@@ -268,8 +270,8 @@ void VulkanGraphicsSystem::drawCircle(Vec2 center, float radius, const Color& co
         }
     } else {
         for (int i = 0; i < segments; ++i) {
-            float angle1 = 2.0f * 3.14159f * i / segments;
-            float angle2 = 2.0f * 3.14159f * (i + 1) / segments;
+            float angle1 = TWO_PI * i / segments;
+            float angle2 = TWO_PI * (i + 1) / segments;
 
             primitiveVertices_.push_back({center.x + radius * std::cos(angle1),
                                           center.y + radius * std::sin(angle1)});

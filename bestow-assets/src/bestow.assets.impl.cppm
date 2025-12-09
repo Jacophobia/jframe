@@ -80,6 +80,10 @@ public:
 
     void update() override;
 
+    // System integration
+    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
+    void setJobSystem(void* jobs) override { jobSystem_ = jobs; }
+
     // Registration
     AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override;
     void unregisterAsset(AssetHandle handle) override;
@@ -146,7 +150,10 @@ private:
     struct PendingLoad {
         AssetHandle handle;
         AssetLoadCallback callback;
-        std::future<void> future;
+        std::shared_ptr<std::atomic<bool>> completed;  // shared_ptr is copyable, atomic<bool> is not
+
+        PendingLoad(AssetHandle h, AssetLoadCallback cb)
+            : handle(h), callback(std::move(cb)), completed(std::make_shared<std::atomic<bool>>(false)) {}
     };
 
     // File change event queued by the file watcher
@@ -179,6 +186,10 @@ private:
     mutable std::mutex assetsMutex_;  // Protects assets_ during async loads
     bool hotReloadEnabled_ = false;
     UUID nextUUID_ = 1;
+
+    // System integration
+    IEventSystem* eventSystem_ = nullptr;
+    void* jobSystem_ = nullptr;  // Actually a core::JobSystem*, stored as void* to avoid circular dependency
 
     // File watcher infrastructure (event-driven, not polling)
     std::unique_ptr<efsw::FileWatcher> fileWatcher_;

@@ -34,6 +34,7 @@ if(JOLT_FOUND)
     target_link_libraries(bestow-physics3d
         PUBLIC
             bestow-contract
+            bestow-physics-common
             ${JOLT_TARGET}
             kangaru
     )

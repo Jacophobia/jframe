@@ -16,6 +16,7 @@ import bestow.types;
 import bestow.assets;
 import bestow.entity;
 import bestow.shader;
+import bestow.config;
 
 export namespace bestow {
 
@@ -675,6 +676,7 @@ public:
     //======================================================================
 
     virtual void setAssetSystem(IAssetSystem* assets) = 0;
+    virtual void setConfigSystem(IConfigSystem* config) = 0;
 
     /// Create GPU mesh from asset system's MeshData
     /// Use: assets->getMeshData(handle) to get MeshData, then call this

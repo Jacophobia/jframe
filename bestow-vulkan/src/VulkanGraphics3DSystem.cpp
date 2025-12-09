@@ -18,90 +18,11 @@ import bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.assets.impl;  // For DataAsset
+import bestow.core;
 import bestow.entity;
 import bestow.shader;
 
 namespace bestow::vulkan {
-
-namespace {
-    // GLSL to SPIR-V compiler using glslc subprocess
-    class GLSLCompiler {
-    public:
-        static bool initialize() {
-            // Check if glslc is available
-#ifdef BESTOW_HAS_GLSLC
-            glslcPath_ = BESTOW_HAS_GLSLC;
-#else
-            // Try to find glslc in PATH
-            glslcPath_ = "glslc";
-#endif
-            initialized_ = true;
-            return true;
-        }
-
-        static void shutdown() {
-            initialized_ = false;
-        }
-
-        static std::vector<std::uint32_t> compileFile(const std::string& inputPath) {
-            if (!initialized_) {
-                initialize();
-            }
-
-            // Create a temporary file for SPIR-V output
-            std::string outputPath = inputPath + ".tmp.spv";
-
-            // Build glslc command
-            std::string command = glslcPath_ + " -c \"" + inputPath + "\" -o \"" + outputPath + "\" 2>&1";
-
-            // Execute glslc
-            FILE* pipe = popen(command.c_str(), "r");
-            if (!pipe) {
-                std::fprintf(stderr, "[GLSLCompiler] Failed to run glslc\n");
-                return {};
-            }
-
-            // Read compiler output (for error messages)
-            std::string compilerOutput;
-            char buffer[256];
-            while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-                compilerOutput += buffer;
-            }
-
-            int result = pclose(pipe);
-            if (result != 0) {
-                std::fprintf(stderr, "[GLSLCompiler] Compilation failed for %s:\n%s\n",
-                    inputPath.c_str(), compilerOutput.c_str());
-                std::filesystem::remove(outputPath);
-                return {};
-            }
-
-            // NOTE: Direct file I/O is acceptable here - this is a temporary file we just created
-            // from the glslc subprocess, not a game asset that should go through AssetSystem
-            std::ifstream spirvFile(outputPath, std::ios::ate | std::ios::binary);
-            if (!spirvFile.is_open()) {
-                std::fprintf(stderr, "[GLSLCompiler] Failed to read compiled SPIR-V: %s\n", outputPath.c_str());
-                return {};
-            }
-
-            std::size_t fileSize = static_cast<std::size_t>(spirvFile.tellg());
-            std::vector<std::uint32_t> spirv(fileSize / sizeof(std::uint32_t));
-            spirvFile.seekg(0);
-            spirvFile.read(reinterpret_cast<char*>(spirv.data()), static_cast<std::streamsize>(fileSize));
-            spirvFile.close();
-
-            // Clean up temporary file
-            std::filesystem::remove(outputPath);
-
-            return spirv;
-        }
-
-    private:
-        static inline bool initialized_ = false;
-        static inline std::string glslcPath_;
-    };
-
-}  // anonymous namespace
 
 VulkanGraphics3DSystem::VulkanGraphics3DSystem() = default;
 
@@ -152,12 +73,6 @@ void VulkanGraphics3DSystem::shutdown() {
         skyboxPipeline_ = 0;
     }
 
-    // Cleanup glslang if we initialized it
-    if (glslangInitialized_) {
-        GLSLCompiler::shutdown();
-        glslangInitialized_ = false;
-    }
-
     context_.shutdown();
     initialized_ = false;
 }
@@ -206,12 +121,6 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
         return false;
     }
     lightUBO_ = *bufferResult;
-
-    // Initialize glslang for runtime GLSL compilation
-    if (GLSLCompiler::initialize()) {
-        glslangInitialized_ = true;
-        std::fprintf(stderr, "[Vulkan] glslang initialized for runtime shader compilation\n");
-    }
 
     createDefaultMaterials();
     createPipelines();
@@ -503,7 +412,7 @@ Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createCapsuleMesh(
     std::vector<Vertex3D> vertices;
     std::vector<std::uint32_t> indices;
 
-    constexpr float PI = 3.14159265359f;
+    using bestow::core::Math::PI;
 
     // Capsule consists of: top hemisphere + cylinder + bottom hemisphere
     // Match OpenGL behavior: height parameter is the cylinder portion height
@@ -1351,25 +1260,19 @@ bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& conf
     }
 
     try {
-        sol::state lua;
-        lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
-
-        // Sandbox
-        lua["os"] = sol::lua_nil;
-        lua["io"] = sol::lua_nil;
-        lua["loadfile"] = sol::lua_nil;
-        lua["dofile"] = sol::lua_nil;
-        lua["load"] = sol::lua_nil;
-
-        // Execute Lua content from memory (not from file)
-        sol::protected_function_result result = lua.safe_script(luaContent, configPath.string());
-        if (!result.valid()) {
-            sol::error err = result;
-            std::fprintf(stderr, "[Vulkan] Failed to load config: %s\n", err.what());
+        // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
+        if (!configSystem_) {
+            std::fprintf(stderr, "[Vulkan] ERROR: ConfigSystem is required for loading config\n");
             return false;
         }
 
-        sol::table config = result;
+        auto result = configSystem_->parseLuaString(luaContent, configPath.string());
+        if (!result) {
+            std::fprintf(stderr, "[Vulkan] Failed to load config: %s\n", configPath.string().c_str());
+            return false;
+        }
+
+        sol::table config = result->as<sol::table>();
         Graphics3DRuntimeConfig newConfig;
 
         //======================================================================
@@ -1690,17 +1593,32 @@ void VulkanGraphics3DSystem::reloadPipelineShaders(VulkanPipelineHandle oldPipel
     std::fprintf(stderr, "[Vulkan] Reloading pipeline from asset system: %s + %s\n",
                 info.vertGlslPath.c_str(), info.fragGlslPath.c_str());
 
-    // Compile GLSL to SPIR-V
-    // TODO: Use assetSystem_->getShaderData() to get already-compiled SPIR-V
-    // For now, GLSLCompiler reads the source file directly (architecture violation)
-    // but this will be fixed when we fully migrate to AssetSystem shader loading
-    auto vertSpirv = GLSLCompiler::compileFile(info.vertGlslPath);
-    auto fragSpirv = GLSLCompiler::compileFile(info.fragGlslPath);
+    // Get SPIR-V from AssetSystem (already recompiled on hot reload)
+    const ShaderData* vertShader = nullptr;
+    const ShaderData* fragShader = nullptr;
 
-    if (vertSpirv.empty() || fragSpirv.empty()) {
+    if (info.vertShaderAsset.uuid != 0 && assetSystem_) {
+        assetSystem_->reloadAsset(info.vertShaderAsset);  // Force reload to recompile
+        vertShader = assetSystem_->getShaderData(info.vertShaderAsset);
+    }
+    if (info.fragShaderAsset.uuid != 0 && assetSystem_) {
+        assetSystem_->reloadAsset(info.fragShaderAsset);  // Force reload to recompile
+        fragShader = assetSystem_->getShaderData(info.fragShaderAsset);
+    }
+
+    if (!vertShader || !fragShader || !vertShader->compiled || !fragShader->compiled) {
         std::fprintf(stderr, "[Vulkan] Shader reload failed: compilation error\n");
+        if (vertShader && !vertShader->compileError.empty()) {
+            std::fprintf(stderr, "  Vertex: %s\n", vertShader->compileError.c_str());
+        }
+        if (fragShader && !fragShader->compileError.empty()) {
+            std::fprintf(stderr, "  Fragment: %s\n", fragShader->compileError.c_str());
+        }
         return;
     }
+
+    const auto& vertSpirv = vertShader->spirvBytecode;
+    const auto& fragSpirv = fragShader->spirvBytecode;
 
     VulkanPipelineDef def;
     def.shaderStages = {
@@ -1761,7 +1679,7 @@ void VulkanGraphics3DSystem::reloadPipelineShaders(VulkanPipelineHandle oldPipel
     // Destroy old pipeline
     context_.destroyPipeline(oldPipeline);
 
-    std::fprintf(stderr, "[Vulkan] Shader reload successful (via asset system)\n");
+    std::fprintf(stderr, "[Vulkan] Shader reload successful (compiled via AssetSystem shaderc)\n");
 }
 
 VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::string_view materialPath) {
@@ -1804,34 +1722,26 @@ VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::st
     // Parse the Lua material file to get shader paths
     if (materialLoaded) {
         try {
-            sol::state lua;
-            lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
-
-            // Sandbox: remove dangerous functions
-            lua["os"] = sol::lua_nil;
-            lua["io"] = sol::lua_nil;
-            lua["loadfile"] = sol::lua_nil;
-            lua["dofile"] = sol::lua_nil;
-            lua["load"] = sol::lua_nil;
-
-            // Execute Lua content from memory (not from file)
-            sol::protected_function_result result = lua.safe_script(luaContent, resolvedMaterialPath.string());
-            if (result.valid()) {
-                sol::table mat = result;
-
-                // Extract shader paths from material definition
-                if (mat["shader"].valid()) {
-                    sol::table shader = mat["shader"];
-                    sol::optional<std::string> vertOpt = shader["vertex"];
-                    sol::optional<std::string> fragOpt = shader["fragment"];
-
-                    if (vertOpt) vertPath = *vertOpt;
-                    if (fragOpt) fragPath = *fragOpt;
-                }
+            // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
+            if (!configSystem_) {
+                std::fprintf(stderr, "[Vulkan] ERROR: ConfigSystem is required for parsing materials\n");
             } else {
-                sol::error err = result;
-                std::fprintf(stderr, "[Vulkan] Failed to parse material '%s': %s\n",
-                             key.c_str(), err.what());
+                auto result = configSystem_->parseLuaString(luaContent, resolvedMaterialPath.string());
+                if (result) {
+                    sol::table mat = result->as<sol::table>();
+
+                    // Extract shader paths from material definition
+                    if (mat["shader"].valid()) {
+                        sol::table shader = mat["shader"];
+                        sol::optional<std::string> vertOpt = shader["vertex"];
+                        sol::optional<std::string> fragOpt = shader["fragment"];
+
+                        if (vertOpt) vertPath = *vertOpt;
+                        if (fragOpt) fragPath = *fragOpt;
+                    }
+                } else {
+                    std::fprintf(stderr, "[Vulkan] Failed to parse material '%s'\n", key.c_str());
+                }
             }
         } catch (const std::exception& e) {
             std::fprintf(stderr, "[Vulkan] Exception parsing material '%s': %s\n",
@@ -1930,6 +1840,10 @@ void VulkanGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
         assetSystem_->enableHotReload(true);
         std::fprintf(stderr, "[Vulkan] Subscribed to shader asset changes for hot reload\n");
     }
+}
+
+void VulkanGraphics3DSystem::setConfigSystem(IConfigSystem* config) {
+    configSystem_ = config;
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {

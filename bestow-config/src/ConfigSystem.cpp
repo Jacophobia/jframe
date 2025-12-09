@@ -10,6 +10,7 @@ module bestow.config.impl;
 
 import std;
 import bestow.assets.impl;  // For DataAsset
+import bestow.events;        // For Events namespace
 
 namespace bestow {
 
@@ -737,11 +738,118 @@ void ConfigSystem::unsubscribe(SubscriptionId id) {
 }
 
 void ConfigSystem::notifyChange(const ConfigKey& key) {
+    // Notify local subscribers (existing callback mechanism)
     for (const auto& sub : subscriptions_) {
         if (sub.keyPrefix.empty() || key.starts_with(sub.keyPrefix)) {
             sub.callback(key);
         }
     }
+
+    // Publish to EventSystem if available
+    if (eventSystem_) {
+        // Extract section from key (everything before the first '.')
+        std::string section;
+        auto dotPos = key.find('.');
+        if (dotPos != std::string::npos) {
+            section = key.substr(0, dotPos);
+        }
+
+        eventSystem_->publish(Events::ConfigChanged, ConfigEventData{
+            .key = key,
+            .section = section
+        });
+    }
+}
+
+//==============================================================================
+// Unified Lua Parsing (For other systems to use)
+//==============================================================================
+
+std::optional<sol::object> ConfigSystem::parseLuaString(
+    const std::string& luaCode,
+    const std::string& description) {
+    if (!luaInitialized_) {
+        spdlog::error("[Config] parseLuaString: Lua not initialized");
+        return std::nullopt;
+    }
+
+    try {
+        sol::protected_function_result result = lua_.safe_script(
+            luaCode,
+            sol::script_pass_on_error
+        );
+        if (!result.valid()) {
+            sol::error err = result;
+            spdlog::error("[Config] Lua parse error in {}: {}", description, err.what());
+            return std::nullopt;
+        }
+        return result.get<sol::object>();
+    } catch (const std::exception& e) {
+        spdlog::error("[Config] Exception parsing Lua in {}: {}", description, e.what());
+        return std::nullopt;
+    }
+}
+
+std::optional<sol::object> ConfigSystem::parseLuaAsset(
+    AssetHandle luaAsset,
+    const std::string& description) {
+    if (!luaInitialized_) {
+        spdlog::error("[Config] parseLuaAsset: Lua not initialized");
+        return std::nullopt;
+    }
+
+    if (!assetSystem_) {
+        spdlog::error("[Config] parseLuaAsset: AssetSystem not available");
+        return std::nullopt;
+    }
+
+    if (!assetSystem_->isLoaded(luaAsset)) {
+        assetSystem_->loadAsset(luaAsset);
+    }
+
+    if (!assetSystem_->isLoaded(luaAsset)) {
+        spdlog::error("[Config] parseLuaAsset: Failed to load asset for {}", description);
+        return std::nullopt;
+    }
+
+    // Get the loaded data
+    const auto* dataAsset = assetSystem_->getAsset<DataAsset>(luaAsset);
+    if (!dataAsset) {
+        spdlog::error("[Config] parseLuaAsset: Invalid asset data for {}", description);
+        return std::nullopt;
+    }
+
+    // Parse the Lua text
+    return parseLuaString(dataAsset->rawText, description);
+}
+
+bool ConfigSystem::executeLuaString(
+    const std::string& luaCode,
+    const std::string& description) {
+    if (!luaInitialized_) {
+        spdlog::error("[Config] executeLuaString: Lua not initialized");
+        return false;
+    }
+
+    try {
+        sol::protected_function_result result = lua_.safe_script(
+            luaCode,
+            sol::script_pass_on_error
+        );
+        if (!result.valid()) {
+            sol::error err = result;
+            spdlog::error("[Config] Lua execution error in {}: {}", description, err.what());
+            return false;
+        }
+        return true;
+    } catch (const std::exception& e) {
+        spdlog::error("[Config] Exception executing Lua in {}: {}", description, e.what());
+        return false;
+    }
+}
+
+sol::state* ConfigSystem::getLuaState() {
+    return &lua_;
 }
 
 }  // namespace bestow

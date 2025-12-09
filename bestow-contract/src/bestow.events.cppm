@@ -57,6 +57,32 @@ namespace Events {
     inline constexpr const char* PlayerDeath = "player_death";
     inline constexpr const char* GameSaved = "game_saved";
     inline constexpr const char* GameLoaded = "game_loaded";
+
+    // Physics 3D events
+    inline constexpr const char* Collision3D = "collision_3d";
+    inline constexpr const char* TriggerEnter3D = "trigger_enter_3d";
+    inline constexpr const char* TriggerExit3D = "trigger_exit_3d";
+
+    // Asset System events
+    inline constexpr const char* AssetLoaded = "asset_loaded";
+    inline constexpr const char* AssetUnloaded = "asset_unloaded";
+    inline constexpr const char* AssetReloaded = "asset_reloaded";
+    inline constexpr const char* AssetError = "asset_error";
+
+    // Config System events
+    inline constexpr const char* ConfigChanged = "config_changed";
+
+    // Shader System events
+    inline constexpr const char* ShaderReloaded = "shader_reloaded";
+    inline constexpr const char* MaterialReloaded = "material_reloaded";
+
+    // Game State events
+    inline constexpr const char* StateChanged = "state_changed";
+    inline constexpr const char* StatePushed = "state_pushed";
+    inline constexpr const char* StatePopped = "state_popped";
+
+    // Dev tools events
+    inline constexpr const char* FileChanged = "file_changed";
 }
 
 }  // namespace bestow

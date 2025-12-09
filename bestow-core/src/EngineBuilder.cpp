@@ -6,6 +6,7 @@ module;
 #include <GLFW/glfw3.h>
 // MSVC C++23 module compatibility - include full EnTT before import std
 #include <bestow/entt_compat.hpp>
+#include <spdlog/spdlog.h>
 
 module bestow.core;
 
@@ -30,6 +31,9 @@ namespace bestow::core {
 //==============================================================================
 
 struct Engine::Impl {
+    // Core systems
+    std::unique_ptr<JobSystem> jobs;
+
     // System ownership (unique_ptr ensures proper cleanup order)
     std::unique_ptr<EventSystem> events;
     std::unique_ptr<EntitySystem> entities;
@@ -58,6 +62,9 @@ struct Engine::Impl {
 //==============================================================================
 
 struct EngineBuilder::Impl {
+    // Core systems
+    std::unique_ptr<JobSystem> jobs;
+
     // System instances (owned by builder during construction)
     std::unique_ptr<EventSystem> events;
     std::unique_ptr<EntitySystem> entities;
@@ -177,6 +184,11 @@ std::expected<Engine, std::string> EngineBuilder::build() {
     if (impl_->enableGraphics && !impl_->graphicsConfig.has_value()) {
         return std::unexpected("Graphics system requires GraphicsConfig");
     }
+
+    // Initialize core systems first
+    // Phase 0: JobSystem (no dependencies, required by many systems)
+    impl_->jobs = std::make_unique<JobSystem>();
+    spdlog::info("JobSystem initialized with {} worker threads", impl_->jobs->workerCount());
 
     // Initialize systems in dependency order
     // Phase 1: Events (no dependencies)
@@ -312,6 +324,7 @@ std::expected<Engine, std::string> EngineBuilder::build() {
 
     // Transfer ownership to Engine
     Engine engine;
+    engine.impl_->jobs = std::move(impl_->jobs);
     engine.impl_->events = std::move(impl_->events);
     engine.impl_->entities = std::move(impl_->entities);
     engine.impl_->physics = std::move(impl_->physics);
@@ -367,6 +380,18 @@ std::expected<Engine, std::string> EngineBuilder::build() {
         });
 
         logInfo("Physics-to-Events wiring complete");
+    }
+
+    // Wire assets to events system for asset reload notifications
+    if (engine.impl_->assets && engine.impl_->events) {
+        engine.impl_->assets->setEventSystem(engine.impl_->events.get());
+        logInfo("AssetSystem-to-Events wiring complete");
+    }
+
+    // Wire JobSystem to AssetSystem for async asset loading
+    if (engine.impl_->assets && engine.impl_->jobs) {
+        engine.impl_->assets->setJobSystem(engine.impl_->jobs.get());
+        logInfo("JobSystem-to-AssetSystem wiring complete");
     }
 
     logInfo("Engine built successfully");

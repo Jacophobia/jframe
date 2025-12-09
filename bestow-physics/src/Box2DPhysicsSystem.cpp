@@ -15,6 +15,8 @@ module;
 
 module bestow.physics.impl;
 
+import bestow.core;
+
 namespace bestow {
 
 namespace {
@@ -762,7 +764,7 @@ GroundCheckResult Box2DPhysicsSystem::checkGrounded(Entity entity,
                 // - Flat floor normal points negative Y (up toward ray origin)
                 // - So normalY should be ≈ -1 for flat ground
                 float normalY = -rayResult.normal.y;  // Negate because up is negative Y in our coords
-                float slopeAngle = std::acos(std::clamp(normalY, -1.0f, 1.0f)) * (180.0f / 3.14159265f);
+                float slopeAngle = std::acos(std::clamp(normalY, -1.0f, 1.0f)) * core::Math::RAD_TO_DEG;
 
                 if (slopeAngle <= params.slopeToleranceDeg) {
                     result.grounded = true;
