@@ -845,12 +845,23 @@ private:
         std::string fragGlslPath;  // Path to .frag GLSL source
         std::filesystem::file_time_type vertLastModified;
         std::filesystem::file_time_type fragLastModified;
+        AssetHandle vertShaderAsset;  // Asset handle for vertex shader (for subscription)
+        AssetHandle fragShaderAsset;  // Asset handle for fragment shader (for subscription)
     };
     std::unordered_map<VulkanPipelineHandle, ShaderFileInfo> pipelineShaderFiles_;
     bool hotReloadEnabled_ = true;
     std::chrono::milliseconds hotReloadCheckInterval_{500};  // Check every 500ms
     std::chrono::steady_clock::time_point lastHotReloadCheck_{};
+    std::chrono::steady_clock::time_point lastSuccessfulReload_{};  // Cooldown after reload
+    std::chrono::milliseconds reloadCooldown_{1000};  // Wait 1s after reload before checking again
     bool glslangInitialized_ = false;
+
+    // Asset system subscription for shader hot reload
+    SubscriptionId shaderSubscriptionId_ = InvalidSubscriptionId;
+    std::unordered_map<UUID, std::vector<VulkanPipelineHandle>> shaderAssetToPipelines_;  // Track which pipelines use which shader assets
+    bool useAssetSystemHotReload_ = true;  // Use asset system subscriptions instead of polling
+    void onShaderAssetChanged(AssetHandle handle, AssetType type);
+    void reloadPipelineShaders(VulkanPipelineHandle pipeline, const ShaderFileInfo& info);
 
     // Helper to load/create pipeline for a Lua material
     VulkanPipelineHandle getOrCreateMaterialPipeline(std::string_view materialPath);

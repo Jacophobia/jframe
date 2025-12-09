@@ -60,6 +60,8 @@ public:
     std::function<void(const std::filesystem::path&)> onTextureChanged;
     std::function<void(const std::filesystem::path&)> onAudioChanged;
     std::function<void(const std::filesystem::path&)> onConfigChanged;
+    std::function<void(const std::filesystem::path&)> onShaderChanged;    // .vert, .frag, .glsl
+    std::function<void(const std::filesystem::path&)> onMaterialChanged;  // materials/*.lua
 
 private:
     struct Impl;

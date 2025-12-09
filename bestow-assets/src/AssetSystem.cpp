@@ -12,6 +12,8 @@ module;
 #include <future>
 #include <memory>
 #include <mutex>
+#include <queue>
+#include <unordered_set>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <sstream>
@@ -19,13 +21,55 @@ module;
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <efsw/efsw.hpp>
+#include <spdlog/spdlog.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
+#include <shaderc/shaderc.hpp>
 
 module bestow.assets.impl;
 
 namespace bestow {
+
+//==========================================================================
+// FileWatchListener Implementation (efsw callback handler)
+//==========================================================================
+
+void AssetSystem::FileWatchListener::handleFileAction(
+    efsw::WatchID watchId,
+    const std::string& dir,
+    const std::string& filename,
+    efsw::Action action,
+    std::string oldFilename)
+{
+    FileChangeEvent::Action changeAction;
+    switch (action) {
+        case efsw::Actions::Add:
+            changeAction = FileChangeEvent::Action::Added;
+            break;
+        case efsw::Actions::Modified:
+            changeAction = FileChangeEvent::Action::Modified;
+            break;
+        case efsw::Actions::Delete:
+            changeAction = FileChangeEvent::Action::Deleted;
+            break;
+        default:
+            return;  // Ignore other actions
+    }
+
+    std::filesystem::path fullPath = std::filesystem::path(dir) / filename;
+
+    // Queue the file change event (thread-safe)
+    std::lock_guard<std::mutex> lock(owner_->fileChangesMutex_);
+    owner_->pendingFileChanges_.push(FileChangeEvent{
+        .path = std::move(fullPath),
+        .action = changeAction
+    });
+
+    spdlog::debug("[AssetSystem] File change detected: {} (action: {})",
+                  filename, static_cast<int>(action));
+}
 
 UUID AssetSystem::generateUUID() {
     return nextUUID_++;
@@ -55,6 +99,11 @@ void AssetSystem::update() {
             ++it;
         }
     }
+
+    // Process file change events from efsw (event-driven hot reload)
+    if (hotReloadEnabled_) {
+        processFileChanges();
+    }
 }
 
 AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::path& path) {
@@ -66,6 +115,41 @@ AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::pa
     entry.metadata.state = AssetState::Unloaded;
 
     assets_[handle.uuid] = std::move(entry);
+
+    // Track path -> handle mapping for file watcher lookups
+    {
+        std::error_code ec;
+        auto canonicalPath = std::filesystem::canonical(path, ec);
+        if (!ec) {
+            std::lock_guard<std::mutex> lock(pathMapMutex_);
+            pathToHandle_[canonicalPath.string()] = handle;
+        } else {
+            // If canonical fails (file doesn't exist yet), use absolute path
+            std::lock_guard<std::mutex> lock(pathMapMutex_);
+            pathToHandle_[std::filesystem::absolute(path).string()] = handle;
+        }
+    }
+
+    // Start watching the directory if hot reload is enabled
+    // IMPORTANT: Use canonical path so we watch the REAL directory, not symlinks
+    if (hotReloadEnabled_) {
+        std::error_code ec;
+        auto canonicalPath = std::filesystem::canonical(path, ec);
+        auto parentDir = ec ? path.parent_path() : canonicalPath.parent_path();
+        std::string dirStr = parentDir.string();
+
+        std::lock_guard<std::mutex> lock(pathMapMutex_);
+        if (watchedDirectories_.find(dirStr) == watchedDirectories_.end()) {
+            if (!fileWatcher_) {
+                fileWatcher_ = std::make_unique<efsw::FileWatcher>();
+                fileWatchListener_ = std::make_unique<FileWatchListener>(this);
+            }
+            fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
+            watchedDirectories_.insert(dirStr);
+            spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+        }
+    }
+
     return handle;
 }
 
@@ -252,11 +336,27 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
 
                 ShaderData shaderData;
                 shaderData.path = sourcePath.string();
-                shaderData.source = shaderSource;
+                shaderData.glslSource = shaderSource;
+                shaderData.entryPoint = "main";
 
-                // For now, just load into 'source' field
-                // The Graphics system can split vertex/fragment later if needed
-                // Could also check extension (.vert, .frag) here if desired
+                // Infer shader stage from file extension
+                std::string ext = sourcePath.extension().string();
+                if (ext == ".vert") {
+                    shaderData.stage = ShaderData::Stage::Vertex;
+                } else if (ext == ".frag") {
+                    shaderData.stage = ShaderData::Stage::Fragment;
+                } else if (ext == ".geom") {
+                    shaderData.stage = ShaderData::Stage::Geometry;
+                } else if (ext == ".comp") {
+                    shaderData.stage = ShaderData::Stage::Compute;
+                } else if (ext == ".tesc") {
+                    shaderData.stage = ShaderData::Stage::TessControl;
+                } else if (ext == ".tese") {
+                    shaderData.stage = ShaderData::Stage::TessEval;
+                }
+
+                // SPIR-V compilation happens on demand via compileShaderAsync
+                shaderData.compiled = false;
 
                 loadedData = std::move(shaderData);
                 loadedSize = shaderSource.size();
@@ -524,72 +624,153 @@ std::vector<AssetHandle> AssetSystem::getAssetsOfType(AssetType type) const {
 }
 
 void AssetSystem::enableHotReload(bool enable) {
+    if (enable && !hotReloadEnabled_) {
+        // Start file watching
+        if (!fileWatcher_) {
+            fileWatcher_ = std::make_unique<efsw::FileWatcher>();
+            fileWatchListener_ = std::make_unique<FileWatchListener>(this);
+        }
+
+        // Add watches for all directories containing registered assets
+        // IMPORTANT: Use canonical paths so we watch the REAL directory, not symlinks
+        {
+            std::lock_guard<std::mutex> assetsLock(assetsMutex_);
+            std::lock_guard<std::mutex> pathLock(pathMapMutex_);
+
+            for (const auto& [uuid, entry] : assets_) {
+                std::error_code ec;
+                auto canonicalPath = std::filesystem::canonical(entry.metadata.sourcePath, ec);
+                auto parentDir = ec ? entry.metadata.sourcePath.parent_path()
+                                    : canonicalPath.parent_path();
+                std::string dirStr = parentDir.string();
+
+                if (watchedDirectories_.find(dirStr) == watchedDirectories_.end()) {
+                    fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
+                    watchedDirectories_.insert(dirStr);
+                    spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+                }
+            }
+        }
+
+        // Start the file watcher background thread
+        fileWatcher_->watch();
+        spdlog::info("[AssetSystem] Hot reload enabled with efsw file watcher");
+    } else if (!enable && hotReloadEnabled_) {
+        // Stop file watching
+        fileWatcher_.reset();
+        fileWatchListener_.reset();
+        watchedDirectories_.clear();
+        spdlog::info("[AssetSystem] Hot reload disabled");
+    }
+
     hotReloadEnabled_ = enable;
 }
 
 void AssetSystem::checkForReloads() {
+    // NOTE: This method is now DEPRECATED for external callers.
+    // Hot reload is now handled automatically via efsw file watcher events.
+    // Kept for backwards compatibility - it now just processes queued events.
     if (!hotReloadEnabled_) return;
 
-    std::lock_guard<std::mutex> lock(assetsMutex_);
+    processFileChanges();
+}
 
-    for (auto& [uuid, entry] : assets_) {
-        // Skip assets that are not loaded
-        if (entry.metadata.state != AssetState::Loaded) {
-            continue;
+void AssetSystem::processFileChanges() {
+    // Dequeue all pending file changes (thread-safe)
+    std::queue<FileChangeEvent> toProcess;
+    {
+        std::lock_guard<std::mutex> lock(fileChangesMutex_);
+        std::swap(toProcess, pendingFileChanges_);
+    }
+
+    // Process each file change event
+    while (!toProcess.empty()) {
+        handleFileChange(toProcess.front());
+        toProcess.pop();
+    }
+}
+
+void AssetSystem::handleFileChange(const FileChangeEvent& event) {
+    // Only handle modified files (not added/deleted for now)
+    if (event.action != FileChangeEvent::Action::Modified) {
+        return;
+    }
+
+    spdlog::info("[AssetSystem] Processing file change: {}", event.path.string());
+
+    // Try to find the asset handle for this file path
+    AssetHandle handle{};
+    {
+        std::error_code ec;
+        auto canonicalPath = std::filesystem::canonical(event.path, ec);
+        std::string pathKey = ec ? std::filesystem::absolute(event.path).string()
+                                 : canonicalPath.string();
+
+        spdlog::info("[AssetSystem] Looking up path key: {}", pathKey);
+
+        std::lock_guard<std::mutex> lock(pathMapMutex_);
+        auto it = pathToHandle_.find(pathKey);
+        if (it == pathToHandle_.end()) {
+            // File changed but not tracked - log for debugging
+            spdlog::warn("[AssetSystem] File not tracked. Known paths ({}):", pathToHandle_.size());
+            for (const auto& [path, h] : pathToHandle_) {
+                spdlog::warn("  - {}", path);
+            }
+            return;
+        }
+        handle = it->second;
+    }
+
+    // Check if asset is loaded and not currently being reloaded
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it == assets_.end() || it->second.metadata.state != AssetState::Loaded) {
+            return;
         }
 
-        // Skip assets that are currently being loaded asynchronously
-        bool isBeingLoaded = false;
+        // Check if already pending reload
         for (const auto& pending : pendingLoads_) {
-            if (pending.handle.uuid == uuid) {
-                isBeingLoaded = true;
-                break;
+            if (pending.handle.uuid == handle.uuid) {
+                return;  // Already being reloaded
             }
         }
-        if (isBeingLoaded) {
-            continue;
-        }
+    }
 
-        // Get current file modification time
-        std::error_code ec;
-        auto currentWriteTime = std::filesystem::last_write_time(entry.metadata.sourcePath, ec);
+    spdlog::info("[AssetSystem] File changed, reloading: {}", event.path.string());
 
-        // Handle errors gracefully
-        if (ec) {
-            // File no longer exists or permission error - don't reload
-            continue;
-        }
+    // For shaders, reload and recompile automatically
+    if (handle.type == AssetType::Shader) {
+        // Reload the GLSL source
+        unloadAsset(handle);
+        loadAsset(handle);
 
-        // If we have a stored write time, compare it
-        if (entry.lastWriteTime.has_value()) {
-            if (currentWriteTime > entry.lastWriteTime.value()) {
-                // File has been modified, reload it
-                // We need to release the lock before calling reloadAsset
-                // Store the handle for reloading after the loop
-                AssetHandle handle = entry.metadata.handle;
-
-                // Temporarily release lock to avoid deadlock
-                assetsMutex_.unlock();
-                reloadAsset(handle);
-                assetsMutex_.lock();
-
-                // Update the stored write time
-                // Note: entry reference may be invalidated, so look it up again
-                auto it = assets_.find(uuid);
-                if (it != assets_.end()) {
-                    it->second.lastWriteTime = currentWriteTime;
+        // Automatically compile shader to SPIR-V
+        compileShaderAsync(handle, [this, handle](AssetHandle h, AssetState state) {
+            if (state == AssetState::Loaded) {
+                // Get compilation result
+                const ShaderData* shaderData = getShaderData(h);
+                if (shaderData && shaderData->compiled) {
+                    spdlog::info("[AssetSystem] Shader compiled successfully: {}", shaderData->path);
+                    // Notify subscribers that the shader has been updated
+                    notifySubscribers(handle, handle.type);
+                } else if (shaderData && !shaderData->compileError.empty()) {
+                    spdlog::error("[AssetSystem] Shader compilation failed: {}", shaderData->compileError);
                 }
             }
-        } else {
-            // No stored write time, just store the current one
-            entry.lastWriteTime = currentWriteTime;
-        }
+        });
+    } else {
+        // For other assets, just reload
+        reloadAsset(handle);
     }
 }
 
 void AssetSystem::reloadAsset(AssetHandle handle) {
     unloadAsset(handle);
     loadAsset(handle);
+
+    // Notify subscribers that this asset changed
+    notifySubscribers(handle, handle.type);
 }
 
 //==========================================================================
@@ -771,6 +952,230 @@ bool hasBehaviorTreeJson(const BehaviorTreeData& data) {
 
 const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data) {
     return data.treeData;
+}
+
+//==========================================================================
+// Asset Change Subscriptions
+//==========================================================================
+
+SubscriptionId AssetSystem::subscribe(AssetHandle handle, AssetChangeCallback callback) {
+    std::lock_guard<std::mutex> lock(subscriptionsMutex_);
+
+    SubscriptionId id = nextSubscriptionId_++;
+    subscriptions_.push_back(Subscription{
+        .id = id,
+        .handle = handle,
+        .type = handle.type,
+        .callback = std::move(callback),
+        .isTypeSubscription = false
+    });
+
+    return id;
+}
+
+SubscriptionId AssetSystem::subscribeToType(AssetType type, AssetChangeCallback callback) {
+    std::lock_guard<std::mutex> lock(subscriptionsMutex_);
+
+    SubscriptionId id = nextSubscriptionId_++;
+    subscriptions_.push_back(Subscription{
+        .id = id,
+        .handle = AssetHandle{},  // Invalid handle for type subscriptions
+        .type = type,
+        .callback = std::move(callback),
+        .isTypeSubscription = true
+    });
+
+    return id;
+}
+
+void AssetSystem::unsubscribe(SubscriptionId id) {
+    std::lock_guard<std::mutex> lock(subscriptionsMutex_);
+
+    auto it = std::remove_if(subscriptions_.begin(), subscriptions_.end(),
+        [id](const Subscription& sub) { return sub.id == id; });
+    subscriptions_.erase(it, subscriptions_.end());
+}
+
+void AssetSystem::notifySubscribers(AssetHandle handle, AssetType type) {
+    // Copy callbacks while holding the lock, then invoke outside
+    std::vector<std::pair<AssetHandle, AssetChangeCallback>> toNotify;
+
+    {
+        std::lock_guard<std::mutex> lock(subscriptionsMutex_);
+
+        for (const auto& sub : subscriptions_) {
+            if (sub.isTypeSubscription) {
+                // Type subscription: notify if asset type matches
+                if (sub.type == type) {
+                    toNotify.emplace_back(handle, sub.callback);
+                }
+            } else {
+                // Specific asset subscription: notify if handle matches
+                if (sub.handle.uuid == handle.uuid) {
+                    toNotify.emplace_back(handle, sub.callback);
+                }
+            }
+        }
+    }
+
+    // Invoke callbacks outside the lock to prevent deadlocks
+    for (const auto& [h, callback] : toNotify) {
+        if (callback) {
+            callback(h, type);
+        }
+    }
+}
+
+//==========================================================================
+// Shader Loading and Compilation (using shaderc library - in-process)
+//==========================================================================
+
+namespace {
+    // Convert ShaderData::Stage to shaderc shader kind
+    shaderc_shader_kind stageToShadercKind(ShaderData::Stage stage) {
+        switch (stage) {
+            case ShaderData::Stage::Vertex: return shaderc_glsl_vertex_shader;
+            case ShaderData::Stage::Fragment: return shaderc_glsl_fragment_shader;
+            case ShaderData::Stage::Geometry: return shaderc_glsl_geometry_shader;
+            case ShaderData::Stage::Compute: return shaderc_glsl_compute_shader;
+            case ShaderData::Stage::TessControl: return shaderc_glsl_tess_control_shader;
+            case ShaderData::Stage::TessEval: return shaderc_glsl_tess_evaluation_shader;
+            default: return shaderc_glsl_vertex_shader;
+        }
+    }
+
+    // Compile GLSL to SPIR-V using shaderc library (in-process, no subprocess)
+    // Returns empty vector on failure, populates errorOut with error message
+    std::vector<std::uint32_t> compileGlslToSpirv(
+        const std::string& glslSource,
+        const std::string& sourcePath,
+        ShaderData::Stage stage,
+        std::string& errorOut)
+    {
+        shaderc::Compiler compiler;
+        shaderc::CompileOptions options;
+
+        // Set optimization level for release builds
+#ifdef NDEBUG
+        options.SetOptimizationLevel(shaderc_optimization_level_performance);
+#else
+        options.SetOptimizationLevel(shaderc_optimization_level_zero);
+        options.SetGenerateDebugInfo();
+#endif
+
+        // Target Vulkan 1.0 SPIR-V
+        options.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_0);
+
+        // Compile GLSL to SPIR-V
+        shaderc_shader_kind kind = stageToShadercKind(stage);
+        shaderc::SpvCompilationResult result = compiler.CompileGlslToSpv(
+            glslSource,
+            kind,
+            sourcePath.c_str(),
+            options
+        );
+
+        if (result.GetCompilationStatus() != shaderc_compilation_status_success) {
+            errorOut = result.GetErrorMessage();
+            return {};
+        }
+
+        // Copy SPIR-V bytecode to vector
+        std::vector<std::uint32_t> spirv(result.cbegin(), result.cend());
+        errorOut.clear();
+        return spirv;
+    }
+}  // anonymous namespace
+
+AssetHandle AssetSystem::loadShader(const std::filesystem::path& path) {
+    AssetHandle handle = registerAsset(AssetType::Shader, path);
+    loadAsset(handle);
+    return handle;
+}
+
+const ShaderData* AssetSystem::getShaderData(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
+    auto it = assets_.find(handle.uuid);
+    if (it == assets_.end() || !it->second.data.has_value()) {
+        return nullptr;
+    }
+    try {
+        return &std::any_cast<const ShaderData&>(it->second.data);
+    } catch (const std::bad_any_cast&) {
+        return nullptr;
+    }
+}
+
+void AssetSystem::compileShaderAsync(AssetHandle handle, AssetLoadCallback callback) {
+    // Verify asset exists and is a shader
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it == assets_.end() || handle.type != AssetType::Shader) {
+            if (callback) {
+                callback(handle, AssetState::Failed);
+            }
+            return;
+        }
+    }
+
+    // Launch async compilation task
+    std::future<void> future = std::async(std::launch::async, [this, handle]() {
+        // Extract shader data while holding lock
+        std::string glslSource;
+        std::string sourcePath;
+        ShaderData::Stage stage;
+
+        {
+            std::lock_guard<std::mutex> lock(assetsMutex_);
+            auto it = assets_.find(handle.uuid);
+            if (it == assets_.end()) return;
+
+            ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
+            if (!shaderData || shaderData->glslSource.empty()) {
+                return;
+            }
+
+            glslSource = shaderData->glslSource;
+            sourcePath = shaderData->path;
+            stage = shaderData->stage;
+        }
+
+        // Compile outside the lock (this is the slow part)
+        std::string errorMessage;
+        std::vector<std::uint32_t> spirv = compileGlslToSpirv(glslSource, sourcePath, stage, errorMessage);
+
+        // Update shader data with result
+        {
+            std::lock_guard<std::mutex> lock(assetsMutex_);
+            auto it = assets_.find(handle.uuid);
+            if (it == assets_.end()) return;
+
+            ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
+            if (shaderData) {
+                if (spirv.empty()) {
+                    shaderData->compileError = errorMessage;
+                    shaderData->compiled = false;
+                } else {
+                    shaderData->spirvBytecode = std::move(spirv);
+                    shaderData->compileError.clear();
+                    shaderData->compiled = true;
+                }
+            }
+        }
+    });
+
+    // Store pending load for callback processing in update()
+    pendingLoads_.push_back(PendingLoad{
+        .handle = handle,
+        .callback = std::move(callback),
+        .future = std::move(future)
+    });
+}
+
+bool AssetSystem::isShaderCompilationSupported() const {
+    // shaderc is linked at compile time, always available
+    return true;
 }
 
 }  // namespace bestow

@@ -30,6 +30,8 @@ import bestow.physics3d;
 import bestow.physics3d.impl;
 import bestow.shader;
 import bestow.shader.impl;
+import bestow.assets;
+import bestow.assets.impl;  // AssetSystemService for event-driven hot reload
 import bestow.services;  // Abstract services for DI
 import bestow.dev;       // Hot reload manager for config files
 
@@ -78,6 +80,29 @@ struct Player {
 
 // Global camera state
 CameraState g_cameraState;
+
+// Material cycling for shader debugging
+std::vector<std::string> g_allMaterials = {
+    "toon.lua",
+    "halftone.lua",
+    "crosshatch.lua",
+    "iridescent.lua",
+    "stainedglass.lua",
+    "chromatic.lua",
+    "hologram.lua",
+    "kuwahara.lua",
+    "glow.lua"
+};
+int g_currentMaterialIndex = 0;
+bool g_materialJustChanged = false;
+
+// Test sphere for material cycling demo
+struct TestSphere {
+    MeshHandle mesh;
+    Vec3 position{3.0f, 3.0f, -3.0f};  // Near starting platform, elevated and visible
+    float scale = 1.5f;  // Large enough to see shader details
+};
+TestSphere g_testSphere;
 
 // Platform definition
 struct Platform {
@@ -131,6 +156,16 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
             g_firstMouse = true;
         }
     }
+
+    // Backtick (`) to cycle through materials on test sphere
+    if (key == GLFW_KEY_GRAVE_ACCENT && action == GLFW_PRESS) {
+        g_currentMaterialIndex = (g_currentMaterialIndex + 1) % static_cast<int>(g_allMaterials.size());
+        g_materialJustChanged = true;
+        std::println(">>> Switched to material: {} ({}/{})",
+                     g_allMaterials[g_currentMaterialIndex],
+                     g_currentMaterialIndex + 1,
+                     g_allMaterials.size());
+    }
 }
 
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
@@ -178,29 +213,29 @@ std::vector<Platform> createPlatforms(IGraphics3DSystem* graphics, IPhysics3DSys
         std::string luaMaterial;  // Empty = use PBR, otherwise use Lua material
     };
 
-    // All platforms use cel-shading for a cartoon look!
+    // SHADER SHOWCASE! Each platform uses a unique shader effect
     // Material paths are relative to the material base path (assets/materials/)
     std::vector<PlatformDef> defs = {
-        // Ground floor - cel-shaded grass green
-        {{0.0f, -2.0f, 0.0f}, {50.0f, 1.0f, 50.0f}, {0.35f, 0.6f, 0.25f}, "toon.lua"},
+        // Ground floor - oil painting style (kuwahara)
+        {{0.0f, -2.0f, 0.0f}, {50.0f, 1.0f, 50.0f}, {0.35f, 0.6f, 0.25f}, "kuwahara.lua"},
 
-        // Starting platform - cel-shaded stone gray
+        // Starting platform - classic cel-shaded stone gray
         {{0.0f, 0.0f, 0.0f}, {4.0f, 0.5f, 4.0f}, {0.6f, 0.55f, 0.5f}, "toon.lua"},
 
-        // Jumping platforms - colorful cel-shaded blocks
-        {{5.0f, 1.0f, 0.0f}, {3.0f, 0.5f, 3.0f}, {0.85f, 0.4f, 0.35f}, "toon.lua"},   // Red
-        {{10.0f, 2.5f, 2.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.75f, 0.4f}, "toon.lua"},   // Green
-        {{8.0f, 4.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.5f, 0.85f}, "toon.lua"},    // Blue
-        {{3.0f, 5.5f, 8.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.8f, 0.3f}, "toon.lua"},     // Yellow
-        {{-2.0f, 7.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.7f, 0.4f, 0.8f}, "toon.lua"},    // Purple
-        {{-6.0f, 8.5f, 3.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.6f, 0.3f}, "toon.lua"},    // Orange
+        // Jumping platforms - each with a UNIQUE shader effect!
+        {{5.0f, 1.0f, 0.0f}, {3.0f, 0.5f, 3.0f}, {0.85f, 0.4f, 0.35f}, "halftone.lua"},      // Comic book dots
+        {{10.0f, 2.5f, 2.0f}, {3.0f, 0.5f, 3.0f}, {0.4f, 0.75f, 0.4f}, "crosshatch.lua"},    // Pen & ink
+        {{8.0f, 4.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.3f, 0.3f, 0.5f}, "iridescent.lua"},      // Soap bubble
+        {{3.0f, 5.5f, 8.0f}, {3.0f, 0.5f, 3.0f}, {0.9f, 0.8f, 0.3f}, "stainedglass.lua"},    // Voronoi cells
+        {{-2.0f, 7.0f, 6.0f}, {3.0f, 0.5f, 3.0f}, {0.7f, 0.4f, 0.8f}, "chromatic.lua"},      // RGB separation
+        {{-6.0f, 8.5f, 3.0f}, {3.0f, 0.5f, 3.0f}, {0.2f, 0.8f, 1.0f}, "hologram.lua"},       // Sci-fi projection
 
-        // Goal platform - shiny metallic chrome!
-        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {0.8f, 0.8f, 0.85f}, "metallic.lua"},
+        // Goal platform - golden glow beacon!
+        {{-8.0f, 10.0f, -2.0f}, {4.0f, 0.5f, 4.0f}, {0.9f, 0.75f, 0.2f}, "glow.lua"},
 
-        // Side platforms - cel-shaded pastels
-        {{-5.0f, 2.0f, -3.0f}, {2.5f, 0.5f, 2.5f}, {0.7f, 0.5f, 0.7f}, "toon.lua"},   // Lavender
-        {{-8.0f, 3.5f, 0.0f}, {2.5f, 0.5f, 2.5f}, {0.5f, 0.7f, 0.7f}, "toon.lua"},    // Teal
+        // Side platforms - more unique shaders
+        {{-5.0f, 2.0f, -3.0f}, {2.5f, 0.5f, 2.5f}, {0.8f, 0.8f, 0.85f}, "iridescent.lua"},   // Soap bubble
+        {{-8.0f, 3.5f, 0.0f}, {2.5f, 0.5f, 2.5f}, {0.5f, 0.7f, 0.7f}, "toon.lua"},           // Classic toon
     };
 
     for (const auto& def : defs) {
@@ -473,6 +508,10 @@ int main(int argc, char* argv[]) {
         PathResolver::initialize();
     }
 
+    // Set library path to the executable directory (where shaders/ is symlinked)
+    // This allows :library:/shaders/X.frag to resolve correctly
+    PathResolver::setLibraryPath(PathResolver::getAssetsPath().string());
+
     std::println("Bestow 3D Platformer Demo");
 #ifdef USE_VULKAN_RENDERER
     std::println("Renderer: Vulkan");
@@ -485,6 +524,7 @@ int main(int argc, char* argv[]) {
     std::println("  Space - Jump");
     std::println("  Mouse - Look around");
     std::println("  Tab   - Recapture mouse");
+    std::println("  `     - Cycle shader materials (on test sphere)");
     std::println("  Esc   - Release mouse / Exit");
     std::println("");
 
@@ -537,6 +577,12 @@ int main(int argc, char* argv[]) {
     shaderSystem.setMaterialBasePath("assets/materials/");
     std::println("Shader system initialized with hot reload support");
 
+    // Get asset system from container for event-driven shader hot reload
+    auto& assetSystem = container.service<AssetSystemService>();
+    assetSystem.enableHotReload(true);  // Enable efsw file watcher
+    graphics.setAssetSystem(&assetSystem);
+    std::println("Asset system initialized with event-driven file watching");
+
     // Load runtime graphics config from Lua file
     std::filesystem::path configPath = "assets/config/graphics3d.lua";
     if (graphics.loadRuntimeConfig(configPath)) {
@@ -561,10 +607,24 @@ int main(int argc, char* argv[]) {
             }
         }
     };
-    std::println("Hot reload enabled for assets/config/graphics3d.lua");
+
+    // Wire up shader file change callback (triggers shader recompilation)
+    hotReload.onShaderChanged = [](const std::filesystem::path& path) {
+        std::println("Shader changed: {} - shader system will reload on next frame",
+                     path.filename().string());
+    };
+
+    // Wire up material file change callback
+    hotReload.onMaterialChanged = [](const std::filesystem::path& path) {
+        std::println("Material changed: {} - material will reload on next frame",
+                     path.filename().string());
+    };
+
+    std::println("Hot reload enabled for shaders, materials, and config files");
 
     // Get input system from container and initialize
     auto& input = container.service<InputSystemService>();
+    input.setAssetSystem(&assetSystem);  // Set asset system before initialize for controller mappings
     if (!input.initialize(g_window)) {
         std::println("Failed to initialize input system");
         glfwTerminate();
@@ -578,6 +638,17 @@ int main(int argc, char* argv[]) {
     // Create game objects
     auto platforms = createPlatforms(&graphics, &physics);
     auto player = createPlayer(&graphics, &physics);
+
+    // Create test sphere for material cycling demo
+    {
+        auto sphereResult = graphics.createSphereMesh(g_testSphere.scale);
+        if (sphereResult) {
+            g_testSphere.mesh = *sphereResult;
+            std::println("Created test sphere for material cycling (press ` to cycle)");
+        } else {
+            std::println("Warning: Failed to create test sphere mesh");
+        }
+    }
 
     // Note: Lighting and clear color are now controlled by assets/config/graphics3d.lua
     // The loadRuntimeConfig() call above applies these settings automatically.
@@ -601,6 +672,9 @@ int main(int argc, char* argv[]) {
 
         // Update hot reload manager (check for config file changes)
         hotReload.update();
+
+        // Process asset system file change events (event-driven via efsw)
+        assetSystem.update();
 
         // Update input
         input.update();
@@ -669,6 +743,31 @@ int main(int argc, char* argv[]) {
             } else {
                 graphics.drawMesh(player.mesh, player.material, transform);
             }
+        }
+
+        // Render test sphere with the currently selected material (press ` to cycle)
+        if (g_testSphere.mesh != 0) {
+            Mat4 sphereWorld = glm::translate(Mat4(1.0f), g_testSphere.position);
+            // Slowly rotate the sphere to show off the shader from different angles
+            float rotationAngle = static_cast<float>(currentTime) * 0.5f;  // Slow rotation
+            sphereWorld = glm::rotate(sphereWorld, rotationAngle, Vec3{0.0f, 1.0f, 0.0f});
+
+            // Use a nice bright color so shader effects are visible
+            Vec4 sphereColor{1.0f, 1.0f, 1.0f, 1.0f};  // White - lets shader colors show through
+
+            const std::string& currentMaterial = g_allMaterials[g_currentMaterialIndex];
+            auto result = graphics.drawMeshWithLuaMaterial(
+                g_testSphere.mesh, currentMaterial, sphereWorld, sphereColor);
+
+            if (!result) {
+                // Log failure once when material changes
+                if (g_materialJustChanged) {
+                    std::println("Warning: Failed to render test sphere with material: {}", currentMaterial);
+                }
+            }
+
+            // Reset the material changed flag
+            g_materialJustChanged = false;
         }
 
         // Debug: draw some coordinate axes at origin (disabled - causes rendering artifacts)

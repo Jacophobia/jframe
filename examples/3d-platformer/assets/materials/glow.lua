@@ -3,8 +3,8 @@
 
 return {
     shader = {
-        vertex = "basic.vert",
-        fragment = "glow.frag"
+        vertex = "shaders/toon.vert",
+        fragment = "shaders/glow.frag"
     },
 
     uniforms = {

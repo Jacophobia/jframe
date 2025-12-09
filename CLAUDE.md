@@ -1,8 +1,17 @@
 # Bestow Development Guidelines
 
+> **Note:** This file contains **principles and guidelines** for programming in this repository. For future work, improvement plans, and progress tracking, see `TODO.md` at the project root.
+
 ## User Preferences
 
 **Keyboard Layout:** The project owner uses **Dvorak**. When implementing keyboard controls, **STRONGLY prefer ,AOE over WASD** for movement (Dvorak-equivalent of WASD positions). This applies to all demos, examples, and default configurations.
+
+**Renderer Priority:** **Vulkan is the primary renderer**. OpenGL exists primarily for rapid prototyping and fallback purposes. When implementing graphics features:
+- Prioritize Vulkan (`bestow-vulkan`) implementation first
+- OpenGL (`bestow-graphics3d`) is secondary and may lag behind in features
+- Vulkan should be the most polished and feature-complete backend
+
+**Lua-First Design:** Lua is the primary interface for game developers using Bestow. Configuration, materials, levels, blueprints, and game logic should be Lua-driven wherever possible. Game developers should spend most of their time in Lua files, not C++.
 
 ## Language Standard
 
@@ -146,6 +155,156 @@ Use ECS architecture with EnTT. Prefer components over class hierarchies.
 ### Dependency Injection
 
 Use Fruit DI for system wiring in the composition root.
+
+### AssetSystem Architecture (CRITICAL)
+
+**The AssetSystem is the SOLE GATEWAY to the file system.** No other system should directly read files. This is a fundamental architectural principle.
+
+#### The Rule
+
+**ALL file system interactions MUST go through AssetSystem.** This includes:
+- Loading shaders (GLSL, SPIR-V)
+- Loading Lua files (configs, materials, blueprints, levels)
+- Loading textures, audio, fonts, meshes, models
+- Reading any data files
+- Checking file existence
+- Monitoring file modification times
+
+**NEVER do these in other systems:**
+```cpp
+// WRONG - Direct file I/O
+std::ifstream file(path);
+lua.safe_script_file(path);
+std::filesystem::exists(path);
+std::filesystem::last_write_time(path);
+```
+
+```cpp
+// CORRECT - Through AssetSystem
+AssetHandle handle = assets->registerAsset(AssetType::Shader, "shaders/toon.frag");
+assets->loadAsset(handle);
+const ShaderData* data = assets->getAsset<ShaderData>(handle);
+```
+
+#### Why This Matters
+
+1. **Centralized caching** - Assets loaded once, reused everywhere
+2. **Hot reload support** - AssetSystem monitors files via efsw
+3. **Lifecycle management** - Assets properly loaded/unloaded
+4. **Path resolution** - `:library:/` and `:assets:/` prefixes handled consistently
+5. **Async loading** - Non-blocking asset loads on background threads
+6. **Error handling** - Unified error reporting for all file operations
+
+#### Correct Asset Workflow
+
+```cpp
+// 1. Register the asset (doesn't load yet)
+AssetHandle handle = assets->registerAsset(AssetType::Shader, ":library:/shaders/toon.frag");
+
+// 2. Subscribe to changes for hot reload (via AssetSystem subscriptions)
+SubscriptionId subId = assets->subscribe(handle, [this](AssetHandle h, AssetType t) {
+    onAssetChanged(h, t);  // Called when file changes on disk
+});
+
+// Or subscribe to ALL assets of a type:
+SubscriptionId typeSubId = assets->subscribeToType(AssetType::Shader, [this](AssetHandle h, AssetType t) {
+    onShaderChanged(h, t);  // Called when ANY shader changes
+});
+
+// 3. Load the asset (sync or async)
+assets->loadAssetAsync(handle, [this](AssetHandle h, AssetState state) {
+    if (state == AssetState::Loaded) {
+        const ShaderData* shader = assets->getAsset<ShaderData>(h);
+        // Use the shader data
+    }
+});
+
+// 4. In your update loop, process async completions
+void update() {
+    assets->update();  // Processes async loads and hot reload notifications
+}
+
+// 5. When done, clean up
+assets->unsubscribe(subId);
+assets->unloadAsset(handle);
+```
+
+#### Hot Reload Flow
+
+1. Enable hot reload: `assets->enableHotReload(true)`
+2. AssetSystem uses efsw to watch registered asset directories
+3. When a file changes, efsw queues the event
+4. On `assets->update()`, queued changes are processed
+5. `reloadAsset()` reloads the file data
+6. All subscribers are notified via their callbacks
+7. Consuming systems (Graphics, Shader, etc.) receive notification and update
+
+#### Systems That Must Use AssetSystem
+
+| System | Asset Types |
+|--------|-------------|
+| Graphics/Vulkan/OpenGL | Shaders, Textures, Materials, Meshes, Models, Cubemaps |
+| Shader | Shader source files (.glsl, .vert, .frag), Material definitions (.lua) |
+| Config | Config files (.lua) |
+| Audio | Sound files (.wav, .ogg, .mp3), Music files |
+| Level | Level definitions (.lua), Blueprints (.lua) |
+| Save | N/A - see "Intentional Exceptions" below |
+| UI | RML documents, fonts, stylesheets |
+
+#### Intentional Exceptions
+
+**SaveSystem** is an intentional exception to the AssetSystem rule because:
+
+1. **User data vs game assets**: Save files are USER-generated data, not game assets bundled with the application
+2. **Write operations required**: IAssetSystem is READ-ONLY by design. SaveSystem needs `std::ofstream` for writing saves
+3. **No hot reload needed**: Users don't modify save files while the game runs
+4. **Different lifecycle**: Save files are created, modified, and deleted by the user during gameplay
+
+The SaveSystem MAY use direct file I/O (`std::ifstream`, `std::ofstream`, `std::filesystem`) for save operations.
+
+```cpp
+// SaveSystem exception - this is ACCEPTABLE:
+std::ofstream saveFile(savePath, std::ios::binary);
+cereal::BinaryOutputArchive archive(saveFile);
+archive(saveData);
+```
+
+### EventSystem Architecture
+
+**Prefer EventSystem over direct callbacks for inter-system communication.** This provides decoupling, testability, and flexibility.
+
+#### When to Use EventSystem
+
+Use EventSystem for:
+- Cross-system notifications (asset loaded, level changed, entity created)
+- Decoupled communication where the sender doesn't need to know about receivers
+- Events with multiple potential subscribers
+
+Use direct callbacks for:
+- Performance-critical paths where event dispatch overhead matters
+- Simple 1:1 relationships within the same system
+
+#### Benefits
+
+1. **Decoupling**: Systems don't need references to each other
+2. **Testability**: Easy to mock events in unit tests
+3. **Flexibility**: Multiple subscribers to same event
+4. **Debugging**: Central place to log all system communication
+
+#### Example Usage
+
+```cpp
+// Subscribe to events in init()
+eventSubId_ = events_->subscribe(Events::AssetLoaded, [this](const EventData& data) {
+    auto& event = std::get<AssetLoadedEvent>(data);
+    if (event.type == AssetType::Shader) {
+        onShaderLoaded(event.handle);
+    }
+});
+
+// Clean up in shutdown
+events_->unsubscribe(eventSubId_);
+```
 
 ## Error Handling
 

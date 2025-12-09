@@ -15,18 +15,21 @@ target_link_libraries(3d-platformer_gl
         bestow-physics3d
         bestow-input
         bestow-dev
+        bestow-assets
         glfw
         glm::glm
 )
 
 target_compile_features(3d-platformer_gl PRIVATE cxx_std_23)
 
-# Copy assets to build directory so the executable can find them
+# Create symlink to assets for hot reload support (edits to source files are immediately visible)
+# On Windows, use copy_directory as fallback since symlinks require admin privileges
 add_custom_command(TARGET 3d-platformer_gl POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:3d-platformer_gl>/assets"
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
         "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:3d-platformer_gl>/assets"
-    COMMENT "Copying 3d-platformer_gl assets to build directory"
+    COMMENT "Creating symlink to 3d-platformer assets for hot reload"
 )
 
 # Vulkan version
@@ -45,19 +48,23 @@ target_link_libraries(3d-platformer_vk
         bestow-physics3d
         bestow-input
         bestow-dev
+        bestow-assets
         glfw
         glm::glm
 )
 
 target_compile_features(3d-platformer_vk PRIVATE cxx_std_23)
 
+# Create symlinks to assets for hot reload support
 add_custom_command(TARGET 3d-platformer_vk POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:3d-platformer_vk>/assets"
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
         "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:3d-platformer_vk>/assets"
-    # Copy GLSL sources alongside SPV files for hot reload
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    # Also symlink Vulkan shaders for hot reload
+    COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:3d-platformer_vk>/shaders"
+    COMMAND ${CMAKE_COMMAND} -E create_symlink
         "${CMAKE_SOURCE_DIR}/bestow-vulkan/shaders"
         "$<TARGET_FILE_DIR:3d-platformer_vk>/shaders"
-    COMMENT "Copying 3d-platformer_vk assets to build directory"
+    COMMENT "Creating symlinks to 3d-platformer assets for hot reload"
 )

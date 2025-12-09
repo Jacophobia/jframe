@@ -107,6 +107,11 @@ target_link_libraries(bestow-vulkan
         vk-bootstrap::vk-bootstrap
         glfw
         glm::glm
+    PRIVATE
+        bestow-assets
+        bestow-shader
+        lua
+        sol2::sol2
 )
 
 target_compile_features(bestow-vulkan PUBLIC cxx_std_23)

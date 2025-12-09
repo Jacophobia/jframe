@@ -3,8 +3,8 @@
 
 return {
     shader = {
-        vertex = "toon.vert",
-        fragment = "toon.frag"
+        vertex = "shaders/toon.vert",
+        fragment = "shaders/toon.frag"
     },
 
     uniforms = {

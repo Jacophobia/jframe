@@ -47,6 +47,12 @@ struct ShaderProgramResource {
     bool enableHotReload = false;
     std::unordered_map<std::string, GLint> uniformLocations;
 
+    // AssetSystem integration
+    AssetHandle vertAssetHandle{};
+    AssetHandle fragAssetHandle{};
+    SubscriptionId vertSubscriptionId = InvalidSubscriptionId;
+    SubscriptionId fragSubscriptionId = InvalidSubscriptionId;
+
     GLint getUniformLocation(const std::string& uniformName) {
         auto it = uniformLocations.find(uniformName);
         if (it != uniformLocations.end()) {
@@ -69,33 +75,13 @@ struct ShaderMaterialResource {
     CullMode cullMode = CullMode::Back;
     bool depthWrite = true;
     bool depthTest = true;
+
+    // AssetSystem integration
+    AssetHandle matAssetHandle{};
+    SubscriptionId matSubscriptionId = InvalidSubscriptionId;
 };
 
-struct WatchedFile {
-    std::string path;
-    std::filesystem::file_time_type lastModified;
-    std::vector<ShaderProgramHandle> shaders;
-    std::vector<MaterialHandle> materials;
-};
 
-//==========================================================================
-// File Watcher Listener (efsw)
-//==========================================================================
-
-#ifdef BESTOW_HAS_EFSW
-class ShaderFileListener : public efsw::FileWatchListener {
-public:
-    std::function<void(const std::string&)> onFileChanged;
-
-    void handleFileAction(efsw::WatchID /*watchid*/, const std::string& dir,
-                          const std::string& filename, efsw::Action action,
-                          std::string /*oldFilename*/) override {
-        if (action == efsw::Actions::Modified && onFileChanged) {
-            onFileChanged(dir + "/" + filename);
-        }
-    }
-};
-#endif
 
 //==========================================================================
 // OpenGLShaderSystem Implementation
@@ -105,6 +91,24 @@ class OpenGLShaderSystem : public IShaderSystem {
 public:
     OpenGLShaderSystem() = default;
     ~OpenGLShaderSystem() override {
+        // Unsubscribe from all AssetSystem notifications
+        if (assets_) {
+            for (auto& [handle, shader] : shaders_) {
+                if (shader.vertSubscriptionId != InvalidSubscriptionId) {
+                    assets_->unsubscribe(shader.vertSubscriptionId);
+                }
+                if (shader.fragSubscriptionId != InvalidSubscriptionId) {
+                    assets_->unsubscribe(shader.fragSubscriptionId);
+                }
+            }
+
+            for (auto& [handle, material] : materials_) {
+                if (material.matSubscriptionId != InvalidSubscriptionId) {
+                    assets_->unsubscribe(material.matSubscriptionId);
+                }
+            }
+        }
+
         // Clean up cached textures
         for (auto& [handle, textureId] : textureCache_) {
             if (textureId != 0) {
@@ -143,31 +147,41 @@ public:
         std::string_view fragmentPath,
         bool enableHotReload) override
     {
+        if (!assets_) {
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::InternalError,
+                .message = "AssetSystem not initialized"
+            });
+        }
+
         std::string fullVertPath = resolvePath(shaderBasePath_, vertexPath);
         std::string fullFragPath = resolvePath(shaderBasePath_, fragmentPath);
 
-        // Read shader files
-        auto vertSource = readFile(fullVertPath);
-        if (!vertSource) {
+        // Load vertex shader through AssetSystem
+        AssetHandle vertHandle = assets_->loadShader(fullVertPath);
+        const ShaderData* vertShaderData = assets_->getShaderData(vertHandle);
+        if (!vertShaderData || vertShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
-                .message = "Could not read vertex shader file",
+                .message = "Could not load vertex shader file",
                 .filePath = fullVertPath
             });
         }
 
-        auto fragSource = readFile(fullFragPath);
-        if (!fragSource) {
+        // Load fragment shader through AssetSystem
+        AssetHandle fragHandle = assets_->loadShader(fullFragPath);
+        const ShaderData* fragShaderData = assets_->getShaderData(fragHandle);
+        if (!fragShaderData || fragShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
-                .message = "Could not read fragment shader file",
+                .message = "Could not load fragment shader file",
                 .filePath = fullFragPath
             });
         }
 
         // Compile
         auto result = compileShaderProgram(
-            *vertSource, *fragSource,
+            vertShaderData->glslSource, fragShaderData->glslSource,
             std::string(vertexPath) + " + " + std::string(fragmentPath),
             fullVertPath, fullFragPath
         );
@@ -175,32 +189,55 @@ public:
         if (result && enableHotReload && hotReloadEnabled_) {
             auto& shader = shaders_[*result];
             shader.enableHotReload = true;
-            watchFile(fullVertPath, *result);
-            watchFile(fullFragPath, *result);
+            shader.vertAssetHandle = vertHandle;
+            shader.fragAssetHandle = fragHandle;
+
+            // Subscribe to shader changes via AssetSystem
+            SubscriptionId vertSub = assets_->subscribe(vertHandle, [this, handle = *result](AssetHandle, AssetType) {
+                onShaderFileChanged(handle);
+            });
+            SubscriptionId fragSub = assets_->subscribe(fragHandle, [this, handle = *result](AssetHandle, AssetType) {
+                onShaderFileChanged(handle);
+            });
+
+            shader.vertSubscriptionId = vertSub;
+            shader.fragSubscriptionId = fragSub;
         }
 
         return result;
     }
 
     Result<ShaderProgramHandle, ShaderCompileError> createShader(const ShaderProgramDef& def) override {
+        if (!assets_) {
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::InternalError,
+                .message = "AssetSystem not initialized"
+            });
+        }
+
         std::string vertexSource, fragmentSource;
         std::string vertexPath, fragmentPath;
 
         for (const auto& stage : def.stages) {
             if (stage.isFromFile()) {
-                auto source = readFile(resolvePath(shaderBasePath_, stage.filePath));
-                if (!source) {
+                std::string fullPath = resolvePath(shaderBasePath_, stage.filePath);
+
+                // Load shader through AssetSystem
+                AssetHandle handle = assets_->loadShader(fullPath);
+                const ShaderData* shaderData = assets_->getShaderData(handle);
+                if (!shaderData || shaderData->glslSource.empty()) {
                     return std::unexpected(ShaderCompileError{
                         .error = ShaderError::FileNotFound,
-                        .message = "Could not read shader file",
+                        .message = "Could not load shader file",
                         .filePath = stage.filePath
                     });
                 }
+
                 if (stage.stage == ShaderStage::Vertex) {
-                    vertexSource = *source;
+                    vertexSource = shaderData->glslSource;
                     vertexPath = stage.filePath;
                 } else if (stage.stage == ShaderStage::Fragment) {
-                    fragmentSource = *source;
+                    fragmentSource = shaderData->glslSource;
                     fragmentPath = stage.filePath;
                 }
             } else {
@@ -218,6 +255,16 @@ public:
     void destroyShader(ShaderProgramHandle handle) override {
         auto it = shaders_.find(handle);
         if (it != shaders_.end()) {
+            // Unsubscribe from AssetSystem notifications
+            if (assets_) {
+                if (it->second.vertSubscriptionId != InvalidSubscriptionId) {
+                    assets_->unsubscribe(it->second.vertSubscriptionId);
+                }
+                if (it->second.fragSubscriptionId != InvalidSubscriptionId) {
+                    assets_->unsubscribe(it->second.fragSubscriptionId);
+                }
+            }
+
             if (it->second.program != 0) {
                 glDeleteProgram(it->second.program);
             }
@@ -338,7 +385,30 @@ public:
 
     Result<MaterialHandle, ShaderCompileError> loadMaterial(std::string_view luaPath) override {
 #ifdef BESTOW_HAS_SOL2
+        if (!assets_) {
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::InternalError,
+                .message = "AssetSystem not initialized"
+            });
+        }
+
         std::string fullPath = resolvePath(materialBasePath_, luaPath);
+
+        // Load material Lua file through AssetSystem as Data asset
+        AssetHandle matAssetHandle = assets_->registerAsset(AssetType::Data, fullPath);
+        assets_->loadAsset(matAssetHandle);
+
+        if (!assets_->isLoaded(matAssetHandle)) {
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::FileNotFound,
+                .message = "Could not load material Lua file",
+                .filePath = fullPath
+            });
+        }
+
+        // Get the loaded data and parse it as Lua
+        // For now, we still need to use sol2 to parse, but the file I/O goes through AssetSystem
+        // TODO: AssetSystem could return the raw file content as string for Data assets
 
         sol::state lua;
         lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
@@ -351,6 +421,8 @@ public:
         lua["load"] = sol::lua_nil;
 
         try {
+            // TEMPORARY: Still using safe_script_file until AssetSystem provides raw data API
+            // This is an acceptable compromise as the asset is registered and tracked
             sol::protected_function_result result = lua.safe_script_file(fullPath);
             if (!result.valid()) {
                 sol::error err = result;
@@ -395,7 +467,12 @@ public:
             }
 
             if (def.hotReload && hotReloadEnabled_) {
-                watchMaterialFile(fullPath, handle);
+                // Subscribe to material file changes via AssetSystem
+                SubscriptionId matSub = assets_->subscribe(matAssetHandle, [this, handle](AssetHandle, AssetType) {
+                    onMaterialFileChanged(handle);
+                });
+                materials_[handle].matAssetHandle = matAssetHandle;
+                materials_[handle].matSubscriptionId = matSub;
             }
 
             stats_.materialCount++;
@@ -448,7 +525,14 @@ public:
     }
 
     void destroyMaterial(MaterialHandle handle) override {
-        materials_.erase(handle);
+        auto it = materials_.find(handle);
+        if (it != materials_.end()) {
+            // Unsubscribe from AssetSystem notifications
+            if (assets_ && it->second.matSubscriptionId != InvalidSubscriptionId) {
+                assets_->unsubscribe(it->second.matSubscriptionId);
+            }
+            materials_.erase(it);
+        }
     }
 
     bool hasMaterial(MaterialHandle handle) const override {
@@ -646,55 +730,18 @@ public:
     }
 
     void update() override {
-        if (!hotReloadEnabled_) return;
-
-        // Check for file changes (polling fallback if efsw not available)
-        for (auto& [path, watched] : watchedFiles_) {
-            try {
-                auto currentTime = std::filesystem::last_write_time(path);
-                if (currentTime != watched.lastModified) {
-                    watched.lastModified = currentTime;
-                    pendingReloads_.insert(path);
-                }
-            } catch (...) {
-                // File might be temporarily unavailable during write
-            }
-        }
-
-        // Process pending reloads
-        for (const auto& path : pendingReloads_) {
-            auto it = watchedFiles_.find(path);
-            if (it == watchedFiles_.end()) continue;
-
-            // Reload shaders that use this file
-            for (auto shaderHandle : it->second.shaders) {
-                auto result = reloadShader(shaderHandle);
-                if (shaderReloadCallback_) {
-                    shaderReloadCallback_(
-                        shaderHandle,
-                        result.has_value(),
-                        result.has_value() ? "" : result.error().message
-                    );
-                }
-            }
-
-            // Reload materials that use this file
-            for (auto matHandle : it->second.materials) {
-                auto result = reloadMaterial(matHandle);
-                if (materialReloadCallback_) {
-                    materialReloadCallback_(
-                        matHandle,
-                        result.has_value(),
-                        result.has_value() ? "" : result.error().message
-                    );
-                }
-            }
-        }
-
-        pendingReloads_.clear();
+        // Hot reload is now handled via AssetSystem subscriptions
+        // No polling needed - AssetSystem will call our callbacks when files change
     }
 
     Result<void, ShaderCompileError> reloadShader(ShaderProgramHandle handle) override {
+        if (!assets_) {
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::InternalError,
+                .message = "AssetSystem not initialized"
+            });
+        }
+
         auto it = shaders_.find(handle);
         if (it == shaders_.end()) {
             return std::unexpected(ShaderCompileError{
@@ -704,23 +751,24 @@ public:
         }
 
         auto& shader = it->second;
-        if (shader.vertexPath.empty() || shader.fragmentPath.empty()) {
+        if (!shader.vertAssetHandle.isValid() || !shader.fragAssetHandle.isValid()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "Shader was not loaded from files"
             });
         }
 
-        auto vertSource = readFile(shader.vertexPath);
-        if (!vertSource) {
+        // Get reloaded shader data from AssetSystem
+        const ShaderData* vertShaderData = assets_->getShaderData(shader.vertAssetHandle);
+        if (!vertShaderData || vertShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
                 .filePath = shader.vertexPath
             });
         }
 
-        auto fragSource = readFile(shader.fragmentPath);
-        if (!fragSource) {
+        const ShaderData* fragShaderData = assets_->getShaderData(shader.fragAssetHandle);
+        if (!fragShaderData || fragShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
                 .filePath = shader.fragmentPath
@@ -728,7 +776,7 @@ public:
         }
 
         // Compile new program
-        GLuint newProgram = compileProgram(*vertSource, *fragSource);
+        GLuint newProgram = compileProgram(vertShaderData->glslSource, fragShaderData->glslSource);
         if (newProgram == 0) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::CompilationFailed,
@@ -855,6 +903,32 @@ public:
 
 private:
     //======================================================================
+    // Hot Reload Callbacks (called by AssetSystem subscriptions)
+    //======================================================================
+
+    void onShaderFileChanged(ShaderProgramHandle handle) {
+        auto result = reloadShader(handle);
+        if (shaderReloadCallback_) {
+            shaderReloadCallback_(
+                handle,
+                result.has_value(),
+                result.has_value() ? "" : result.error().message
+            );
+        }
+    }
+
+    void onMaterialFileChanged(MaterialHandle handle) {
+        auto result = reloadMaterial(handle);
+        if (materialReloadCallback_) {
+            materialReloadCallback_(
+                handle,
+                result.has_value(),
+                result.has_value() ? "" : result.error().message
+            );
+        }
+    }
+
+    //======================================================================
     // Internal Helpers
     //======================================================================
 
@@ -881,14 +955,6 @@ private:
         return basePath + std::string(relativePath);
     }
 
-    std::optional<std::string> readFile(const std::string& path) {
-        std::ifstream file(path);
-        if (!file) return std::nullopt;
-
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        return buffer.str();
-    }
 
     Result<ShaderProgramHandle, ShaderCompileError> compileShaderProgram(
         const std::string& vertexSource,
@@ -1003,27 +1069,6 @@ private:
         }, value);
     }
 
-    void watchFile(const std::string& path, ShaderProgramHandle shader) {
-        auto& watched = watchedFiles_[path];
-        watched.path = path;
-        try {
-            watched.lastModified = std::filesystem::last_write_time(path);
-        } catch (...) {}
-        if (std::find(watched.shaders.begin(), watched.shaders.end(), shader) == watched.shaders.end()) {
-            watched.shaders.push_back(shader);
-        }
-    }
-
-    void watchMaterialFile(const std::string& path, MaterialHandle material) {
-        auto& watched = watchedFiles_[path];
-        watched.path = path;
-        try {
-            watched.lastModified = std::filesystem::last_write_time(path);
-        } catch (...) {}
-        if (std::find(watched.materials.begin(), watched.materials.end(), material) == watched.materials.end()) {
-            watched.materials.push_back(material);
-        }
-    }
 
 #ifdef BESTOW_HAS_SOL2
     // Helper to get value with default (avoids sol2 get_or ambiguity)
@@ -1444,8 +1489,6 @@ void main() {
 
     std::unordered_map<ShaderProgramHandle, ShaderProgramResource> shaders_;
     std::unordered_map<MaterialHandle, ShaderMaterialResource> materials_;
-    std::unordered_map<std::string, WatchedFile> watchedFiles_;
-    std::set<std::string> pendingReloads_;
     std::unordered_map<AssetHandle, GLuint, AssetHandleHash> textureCache_;  // Maps asset handles to OpenGL texture IDs
 
     IAssetSystem* assets_ = nullptr;

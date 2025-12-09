@@ -31,11 +31,12 @@
         "tinyobjloader",
         "tinygltf",
         "rmlui",
-        "kangaru"
+        "kangaru",
+        "shaderc"
     ],
     "features": {
         "vulkan": {
-            "description": "Vulkan rendering backend (requires system Vulkan SDK with glslc)",
+            "description": "Vulkan rendering backend with in-process GLSL to SPIR-V compilation",
             "dependencies": [
                 "vulkan-memory-allocator",
                 "vk-bootstrap"

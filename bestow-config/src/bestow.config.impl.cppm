@@ -12,6 +12,7 @@ export module bestow.config.impl;
 import std;
 import bestow.types;
 import bestow.config;
+import bestow.assets;
 import bestow.services;
 
 export namespace bestow {
@@ -43,6 +44,12 @@ public:
     bool initialize() override;
     void update(DeltaTime dt) override;
     void shutdown() override;
+
+    //==========================================================================
+    // Asset System Integration
+    //==========================================================================
+
+    void setAssetSystem(IAssetSystem* assetSystem) { assetSystem_ = assetSystem; }
 
     //==========================================================================
     // Configuration Loading
@@ -120,19 +127,22 @@ private:
     // Notification helpers
     void notifyChange(const ConfigKey& key);
 
-    // Hot reload helpers
-    bool checkFileModified(const std::string& filePath);
-
     // Configuration storage
     std::unordered_map<ConfigKey, ConfigEntry> config_;
+
+    // Asset system integration
+    IAssetSystem* assetSystem_ = nullptr;
 
     // Loaded file tracking
     struct LoadedFile {
         std::string path;
-        std::filesystem::file_time_type lastModified;
+        AssetHandle assetHandle;  // Track asset handle instead of file time
         Timestamp loadTime = 0.0f;
     };
     std::vector<LoadedFile> loadedFiles_;
+
+    // Asset subscription tracking
+    std::unordered_map<AssetHandle, SubscriptionId, AssetHandleHash> assetSubscriptions_;
 
     // Lua state (sandboxed)
     sol::state lua_;
@@ -140,8 +150,6 @@ private:
 
     // Hot reload
     bool hotReloadEnabled_ = false;
-    float hotReloadCheckInterval_ = 1.0f;  // Check every second
-    float timeSinceLastCheck_ = 0.0f;
 
     // Subscriptions
     std::vector<ConfigSubscription> subscriptions_;
@@ -152,7 +160,12 @@ private:
 };
 
 // Kangaru service definitions
-// Concrete service - ConfigSystem has no dependencies on other game systems
-struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {};
+struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
+    // ConfigSystem depends on AssetSystem for file I/O
+    template<typename... T>
+    static auto construct(T&&... args) -> decltype(kgr::inject(std::forward<T>(args)...)) {
+        return kgr::inject(std::forward<T>(args)...);
+    }
+};
 
 }  // namespace bestow

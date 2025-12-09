@@ -18,6 +18,7 @@ import std;
 import bestow.ui;
 import bestow.types;
 import bestow.services;
+import bestow.assets;
 
 export namespace bestow {
 
@@ -197,9 +198,13 @@ public:
     // Additional method for GLFW integration
     void setWindow(GLFWwindow* window) { window_ = window; }
 
+    // Set asset system dependency (called by DI container or manually)
+    void setAssetSystem(IAssetSystem* assets) { assetSystem_ = assets; }
+
 private:
     GLFWwindow* window_ = nullptr;
     Rml::Context* context_ = nullptr;
+    IAssetSystem* assetSystem_ = nullptr;
     UIConfig config_;
     bool initialized_ = false;
     bool debugMode_ = false;
@@ -419,6 +424,12 @@ void RmlUISystem::shutdown() {
     elements_.clear();
     elementHandles_.clear();
 
+    // Clear all stylesheets
+    for (auto& [handle, sheet] : styleSheets_) {
+        delete sheet;
+    }
+    styleSheets_.clear();
+
     if (context_) {
         Rml::RemoveContext("main");
         context_ = nullptr;
@@ -435,7 +446,31 @@ Result<UIDocumentHandle, UIError> RmlUISystem::loadDocument(
         return std::unexpected(UIError::InternalError);
     }
 
-    Rml::ElementDocument* doc = context_->LoadDocument(path.string());
+    if (!assetSystem_) {
+        return std::unexpected(UIError::InternalError);
+    }
+
+    // Register and load the UI document through AssetSystem
+    AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
+    assetSystem_->loadAsset(assetHandle);
+
+    if (!assetSystem_->isLoaded(assetHandle)) {
+        return std::unexpected(UIError::ParseError);
+    }
+
+    // Get the raw file data from AssetSystem
+    const auto* fileData = assetSystem_->getRawAsset(assetHandle);
+    if (!fileData) {
+        return std::unexpected(UIError::ParseError);
+    }
+
+    // Cast to string data (AssetType::Data loads as std::string)
+    const auto* content = static_cast<const std::string*>(fileData);
+
+    // Load document from memory using RmlUi's memory API
+    Rml::ElementDocument* doc = context_->LoadDocumentFromMemory(
+        Rml::String(content->data(), content->size()), path.string());
+
     if (!doc) {
         return std::unexpected(UIError::ParseError);
     }
@@ -508,14 +543,53 @@ std::vector<UIDocumentHandle> RmlUISystem::getLoadedDocuments() const {
 
 Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
     const std::filesystem::path& path) {
-    // TODO: Implement stylesheet loading
-    return std::unexpected(UIError::InternalError);
+
+    if (!assetSystem_) {
+        return std::unexpected(UIError::InternalError);
+    }
+
+    // Register and load the stylesheet through AssetSystem
+    AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
+    assetSystem_->loadAsset(assetHandle);
+
+    if (!assetSystem_->isLoaded(assetHandle)) {
+        return std::unexpected(UIError::StyleSheetError);
+    }
+
+    // Get the raw file data from AssetSystem
+    const auto* fileData = assetSystem_->getRawAsset(assetHandle);
+    if (!fileData) {
+        return std::unexpected(UIError::StyleSheetError);
+    }
+
+    // Cast to string data (AssetType::Data loads as std::string)
+    const auto* content = static_cast<const std::string*>(fileData);
+
+    // RmlUi doesn't support loading stylesheets from memory programmatically
+    // Stylesheets are typically loaded via <link> tags in RML documents
+    // or compiled into the document itself via <style> tags
+    // For now, this is not supported - stylesheets must be embedded in documents
+    return std::unexpected(UIError::StyleSheetError);
 }
 
 Result<void, UIError> RmlUISystem::applyStyleSheet(
     UIDocumentHandle doc,
     UIStyleSheetHandle styleSheet) {
-    // TODO: Implement stylesheet application
+
+    auto* document = getDocument(doc);
+    if (!document) {
+        return std::unexpected(UIError::DocumentNotFound);
+    }
+
+    auto it = styleSheets_.find(styleSheet);
+    if (it == styleSheets_.end()) {
+        return std::unexpected(UIError::StyleSheetError);
+    }
+
+    // RmlUi doesn't have a direct API to apply a stylesheet to a document
+    // Stylesheets are typically loaded via <link> tags in the RML
+    // This is a limitation of RmlUi - we can't programmatically attach stylesheets
+    // For now, return an error indicating this is not supported
     return std::unexpected(UIError::InternalError);
 }
 
@@ -836,10 +910,40 @@ Result<void, UIError> RmlUISystem::loadFont(
     const std::filesystem::path& path,
     const std::string& familyName) {
 
-    bool success = Rml::LoadFontFace(path.string());
+    if (!assetSystem_) {
+        return std::unexpected(UIError::InternalError);
+    }
+
+    // Register and load the font through AssetSystem
+    AssetHandle fontHandle = assetSystem_->registerAsset(AssetType::Font, path);
+    assetSystem_->loadAsset(fontHandle);
+
+    if (!assetSystem_->isLoaded(fontHandle)) {
+        return std::unexpected(UIError::FontNotFound);
+    }
+
+    // Get the font data from AssetSystem
+    const FontData* fontData = assetSystem_->getAsset<FontData>(fontHandle);
+    if (!fontData || fontData->fileData.empty()) {
+        return std::unexpected(UIError::FontNotFound);
+    }
+
+    // Load font from memory using RmlUi's memory API
+    // Create a span from the font data
+    Rml::Span<const Rml::byte> fontSpan(
+        reinterpret_cast<const Rml::byte*>(fontData->fileData.data()),
+        fontData->fileData.size());
+
+    bool success = Rml::LoadFontFace(
+        fontSpan,
+        familyName.empty() ? path.stem().string() : familyName,
+        Rml::Style::FontStyle::Normal,
+        Rml::Style::FontWeight::Auto);
+
     if (!success) {
         return std::unexpected(UIError::FontNotFound);
     }
+
     return {};
 }
 

@@ -97,6 +97,12 @@ void HotReloadManager::update() {
                 if (onAudioChanged) onAudioChanged(change.path);
             } else if (pathStr.find("config") != std::string::npos && ext == ".lua") {
                 if (onConfigChanged) onConfigChanged(change.path);
+            } else if (ext == ".vert" || ext == ".frag" || ext == ".glsl" || ext == ".spv") {
+                // Shader files changed
+                if (onShaderChanged) onShaderChanged(change.path);
+            } else if (pathStr.find("materials") != std::string::npos && ext == ".lua") {
+                // Material definition files changed
+                if (onMaterialChanged) onMaterialChanged(change.path);
             }
         }
 

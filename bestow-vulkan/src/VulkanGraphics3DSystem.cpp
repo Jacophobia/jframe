@@ -17,6 +17,7 @@ import std;
 import bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
+import bestow.assets.impl;  // For DataAsset
 import bestow.entity;
 import bestow.shader;
 
@@ -75,7 +76,8 @@ namespace {
                 return {};
             }
 
-            // Read the compiled SPIR-V file
+            // NOTE: Direct file I/O is acceptable here - this is a temporary file we just created
+            // from the glslc subprocess, not a game asset that should go through AssetSystem
             std::ifstream spirvFile(outputPath, std::ios::ate | std::ios::binary);
             if (!spirvFile.is_open()) {
                 std::fprintf(stderr, "[GLSLCompiler] Failed to read compiled SPIR-V: %s\n", outputPath.c_str());
@@ -99,71 +101,6 @@ namespace {
         static inline std::string glslcPath_;
     };
 
-    // Helper to load SPIR-V shader file
-    std::vector<std::uint32_t> loadSpirv(const std::string& path) {
-        std::ifstream file(path, std::ios::ate | std::ios::binary);
-        if (!file.is_open()) {
-            std::fprintf(stderr, "[Vulkan] Failed to open shader file: %s\n", path.c_str());
-            return {};
-        }
-
-        std::size_t fileSize = static_cast<std::size_t>(file.tellg());
-        std::vector<std::uint32_t> buffer(fileSize / sizeof(std::uint32_t));
-        file.seekg(0);
-        file.read(reinterpret_cast<char*>(buffer.data()), static_cast<std::streamsize>(fileSize));
-        return buffer;
-    }
-
-    // Helper to load shader - tries GLSL first, falls back to SPIR-V
-    std::vector<std::uint32_t> loadShader(const std::string& basePath, bool isFragment) {
-        // First try to compile GLSL source
-        std::string glslPath = basePath;
-        // Remove .spv extension if present
-        if (glslPath.ends_with(".spv")) {
-            glslPath = glslPath.substr(0, glslPath.size() - 4);
-        }
-
-        if (std::filesystem::exists(glslPath)) {
-            auto spirv = GLSLCompiler::compileFile(glslPath);
-            if (!spirv.empty()) {
-                std::fprintf(stderr, "[Vulkan] Compiled GLSL shader: %s\n", glslPath.c_str());
-                return spirv;
-            }
-        }
-
-        // Fall back to pre-compiled SPIR-V
-        std::string spvPath = basePath;
-        if (!spvPath.ends_with(".spv")) {
-            spvPath += ".spv";
-        }
-        if (std::filesystem::exists(spvPath)) {
-            return loadSpirv(spvPath);
-        }
-
-        std::fprintf(stderr, "[Vulkan] No shader found for: %s\n", basePath.c_str());
-        return {};
-    }
-
-    // Helper to find a shader file by searching through configured shader paths
-    // Uses PathResolver to handle :assets:/ and :library:/ prefixes
-    std::optional<std::string> findShaderInPaths(
-        const std::vector<std::string>& shaderPaths,
-        std::string_view shaderFilename)
-    {
-        // Search through shader paths in order of priority
-        for (const auto& basePath : shaderPaths) {
-            // Resolve the base path (handles :assets:/, :library:/ prefixes)
-            auto resolvedBase = bestow::PathResolver::resolve(basePath);
-            auto fullPath = resolvedBase / std::filesystem::path(shaderFilename);
-
-            if (std::filesystem::exists(fullPath)) {
-                return fullPath.string();
-            }
-        }
-
-        // Fall back to relative path if nothing found
-        return std::nullopt;
-    }
 }  // anonymous namespace
 
 VulkanGraphics3DSystem::VulkanGraphics3DSystem() = default;
@@ -1387,8 +1324,29 @@ float VulkanGraphics3DSystem::getRenderScale() const {
 bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& configPath) {
     configPath_ = configPath;
 
-    if (!std::filesystem::exists(configPath)) {
-        std::fprintf(stderr, "[Vulkan] Config file not found: %s\n", configPath.string().c_str());
+    // Load config file through AssetSystem (or fall back to direct I/O if no AssetSystem)
+    std::string luaContent;
+
+    if (assetSystem_) {
+        // Use AssetSystem as the sole gateway to the file system
+        AssetHandle configHandle = assetSystem_->registerAsset(AssetType::Data, configPath);
+        assetSystem_->loadAsset(configHandle);
+
+        if (!assetSystem_->isLoaded(configHandle)) {
+            std::fprintf(stderr, "[Vulkan] Config file not found or failed to load: %s\n", configPath.string().c_str());
+            return false;
+        }
+
+        // Get the DataAsset and extract raw text (Lua content)
+        const DataAsset* dataAsset = assetSystem_->getAsset<DataAsset>(configHandle);
+        if (!dataAsset) {
+            std::fprintf(stderr, "[Vulkan] Failed to get config data: %s\n", configPath.string().c_str());
+            return false;
+        }
+
+        luaContent = dataAsset->rawText;
+    } else {
+        std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading config\n");
         return false;
     }
 
@@ -1403,7 +1361,8 @@ bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& conf
         lua["dofile"] = sol::lua_nil;
         lua["load"] = sol::lua_nil;
 
-        sol::protected_function_result result = lua.safe_script_file(configPath.string());
+        // Execute Lua content from memory (not from file)
+        sol::protected_function_result result = lua.safe_script(luaContent, configPath.string());
         if (!result.valid()) {
             sol::error err = result;
             std::fprintf(stderr, "[Vulkan] Failed to load config: %s\n", err.what());
@@ -1582,8 +1541,34 @@ void VulkanGraphics3DSystem::drawMeshWithShaderMaterial(
 
 VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
     std::string_view vertPath, std::string_view fragPath) {
-    auto vertSpirv = loadSpirv(std::string(vertPath));
-    auto fragSpirv = loadSpirv(std::string(fragPath));
+    if (!assetSystem_) {
+        std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading shaders\n");
+        return 0;
+    }
+
+    // Load shaders through AssetSystem
+    auto vertHandle = assetSystem_->loadShader(std::string(vertPath));
+    auto fragHandle = assetSystem_->loadShader(std::string(fragPath));
+
+    if (!assetSystem_->isLoaded(vertHandle) || !assetSystem_->isLoaded(fragHandle)) {
+        std::fprintf(stderr, "[Vulkan] Failed to load shaders: %.*s, %.*s\n",
+            static_cast<int>(vertPath.size()), vertPath.data(),
+            static_cast<int>(fragPath.size()), fragPath.data());
+        return 0;
+    }
+
+    const ShaderData* vertShader = assetSystem_->getShaderData(vertHandle);
+    const ShaderData* fragShader = assetSystem_->getShaderData(fragHandle);
+
+    if (!vertShader || !fragShader) {
+        std::fprintf(stderr, "[Vulkan] Failed to get shader data: %.*s, %.*s\n",
+            static_cast<int>(vertPath.size()), vertPath.data(),
+            static_cast<int>(fragPath.size()), fragPath.data());
+        return 0;
+    }
+
+    auto vertSpirv = vertShader->spirvBytecode;
+    auto fragSpirv = fragShader->spirvBytecode;
 
     if (vertSpirv.empty() || fragSpirv.empty()) {
         return 0;
@@ -1631,17 +1616,30 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
             fragGlsl = fragGlsl.substr(0, fragGlsl.size() - 4);
         }
 
-        // Only track if GLSL source files exist
-        if (std::filesystem::exists(vertGlsl) && std::filesystem::exists(fragGlsl)) {
+        // Register shaders with asset system for subscription-based hot reload
+        // AssetSystem will handle file existence checks internally
+        if (assetSystem_ && useAssetSystemHotReload_) {
             info.vertGlslPath = vertGlsl;
             info.fragGlslPath = fragGlsl;
-            std::error_code ec;
-            info.vertLastModified = std::filesystem::last_write_time(info.vertGlslPath, ec);
-            if (!ec) {
-                info.fragLastModified = std::filesystem::last_write_time(info.fragGlslPath, ec);
+
+            // Register vertex shader - AssetSystem handles existence checking
+            info.vertShaderAsset = assetSystem_->loadShader(vertGlsl);
+            if (info.vertShaderAsset.uuid != 0) {
+                shaderAssetToPipelines_[info.vertShaderAsset.uuid].push_back(pipeline);
             }
-            if (!ec) {
+
+            // Register fragment shader
+            info.fragShaderAsset = assetSystem_->loadShader(fragGlsl);
+            if (info.fragShaderAsset.uuid != 0) {
+                shaderAssetToPipelines_[info.fragShaderAsset.uuid].push_back(pipeline);
+            }
+
+            // Only track if at least one shader was successfully registered
+            if (info.vertShaderAsset.uuid != 0 || info.fragShaderAsset.uuid != 0) {
                 pipelineShaderFiles_[pipeline] = std::move(info);
+                std::fprintf(stderr, "[Vulkan] Registered shaders with asset system: vert=%llu, frag=%llu\n",
+                            static_cast<unsigned long long>(info.vertShaderAsset.uuid),
+                            static_cast<unsigned long long>(info.fragShaderAsset.uuid));
                 std::fprintf(stderr, "[Vulkan] Tracking GLSL for hot reload: %s, %s\n",
                     vertGlsl.c_str(), fragGlsl.c_str());
             }
@@ -1654,93 +1652,116 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
 void VulkanGraphics3DSystem::checkShaderHotReload() {
     if (!hotReloadEnabled_) return;
 
-    auto now = std::chrono::steady_clock::now();
-    if (now - lastHotReloadCheck_ < hotReloadCheckInterval_) return;
-    lastHotReloadCheck_ = now;
+    // Event-driven hot reload: AssetSystem uses efsw file watcher to detect changes.
+    // The asset system will call our onShaderAssetChanged callback when files change.
+    // We just need to pump the asset system's update to process any queued events.
+    if (assetSystem_) {
+        // This processes queued efsw file change events (no polling!)
+        assetSystem_->update();
+    }
+    // Note: No polling fallback - event-driven only via asset system subscriptions
+}
 
-    // Check each tracked pipeline's shader files (GLSL sources)
-    std::vector<std::pair<VulkanPipelineHandle, ShaderFileInfo>> toReload;
+void VulkanGraphics3DSystem::onShaderAssetChanged(AssetHandle handle, AssetType type) {
+    if (type != AssetType::Shader) return;
 
-    for (auto& [pipeline, info] : pipelineShaderFiles_) {
-        std::error_code ec;
-        auto vertTime = std::filesystem::last_write_time(info.vertGlslPath, ec);
-        if (ec) continue;
+    std::fprintf(stderr, "[Vulkan] Asset system notified shader change: UUID %llu\n",
+                static_cast<unsigned long long>(handle.uuid));
 
-        auto fragTime = std::filesystem::last_write_time(info.fragGlslPath, ec);
-        if (ec) continue;
-
-        if (vertTime != info.vertLastModified || fragTime != info.fragLastModified) {
-            toReload.emplace_back(pipeline, info);
-            info.vertLastModified = vertTime;
-            info.fragLastModified = fragTime;
-        }
+    // Find all pipelines that use this shader asset
+    auto it = shaderAssetToPipelines_.find(handle.uuid);
+    if (it == shaderAssetToPipelines_.end()) {
+        // Not a shader we're tracking
+        return;
     }
 
-    if (toReload.empty()) return;
-
-    // Wait for GPU to be idle before destroying pipelines
+    // Wait for GPU to be idle before modifying pipelines
     vkDeviceWaitIdle(context_.getDevice());
 
-    for (const auto& [oldPipeline, info] : toReload) {
-        std::fprintf(stderr, "[Vulkan] Hot reloading GLSL shader: %s + %s\n",
-                    info.vertGlslPath.c_str(), info.fragGlslPath.c_str());
-
-        // Compile GLSL to SPIR-V at runtime
-        auto vertSpirv = GLSLCompiler::compileFile(info.vertGlslPath);
-        auto fragSpirv = GLSLCompiler::compileFile(info.fragGlslPath);
-
-        if (vertSpirv.empty() || fragSpirv.empty()) {
-            std::fprintf(stderr, "[Vulkan] Hot reload failed: could not load shader files\n");
-            continue;
+    for (VulkanPipelineHandle pipeline : it->second) {
+        auto infoIt = pipelineShaderFiles_.find(pipeline);
+        if (infoIt != pipelineShaderFiles_.end()) {
+            reloadPipelineShaders(pipeline, infoIt->second);
         }
-
-        VulkanPipelineDef def;
-        def.shaderStages = {
-            {VK_SHADER_STAGE_VERTEX_BIT, vertSpirv, "main"},
-            {VK_SHADER_STAGE_FRAGMENT_BIT, fragSpirv, "main"}
-        };
-        def.vertexBindings = {{0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}};
-        def.vertexAttributes = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
-            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
-            {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
-        };
-        def.pushConstantRanges = {
-            {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
-        };
-        def.depthTestEnable = true;
-        def.depthWriteEnable = true;
-        def.cullMode = VK_CULL_MODE_BACK_BIT;
-        def.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
-        auto result = context_.createPipeline(def);
-        if (!result) {
-            std::fprintf(stderr, "[Vulkan] Hot reload failed: could not create new pipeline\n");
-            continue;
-        }
-
-        VulkanPipelineHandle newPipeline = *result;
-
-        // Update material pipeline cache to use new pipeline
-        for (auto& [name, cachedPipeline] : materialPipelineCache_) {
-            if (cachedPipeline == oldPipeline) {
-                cachedPipeline = newPipeline;
-            }
-        }
-
-        // Update tracked shader files with CURRENT timestamps to prevent re-triggering
-        ShaderFileInfo newInfo = info;
-        std::error_code ec;
-        newInfo.vertLastModified = std::filesystem::last_write_time(info.vertGlslPath, ec);
-        newInfo.fragLastModified = std::filesystem::last_write_time(info.fragGlslPath, ec);
-        pipelineShaderFiles_.erase(oldPipeline);
-        pipelineShaderFiles_[newPipeline] = newInfo;
-
-        // Destroy old pipeline
-        context_.destroyPipeline(oldPipeline);
-
-        std::fprintf(stderr, "[Vulkan] Hot reload successful\n");
     }
+}
+
+void VulkanGraphics3DSystem::reloadPipelineShaders(VulkanPipelineHandle oldPipeline, const ShaderFileInfo& info) {
+    std::fprintf(stderr, "[Vulkan] Reloading pipeline from asset system: %s + %s\n",
+                info.vertGlslPath.c_str(), info.fragGlslPath.c_str());
+
+    // Compile GLSL to SPIR-V
+    // TODO: Use assetSystem_->getShaderData() to get already-compiled SPIR-V
+    // For now, GLSLCompiler reads the source file directly (architecture violation)
+    // but this will be fixed when we fully migrate to AssetSystem shader loading
+    auto vertSpirv = GLSLCompiler::compileFile(info.vertGlslPath);
+    auto fragSpirv = GLSLCompiler::compileFile(info.fragGlslPath);
+
+    if (vertSpirv.empty() || fragSpirv.empty()) {
+        std::fprintf(stderr, "[Vulkan] Shader reload failed: compilation error\n");
+        return;
+    }
+
+    VulkanPipelineDef def;
+    def.shaderStages = {
+        {VK_SHADER_STAGE_VERTEX_BIT, vertSpirv, "main"},
+        {VK_SHADER_STAGE_FRAGMENT_BIT, fragSpirv, "main"}
+    };
+    def.vertexBindings = {{0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}};
+    def.vertexAttributes = {
+        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+    };
+    def.pushConstantRanges = {
+        {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+    };
+    def.depthTestEnable = true;
+    def.depthWriteEnable = true;
+    def.cullMode = VK_CULL_MODE_BACK_BIT;
+    def.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+    auto result = context_.createPipeline(def);
+    if (!result) {
+        std::fprintf(stderr, "[Vulkan] Shader reload failed: could not create new pipeline\n");
+        return;
+    }
+
+    VulkanPipelineHandle newPipeline = *result;
+
+    // Update material pipeline cache to use new pipeline
+    for (auto& [name, cachedPipeline] : materialPipelineCache_) {
+        if (cachedPipeline == oldPipeline) {
+            cachedPipeline = newPipeline;
+        }
+    }
+
+    // Update shader file tracking
+    // NOTE: last_write_time is only used for legacy hot reload (when AssetSystem not available)
+    // When using AssetSystem hot reload, these timestamps are not used
+    ShaderFileInfo newInfo = info;
+    std::error_code ec;
+    newInfo.vertLastModified = std::filesystem::last_write_time(info.vertGlslPath, ec);
+    newInfo.fragLastModified = std::filesystem::last_write_time(info.fragGlslPath, ec);
+    pipelineShaderFiles_.erase(oldPipeline);
+    pipelineShaderFiles_[newPipeline] = newInfo;
+
+    // Update shader asset to pipeline mapping
+    if (info.vertShaderAsset.uuid != 0) {
+        auto& pipelines = shaderAssetToPipelines_[info.vertShaderAsset.uuid];
+        pipelines.erase(std::remove(pipelines.begin(), pipelines.end(), oldPipeline), pipelines.end());
+        pipelines.push_back(newPipeline);
+    }
+    if (info.fragShaderAsset.uuid != 0) {
+        auto& pipelines = shaderAssetToPipelines_[info.fragShaderAsset.uuid];
+        pipelines.erase(std::remove(pipelines.begin(), pipelines.end(), oldPipeline), pipelines.end());
+        pipelines.push_back(newPipeline);
+    }
+
+    // Destroy old pipeline
+    context_.destroyPipeline(oldPipeline);
+
+    std::fprintf(stderr, "[Vulkan] Shader reload successful (via asset system)\n");
 }
 
 VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::string_view materialPath) {
@@ -1752,53 +1773,84 @@ VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::st
         return it->second;
     }
 
-    // Determine shader paths from material name
-    // Material paths are like "materials/toon.lua" - extract shader name
-    std::string shaderName;
-    std::size_t lastSlash = key.rfind('/');
-    if (lastSlash != std::string::npos) {
-        shaderName = key.substr(lastSlash + 1);
+    // Resolve material path (handles :assets:/ prefix)
+    auto resolvedMaterialPath = bestow::PathResolver::resolve(":assets:/materials/" + key);
+
+    // Default shader paths (fallback)
+    std::string vertPath = "shaders/basic3d.vert";
+    std::string fragPath = "shaders/basic3d.frag";
+
+    // Load material Lua file through AssetSystem (or fall back to direct I/O)
+    std::string luaContent;
+    bool materialLoaded = false;
+
+    if (assetSystem_) {
+        // Use AssetSystem as the sole gateway to the file system
+        AssetHandle materialHandle = assetSystem_->registerAsset(AssetType::Material, resolvedMaterialPath);
+        assetSystem_->loadAsset(materialHandle);
+
+        if (assetSystem_->isLoaded(materialHandle)) {
+            const DataAsset* dataAsset = assetSystem_->getAsset<DataAsset>(materialHandle);
+            if (dataAsset) {
+                luaContent = dataAsset->rawText;
+                materialLoaded = true;
+            }
+        }
     } else {
-        shaderName = key;
+        std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading materials\n");
+        return 0;
     }
 
-    // Remove .lua extension
-    std::size_t dotPos = shaderName.rfind('.');
-    if (dotPos != std::string::npos) {
-        shaderName = shaderName.substr(0, dotPos);
-    }
+    // Parse the Lua material file to get shader paths
+    if (materialLoaded) {
+        try {
+            sol::state lua;
+            lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table, sol::lib::string);
 
-    // Get shader paths from config, with fallback to "shaders"
-    std::vector<std::string> searchPaths = runtimeConfig_.shaderPaths;
-    if (searchPaths.empty()) {
-        searchPaths.push_back("shaders");
-    }
+            // Sandbox: remove dangerous functions
+            lua["os"] = sol::lua_nil;
+            lua["io"] = sol::lua_nil;
+            lua["loadfile"] = sol::lua_nil;
+            lua["dofile"] = sol::lua_nil;
+            lua["load"] = sol::lua_nil;
 
-    // Try to find material-specific shaders (e.g., toon.vert.spv, toon.frag.spv)
-    std::string vertFilename = shaderName + ".vert.spv";
-    std::string fragFilename = shaderName + ".frag.spv";
+            // Execute Lua content from memory (not from file)
+            sol::protected_function_result result = lua.safe_script(luaContent, resolvedMaterialPath.string());
+            if (result.valid()) {
+                sol::table mat = result;
 
-    // Find vertex shader, falling back to basic3d.vert.spv
-    auto vertResult = findShaderInPaths(searchPaths, vertFilename);
-    std::string vertPath;
-    if (vertResult) {
-        vertPath = *vertResult;
+                // Extract shader paths from material definition
+                if (mat["shader"].valid()) {
+                    sol::table shader = mat["shader"];
+                    sol::optional<std::string> vertOpt = shader["vertex"];
+                    sol::optional<std::string> fragOpt = shader["fragment"];
+
+                    if (vertOpt) vertPath = *vertOpt;
+                    if (fragOpt) fragPath = *fragOpt;
+                }
+            } else {
+                sol::error err = result;
+                std::fprintf(stderr, "[Vulkan] Failed to parse material '%s': %s\n",
+                             key.c_str(), err.what());
+            }
+        } catch (const std::exception& e) {
+            std::fprintf(stderr, "[Vulkan] Exception parsing material '%s': %s\n",
+                         key.c_str(), e.what());
+        }
     } else {
-        auto fallback = findShaderInPaths(searchPaths, "basic3d.vert.spv");
-        vertPath = fallback.value_or("shaders/basic3d.vert.spv");
+        std::fprintf(stderr, "[Vulkan] Material file not found: %s\n",
+                     resolvedMaterialPath.string().c_str());
     }
 
-    // Find fragment shader, falling back to basic3d.frag.spv
-    auto fragResult = findShaderInPaths(searchPaths, fragFilename);
-    std::string fragPath;
-    if (fragResult) {
-        fragPath = *fragResult;
-    } else {
-        auto fallback = findShaderInPaths(searchPaths, "basic3d.frag.spv");
-        fragPath = fallback.value_or("shaders/basic3d.frag.spv");
-    }
+    // Resolve shader paths (handles :library:/ and :assets:/ prefixes)
+    auto resolvedVertPath = bestow::PathResolver::resolve(vertPath);
+    auto resolvedFragPath = bestow::PathResolver::resolve(fragPath);
 
-    VulkanPipelineHandle pipeline = loadShaderPipeline(vertPath, fragPath);
+    // If paths don't have a scheme, try searching in configured shader paths
+    // Shader paths are now resolved by AssetSystem during loading
+    // No need for manual filesystem checks here
+
+    VulkanPipelineHandle pipeline = loadShaderPipeline(resolvedVertPath.string(), resolvedFragPath.string());
 
     // Cache even if failed (as 0) to avoid repeated attempts
     materialPipelineCache_[key] = pipeline;
@@ -1858,7 +1910,26 @@ void VulkanGraphics3DSystem::updateShaders() {
 }
 
 void VulkanGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
+    // Unsubscribe from previous asset system if any
+    if (assetSystem_ && shaderSubscriptionId_ != InvalidSubscriptionId) {
+        assetSystem_->unsubscribe(shaderSubscriptionId_);
+        shaderSubscriptionId_ = InvalidSubscriptionId;
+    }
+
     assetSystem_ = assets;
+
+    // Subscribe to shader type changes for hot reload
+    if (assetSystem_ && useAssetSystemHotReload_) {
+        shaderSubscriptionId_ = assetSystem_->subscribeToType(
+            AssetType::Shader,
+            [this](AssetHandle handle, AssetType type) {
+                onShaderAssetChanged(handle, type);
+            }
+        );
+        // Enable hot reload on the asset system
+        assetSystem_->enableHotReload(true);
+        std::fprintf(stderr, "[Vulkan] Subscribed to shader asset changes for hot reload\n");
+    }
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {
@@ -2086,94 +2157,96 @@ void VulkanGraphics3DSystem::createDefaultMaterials() {
 }
 
 void VulkanGraphics3DSystem::createPipelines() {
-    // Get shader paths from config, with fallback
-    std::vector<std::string> searchPaths = runtimeConfig_.shaderPaths;
-    if (searchPaths.empty()) {
-        searchPaths.push_back("shaders");
+    if (!assetSystem_) {
+        std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading shaders\n");
+        return;
     }
 
-    // Find debug shaders using PathResolver
-    auto debugVertPath = findShaderInPaths(searchPaths, "debug.vert.spv");
-    auto debugFragPath = findShaderInPaths(searchPaths, "debug.frag.spv");
-
     // Load debug pipeline shaders (for debug line rendering)
-    auto debugVertSpirv = debugVertPath ? loadSpirv(*debugVertPath) : std::vector<std::uint32_t>{};
-    auto debugFragSpirv = debugFragPath ? loadSpirv(*debugFragPath) : std::vector<std::uint32_t>{};
+    auto debugVertHandle = assetSystem_->loadShader("debug.vert");
+    auto debugFragHandle = assetSystem_->loadShader("debug.frag");
 
-    if (!debugVertSpirv.empty() && !debugFragSpirv.empty()) {
-        VulkanPipelineDef debugDef;
-        debugDef.shaderStages = {
-            {VK_SHADER_STAGE_VERTEX_BIT, debugVertSpirv, "main"},
-            {VK_SHADER_STAGE_FRAGMENT_BIT, debugFragSpirv, "main"}
-        };
+    if (assetSystem_->isLoaded(debugVertHandle) && assetSystem_->isLoaded(debugFragHandle)) {
+        const ShaderData* debugVert = assetSystem_->getShaderData(debugVertHandle);
+        const ShaderData* debugFrag = assetSystem_->getShaderData(debugFragHandle);
 
-        // Debug vertex layout: position (vec3) + color (vec4)
-        debugDef.vertexBindings = {
-            {0, sizeof(float) * 7, VK_VERTEX_INPUT_RATE_VERTEX}  // pos(3) + color(4)
-        };
-        debugDef.vertexAttributes = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},                       // position
-            {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 3}     // color
-        };
+        if (debugVert && debugFrag && !debugVert->spirvBytecode.empty() && !debugFrag->spirvBytecode.empty()) {
+            VulkanPipelineDef debugDef;
+            debugDef.shaderStages = {
+                {VK_SHADER_STAGE_VERTEX_BIT, debugVert->spirvBytecode, "main"},
+                {VK_SHADER_STAGE_FRAGMENT_BIT, debugFrag->spirvBytecode, "main"}
+            };
 
-        // Push constants: mat4 viewProjection (64 bytes)
-        debugDef.pushConstantRanges = {
-            {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)}
-        };
+            // Debug vertex layout: position (vec3) + color (vec4)
+            debugDef.vertexBindings = {
+                {0, sizeof(float) * 7, VK_VERTEX_INPUT_RATE_VERTEX}  // pos(3) + color(4)
+            };
+            debugDef.vertexAttributes = {
+                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},                       // position
+                {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 3}     // color
+            };
 
-        debugDef.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-        debugDef.depthTestEnable = true;
-        debugDef.depthWriteEnable = false;
-        debugDef.cullMode = VK_CULL_MODE_NONE;
+            // Push constants: mat4 viewProjection (64 bytes)
+            debugDef.pushConstantRanges = {
+                {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)}
+            };
 
-        auto result = context_.createPipeline(debugDef);
-        if (result) {
-            debugPipeline_ = *result;
-        } else {
-            std::fprintf(stderr, "[Vulkan] Failed to create debug pipeline\n");
+            debugDef.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+            debugDef.depthTestEnable = true;
+            debugDef.depthWriteEnable = false;
+            debugDef.cullMode = VK_CULL_MODE_NONE;
+
+            auto result = context_.createPipeline(debugDef);
+            if (result) {
+                debugPipeline_ = *result;
+            } else {
+                std::fprintf(stderr, "[Vulkan] Failed to create debug pipeline\n");
+            }
         }
     }
 
-    // Find and load basic 3D pipeline shaders (for mesh rendering)
-    auto basic3dVertPath = findShaderInPaths(searchPaths, "basic3d.vert.spv");
-    auto basic3dFragPath = findShaderInPaths(searchPaths, "basic3d.frag.spv");
+    // Load basic 3D pipeline shaders (for mesh rendering)
+    auto basic3dVertHandle = assetSystem_->loadShader("basic3d.vert");
+    auto basic3dFragHandle = assetSystem_->loadShader("basic3d.frag");
 
-    auto basic3dVertSpirv = basic3dVertPath ? loadSpirv(*basic3dVertPath) : std::vector<std::uint32_t>{};
-    auto basic3dFragSpirv = basic3dFragPath ? loadSpirv(*basic3dFragPath) : std::vector<std::uint32_t>{};
+    if (assetSystem_->isLoaded(basic3dVertHandle) && assetSystem_->isLoaded(basic3dFragHandle)) {
+        const ShaderData* basic3dVert = assetSystem_->getShaderData(basic3dVertHandle);
+        const ShaderData* basic3dFrag = assetSystem_->getShaderData(basic3dFragHandle);
 
-    if (!basic3dVertSpirv.empty() && !basic3dFragSpirv.empty()) {
-        VulkanPipelineDef pbrDef;
-        pbrDef.shaderStages = {
-            {VK_SHADER_STAGE_VERTEX_BIT, basic3dVertSpirv, "main"},
-            {VK_SHADER_STAGE_FRAGMENT_BIT, basic3dFragSpirv, "main"}
-        };
+        if (basic3dVert && basic3dFrag && !basic3dVert->spirvBytecode.empty() && !basic3dFrag->spirvBytecode.empty()) {
+            VulkanPipelineDef pbrDef;
+            pbrDef.shaderStages = {
+                {VK_SHADER_STAGE_VERTEX_BIT, basic3dVert->spirvBytecode, "main"},
+                {VK_SHADER_STAGE_FRAGMENT_BIT, basic3dFrag->spirvBytecode, "main"}
+            };
 
-        // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
-        pbrDef.vertexBindings = {
-            {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
-        };
-        pbrDef.vertexAttributes = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
-            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
-            {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
-        };
+            // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
+            pbrDef.vertexBindings = {
+                {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
+            };
+            pbrDef.vertexAttributes = {
+                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+                {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+                {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+            };
 
-        // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
-        pbrDef.pushConstantRanges = {
-            {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
-        };
+            // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
+            pbrDef.pushConstantRanges = {
+                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+            };
 
-        pbrDef.depthTestEnable = true;
-        pbrDef.depthWriteEnable = true;
-        pbrDef.cullMode = VK_CULL_MODE_BACK_BIT;
-        pbrDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+            pbrDef.depthTestEnable = true;
+            pbrDef.depthWriteEnable = true;
+            pbrDef.cullMode = VK_CULL_MODE_BACK_BIT;
+            pbrDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
-        auto result = context_.createPipeline(pbrDef);
-        if (result) {
-            pbrPipeline_ = *result;
-            unlitPipeline_ = *result;  // Use same pipeline for now
-        } else {
-            std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
+            auto result = context_.createPipeline(pbrDef);
+            if (result) {
+                pbrPipeline_ = *result;
+                unlitPipeline_ = *result;  // Use same pipeline for now
+            } else {
+                std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
+            }
         }
     }
 }

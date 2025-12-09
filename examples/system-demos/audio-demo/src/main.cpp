@@ -50,6 +50,17 @@ public:
         const std::filesystem::path&, const std::filesystem::path&,
         const std::filesystem::path&, const std::filesystem::path&) override { return {}; }
 
+    // Subscription methods (stubs for this demo)
+    SubscriptionId subscribe(AssetHandle, AssetChangeCallback) override { return 0; }
+    SubscriptionId subscribeToType(AssetType, AssetChangeCallback) override { return 0; }
+    void unsubscribe(SubscriptionId) override {}
+
+    // Shader methods (stubs for this demo)
+    AssetHandle loadShader(const std::filesystem::path&) override { return {}; }
+    const ShaderData* getShaderData(AssetHandle) const override { return nullptr; }
+    void compileShaderAsync(AssetHandle, AssetLoadCallback) override {}
+    bool isShaderCompilationSupported() const override { return false; }
+
 private:
     std::string assetTypeName(AssetType type) const {
         switch (type) {

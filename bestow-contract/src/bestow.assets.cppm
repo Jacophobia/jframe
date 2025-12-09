@@ -38,6 +38,21 @@ struct SoundData {
     std::size_t fileSize = 0;
 };
 
+// Shader data structure - stores GLSL source and compiled SPIR-V bytecode
+struct ShaderData {
+    std::string glslSource;                      // Original GLSL source code
+    std::vector<std::uint32_t> spirvBytecode;    // Compiled SPIR-V (empty if not compiled)
+    std::string path;
+    std::string entryPoint = "main";
+
+    enum class Stage { Vertex, Fragment, Geometry, Compute, TessControl, TessEval };
+    Stage stage = Stage::Vertex;
+
+    // Compilation status
+    bool compiled = false;
+    std::string compileError;                    // Error message if compilation failed
+};
+
 //==========================================================================
 // 3D Asset Types
 //==========================================================================
@@ -169,6 +184,14 @@ struct AssetMetadata {
 
 using AssetLoadCallback = std::function<void(AssetHandle, AssetState)>;
 
+// Subscription callback for asset change notifications
+// Called when an asset is reloaded (e.g., due to hot reload)
+using AssetChangeCallback = std::function<void(AssetHandle handle, AssetType type)>;
+
+// Unique identifier for asset subscriptions
+using SubscriptionId = std::uint64_t;
+constexpr SubscriptionId InvalidSubscriptionId = 0;
+
 class IAssetSystem {
 public:
     virtual ~IAssetSystem() = default;
@@ -236,6 +259,43 @@ public:
     virtual void enableHotReload(bool enable) = 0;
     virtual void checkForReloads() = 0;
     virtual void reloadAsset(AssetHandle handle) = 0;
+
+    //======================================================================
+    // Asset Change Subscriptions
+    //======================================================================
+
+    /// Subscribe to asset change notifications for a specific asset
+    /// Callback is invoked when the asset is reloaded (e.g., via hot reload)
+    /// Returns a subscription ID that can be used to unsubscribe
+    virtual SubscriptionId subscribe(AssetHandle handle,
+                                     AssetChangeCallback callback) = 0;
+
+    /// Subscribe to changes for ALL assets of a specific type
+    /// Useful for systems that need to know when any shader/texture/etc changes
+    virtual SubscriptionId subscribeToType(AssetType type,
+                                           AssetChangeCallback callback) = 0;
+
+    /// Unsubscribe from asset change notifications
+    virtual void unsubscribe(SubscriptionId id) = 0;
+
+    //======================================================================
+    // Shader Loading and Compilation
+    //======================================================================
+
+    /// Load a GLSL shader file (reads source, optionally compiles to SPIR-V)
+    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp)
+    virtual AssetHandle loadShader(const std::filesystem::path& path) = 0;
+
+    /// Get compiled shader data (GLSL source + SPIR-V bytecode)
+    virtual const ShaderData* getShaderData(AssetHandle handle) const = 0;
+
+    /// Compile a GLSL shader to SPIR-V asynchronously
+    /// The callback is invoked when compilation completes (success or failure)
+    virtual void compileShaderAsync(AssetHandle handle,
+                                    AssetLoadCallback callback = nullptr) = 0;
+
+    /// Check if shader compilation is supported (shaderc available)
+    virtual bool isShaderCompilationSupported() const = 0;
 
     //======================================================================
     // 3D Asset Loading

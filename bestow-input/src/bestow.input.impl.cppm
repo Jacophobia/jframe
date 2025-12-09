@@ -11,6 +11,7 @@ export module bestow.input.impl;
 
 import std;
 import bestow.input;
+import bestow.assets;
 import bestow.types;
 import bestow.services;
 
@@ -22,6 +23,7 @@ public:
     ~InputSystem() override;
 
     bool initialize(GLFWwindow* window);
+    void setAssetSystem(IAssetSystem* assets);
 
     void update() override;
 
@@ -96,6 +98,7 @@ private:
     std::string textInputBuffer_;
 
     bool sdlInitialized_ = false;
+    IAssetSystem* assetSystem_ = nullptr;
 };
 
 // Kangaru service definitions

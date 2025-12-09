@@ -17,6 +17,10 @@ target_link_libraries(bestow-assets
         Taskflow::Taskflow
         kangaru::kangaru
         $<TARGET_NAME_IF_EXISTS:zstd::libzstd_shared>
+    PRIVATE
+        efsw::efsw
+        spdlog::spdlog
+        unofficial::shaderc::shaderc
 )
 
 if(TARGET stb)

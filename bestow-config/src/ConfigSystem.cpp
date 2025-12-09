@@ -9,6 +9,7 @@ module;
 module bestow.config.impl;
 
 import std;
+import bestow.assets.impl;  // For DataAsset
 
 namespace bestow {
 
@@ -36,7 +37,7 @@ bool ConfigSystem::initialize() {
     lua_["rawget"] = sol::lua_nil;
     lua_["rawset"] = sol::lua_nil;
 
-    // Add safe 'include' function for loading config files
+    // Add safe 'include' function for loading config files via AssetSystem
     lua_["include"] = [this](const std::string& relativePath) -> sol::object {
         // Only allow loading from data/config/ directory
         if (relativePath.find("..") != std::string::npos) {
@@ -44,22 +45,39 @@ bool ConfigSystem::initialize() {
             return sol::lua_nil;
         }
 
-        std::string fullPath = relativePath;
-        if (!std::filesystem::exists(fullPath)) {
-            spdlog::error("[Config] include() file not found: {}", fullPath);
+        if (!assetSystem_) {
+            spdlog::error("[Config] include() AssetSystem not available");
             return sol::lua_nil;
         }
 
         try {
-            sol::protected_function_result result = lua_.safe_script_file(fullPath);
+            // Register and load the asset
+            AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, relativePath);
+            assetSystem_->loadAsset(handle);
+
+            // Check if load succeeded
+            if (!assetSystem_->isLoaded(handle)) {
+                spdlog::error("[Config] include() failed to load: {}", relativePath);
+                return sol::lua_nil;
+            }
+
+            // Get the loaded data
+            const auto* dataAsset = assetSystem_->getAsset<DataAsset>(handle);
+            if (!dataAsset) {
+                spdlog::error("[Config] include() invalid asset data: {}", relativePath);
+                return sol::lua_nil;
+            }
+
+            // Execute the Lua content
+            sol::protected_function_result result = lua_.safe_script(dataAsset->rawText);
             if (!result.valid()) {
                 sol::error err = result;
-                spdlog::error("[Config] include() error in {}: {}", fullPath, err.what());
+                spdlog::error("[Config] include() error in {}: {}", relativePath, err.what());
                 return sol::lua_nil;
             }
             return result;
         } catch (const std::exception& e) {
-            spdlog::error("[Config] include() exception loading {}: {}", fullPath, e.what());
+            spdlog::error("[Config] include() exception loading {}: {}", relativePath, e.what());
             return sol::lua_nil;
         }
     };
@@ -71,29 +89,23 @@ bool ConfigSystem::initialize() {
 
 void ConfigSystem::update(DeltaTime dt) {
     currentTime_ += dt;
-
-    if (!hotReloadEnabled_) {
-        return;
-    }
-
-    timeSinceLastCheck_ += dt;
-    if (timeSinceLastCheck_ >= hotReloadCheckInterval_) {
-        timeSinceLastCheck_ = 0.0f;
-
-        // Check each loaded file for modifications
-        for (auto& file : loadedFiles_) {
-            if (checkFileModified(file.path)) {
-                spdlog::info("[Config] Hot reload: {} modified, reloading", file.path);
-                reloadConfig(file.path);
-            }
-        }
-    }
+    // Hot reload is now event-driven via AssetSystem subscriptions
+    // No polling needed here
 }
 
 void ConfigSystem::shutdown() {
     spdlog::info("[Config] Shutting down config system");
+
+    // Unsubscribe from all asset change notifications
+    if (assetSystem_) {
+        for (const auto& [handle, subId] : assetSubscriptions_) {
+            assetSystem_->unsubscribe(subId);
+        }
+    }
+
     config_.clear();
     loadedFiles_.clear();
+    assetSubscriptions_.clear();
     subscriptions_.clear();
     luaInitialized_ = false;
 }
@@ -108,17 +120,33 @@ bool ConfigSystem::loadConfig(const std::string& filePath) {
         return false;
     }
 
-    spdlog::info("[Config] Loading config from: {}", filePath);
-
-    // Check if file exists
-    if (!std::filesystem::exists(filePath)) {
-        spdlog::error("[Config] Config file not found: {}", filePath);
+    if (!assetSystem_) {
+        spdlog::error("[Config] Cannot load config - AssetSystem not available");
         return false;
     }
 
+    spdlog::info("[Config] Loading config from: {}", filePath);
+
     try {
-        // Execute Lua file
-        sol::protected_function_result result = lua_.safe_script_file(filePath);
+        // Register and load the asset
+        AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, filePath);
+        assetSystem_->loadAsset(handle);
+
+        // Check if load succeeded
+        if (!assetSystem_->isLoaded(handle)) {
+            spdlog::error("[Config] Failed to load config file: {}", filePath);
+            return false;
+        }
+
+        // Get the loaded data
+        const auto* dataAsset = assetSystem_->getAsset<DataAsset>(handle);
+        if (!dataAsset) {
+            spdlog::error("[Config] Invalid asset data for config: {}", filePath);
+            return false;
+        }
+
+        // Execute Lua content
+        sol::protected_function_result result = lua_.safe_script(dataAsset->rawText);
 
         if (!result.valid()) {
             sol::error err = result;
@@ -141,8 +169,18 @@ bool ConfigSystem::loadConfig(const std::string& filePath) {
         // Track loaded file for hot reload
         LoadedFile loadedFile;
         loadedFile.path = filePath;
-        loadedFile.lastModified = std::filesystem::last_write_time(filePath);
+        loadedFile.assetHandle = handle;
         loadedFile.loadTime = currentTime_;
+
+        // Subscribe to asset changes for hot reload (if enabled)
+        if (hotReloadEnabled_ && assetSubscriptions_.find(handle) == assetSubscriptions_.end()) {
+            SubscriptionId subId = assetSystem_->subscribe(handle,
+                [this, filePath](AssetHandle h, AssetType type) {
+                    spdlog::info("[Config] Hot reload: {} modified, reloading", filePath);
+                    reloadConfig(filePath);
+                });
+            assetSubscriptions_[handle] = subId;
+        }
 
         // Check if already loaded (replace)
         auto it = std::ranges::find_if(loadedFiles_,
@@ -163,9 +201,94 @@ bool ConfigSystem::loadConfig(const std::string& filePath) {
 }
 
 bool ConfigSystem::loadConfigAsset(AssetHandle configAsset) {
-    // TODO: Integrate with asset system when available
-    spdlog::warn("[Config] loadConfigAsset not yet implemented");
-    return false;
+    if (!luaInitialized_) {
+        spdlog::error("[Config] Cannot load config - system not initialized");
+        return false;
+    }
+
+    if (!assetSystem_) {
+        spdlog::error("[Config] Cannot load config - AssetSystem not available");
+        return false;
+    }
+
+    spdlog::info("[Config] Loading config from asset handle");
+
+    try {
+        // Ensure the asset is loaded
+        if (!assetSystem_->isLoaded(configAsset)) {
+            assetSystem_->loadAsset(configAsset);
+        }
+
+        // Check if load succeeded
+        if (!assetSystem_->isLoaded(configAsset)) {
+            spdlog::error("[Config] Failed to load config asset");
+            return false;
+        }
+
+        // Get the loaded data
+        const auto* dataAsset = assetSystem_->getAsset<DataAsset>(configAsset);
+        if (!dataAsset) {
+            spdlog::error("[Config] Invalid asset data for config");
+            return false;
+        }
+
+        // Get the source path for tracking
+        auto metadata = assetSystem_->getAssetMetadata(configAsset);
+        std::string filePath = metadata.sourcePath.string();
+
+        // Execute Lua content
+        sol::protected_function_result result = lua_.safe_script(dataAsset->rawText);
+
+        if (!result.valid()) {
+            sol::error err = result;
+            spdlog::error("[Config] Lua error in asset: {}", err.what());
+            return false;
+        }
+
+        // The file should return a table
+        sol::object returnValue = result;
+        if (returnValue.get_type() != sol::type::table) {
+            spdlog::error("[Config] Config asset must return a table");
+            return false;
+        }
+
+        sol::table configTable = returnValue.as<sol::table>();
+
+        // Parse the table recursively
+        parseLuaTable(configTable, "", filePath);
+
+        // Track loaded file for hot reload
+        LoadedFile loadedFile;
+        loadedFile.path = filePath;
+        loadedFile.assetHandle = configAsset;
+        loadedFile.loadTime = currentTime_;
+
+        // Subscribe to asset changes for hot reload (if enabled)
+        if (hotReloadEnabled_ && assetSubscriptions_.find(configAsset) == assetSubscriptions_.end()) {
+            SubscriptionId subId = assetSystem_->subscribe(configAsset,
+                [this, filePath](AssetHandle h, AssetType type) {
+                    spdlog::info("[Config] Hot reload: {} modified, reloading", filePath);
+                    loadConfigAsset(h);
+                });
+            assetSubscriptions_[configAsset] = subId;
+        }
+
+        // Check if already loaded (replace)
+        auto it = std::ranges::find_if(loadedFiles_,
+            [&](const LoadedFile& f) { return f.path == filePath; });
+        if (it != loadedFiles_.end()) {
+            *it = loadedFile;
+        } else {
+            loadedFiles_.push_back(loadedFile);
+        }
+
+        spdlog::info("[Config] Loaded {} config values from asset", config_.size());
+        return true;
+
+    } catch (const std::exception& e) {
+        spdlog::error("[Config] Exception loading config asset: {}", e.what());
+        return false;
+    }
 }
 
 bool ConfigSystem::reloadAll() {
@@ -546,35 +669,43 @@ ConfigMetadata ConfigSystem::getMetadata(const std::string& filePath) const {
 //==============================================================================
 
 void ConfigSystem::enableHotReload(bool enable) {
+    if (hotReloadEnabled_ == enable) {
+        return;  // No change
+    }
+
     hotReloadEnabled_ = enable;
+
+    if (!assetSystem_) {
+        spdlog::warn("[Config] Cannot enable hot reload - AssetSystem not available");
+        return;
+    }
+
     if (enable) {
+        // Subscribe to all loaded config files
+        for (const auto& file : loadedFiles_) {
+            if (assetSubscriptions_.find(file.assetHandle) == assetSubscriptions_.end()) {
+                std::string filePath = file.path;  // Capture by value
+                SubscriptionId subId = assetSystem_->subscribe(file.assetHandle,
+                    [this, filePath](AssetHandle h, AssetType type) {
+                        spdlog::info("[Config] Hot reload: {} modified, reloading", filePath);
+                        reloadConfig(filePath);
+                    });
+                assetSubscriptions_[file.assetHandle] = subId;
+            }
+        }
         spdlog::info("[Config] Hot reload enabled");
     } else {
+        // Unsubscribe from all asset change notifications
+        for (const auto& [handle, subId] : assetSubscriptions_) {
+            assetSystem_->unsubscribe(subId);
+        }
+        assetSubscriptions_.clear();
         spdlog::info("[Config] Hot reload disabled");
     }
 }
 
 bool ConfigSystem::isHotReloadEnabled() const {
     return hotReloadEnabled_;
-}
-
-bool ConfigSystem::checkFileModified(const std::string& filePath) {
-    if (!std::filesystem::exists(filePath)) {
-        return false;
-    }
-
-    auto currentModTime = std::filesystem::last_write_time(filePath);
-
-    auto it = std::ranges::find_if(loadedFiles_,
-        [&](const LoadedFile& f) { return f.path == filePath; });
-    if (it != loadedFiles_.end()) {
-        if (currentModTime != it->lastModified) {
-            it->lastModified = currentModTime;
-            return true;
-        }
-    }
-
-    return false;
 }
 
 //==============================================================================

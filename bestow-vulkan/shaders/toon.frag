@@ -66,6 +66,7 @@ void main() {
     vec3 rimColor = pc.lightColor.rgb * rim * baseColor;
 
     vec3 color = ambient + diffuse + spec + rimColor;
+    color = mix(color, vec3(1.0, 0.3, 0.3), 0.3);  // HOT RELOAD TEST - add red tint
 
     // Slight saturation boost for cartoon look
     float gray = dot(color, vec3(0.299, 0.587, 0.114));

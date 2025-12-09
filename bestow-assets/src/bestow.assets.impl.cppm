@@ -9,6 +9,7 @@ module;
 
 #include <cstddef>  // For size_t
 #include <kangaru/kangaru.hpp>
+#include <efsw/efsw.hpp>
 
 export module bestow.assets.impl;
 
@@ -48,13 +49,8 @@ const std::any& getDataAssetJsonAny(const DataAsset& asset);
 
 // Note: FontData is now defined in bestow.assets contract module
 
-// Shader data structure - stores shader source code
-struct ShaderData {
-    std::string vertexSource;    // Vertex shader source (if .vert file)
-    std::string fragmentSource;  // Fragment shader source (if .frag file)
-    std::string source;          // Combined source (if single file)
-    std::string path;
-};
+// Note: ShaderData is now defined in bestow.assets contract module
+// It includes GLSL source, compiled SPIR-V bytecode, and compilation status
 
 // NavMesh data structure - stores raw navmesh binary for AI system to process
 struct NavMeshData {
@@ -112,6 +108,17 @@ public:
     void checkForReloads() override;
     void reloadAsset(AssetHandle handle) override;
 
+    // Asset change subscriptions
+    SubscriptionId subscribe(AssetHandle handle, AssetChangeCallback callback) override;
+    SubscriptionId subscribeToType(AssetType type, AssetChangeCallback callback) override;
+    void unsubscribe(SubscriptionId id) override;
+
+    // Shader loading and compilation
+    AssetHandle loadShader(const std::filesystem::path& path) override;
+    const ShaderData* getShaderData(AssetHandle handle) const override;
+    void compileShaderAsync(AssetHandle handle, AssetLoadCallback callback = nullptr) override;
+    bool isShaderCompilationSupported() const override;
+
     // 3D Asset loading and access
     const MeshData* getMeshData(AssetHandle handle) const override;
     const ModelData* getModelData(AssetHandle handle) const override;
@@ -142,14 +149,60 @@ private:
         std::future<void> future;
     };
 
+    // File change event queued by the file watcher
+    struct FileChangeEvent {
+        std::filesystem::path path;
+        enum class Action { Added, Modified, Deleted } action;
+    };
+
+    // File watcher listener - forwards events to AssetSystem
+    class FileWatchListener : public efsw::FileWatchListener {
+    public:
+        explicit FileWatchListener(AssetSystem* owner) : owner_(owner) {}
+
+        void handleFileAction(efsw::WatchID watchId,
+                              const std::string& dir,
+                              const std::string& filename,
+                              efsw::Action action,
+                              std::string oldFilename) override;
+    private:
+        AssetSystem* owner_;
+    };
+
     UUID generateUUID();
     void loadAssetImpl(AssetHandle handle);  // Thread-safe loading implementation
+    void processFileChanges();               // Process queued file change events
+    void handleFileChange(const FileChangeEvent& event);  // Handle a single file change
 
     std::unordered_map<UUID, AssetEntry> assets_;
     std::vector<PendingLoad> pendingLoads_;
     mutable std::mutex assetsMutex_;  // Protects assets_ during async loads
     bool hotReloadEnabled_ = false;
     UUID nextUUID_ = 1;
+
+    // File watcher infrastructure (event-driven, not polling)
+    std::unique_ptr<efsw::FileWatcher> fileWatcher_;
+    std::unique_ptr<FileWatchListener> fileWatchListener_;
+    std::queue<FileChangeEvent> pendingFileChanges_;
+    mutable std::mutex fileChangesMutex_;
+    std::unordered_map<std::string, AssetHandle> pathToHandle_;  // Canonical path -> handle
+    mutable std::mutex pathMapMutex_;
+    std::unordered_set<std::string> watchedDirectories_;
+
+    // Subscription storage
+    struct Subscription {
+        SubscriptionId id;
+        AssetHandle handle;         // Specific asset (invalid for type subscriptions)
+        AssetType type;             // Asset type (for type subscriptions)
+        AssetChangeCallback callback;
+        bool isTypeSubscription = false;
+    };
+    std::vector<Subscription> subscriptions_;
+    mutable std::mutex subscriptionsMutex_;
+    SubscriptionId nextSubscriptionId_ = 1;
+
+    // Helper to notify subscribers when an asset changes
+    void notifySubscribers(AssetHandle handle, AssetType type);
 };
 
 // Kangaru service definitions

@@ -1197,7 +1197,7 @@ TEST_F(AssetSystemTest, LoadShaderAssetFromFile) {
     EXPECT_TRUE(anyData->has_value());
 
     const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
-    EXPECT_FALSE(shaderData.source.empty());
+    EXPECT_FALSE(shaderData.glslSource.empty());
     EXPECT_EQ(shaderData.path, "../../../tests/testdata/test_shader.glsl");
 }
 
@@ -1213,9 +1213,9 @@ TEST_F(AssetSystemTest, LoadShaderSourceContent) {
     const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
 
     // Verify shader contains expected content
-    EXPECT_TRUE(shaderData.source.find("#version") != std::string::npos);
-    EXPECT_TRUE(shaderData.source.find("void main()") != std::string::npos);
-    EXPECT_TRUE(shaderData.source.find("gl_Position") != std::string::npos);
+    EXPECT_TRUE(shaderData.glslSource.find("#version") != std::string::npos);
+    EXPECT_TRUE(shaderData.glslSource.find("void main()") != std::string::npos);
+    EXPECT_TRUE(shaderData.glslSource.find("gl_Position") != std::string::npos);
 }
 
 TEST_F(AssetSystemTest, LoadShaderNonExistentFileFails) {
@@ -1258,7 +1258,7 @@ TEST_F(AssetSystemTest, LoadShaderAndReload) {
 
     auto* anyData = static_cast<std::any*>(rawData);
     const ShaderData& shaderData = std::any_cast<const ShaderData&>(*anyData);
-    EXPECT_FALSE(shaderData.source.empty());
+    EXPECT_FALSE(shaderData.glslSource.empty());
 }
 
 //==========================================================================

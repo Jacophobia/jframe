@@ -25,6 +25,7 @@ function(find_dependencies)
     find_package(RecastNavigation CONFIG REQUIRED)
     find_package(BehaviorTree CONFIG)
     find_package(kangaru CONFIG REQUIRED)
+    find_package(unofficial-shaderc CONFIG REQUIRED)
 
     # Development tools (optional in release)
     if(BESTOW_DEV_TOOLS)

@@ -18,6 +18,13 @@ module bestow.input.impl;
 
 namespace bestow {
 
+// Forward declaration of DataAsset from bestow.assets.impl
+struct DataAsset {
+    std::any jsonData;
+    std::string rawText;
+    bool isJson = false;
+};
+
 InputSystem::~InputSystem() {
     for (auto* controller : controllers_) {
         if (controller) {
@@ -38,8 +45,30 @@ bool InputSystem::initialize(GLFWwindow* window) {
     }
     sdlInitialized_ = true;
 
-    // Load controller mappings if available
-    SDL_GameControllerAddMappingsFromFile("data/config/gamecontrollerdb.txt");
+    // Load controller mappings from AssetSystem if available
+    if (assetSystem_) {
+        AssetHandle mappingsHandle = assetSystem_->registerAsset(
+            AssetType::Data,
+            "data/config/gamecontrollerdb.txt"
+        );
+        assetSystem_->loadAsset(mappingsHandle);
+
+        if (assetSystem_->isLoaded(mappingsHandle)) {
+            const DataAsset* data = static_cast<const DataAsset*>(
+                assetSystem_->getRawAsset(mappingsHandle)
+            );
+            if (data && !data->rawText.empty()) {
+                // Use SDL_RWFromMem to load mappings from memory instead of file
+                SDL_RWops* rw = SDL_RWFromMem(
+                    (void*)data->rawText.data(),
+                    static_cast<int>(data->rawText.size())
+                );
+                if (rw) {
+                    SDL_GameControllerAddMappingsFromRW(rw, 1);  // 1 = free RW after reading
+                }
+            }
+        }
+    }
 
     // Enumerate existing controllers
     int numJoysticks = SDL_NumJoysticks();
@@ -50,6 +79,10 @@ bool InputSystem::initialize(GLFWwindow* window) {
     }
 
     return true;
+}
+
+void InputSystem::setAssetSystem(IAssetSystem* assets) {
+    assetSystem_ = assets;
 }
 
 void InputSystem::update() {
