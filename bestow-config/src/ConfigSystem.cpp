@@ -9,8 +9,7 @@ module;
 module bestow.config.impl;
 
 import std;
-import bestow.assets;  // For DataAsset
-import bestow.events;        // For Events namespace
+import bestow.services;  // Re-exports all contracts
 
 namespace bestow {
 

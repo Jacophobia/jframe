@@ -11,11 +11,7 @@ module;
 export module bestow.ai.impl;
 
 import std;
-import bestow.ai;
-import bestow.assets;
-import bestow.physics;
-import bestow.types;
-import bestow.services;  // For IAISystemService
+import bestow.services;  // Re-exports all contracts including bestow.ai, bestow.types, etc.
 
 export namespace bestow {
 

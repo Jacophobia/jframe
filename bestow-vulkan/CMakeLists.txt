@@ -101,7 +101,6 @@ target_sources(bestow-vulkan
 target_link_libraries(bestow-vulkan
     PUBLIC
         bestow-contract
-        bestow-core
         kangaru::kangaru
         Vulkan::Vulkan
         GPUOpen::VulkanMemoryAllocator
@@ -109,8 +108,6 @@ target_link_libraries(bestow-vulkan
         glfw
         glm::glm
     PRIVATE
-        bestow-assets
-        bestow-shader
         lua
         sol2::sol2
 )

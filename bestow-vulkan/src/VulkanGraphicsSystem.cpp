@@ -12,10 +12,7 @@ module;
 module bestow.vulkan.impl;
 
 import std;
-import bestow.graphics;
-import bestow.types;
-import bestow.assets;
-import bestow.entity;
+import bestow.services;  // Re-exports all contracts
 import bestow.utils;
 
 namespace bestow::vulkan {

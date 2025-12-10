@@ -9,10 +9,7 @@ module;
 export module bestow.blueprints.impl;
 
 import std;
-import bestow.types;
-import bestow.blueprints;
-import bestow.entity;
-import bestow.physics;
+import bestow.services;  // Re-exports all contracts including bestow.blueprints, bestow.types, etc.
 
 export namespace bestow {
 
@@ -97,6 +94,7 @@ private:
 //   auto& entity = container.service<EntitySystemService>();
 //   auto& physics = container.service<PhysicsSystemService>();
 //   container.emplace<BlueprintFactoryService>(entity, &physics);
-struct BlueprintFactoryService : kgr::single_service<BlueprintFactory> {};
+//   auto& blueprints = container.service<IBlueprintFactoryService>();
+struct BlueprintFactoryService : kgr::single_service<BlueprintFactory>, kgr::overrides<IBlueprintFactoryService> {};
 
 }  // namespace bestow

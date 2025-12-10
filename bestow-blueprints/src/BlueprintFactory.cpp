@@ -10,10 +10,7 @@ module;
 module bestow.blueprints.impl;
 
 import std;
-import bestow.types;
-import bestow.blueprints;
-import bestow.entity;
-import bestow.physics;
+import bestow.services;  // Re-exports all contracts
 
 namespace bestow {
 

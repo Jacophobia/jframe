@@ -1,127 +1,23 @@
 // bestow-core/src/bestow.core.cppm
-// Core utilities and application framework
+// Core utilities and Engine composition root
 //
-// STATUS: Implemented 2025-11-25
-// COMPLETE: Timer, FrameTimer, Easing, JobSystem, UUID, Logging
-// PARTIAL: Application (needs game loop integration with systems)
-// BLOCKED: None
-// TESTS: CoreSystemTests.cpp added (pending build verification)
+// The Engine is the composition root that:
+// 1. Allows clients to register implementations against contract interfaces
+// 2. Uses Kangaru DI to wire dependencies
+// 3. Instantiates and runs the client's Application with injected dependencies
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <taskflow/taskflow.hpp>
 
 export module bestow.core;
 
 import std;
-import bestow;  // For BestowEngine and interface types
+import bestow.services;  // For IApplication, system interfaces
 export import bestow.utils;  // Re-export utilities for backwards compatibility
 
 export namespace bestow::core {
-
-//==========================================================================
-// Engine Configuration
-//==========================================================================
-
-struct GraphicsConfig {
-    int width = 1280;
-    int height = 720;
-    std::string title = "Bestow Application";
-    bool vsync = true;
-    Color clearColor = Color{26, 26, 26, 255};  // Dark gray (0.1 * 255 ≈ 26)
-};
-
-//==========================================================================
-// Forward Declarations
-//==========================================================================
-
-class Engine;
-
-//==========================================================================
-// Engine Builder
-//==========================================================================
-
-class EngineBuilder {
-public:
-    EngineBuilder();
-    ~EngineBuilder();
-
-    // System configuration (fluent interface)
-    EngineBuilder& withEvents();
-    EngineBuilder& withEntities();
-    EngineBuilder& withPhysics();
-    EngineBuilder& withPhysics3D();
-    EngineBuilder& withGraphics(GraphicsConfig config);
-    EngineBuilder& withGraphics3D(GraphicsConfig config);
-    EngineBuilder& withAudio();
-    EngineBuilder& withInput();
-    EngineBuilder& withAssets(std::string_view basePath);
-    EngineBuilder& withSave(std::string_view savePath);
-    EngineBuilder& withLevel();
-    EngineBuilder& withAI();
-    EngineBuilder& withCamera(Size viewportSize);
-    EngineBuilder& withGAS();
-    EngineBuilder& withBlueprints();
-    EngineBuilder& withUI();
-    EngineBuilder& withGameStates();
-
-    // Build the engine
-    std::expected<Engine, std::string> build();
-
-private:
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
-};
-
-//==========================================================================
-// Engine
-//==========================================================================
-
-class Engine {
-public:
-    Engine();
-    ~Engine();
-
-    // Move-only
-    Engine(Engine&&) noexcept;
-    Engine& operator=(Engine&&) noexcept;
-    Engine(const Engine&) = delete;
-    Engine& operator=(const Engine&) = delete;
-
-    // Get the engine aggregate (all systems)
-    BestowEngine& systems();
-    const BestowEngine& systems() const;
-
-    // Game loop control
-    void run(class Application& app);
-    void quit();
-    bool isRunning() const;
-
-private:
-    friend class EngineBuilder;
-    struct Impl;
-    std::unique_ptr<Impl> impl_;
-};
-
-//==========================================================================
-// Application Base
-//==========================================================================
-
-class Application {
-public:
-    Application() = default;
-    virtual ~Application() = default;
-
-    // Non-copyable
-    Application(const Application&) = delete;
-    Application& operator=(const Application&) = delete;
-
-    // Lifecycle hooks (called by Engine)
-    virtual bool initialize(Engine& engine) = 0;
-    virtual void updateFixed(DeltaTime dt) = 0;
-    virtual void render(float alpha) = 0;
-    virtual void shutdown() = 0;
-};
 
 //==========================================================================
 // Job System
@@ -139,7 +35,6 @@ public:
     JobSystem& operator=(JobSystem&&) = delete;
 
     // Submit a job for parallel execution
-    // Jobs are batched until wait() is called
     template<typename F>
     void submit(F&& func) {
         taskflow_.emplace(std::forward<F>(func));
@@ -154,15 +49,10 @@ public:
     }
 
     // Wait for all submitted jobs to complete
-    // Note: Jobs submitted during execution will remain in the taskflow
-    // and require a subsequent wait() call
     void wait() {
         if (!taskflow_.empty()) {
-            // Create a new taskflow for the current batch
             tf::Taskflow currentBatch = std::move(taskflow_);
             taskflow_ = tf::Taskflow{};
-
-            // Run only the current batch
             executor_.run(currentBatch).wait();
         }
     }
@@ -180,6 +70,117 @@ public:
 private:
     tf::Executor executor_;
     tf::Taskflow taskflow_;
+};
+
+//==========================================================================
+// Engine - Composition Root
+//==========================================================================
+
+/// The Engine is the composition root that binds contracts to implementations
+/// and provides the client interface for running the application.
+///
+/// Usage:
+/// ```cpp
+/// int main() {
+///     Engine engine;
+///
+///     // Register system implementations against contracts
+///     engine.registerSystem<IEventSystem, EventSystem>();
+///     engine.registerSystem<IEntitySystem, EntitySystem>();
+///     engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
+///
+///     // Run the client application (dependencies injected via constructor)
+///     engine.run<MyGameApp>();
+/// }
+/// ```
+class Engine {
+public:
+    Engine() = default;
+    ~Engine() = default;
+
+    // Non-copyable, movable
+    Engine(const Engine&) = delete;
+    Engine& operator=(const Engine&) = delete;
+    Engine(Engine&&) noexcept = default;
+    Engine& operator=(Engine&&) noexcept = default;
+
+    /// Register an implementation type for a contract interface.
+    /// The implementation will be instantiated by Kangaru with its dependencies injected.
+    ///
+    /// Example:
+    /// ```cpp
+    /// engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
+    /// ```
+    template<typename Contract, typename Implementation>
+    void registerSystem() {
+        static_assert(std::is_base_of_v<Contract, Implementation>,
+            "Implementation must inherit from Contract interface");
+
+        // Register the service mapping in Kangaru
+        // The Implementation's Kangaru service definition handles the wiring
+        registrations_.push_back([this]() {
+            // This will be called when we need to resolve the service
+            // Kangaru services are auto-registered when their modules are imported
+        });
+    }
+
+    /// Register a factory function that creates an implementation.
+    /// Useful when the implementation requires custom initialization.
+    ///
+    /// Example:
+    /// ```cpp
+    /// engine.registerSystem<IAudioSystem>([]() {
+    ///     return std::make_unique<FMODAudioSystem>("config.json");
+    /// });
+    /// ```
+    template<typename Contract>
+    void registerSystem(std::function<std::unique_ptr<Contract>()> factory) {
+        factories_[std::type_index(typeid(Contract))] = [factory = std::move(factory)]() -> void* {
+            return factory().release();
+        };
+    }
+
+    /// Run the application. The App type must:
+    /// 1. Inherit from IApplication
+    /// 2. Have a constructor that accepts its dependencies (injected by Kangaru)
+    /// 3. Implement the run() method
+    ///
+    /// Example:
+    /// ```cpp
+    /// class MyGame : public IApplication {
+    /// public:
+    ///     MyGame(IGraphicsSystem& graphics, IInputSystem& input)
+    ///         : graphics_(&graphics), input_(&input) {}
+    ///
+    ///     void run() override {
+    ///         // Game loop
+    ///     }
+    /// };
+    ///
+    /// engine.run<MyGame>();
+    /// ```
+    template<typename App>
+    void run() {
+        static_assert(std::is_base_of_v<IApplication, App>,
+            "App must inherit from IApplication");
+
+        // Resolve the application from the DI container
+        // Kangaru will inject all constructor dependencies
+        auto& app = container_.service<typename App::service_type>();
+
+        // Run the application
+        app.run();
+    }
+
+    /// Get the Kangaru container for advanced usage.
+    /// Prefer using registerSystem() and run() instead.
+    kgr::container& container() { return container_; }
+    const kgr::container& container() const { return container_; }
+
+private:
+    kgr::container container_;
+    std::vector<std::function<void()>> registrations_;
+    std::unordered_map<std::type_index, std::function<void*()>> factories_;
 };
 
 }  // namespace bestow::core

@@ -28,10 +28,7 @@ module;
 export module bestow.shader.impl;
 
 import std;
-import bestow.shader;
-import bestow.types;
-import bestow.assets;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.shader, bestow.types, bestow.assets
 
 export namespace bestow {
 

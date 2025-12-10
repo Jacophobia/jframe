@@ -5,7 +5,7 @@ module;
 
 module bestow.level.impl;
 
-import bestow.assets;
+import bestow.services;  // Provides all contracts
 
 namespace bestow {
 

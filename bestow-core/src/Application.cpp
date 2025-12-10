@@ -1,9 +1,8 @@
 // bestow-core/src/Application.cpp
-// Application base class implementation
+// Module implementation unit (required for C++ modules)
 
 module bestow.core;
 
-// Application is now managed by Engine class
-// Game loop is implemented in Engine.cpp using fixed timestep
-// Application subclasses implement: initialize(), updateFixed(), render(), shutdown()
-// This file exists for potential non-inline implementations
+// Engine is now a header-only template class defined in bestow.core.cppm
+// IApplication interface is defined in bestow.services (contract module)
+// This file exists only to satisfy module build requirements

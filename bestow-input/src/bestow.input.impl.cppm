@@ -10,10 +10,7 @@ module;
 export module bestow.input.impl;
 
 import std;
-import bestow.input;
-import bestow.assets;
-import bestow.types;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.input, bestow.assets, bestow.types
 
 export namespace bestow {
 

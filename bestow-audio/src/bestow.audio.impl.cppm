@@ -12,10 +12,7 @@ module;
 export module bestow.audio.impl;
 
 import std;
-import bestow.audio;
-import bestow.assets;
-import bestow.types;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.audio, bestow.assets, bestow.types
 
 export namespace bestow {
 

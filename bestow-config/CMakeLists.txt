@@ -15,7 +15,6 @@ target_link_libraries(bestow-config
     PUBLIC
         bestow-contract
     PRIVATE
-        bestow-assets
         lua
         sol2::sol2
         spdlog::spdlog

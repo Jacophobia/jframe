@@ -10,26 +10,29 @@ module;
 export module bestow.services;
 
 import std;
-import bestow.types;
-import bestow.entity;
-import bestow.graphics;
-import bestow.graphics3d;
-import bestow.audio;
-import bestow.input;
-import bestow.assets;
-import bestow.save;
-import bestow.level;
-import bestow.events;
-import bestow.physics;
-import bestow.physics3d;
-import bestow.ai;
-import bestow.camera;
-import bestow.config;
-import bestow.gas;
-import bestow.blueprints;
-import bestow.ui;
-import bestow.gamestate;
-import bestow.shader;
+
+// Re-export all contract modules so implementation modules can access interfaces
+// through a single import of bestow.services
+export import bestow.types;
+export import bestow.entity;
+export import bestow.graphics;
+export import bestow.graphics3d;
+export import bestow.audio;
+export import bestow.input;
+export import bestow.assets;
+export import bestow.save;
+export import bestow.level;
+export import bestow.events;
+export import bestow.physics;
+export import bestow.physics3d;
+export import bestow.ai;
+export import bestow.camera;
+export import bestow.config;
+export import bestow.gas;
+export import bestow.blueprints;
+export import bestow.ui;
+export import bestow.gamestate;
+export import bestow.shader;
 
 export namespace bestow {
 
@@ -93,6 +96,9 @@ struct IGASSystemService : kgr::abstract_service<IGASSystem> {};
 
 // Shader System
 struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
+
+// Blueprint Factory
+struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 
 //==========================================================================
 // Application Interface

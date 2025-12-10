@@ -26,7 +26,7 @@ module;
 
 module bestow.opengl.impl;
 
-import bestow.assets;  // For IAssetSystem interface, TextureData, and FontData types
+import bestow.services;  // Re-exports all contracts
 import bestow.utils;
 
 namespace bestow {

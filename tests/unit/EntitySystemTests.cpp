@@ -15,20 +15,37 @@ import bestow.types;
 
 namespace bestow::tests {
 
-// Mock Entity System for interface testing  
+// Mock Entity System for interface testing
 class MockEntitySystem : public IEntitySystem {
 public:
     void update(DeltaTime dt) override {}
-    
-    Entity createEntity() override { return Entity{++nextId_}; }
-    void destroyEntity(Entity entity) override { destroyed_.insert(entity); }
-    bool isValid(Entity entity) const override { 
-        return entity != Entity{} && destroyed_.find(entity) == destroyed_.end(); 
+
+    Entity createEntity() override {
+        // Create entity through registry so it's valid for component operations
+        return registry_.create();
     }
-    std::size_t entityCount() const override { 
-        return static_cast<std::size_t>(nextId_) - destroyed_.size(); 
+    void destroyEntity(Entity entity) override {
+        if (registry_.valid(entity)) {
+            registry_.destroy(entity);
+        }
     }
-    
+    bool isValid(Entity entity) const override {
+        return registry_.valid(entity);
+    }
+    std::size_t entityCount() const override {
+        // Count only valid (alive) entities
+        std::size_t count = 0;
+        const auto* storage = registry_.storage<entt::entity>();
+        if (storage) {
+            for (auto entity : *storage) {
+                if (registry_.valid(entity)) {
+                    ++count;
+                }
+            }
+        }
+        return count;
+    }
+
     entt::registry& getRegistry() override { return registry_; }
     const entt::registry& getRegistry() const override { return registry_; }
     
@@ -164,8 +181,6 @@ public:
     
 private:
     entt::registry registry_;
-    std::uint32_t nextId_ = 0;
-    std::set<Entity> destroyed_;
 };
 
 class EntitySystemTest : public ::testing::Test {
