@@ -412,7 +412,9 @@ TEST_F(EventSystemTest, ClearQueueDoesNotTriggerCallbacks) {
 TEST_F(EventSystemTest, UnsubscribeDuringCallback) {
     int callCount1 = 0;
     int callCount2 = 0;
-    SubscriptionId id1, id2;
+    // Initialize to 0 - important for MSVC where capturing uninitialized
+    // references can cause issues
+    SubscriptionId id1 = 0, id2 = 0;
 
     // First callback unsubscribes itself
     id1 = eventSystem_->subscribe("test_event", [&](const EventData&) {
