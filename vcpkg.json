@@ -5,10 +5,20 @@
     "description": "Bestow Game Framework",
     "license": "MIT",
     "supports": "!(uwp | arm | android | ios)",
+    "overrides": [
+        {
+            "name": "sdl2",
+            "version": "2.32.10"
+        }
+    ],
     "dependencies": [
         "glfw3",
         "glad",
-        "sdl2",
+        {
+            "name": "sdl2",
+            "default-features": false,
+            "features": []
+        },
         "glm",
         "spdlog",
         "fmt",

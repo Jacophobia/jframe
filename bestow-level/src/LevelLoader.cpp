@@ -6,7 +6,6 @@ module;
 module bestow.level.impl;
 
 import bestow.assets;
-import bestow.assets.impl;
 
 namespace bestow {
 

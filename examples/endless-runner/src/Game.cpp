@@ -3,10 +3,7 @@
 
 import std;
 import bestow;
-import bestow.core;
-import bestow.camera.impl;
 import bestow.components;
-import bestow.config.impl;
 
 #if defined(BESTOW_DEV_TOOLS)
 import bestow.dev;
@@ -21,25 +18,15 @@ bool Game::initialize(bestow::core::Engine& engine) {
     auto& sys = engine.systems();
     bestow::core::logInfo("Initializing endless runner");
 
-    config_ = std::make_unique<bestow::ConfigSystem>();
-    config_->initialize();
-    if (!config_->loadConfig("data/config/game.lua")) {
-        bestow::core::logError("Failed to load game config");
-    }
+    // Set default gravity
+    sys.physics->setGravity({0.0f, 980.0f});
 
-    sys.physics->setGravity({0.0f, config_->getFloatOr("physics.gravity", 980.0f)});
-
-    auto windowSize = sys.graphics->getWindowSize();
-    cameraSystem_ = std::make_unique<bestow::CameraSystem>(windowSize);
-    cameraSystem_->setZoom(config_->getFloatOr("camera.zoom", 1.0f));
-    cameraSystem_->setFollowSmoothing(config_->getFloatOr("camera.followSmoothing", 5.0f));
-
-    runSpeed_ = config_->getFloatOr("game.runSpeed", 300.0f);
-    sectionWidth_ = config_->getFloatOr("game.sectionWidth", 800.0f);
-    jumpForce_ = config_->getFloatOr("player.jumpForce", 700.0f);
-    groundY_ = config_->getFloatOr("game.groundY", 550.0f);
-    playerBodyWidth_ = config_->getFloatOr("physics.player.width", 50.0f);
-    playerBodyHeight_ = config_->getFloatOr("physics.player.height", 80.0f);
+    // Create camera entity
+    camera_ = sys.entities->createEntity();
+    sys.entities->emplace<Camera2D>(camera_, Camera2D{
+        .smoothing = 5.0f,
+        .zoom = 1.0f
+    });
 
     // Load assets
     playerTextureHandle_ = sys.assets->registerAsset(bestow::AssetType::Texture, "data/textures/player_spritesheet.png");
@@ -145,7 +132,11 @@ void Game::setupPlayer() {
         .density = 1.0f, .friction = 0.0f, .restitution = 0.0f
     };
     sys.physics->createBody(player_, bodyDef);
-    cameraSystem_->setTarget(player_);
+
+    // Set camera target
+    if (auto* cam = sys.entities->tryGet<Camera2D>(camera_)) {
+        cam->target = player_;
+    }
 }
 
 void Game::loadInitialSection() {
@@ -259,7 +250,10 @@ void Game::generateNextSection() {
 
 void Game::despawnBehindCamera() {
     auto& sys = engine_->systems();
-    auto camera = cameraSystem_->getCamera();
+    auto* cam = sys.entities->tryGet<Camera2D>(camera_);
+    if (!cam) return;
+
+    auto camera = cam->getCamera();
     float despawnThreshold = camera.transform.x - camera.viewportSize.width;
 
     // Despawn platforms behind camera
@@ -442,11 +436,24 @@ void Game::handlePlayerInput(bestow::DeltaTime dt) {
 
 void Game::updateCamera(bestow::DeltaTime dt) {
     auto& sys = engine_->systems();
-    auto playerTransform = sys.entities->get<bestow::Transform2D>(player_);
+    auto* cam = sys.entities->tryGet<Camera2D>(camera_);
+    if (!cam) return;
 
-    // Camera follows player (same as platformer-demo)
-    cameraSystem_->update(dt, playerTransform.position());
-    sys.graphics->setCamera(cameraSystem_->getCamera());
+    if (!sys.entities->isValid(cam->target)) return;
+    if (!sys.physics->hasBody(cam->target)) return;
+
+    bestow::Vec2 targetPosition = sys.physics->getPosition(cam->target);
+
+    // Smooth camera follow
+    bestow::Vec2 targetPos = {targetPosition.x + cam->offset.x, targetPosition.y + cam->offset.y};
+    cam->position.x += (targetPos.x - cam->position.x) * cam->smoothing * dt;
+    cam->position.y += (targetPos.y - cam->position.y) * cam->smoothing * dt;
+
+    // Update camera shake
+    cam->update(dt);
+
+    // Set the camera for rendering
+    sys.graphics->setCamera(cam->getCamera());
 }
 
 void Game::syncPhysicsToTransforms() {
@@ -499,7 +506,10 @@ void Game::onCollision(const bestow::EventData& data) {
                 health->takeDamage(damage->amount);
                 if (!health->isDead()) {
                     sys.audio->playPositional(bestow::PositionalSound{.asset = hurtSoundHandle_, .volume = 1.0f});
-                    cameraSystem_->shake(15.0f, 0.3f);
+                    // Apply camera shake
+                    if (auto* cam = sys.entities->tryGet<Camera2D>(camera_)) {
+                        cam->shake(15.0f, 0.3f);
+                    }
                 }
             }
         }
@@ -538,7 +548,10 @@ void Game::renderEntities() {
 
 void Game::renderHUD() {
     auto& sys = engine_->systems();
-    auto camera = cameraSystem_->getCamera();
+    auto* cam = sys.entities->tryGet<Camera2D>(camera_);
+    if (!cam) return;
+
+    auto camera = cam->getCamera();
     float screenLeft = camera.transform.x - camera.viewportSize.width / 2.0f;
     float screenTop = camera.transform.y - camera.viewportSize.height / 2.0f;
 
@@ -577,7 +590,6 @@ void Game::shutdown() {
     auto& sys = engine_->systems();
     sys.events->unsubscribe(triggerSubscription_);
     sys.events->unsubscribe(collisionSubscription_);
-    if (config_) config_->shutdown();
 }
 
 }  // namespace endless_runner

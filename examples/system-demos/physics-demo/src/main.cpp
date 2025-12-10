@@ -2,9 +2,8 @@
 // Physics System Demo - Entry point
 
 import std;
-import bestow.types;
-import bestow.physics;
-import bestow.physics.impl;
+import bestow;
+import bestow.core;
 import physics.demo;
 
 int main() {
@@ -12,8 +11,10 @@ int main() {
         std::println("Bestow Physics System Demo");
         std::println("==========================\n");
 
-        // Create the physics system
-        auto physicsSystem = std::make_unique<bestow::Box2DPhysicsSystem>();
+        // Create engine and get physics system
+        bestow::core::Engine engine;
+        auto& sys = engine.systems();
+        auto* physicsSystem = sys.physics;
 
         // Run the comprehensive demo
         demo::PhysicsDemo demo(*physicsSystem);

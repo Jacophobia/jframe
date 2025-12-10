@@ -659,5 +659,7 @@ main() {
 
     print_post_setup
 }
+build_bestow
+print_post_setup
 
-main "$@"
+# main "$@"

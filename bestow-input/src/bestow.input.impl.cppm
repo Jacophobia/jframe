@@ -22,7 +22,8 @@ public:
     InputSystem() = default;
     ~InputSystem() override;
 
-    bool initialize(GLFWwindow* window);
+    bool initialize(void* nativeWindow) override;
+    void shutdown() override;
     void setAssetSystem(IAssetSystem* assets);
 
     void update() override;

@@ -24,6 +24,7 @@ target_link_libraries(camera-demo
         bestow-contract
         bestow-camera
         bestow-entity
+        bestow-core
 )
 
 # Set output directory

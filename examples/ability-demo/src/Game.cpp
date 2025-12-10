@@ -10,16 +10,12 @@
 
 import std;
 import bestow;
-import bestow.core;
-import bestow.gas;
 import bestow.gas.impl;
-import bestow.camera;
 import bestow.camera.impl;
-import bestow.blueprints;
 import bestow.blueprints.impl;
-import bestow.config.impl;
-import bestow.builders;
-import bestow.luaconfig;
+
+#include <GLFW/glfw3.h>
+#include <SDL.h>
 
 #include "Game.h"
 #include "Components.h"
@@ -32,26 +28,34 @@ bool Game::initialize(bestow::core::Engine& engine) {
     engine_ = &engine;
     auto& sys = engine.systems();
 
-    // Initialize config system
-    config_ = std::make_unique<bestow::ConfigSystem>();
-    config_->initialize();
-    if (!config_->loadConfig("data/config/player.lua")) {
-        bestow::core::logWarn("Could not load player config, using defaults");
-    }
+    // Note: ConfigSystem is not yet part of the engine - skipping config loading for now
+    // TODO: Re-enable when ConfigSystem is integrated into EngineBuilder
+    // config_ = engine.getSystem<bestow::IConfigSystem>();
+    // if (!config_->loadConfig("data/config/player.lua")) {
+    //     bestow::core::logWarn("Could not load player config, using defaults");
+    // }
 
-    // Load player config values
-    playerMoveSpeed_ = config_->getFloatOr("movement.speed", 200.0f);
-    playerJumpForce_ = config_->getFloatOr("movement.jumpForce", 400.0f);
-    playerPhysicsWidth_ = config_->getFloatOr("physics.width", 30.0f);
-    playerPhysicsHeight_ = config_->getFloatOr("physics.height", 50.0f);
-    staminaRegenRate_ = config_->getFloatOr("staminaRegen", 20.0f);
+    // Use default values (config system not yet integrated)
+    // playerMoveSpeed_ = config_->getFloatOr("movement.speed", 200.0f);
+    // playerJumpForce_ = config_->getFloatOr("movement.jumpForce", 400.0f);
+    // playerPhysicsWidth_ = config_->getFloatOr("physics.width", 30.0f);
+    // playerPhysicsHeight_ = config_->getFloatOr("physics.height", 50.0f);
+    // staminaRegenRate_ = config_->getFloatOr("staminaRegen", 20.0f);
+    playerMoveSpeed_ = 200.0f;
+    playerJumpForce_ = 400.0f;
+    playerPhysicsWidth_ = 30.0f;
+    playerPhysicsHeight_ = 50.0f;
+    staminaRegenRate_ = 20.0f;
 
-    // Create the GAS system (it's separate from BestowEngine)
+    // Note: GAS system is not yet part of the engine - create manually for now
+    // TODO: Re-enable when GASSystem is integrated into EngineBuilder
+    // gas_ = engine.getSystem<bestow::IGASSystem>();
+    // if (!gas_) {
+    //     bestow::core::logError("Failed to get GAS system");
+    //     return false;
+    // }
     gas_ = std::make_unique<bestow::GASSystem>();
-    if (!gas_) {
-        bestow::core::logError("Failed to create GAS system");
-        return false;
-    }
+    // GAS system is ready to use after construction
 
     // Load level asset
     levelAssetHandle_ = sys.assets->registerAsset(
@@ -78,10 +82,14 @@ bool Game::initialize(bestow::core::Engine& engine) {
     // Start exploration music
     playMusic("musicExploration");
 
-    // Setup camera system (using the new bestow camera module)
+    // Note: CameraSystem is not yet part of the engine - create manually for now
+    // TODO: Re-enable when CameraSystem is integrated into EngineBuilder
+    // camera_ = engine.getSystem<bestow::ICameraSystem>();
+    // Configure camera for player following
+    // camera_->setFollowSmoothing(0.1f);
+    // camera_->setOffset({0.0f, -50.0f});
+    // camera_->setTarget(player_);
     camera_ = std::make_unique<bestow::CameraSystem>(bestow::Size{800, 600});
-    // Smoothing: 0.0 = instant snap, 0.9 = very slow following
-    // Values > 1.0 are clamped to 1.0 which means NO movement!
     camera_->setFollowSmoothing(0.1f);
     camera_->setOffset({0.0f, -50.0f});
     camera_->setTarget(player_);
@@ -90,13 +98,13 @@ bool Game::initialize(bestow::core::Engine& engine) {
     gas_->grantAbility(player_, jumpAbility_);
 
     bestow::core::logInfo("GAS Demo initialized successfully!");
-    bestow::core::logInfo("Controls:");
-    bestow::core::logInfo("  A/E or Arrow Keys - Move");
-    bestow::core::logInfo("  SPACE - Jump (when grounded)");
+    bestow::core::logInfo("Controls (Dvorak-optimized):");
+    bestow::core::logInfo("  ,/E or Arrow Keys - Move (Dvorak WASD positions)");
+    bestow::core::logInfo("  SPACE or A - Jump (when grounded)");
     bestow::core::logInfo("  LEFT SHIFT - Dash (requires cyan collectable)");
     bestow::core::logInfo("  F - Sword Attack (requires collectable)");
     bestow::core::logInfo("  H - Apply health regen");
-    bestow::core::logInfo("  Down/S - Ground Pound (in air, requires collectable)");
+    bestow::core::logInfo("  Down/O - Ground Pound (in air, requires collectable)");
 
     return true;
 }
@@ -254,27 +262,12 @@ void Game::shutdown() {
     // Clear sound assets
     soundAssets_.clear();
 
-    // Shutdown systems in reverse order of initialization
-    if (blueprints_) {
-        blueprints_.reset();
-    }
-
-    if (camera_) {
-        camera_.reset();
-    }
-
-    if (audioConfig_) {
-        audioConfig_->shutdown();
-        audioConfig_.reset();
-    }
-
-    if (config_) {
-        config_->shutdown();
-        config_.reset();
-    }
-
-    // Reset GAS last
-    gas_.reset();
+    // Systems are managed by the Engine and will be shut down automatically
+    // Just reset our pointers
+    blueprints_ = nullptr;
+    camera_ = nullptr;
+    config_ = nullptr;
+    gas_ = nullptr;
 
     bestow::core::logInfo("GAS Demo shutdown complete");
 }
@@ -286,14 +279,12 @@ void Game::shutdown() {
 void Game::setupAudio() {
     auto& sys = engine_->systems();
 
-    // Load audio config
-    audioConfig_ = std::make_unique<bestow::ConfigSystem>();
-    audioConfig_->initialize();
-    if (!audioConfig_->loadConfig("data/config/audio.lua")) {
-        bestow::core::logWarn("Could not load audio config, sounds disabled");
-        audioEnabled_ = false;
-        return;
-    }
+    // Note: ConfigSystem not yet integrated - skip config loading
+    // if (!config_->loadConfig("data/config/audio.lua")) {
+    //     bestow::core::logWarn("Could not load audio config, sounds disabled");
+    //     audioEnabled_ = false;
+    //     return;
+    // }
 
     // Register sound assets (we'll create simple placeholder paths)
     // The audio system will gracefully handle missing files
@@ -363,9 +354,9 @@ void Game::playSound(const std::string& soundName) {
         channel = PLAYER_CHANNEL;
     }
 
-    // Get volume from config (default 0.8)
-    float volume = audioConfig_->getFloatOr("sounds." + soundName + ".volume", 0.8f);
-    float pitch = audioConfig_->getFloatOr("sounds." + soundName + ".pitch", 1.0f);
+    // Use default volume and pitch (config system not yet integrated)
+    float volume = 0.8f;  // config_->getFloatOr("sounds." + soundName + ".volume", 0.8f);
+    float pitch = 1.0f;   // config_->getFloatOr("sounds." + soundName + ".pitch", 1.0f);
 
     bestow::ChannelSound sound{
         .asset = it->second,
@@ -391,7 +382,7 @@ void Game::playMusic(const std::string& musicName) {
         return;
     }
 
-    float volume = audioConfig_->getFloatOr("sounds." + musicName + ".volume", 0.5f);
+    float volume = 0.5f;  // config_->getFloatOr("sounds." + musicName + ".volume", 0.5f);
 
     bestow::ChannelSound sound{
         .asset = it->second,
@@ -412,54 +403,202 @@ void Game::stopMusic() {
 void Game::setupInputMappings() {
     auto& input = *engine_->systems().input;
 
-    // Use the new InputMappingBuilder for cleaner input configuration
-    bestow::InputMappingBuilder(input)
-        // Movement (A/E for left/right, with arrow key alternatives)
-        .action("move_left")
-            .key(bestow::Keys::A)
-            .key(bestow::Keys::Left)
-            .button(bestow::ControllerButtons::DPadLeft)
-        .action("move_right")
-            .key(bestow::Keys::E)  // E for right (non-standard but keeping existing behavior)
-            .key(bestow::Keys::Right)
-            .button(bestow::ControllerButtons::DPadRight)
+    // Movement - ,AOE keys (Dvorak WASD equivalents) with arrow key alternatives
+    // , (COMMA) = left (Dvorak W position)
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_COMMA,  // , for left
+            .scale = -1.0f
+        },
+        .action = "move_left"
+    });
 
-        // Jump
-        .action("jump")
-            .key(bestow::Keys::Space)
-            .key(bestow::Keys::W)  // W also jumps
-            .key(bestow::Keys::Up)
-            .button(bestow::ControllerButtons::A)
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_E,  // E for right
+            .scale = 1.0f
+        },
+        .action = "move_right"
+    });
 
-        // Dash
-        .action("dash")
-            .key(bestow::Keys::LeftShift)
-            .button(bestow::ControllerButtons::RightShoulder)
+    // Arrow keys as alternatives
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_LEFT
+        },
+        .action = "move_left"
+    });
 
-        // Combat abilities
-        .action("attack")
-            .key(bestow::Keys::F)
-            .button(bestow::ControllerButtons::X)
-        .action("shield")
-            .key(bestow::Keys::G)
-            .button(bestow::ControllerButtons::B)
-        .action("ranged")
-            .key(bestow::Keys::R)
-            .button(bestow::ControllerButtons::Y)
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_RIGHT
+        },
+        .action = "move_right"
+    });
 
-        // Ground pound (Down arrow or S)
-        .action("ground_pound")
-            .key(bestow::Keys::Down)
-            .key(bestow::Keys::S)
-            .button(bestow::ControllerButtons::DPadDown)
+    // Jump - Space, A (Dvorak A position), and Up arrow
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_SPACE
+        },
+        .action = "jump"
+    });
 
-        // Test effects
-        .action("apply_health_regen")
-            .key(bestow::Keys::H)
-        .action("apply_stun")
-            .key(bestow::Keys::T)
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_A  // A (Dvorak A position)
+        },
+        .action = "jump"
+    });
 
-        .apply();
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_UP
+        },
+        .action = "jump"
+    });
+
+    // Dash - Left Shift
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_LEFT_SHIFT
+        },
+        .action = "dash"
+    });
+
+    // Combat abilities
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_F
+        },
+        .action = "attack"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_G
+        },
+        .action = "shield"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_R
+        },
+        .action = "ranged"
+    });
+
+    // Ground pound - O (Dvorak S position) and Down arrow
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_O  // O (Dvorak S position)
+        },
+        .action = "ground_pound"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_DOWN
+        },
+        .action = "ground_pound"
+    });
+
+    // Test effects
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_H
+        },
+        .action = "apply_health_regen"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Keyboard,
+            .keyCode = GLFW_KEY_T
+        },
+        .action = "apply_stun"
+    });
+
+    // Controller mappings
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_DPAD_LEFT
+        },
+        .action = "move_left"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_DPAD_RIGHT
+        },
+        .action = "move_right"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_A
+        },
+        .action = "jump"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_RIGHTSHOULDER
+        },
+        .action = "dash"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_X
+        },
+        .action = "attack"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_B
+        },
+        .action = "shield"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_Y
+        },
+        .action = "ranged"
+    });
+
+    input.registerMapping(bestow::InputMapping{
+        .binding = bestow::InputBinding{
+            .deviceType = bestow::InputDeviceType::Controller,
+            .keyCode = SDL_CONTROLLER_BUTTON_DPAD_DOWN
+        },
+        .action = "ground_pound"
+    });
+
+    bestow::core::logInfo("Input mappings configured (Dvorak-friendly: ,AOE for movement)");
 }
 
 void Game::setupGAS() {
@@ -546,7 +685,9 @@ void Game::setupGAS() {
 void Game::setupBlueprints() {
     auto& sys = engine_->systems();
 
-    // Create the blueprint factory with entity and physics systems
+    // Note: BlueprintFactory is not yet part of the engine - create manually for now
+    // TODO: Re-enable when BlueprintFactory is integrated into EngineBuilder
+    // blueprints_ = engine_->getSystem<bestow::IBlueprintSystem>();
     blueprints_ = std::make_unique<bestow::BlueprintFactory>(*sys.entities, sys.physics);
 
     // Helper functions for safe any_cast
@@ -773,19 +914,22 @@ void Game::createPlayer() {
         .filled = true
     });
 
-    // Create physics body using the new PhysicsBodyBuilder
-    bestow::physics::character(*sys.physics, player_, spawnX, spawnY,
-                               playerPhysicsWidth_, playerPhysicsHeight_)
-        .fixedRotation(config_->getBoolOr("physics.fixedRotation", true))
-        .linearDamping(config_->getFloatOr("physics.linearDamping", 0.0f))
-        .friction(config_->getFloatOr("physics.friction", 0.0f))  // Zero friction prevents wall sticking
-        .layer(bestow::CollisionLayers::Player)
-        .create();
+    // Create physics body for character
+    bestow::PhysicsBodyDef bodyDef{
+        .type = bestow::BodyType::Dynamic,
+        .transform = {.x = spawnX, .y = spawnY},
+        .size = {playerPhysicsWidth_, playerPhysicsHeight_},
+        .fixedRotation = true,   // config_->getBoolOr("physics.fixedRotation", true)
+        .linearDamping = 0.0f,   // config_->getFloatOr("physics.linearDamping", 0.0f)
+        .friction = 0.0f         // Zero friction prevents wall sticking
+    };
+    sys.physics->createBody(player_, bodyDef);
+    sys.physics->setCollisionLayer(player_, bestow::CollisionLayers::Player);
 
-    // Initialize GAS component and attributes using config values
-    float initialHealth = config_->getFloatOr("attributes.health", 100.0f);
-    float initialStamina = config_->getFloatOr("attributes.stamina", 100.0f);
-    float initialSpeed = config_->getFloatOr("attributes.moveSpeed", 200.0f);
+    // Initialize GAS component and attributes using default values
+    float initialHealth = 100.0f;   // config_->getFloatOr("attributes.health", 100.0f);
+    float initialStamina = 100.0f;  // config_->getFloatOr("attributes.stamina", 100.0f);
+    float initialSpeed = 200.0f;    // config_->getFloatOr("attributes.moveSpeed", 200.0f);
 
     gas_->initializeComponent(player_);
     gas_->initializeAttribute(player_, healthAttr_, initialHealth);

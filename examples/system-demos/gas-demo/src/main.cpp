@@ -5,13 +5,8 @@
 #include <bestow/entt_compat.hpp>
 
 import std;
-import bestow.types;
-import bestow.gas;
-import bestow.gas.impl;
-import bestow.entity;
-import bestow.entity.impl;
-import bestow.events;
-import bestow.events.impl;
+import bestow;
+import bestow.core;
 
 using namespace bestow;
 
@@ -44,13 +39,9 @@ int main() {
     std::println("=================================================================");
     std::println("");
 
-    // Create concrete system implementations
-    auto eventSystem = std::make_unique<EventSystem>();
-    auto entitySystem = std::make_unique<EntitySystem>();
-    auto gasSystem = std::make_unique<GASSystem>();
-
-    // Initialize GAS system
-    gasSystem->initialize();
+    // Create engine and get systems via interfaces
+    core::Engine engine;
+    auto& sys = engine.systems();
 
     printInfo("This demo shows comprehensive usage of all GAS System APIs");
     std::println("");
@@ -58,40 +49,40 @@ int main() {
     // Demonstrate all API sections
     try {
         // Registration APIs
-        demoTagRegistration(*gasSystem);
-        demoTagHierarchy(*gasSystem);
-        demoAttributeRegistration(*gasSystem);
-        demoEffectRegistration(*gasSystem);
-        demoAbilityRegistration(*gasSystem);
+        demoTagRegistration(*sys.gas);
+        demoTagHierarchy(*sys.gas);
+        demoAttributeRegistration(*sys.gas);
+        demoEffectRegistration(*sys.gas);
+        demoAbilityRegistration(*sys.gas);
 
         // Create test entities
-        Entity player = entitySystem->createEntity();
-        Entity enemy = entitySystem->createEntity();
+        Entity player = sys.entities->createEntity();
+        Entity enemy = sys.entities->createEntity();
 
         // Component management
-        demoComponentManagement(*gasSystem, *entitySystem);
+        demoComponentManagement(*sys.gas, *sys.entities);
 
         // Tag operations
-        demoTagOperations(*gasSystem, player);
-        demoTagQueries(*gasSystem, player);
+        demoTagOperations(*sys.gas, player);
+        demoTagQueries(*sys.gas, player);
 
         // Attribute operations
-        demoAttributeOperations(*gasSystem, player);
+        demoAttributeOperations(*sys.gas, player);
 
         // Effect operations
-        demoEffectOperations(*gasSystem, player, enemy);
+        demoEffectOperations(*sys.gas, player, enemy);
 
         // Ability operations
-        demoAbilityOperations(*gasSystem, player);
+        demoAbilityOperations(*sys.gas, player);
 
         // Callbacks
-        demoCallbacks(*gasSystem, player);
+        demoCallbacks(*sys.gas, player);
 
         // Lua integration
-        demoLuaIntegration(*gasSystem);
+        demoLuaIntegration(*sys.gas);
 
         // Update loop
-        demoUpdateLoop(*gasSystem, player);
+        demoUpdateLoop(*sys.gas, player);
 
         std::println("");
         printSuccess("All GAS System API demonstrations completed successfully!");

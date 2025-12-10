@@ -6,10 +6,6 @@
 import std;
 import bestow;
 import bestow.core;
-import bestow.gas;
-import bestow.camera;
-import bestow.blueprints;
-import bestow.config.impl;
 
 namespace abilitydemo {
 

@@ -15,7 +15,7 @@ module;
 
 module bestow.physics.impl;
 
-import bestow.core;
+import bestow.utils;
 
 namespace bestow {
 

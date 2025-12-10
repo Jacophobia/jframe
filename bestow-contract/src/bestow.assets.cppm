@@ -3,6 +3,7 @@
 
 module;
 
+#include <any>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -12,6 +13,7 @@ module;
 
 export module bestow.assets;
 
+import std;
 import bestow.types;
 
 export namespace bestow {
@@ -172,6 +174,21 @@ struct CubemapData {
     int faceHeight = 0;
     int channels = 0;
     std::string name;
+};
+
+// NavMesh data structure - stores raw navmesh binary for AI system to process
+struct NavMeshData {
+    std::vector<unsigned char> fileData;  // Raw navmesh binary
+    std::string path;
+    std::size_t fileSize = 0;
+};
+
+// Data asset structure for JSON, Lua, and other text files
+// Note: JSON data is stored as std::any for type-erased access
+struct DataAsset {
+    std::any jsonData;        // Holds parsed JSON when isJson=true
+    std::string rawText;      // Original text content (for Lua, configs, etc)
+    bool isJson = false;
 };
 
 struct AssetMetadata {

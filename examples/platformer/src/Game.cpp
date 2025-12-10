@@ -7,8 +7,6 @@
 
 import std;
 import bestow;
-import bestow.core;
-import bestow.assets.impl;  // For DataAsset
 
 #if defined(BESTOW_DEV_TOOLS)
 import bestow.dev;

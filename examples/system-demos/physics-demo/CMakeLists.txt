@@ -25,6 +25,7 @@ target_link_libraries(physics-demo
         bestow-physics
         bestow-entity
         bestow-events
+        bestow-core
 )
 
 # Set output directory

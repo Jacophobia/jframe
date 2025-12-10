@@ -3,6 +3,8 @@
 
 module;
 
+#include <kangaru/kangaru.hpp>
+
 #include <GLFW/glfw3.h>
 // MSVC C++23 module compatibility - include full EnTT before import std
 #include <bestow/entt_compat.hpp>
@@ -10,6 +12,23 @@ module;
 
 module bestow.core;
 
+// Import interfaces
+import bestow.events;
+import bestow.entity;
+import bestow.physics;
+import bestow.graphics;
+import bestow.audio;
+import bestow.input;
+import bestow.assets;
+import bestow.save;
+import bestow.level;
+import bestow.ai;
+import bestow.camera;
+import bestow.gas;
+import bestow.blueprints;
+import bestow.services;
+
+// Import implementations for DI registration
 import bestow.events.impl;
 import bestow.entity.impl;
 import bestow.physics.impl;
@@ -31,25 +50,13 @@ namespace bestow::core {
 //==============================================================================
 
 struct Engine::Impl {
+    // Kangaru DI container
+    kgr::container container;
+    
     // Core systems
     std::unique_ptr<JobSystem> jobs;
 
-    // System ownership (unique_ptr ensures proper cleanup order)
-    std::unique_ptr<EventSystem> events;
-    std::unique_ptr<EntitySystem> entities;
-    std::unique_ptr<Box2DPhysicsSystem> physics;
-    std::unique_ptr<OpenGLGraphicsSystem> graphics;
-    std::unique_ptr<FMODAudioSystem> audio;
-    std::unique_ptr<InputSystem> input;
-    std::unique_ptr<AssetSystem> assets;
-    std::unique_ptr<SaveSystem> save;
-    std::unique_ptr<LevelSystem> level;
-    std::unique_ptr<AISystem> ai;
-    std::unique_ptr<CameraSystem> camera;
-    std::unique_ptr<GASSystem> gas;
-    std::unique_ptr<BlueprintFactory> blueprints;
-
-    // Engine aggregate (raw pointers to systems)
+    // Engine aggregate (raw pointers to systems from DI container)
     BestowEngine engineAggregate;
 
     // Game loop state
@@ -62,23 +69,11 @@ struct Engine::Impl {
 //==============================================================================
 
 struct EngineBuilder::Impl {
+    // Kangaru DI container
+    kgr::container container;
+    
     // Core systems
     std::unique_ptr<JobSystem> jobs;
-
-    // System instances (owned by builder during construction)
-    std::unique_ptr<EventSystem> events;
-    std::unique_ptr<EntitySystem> entities;
-    std::unique_ptr<Box2DPhysicsSystem> physics;
-    std::unique_ptr<OpenGLGraphicsSystem> graphics;
-    std::unique_ptr<FMODAudioSystem> audio;
-    std::unique_ptr<InputSystem> input;
-    std::unique_ptr<AssetSystem> assets;
-    std::unique_ptr<SaveSystem> save;
-    std::unique_ptr<LevelSystem> level;
-    std::unique_ptr<AISystem> ai;
-    std::unique_ptr<CameraSystem> camera;
-    std::unique_ptr<GASSystem> gas;
-    std::unique_ptr<BlueprintFactory> blueprints;
 
     // Configuration
     std::optional<GraphicsConfig> graphicsConfig;
@@ -190,211 +185,272 @@ std::expected<Engine, std::string> EngineBuilder::build() {
     impl_->jobs = std::make_unique<JobSystem>();
     spdlog::info("JobSystem initialized with {} worker threads", impl_->jobs->workerCount());
 
-    // Initialize systems in dependency order
+    // Resolve systems from DI container (systems are auto-registered by importing .impl modules)
     // Phase 1: Events (no dependencies)
+    IEventSystem* eventSystem = nullptr;
     if (impl_->enableEvents) {
-        impl_->events = std::make_unique<EventSystem>();
-        logInfo("Events system initialized");
+        auto& events = impl_->container.service<EventSystemService>();
+        eventSystem = &events;
+        logInfo("Events system resolved from DI container");
     }
 
-    // Phase 2: Assets (no dependencies)
+    // Phase 2: Entities (no dependencies)
+    IEntitySystem* entitySystem = nullptr;
+    if (impl_->enableEntities) {
+        auto& entities = impl_->container.service<EntitySystemService>();
+        entitySystem = &entities;
+        logInfo("Entity system resolved from DI container");
+    }
+
+    // Phase 3: Assets (no dependencies)
+    IAssetSystem* assetSystem = nullptr;
     if (impl_->enableAssets) {
-        impl_->assets = std::make_unique<AssetSystem>();
-        // AssetSystem has default constructor, no separate initialization
-        logInfo("Assets system initialized (base path: " + impl_->assetsBasePath + ")");
+        auto& assets = impl_->container.service<AssetSystemService>();
+        assetSystem = &assets;
+        logInfo("Assets system resolved from DI container (base path: " + impl_->assetsBasePath + ")");
     }
 
-    // Phase 3: Graphics (needs to create window first)
+    // Phase 4: Graphics (needs configuration and initialization)
+    IGraphicsSystem* graphicsSystem = nullptr;
     if (impl_->enableGraphics) {
-        impl_->graphics = std::make_unique<OpenGLGraphicsSystem>();
+        auto& graphics = impl_->container.service<GraphicsSystemService>();
+        graphicsSystem = &graphics;
+        
+        // Cast to concrete implementation for initialization
+        auto* graphicsImpl = dynamic_cast<OpenGLGraphicsSystem*>(&graphics);
+        if (!graphicsImpl) {
+            return std::unexpected("Failed to cast graphics system to concrete implementation");
+        }
+        
         auto& cfg = impl_->graphicsConfig.value();
-        if (!impl_->graphics->initialize(cfg.width, cfg.height, cfg.title)) {
+        if (!graphicsImpl->initialize(cfg.width, cfg.height, cfg.title)) {
             return std::unexpected("Failed to initialize graphics system");
         }
-        impl_->graphics->setVSync(cfg.vsync);
-        impl_->graphics->setClearColor(cfg.clearColor);
-        logInfo("Graphics system initialized");
+        graphicsImpl->setVSync(cfg.vsync);
+        graphicsImpl->setClearColor(cfg.clearColor);
+        logInfo("Graphics system resolved and initialized");
     }
 
-    // Phase 4: Input (depends on graphics window)
+    // Phase 5: Input (depends on graphics window)
+    IInputSystem* inputSystem = nullptr;
     if (impl_->enableInput) {
         if (!impl_->enableGraphics) {
             return std::unexpected("Input system requires graphics system (for window)");
         }
-        impl_->input = std::make_unique<InputSystem>();
-        auto* window = static_cast<GLFWwindow*>(impl_->graphics->getNativeWindowHandle());
-        if (!impl_->input->initialize(window)) {
+        auto& input = impl_->container.service<InputSystemService>();
+        inputSystem = &input;
+        
+        // Initialize through interface (no casting needed)
+        auto* window = graphicsSystem->getNativeWindowHandle();
+        if (!input.initialize(window)) {
             return std::unexpected("Failed to initialize input system");
         }
-        logInfo("Input system initialized");
+        logInfo("Input system resolved and initialized");
     }
 
-    // Phase 5: Entities (no dependencies)
-    if (impl_->enableEntities) {
-        impl_->entities = std::make_unique<EntitySystem>();
-        logInfo("Entity system initialized");
-    }
-
-    // Phase 6: Physics (no dependencies, but typically used with entities)
+    // Phase 6: Physics (no dependencies, but needs initialization)
+    IPhysicsSystem* physicsSystem = nullptr;
     if (impl_->enablePhysics) {
-        impl_->physics = std::make_unique<Box2DPhysicsSystem>();
-        if (!impl_->physics->initialize()) {
+        auto& physics = impl_->container.service<PhysicsSystemService>();
+        physicsSystem = &physics;
+        
+        // Cast to concrete implementation for initialization
+        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(&physics);
+        if (!physicsImpl) {
+            return std::unexpected("Failed to cast physics system to concrete implementation");
+        }
+        
+        if (!physicsImpl->initialize()) {
             return std::unexpected("Failed to initialize physics system");
         }
-        logInfo("Physics system initialized");
+        logInfo("Physics system resolved and initialized");
     }
 
     // Phase 7: Audio (depends on assets for loading)
+    IAudioSystem* audioSystem = nullptr;
     if (impl_->enableAudio) {
         if (!impl_->enableAssets) {
             logWarn("Audio system created without asset system - may have limited functionality");
         }
-        impl_->audio = std::make_unique<FMODAudioSystem>();
-        if (!impl_->audio->initialize()) {
+        auto& audio = impl_->container.service<AudioSystemService>();
+        audioSystem = &audio;
+        
+        // Initialize through interface (no casting needed)
+        if (!audio.initialize()) {
             return std::unexpected("Failed to initialize audio system");
         }
-        logInfo("Audio system initialized");
+        logInfo("Audio system resolved and initialized");
     }
 
     // Phase 8: Save (no dependencies)
+    ISaveSystem* saveSystem = nullptr;
     if (impl_->enableSave) {
-        impl_->save = std::make_unique<SaveSystem>();
-        // SaveSystem has default constructor, no setSaveDirectory method
-        // Save path is configured via save/load operations
-        logInfo("Save system initialized (save path: " + impl_->savePath + ")");
+        auto& save = impl_->container.service<SaveSystemService>();
+        saveSystem = &save;
+        logInfo("Save system resolved from DI container (save path: " + impl_->savePath + ")");
     }
 
     // Phase 9: Level (depends on assets)
+    ILevelSystem* levelSystem = nullptr;
     if (impl_->enableLevel) {
         if (!impl_->enableAssets) {
             return std::unexpected("Level system requires asset system");
         }
-        impl_->level = std::make_unique<LevelSystem>();
-        if (!impl_->level->initialize(impl_->assets.get())) {
+        auto& level = impl_->container.service<LevelSystemService>();
+        levelSystem = &level;
+        
+        // Cast to concrete implementation for initialization
+        auto* levelImpl = dynamic_cast<LevelSystem*>(&level);
+        if (!levelImpl) {
+            return std::unexpected("Failed to cast level system to concrete implementation");
+        }
+        
+        if (!levelImpl->initialize(assetSystem)) {
             return std::unexpected("Failed to initialize level system");
         }
-        logInfo("Level system initialized");
+        logInfo("Level system resolved and initialized");
     }
 
     // Phase 10: AI (depends on physics for line-of-sight and assets for navmesh)
+    IAISystem* aiSystem = nullptr;
     if (impl_->enableAI) {
-        // AISystem requires physics system for line-of-sight queries
         if (!impl_->enablePhysics) {
             logWarn("AI system created without physics system - line-of-sight will be disabled");
         }
         if (!impl_->enableAssets) {
             logWarn("AI system created without assets system - navmesh loading will be disabled");
         }
-        impl_->ai = std::make_unique<AISystem>(impl_->physics.get(), impl_->assets.get());
-        if (!impl_->ai->initialize()) {
+
+        // AISystem has constructor dependencies - manually emplace then retrieve service
+        impl_->container.emplace<AISystemService>(physicsSystem, assetSystem);
+        auto& ai = impl_->container.service<IAISystemService>();
+        aiSystem = &ai;
+
+        // Cast to concrete implementation for initialization
+        auto* aiImpl = dynamic_cast<AISystem*>(&ai);
+        if (!aiImpl) {
+            return std::unexpected("Failed to cast AI system to concrete implementation");
+        }
+
+        if (!aiImpl->initialize()) {
             return std::unexpected("Failed to initialize AI system");
         }
-        logInfo("AI system initialized");
+        logInfo("AI system resolved and initialized");
     }
 
-    // Phase 11: Camera (depends on graphics for viewport size)
+    // Phase 11: Camera
+    ICameraSystem* cameraSystem = nullptr;
     if (impl_->enableCamera) {
         if (!impl_->cameraViewportSize.has_value()) {
             return std::unexpected("Camera system requires viewport size");
         }
-        impl_->camera = std::make_unique<CameraSystem>(impl_->cameraViewportSize.value());
-        logInfo("Camera system initialized");
+        // CameraSystem requires viewport size - manually emplace then retrieve service
+        impl_->container.emplace<CameraSystemService>(impl_->cameraViewportSize.value());
+        auto& camera = impl_->container.service<ICameraSystemService>();
+        cameraSystem = &camera;
+        logInfo("Camera system resolved from DI container");
     }
 
     // Phase 12: GAS (Gameplay Ability System - no dependencies)
+    IGASSystem* gasSystem = nullptr;
     if (impl_->enableGAS) {
-        impl_->gas = std::make_unique<GASSystem>();
-        if (!impl_->gas->initialize()) {
+        auto& gas = impl_->container.service<GASSystemService>();
+        gasSystem = &gas;
+        
+        // Cast to concrete implementation for initialization
+        auto* gasImpl = dynamic_cast<GASSystem*>(&gas);
+        if (!gasImpl) {
+            return std::unexpected("Failed to cast GAS system to concrete implementation");
+        }
+        
+        if (!gasImpl->initialize()) {
             return std::unexpected("Failed to initialize GAS system");
         }
-        logInfo("GAS system initialized");
+        logInfo("GAS system resolved and initialized");
     }
 
     // Phase 13: Blueprints (depends on entities and optionally physics)
+    // Note: BlueprintFactory is handled separately as it's not a regular system service yet
     if (impl_->enableBlueprints) {
         if (!impl_->enableEntities) {
             return std::unexpected("Blueprint system requires entity system");
         }
-        impl_->blueprints = std::make_unique<BlueprintFactory>(
-            *impl_->entities,
-            impl_->physics.get()
-        );
-        logInfo("Blueprint factory initialized");
+        // TODO: Implement BlueprintFactory as a proper service
+        logWarn("Blueprint factory DI integration not yet implemented");
     }
 
     // Transfer ownership to Engine
     Engine engine;
     engine.impl_->jobs = std::move(impl_->jobs);
-    engine.impl_->events = std::move(impl_->events);
-    engine.impl_->entities = std::move(impl_->entities);
-    engine.impl_->physics = std::move(impl_->physics);
-    engine.impl_->graphics = std::move(impl_->graphics);
-    engine.impl_->audio = std::move(impl_->audio);
-    engine.impl_->input = std::move(impl_->input);
-    engine.impl_->assets = std::move(impl_->assets);
-    engine.impl_->save = std::move(impl_->save);
-    engine.impl_->level = std::move(impl_->level);
-    engine.impl_->ai = std::move(impl_->ai);
-    engine.impl_->camera = std::move(impl_->camera);
-    engine.impl_->gas = std::move(impl_->gas);
-    engine.impl_->blueprints = std::move(impl_->blueprints);
+    engine.impl_->container = std::move(impl_->container);
 
-    // Wire graphics to assets for texture loading
-    if (engine.impl_->graphics && engine.impl_->assets) {
-        engine.impl_->graphics->setAssetSystem(engine.impl_->assets.get());
-        logInfo("Graphics-to-Assets wiring complete");
+    // Populate BestowEngine aggregate with interface pointers
+    engine.impl_->engineAggregate.events = eventSystem;
+    engine.impl_->engineAggregate.assets = assetSystem;
+    engine.impl_->engineAggregate.entities = entitySystem;
+    engine.impl_->engineAggregate.graphics = graphicsSystem;
+    engine.impl_->engineAggregate.audio = audioSystem;
+    engine.impl_->engineAggregate.input = inputSystem;
+    engine.impl_->engineAggregate.physics = physicsSystem;
+    engine.impl_->engineAggregate.levels = levelSystem;
+    engine.impl_->engineAggregate.save = saveSystem;
+    engine.impl_->engineAggregate.ai = aiSystem;
+    engine.impl_->engineAggregate.camera = cameraSystem;
+    engine.impl_->engineAggregate.gas = gasSystem;
+    engine.impl_->engineAggregate.blueprints = nullptr; // TODO: Implement BlueprintFactory service
+
+    // Wire system dependencies
+    if (graphicsSystem && assetSystem) {
+        // Cast to concrete type for wiring
+        auto* graphicsImpl = dynamic_cast<OpenGLGraphicsSystem*>(graphicsSystem);
+        if (graphicsImpl) {
+            graphicsImpl->setAssetSystem(assetSystem);
+            logInfo("Graphics-to-Assets wiring complete");
+        }
+    }
+    
+    if (physicsSystem && eventSystem) {
+        // Cast to concrete type for wiring  
+        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem);
+        auto* eventsImpl = dynamic_cast<EventSystem*>(eventSystem);
+        if (physicsImpl && eventsImpl) {
+            // Wire physics callbacks to events system
+            physicsImpl->setCollisionCallback([eventsImpl](const CollisionEvent& collision) {
+                eventsImpl->publish(Events::Collision, collision);
+            });
+
+            physicsImpl->setTriggerEnterCallback([eventsImpl](const TriggerEvent& trigger) {
+                eventsImpl->publish(Events::TriggerEnter, trigger);
+            });
+
+            physicsImpl->setTriggerExitCallback([eventsImpl](const TriggerEvent& trigger) {
+                eventsImpl->publish(Events::TriggerExit, trigger);
+            });
+
+            logInfo("Physics-to-Events wiring complete");
+        }
+    }
+    
+    if (assetSystem && eventSystem) {
+        // Cast to concrete type for wiring
+        auto* assetsImpl = dynamic_cast<AssetSystem*>(assetSystem);
+        auto* eventsImpl = dynamic_cast<EventSystem*>(eventSystem);
+        if (assetsImpl && eventsImpl) {
+            assetsImpl->setEventSystem(eventsImpl);
+            logInfo("AssetSystem-to-Events wiring complete");
+        }
+    }
+    
+    if (assetSystem && impl_->jobs) {
+        // Cast to concrete type for wiring
+        auto* assetsImpl = dynamic_cast<AssetSystem*>(assetSystem);
+        if (assetsImpl) {
+            assetsImpl->setJobSystem(impl_->jobs.get());
+            logInfo("JobSystem-to-AssetSystem wiring complete");
+        }
     }
 
-    // Populate BestowEngine aggregate
-    engine.impl_->engineAggregate.events = engine.impl_->events.get();
-    engine.impl_->engineAggregate.assets = engine.impl_->assets.get();
-    engine.impl_->engineAggregate.entities = engine.impl_->entities.get();
-    engine.impl_->engineAggregate.graphics = engine.impl_->graphics.get();
-    engine.impl_->engineAggregate.audio = engine.impl_->audio.get();
-    engine.impl_->engineAggregate.input = engine.impl_->input.get();
-    engine.impl_->engineAggregate.physics = engine.impl_->physics.get();
-    engine.impl_->engineAggregate.levels = engine.impl_->level.get();
-    engine.impl_->engineAggregate.save = engine.impl_->save.get();
-    engine.impl_->engineAggregate.ai = engine.impl_->ai.get();
-    engine.impl_->engineAggregate.camera = engine.impl_->camera.get();
-    engine.impl_->engineAggregate.gas = engine.impl_->gas.get();
-    engine.impl_->engineAggregate.blueprints = engine.impl_->blueprints.get();
-
-    // Wire physics callbacks to events system
-    if (engine.impl_->physics && engine.impl_->events) {
-        auto* events = engine.impl_->events.get();
-
-        // Physical collisions publish Collision events
-        engine.impl_->physics->setCollisionCallback([events](const CollisionEvent& collision) {
-            events->publish(Events::Collision, collision);
-        });
-
-        // Sensor enter events publish TriggerEnter events
-        engine.impl_->physics->setTriggerEnterCallback([events](const TriggerEvent& trigger) {
-            events->publish(Events::TriggerEnter, trigger);
-        });
-
-        // Sensor exit events publish TriggerExit events
-        engine.impl_->physics->setTriggerExitCallback([events](const TriggerEvent& trigger) {
-            events->publish(Events::TriggerExit, trigger);
-        });
-
-        logInfo("Physics-to-Events wiring complete");
-    }
-
-    // Wire assets to events system for asset reload notifications
-    if (engine.impl_->assets && engine.impl_->events) {
-        engine.impl_->assets->setEventSystem(engine.impl_->events.get());
-        logInfo("AssetSystem-to-Events wiring complete");
-    }
-
-    // Wire JobSystem to AssetSystem for async asset loading
-    if (engine.impl_->assets && engine.impl_->jobs) {
-        engine.impl_->assets->setJobSystem(engine.impl_->jobs.get());
-        logInfo("JobSystem-to-AssetSystem wiring complete");
-    }
-
-    logInfo("Engine built successfully");
+    logInfo("Engine built successfully with DI container");
     return engine;
 }
 

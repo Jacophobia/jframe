@@ -646,6 +646,9 @@ class MockInputSystem : public IInputSystem {
 public:
     std::vector<InputMapping> registeredMappings;
 
+    bool initialize(void* nativeWindow) override { return true; }
+    void shutdown() override {}
+
     void registerMapping(const InputMapping& mapping) override {
         registeredMappings.push_back(mapping);
     }

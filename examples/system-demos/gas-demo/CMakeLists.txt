@@ -19,6 +19,7 @@ target_link_libraries(gas-demo PRIVATE
     bestow-gas
     bestow-entity
     bestow-events
+    bestow-core
 )
 
 # Enable warnings

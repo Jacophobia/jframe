@@ -13,10 +13,9 @@ export module bestow.ai.impl;
 import std;
 import bestow.ai;
 import bestow.assets;
-import bestow.assets.impl;
 import bestow.physics;
-import bestow.physics.impl;
 import bestow.types;
+import bestow.services;  // For IAISystemService
 
 export namespace bestow {
 
@@ -93,6 +92,6 @@ private:
 //   auto& physics = container.service<PhysicsSystemService>();
 //   auto& assets = container.service<AssetSystemService>();
 //   container.emplace<AISystemService>(&physics, &assets);
-struct AISystemService : kgr::single_service<AISystem> {};
+struct AISystemService : kgr::single_service<AISystem>, kgr::overrides<IAISystemService> {};
 
 }  // namespace bestow

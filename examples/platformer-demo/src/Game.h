@@ -5,8 +5,8 @@
 
 import bestow;
 import bestow.core;
-import bestow.camera.impl;
 import bestow.components;
+import bestow.camera.impl;
 import bestow.config.impl;
 
 #if defined(BESTOW_DEV_TOOLS)
@@ -61,7 +61,7 @@ private:
     bestow::core::Engine* engine_ = nullptr;
 
     // Config system
-    std::unique_ptr<bestow::IConfigSystem> config_;
+    std::unique_ptr<bestow::ConfigSystem> config_;
 
     // Core entities
     bestow::Entity player_;

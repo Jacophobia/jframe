@@ -7,11 +7,7 @@
 
 import std;
 import bestow;
-import bestow.graphics;
-import bestow.opengl.impl;
-import bestow.entity;
-import bestow.entity.impl;
-import bestow.types;
+import bestow.core;
 
 using namespace bestow;
 
@@ -304,22 +300,29 @@ int main() {
     std::println("");
 
     try {
-        // Create the graphics system implementation directly
-        auto graphics = std::make_unique<OpenGLGraphicsSystem>();
+        // Create engine with graphics system using EngineBuilder
+        auto engineResult = core::EngineBuilder()
+            .withGraphics({
+                .width = 800,
+                .height = 600,
+                .title = "Graphics Demo - Bestow",
+                .vsync = true,
+                .clearColor = Color{30, 40, 50, 255}
+            })
+            .build();
 
-        // Initialize with a window
-        if (!graphics->initialize(800, 600, "Graphics Demo - Bestow")) {
-            std::println("ERROR: Failed to initialize graphics system!");
+        if (!engineResult) {
+            std::println("ERROR: Failed to create engine: {}", engineResult.error());
             return 1;
         }
+
+        core::Engine engine = std::move(engineResult.value());
+        auto& sys = engine.systems();
+        auto* graphics = sys.graphics;
 
         std::println("Graphics system initialized successfully!");
         std::println("Window: 800x600");
         std::println("");
-
-        // Set initial state
-        graphics->setClearColor(Color{30, 40, 50, 255});  // Dark blue-gray background
-        graphics->setVSync(true);
 
         // Get window size
         Size windowSize = graphics->getWindowSize();

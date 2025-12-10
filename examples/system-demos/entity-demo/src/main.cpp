@@ -5,9 +5,8 @@
 #include <bestow/entt_compat.hpp>
 
 import std;
-import bestow.types;
-import bestow.entity;
-import bestow.entity.impl;
+import bestow;
+import bestow.core;
 import entity.demo;
 
 int main() {
@@ -15,11 +14,12 @@ int main() {
         std::println("Bestow Entity System Demo");
         std::println("=========================\n");
 
-        // Create the entity system
-        auto entitySystem = std::make_unique<bestow::EntitySystem>();
+        // Create engine and get systems
+        bestow::core::Engine engine;
+        auto& sys = engine.systems();
 
         // Run the comprehensive demo
-        demo::EntityDemo demo(*entitySystem);
+        demo::EntityDemo demo(*sys.entities);
         demo.run();
 
         std::println("\nDemo completed successfully!");

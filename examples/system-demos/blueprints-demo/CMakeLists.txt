@@ -22,6 +22,7 @@ target_link_libraries(blueprints-demo
         bestow-physics
         bestow-events
         bestow-blueprints
+        bestow-core
         lua
         sol2::sol2
 )

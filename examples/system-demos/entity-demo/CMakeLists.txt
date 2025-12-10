@@ -24,6 +24,7 @@ target_link_libraries(entity-demo
         bestow-contract
         bestow-entity
         bestow-events
+        bestow-core
 )
 
 # Set output directory

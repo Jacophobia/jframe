@@ -16,7 +16,7 @@ import bestow.graphics;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
-import bestow.core;
+import bestow.utils;
 
 namespace bestow::vulkan {
 

@@ -12,7 +12,6 @@ import std;
 import bestow.level;
 import bestow.types;
 import bestow.assets;
-import bestow.assets.impl;
 import bestow.services;
 
 export namespace bestow {

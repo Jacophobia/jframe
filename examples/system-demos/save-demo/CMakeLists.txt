@@ -15,11 +15,12 @@ add_executable(save-demo
 # Enable std module support
 target_use_std_module(save-demo)
 
-# Link against bestow-save and bestow-contract
+# Link against bestow modules
 target_link_libraries(save-demo
     PRIVATE
         bestow-contract
         bestow-save
+        bestow-core
 )
 
 # Set output directory

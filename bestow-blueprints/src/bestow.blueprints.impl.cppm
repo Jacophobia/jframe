@@ -12,9 +12,7 @@ import std;
 import bestow.types;
 import bestow.blueprints;
 import bestow.entity;
-import bestow.entity.impl;
 import bestow.physics;
-import bestow.physics.impl;
 
 export namespace bestow {
 

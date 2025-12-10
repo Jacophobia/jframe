@@ -22,26 +22,8 @@
 #include <glm/gtx/quaternion.hpp>
 
 import std;
-import bestow.types;
-import bestow.input;
-import bestow.input.impl;
-import bestow.graphics3d;
-import bestow.physics3d;
-import bestow.physics3d.impl;
-import bestow.shader;
-import bestow.shader.impl;
-import bestow.assets;
-import bestow.assets.impl;  // AssetSystemService for event-driven hot reload
-import bestow.config;
-import bestow.config.impl;  // ConfigSystemService for Lua parsing
-import bestow.services;  // Abstract services for DI
-import bestow.dev;       // Hot reload manager for config files
-
-#ifdef USE_VULKAN_RENDERER
-import bestow.vulkan.impl;  // Provides VulkanGraphics3DSystemService
-#else
-import bestow.opengl.impl;  // Provides Graphics3DSystemService (OpenGL)
-#endif
+import bestow;
+import bestow.core;
 
 using namespace bestow;
 
@@ -530,125 +512,76 @@ int main(int argc, char* argv[]) {
     std::println("  Esc   - Release mouse / Exit");
     std::println("");
 
-    // Create DI container and initialize systems
-    kgr::container container;
+    // Create Engine and get systems via interfaces
+    core::Engine engine;
+    auto& sys = engine.systems();
+    auto* graphics = sys.graphics3d;
+    auto* physics = sys.physics3d;
+    auto* input = sys.input;
+    auto* assets = sys.assets;
+    auto* config = sys.config;
 
-    // Register the graphics backend (this determines which implementation is used)
-#ifdef USE_VULKAN_RENDERER
-    container.service<vulkan::VulkanGraphics3DSystemService>();
-#else
-    container.service<Graphics3DSystemService>();
-#endif
-
-    // Create graphics configuration (works for both OpenGL and Vulkan)
+    // Create graphics configuration
     Graphics3DConfig graphicsConfig;
     graphicsConfig.windowWidth = WINDOW_WIDTH;
     graphicsConfig.windowHeight = WINDOW_HEIGHT;
     graphicsConfig.windowTitle = "Bestow 3D Platformer Demo";
     graphicsConfig.vsync = true;
-    graphicsConfig.enableValidation = true;  // Debug context for OpenGL, validation layers for Vulkan
+    graphicsConfig.enableValidation = true;
 
-    // Get graphics system via the abstract interface
-    auto& graphics = container.service<IGraphics3DSystemService>();
-
-    // Initialize graphics system - both backends use the same interface
-    if (!graphics.initialize(graphicsConfig)) {
+    // Initialize graphics system
+    if (!graphics->initialize(graphicsConfig)) {
         std::println("Failed to initialize graphics system");
         return 1;
     }
-    g_window = static_cast<GLFWwindow*>(graphics.getNativeWindowHandle());
+    g_window = static_cast<GLFWwindow*>(graphics->getNativeWindowHandle());
 
-    // Set up GLFW callbacks (works for both OpenGL and Vulkan window)
+    // Set up GLFW callbacks
     glfwSetCursorPosCallback(g_window, mouseCallback);
     glfwSetKeyCallback(g_window, keyCallback);
     glfwSetMouseButtonCallback(g_window, mouseButtonCallback);
     glfwSetInputMode(g_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
-    // Get physics system from container and initialize
-    auto& physics = container.service<Physics3DSystemService>();
-    if (!physics.initialize()) {
-        std::println("Failed to initialize physics system");
-        glfwTerminate();
-        return 1;
-    }
+    // Enable asset hot reload
+    assets->enableHotReload(true);
+    std::println("Asset system initialized with hot reload support");
 
-    // Get shader system from container and connect to graphics
-    auto& shaderSystem = container.service<ShaderSystemService>();
-    graphics.setShaderSystem(&shaderSystem);
-    shaderSystem.setShaderBasePath("assets/shaders/");
-    shaderSystem.setMaterialBasePath("assets/materials/");
-    std::println("Shader system initialized with hot reload support");
-
-    // Get asset system from container for event-driven shader hot reload
-    auto& assetSystem = container.service<AssetSystemService>();
-    assetSystem.enableHotReload(true);  // Enable efsw file watcher
-    graphics.setAssetSystem(&assetSystem);
-    std::println("Asset system initialized with event-driven file watching");
-
-    // Get config system from container and connect to graphics for Lua parsing
-    auto& configSystem = container.service<ConfigSystemService>();
-    graphics.setConfigSystem(&configSystem);
-    std::println("Config system connected to graphics for Lua material parsing");
+    // Initialize config system
+    config->initialize();
+    std::println("Config system initialized");
 
     // Load runtime graphics config from Lua file
     std::filesystem::path configPath = "assets/config/graphics3d.lua";
-    if (graphics.loadRuntimeConfig(configPath)) {
+    if (config->loadConfig(configPath.string())) {
         std::println("Loaded graphics config from {}", configPath.string());
     } else {
         std::println("Using default graphics config (no {} found)", configPath.string());
     }
 
-    // Set up hot reload manager for config files
-    dev::HotReloadManager hotReload;
-    hotReload.watchDirectory("assets");
+    // Enable hot reload for config files
+    config->enableHotReload(true);
+    std::println("Hot reload enabled for config files");
 
-    // Wire up config file change callback
-    hotReload.onConfigChanged = [&graphics](const std::filesystem::path& path) {
-        // Check if this is the graphics config file
-        if (path.filename() == "graphics3d.lua") {
-            std::println("Hot reloading graphics config...");
-            if (graphics.reloadRuntimeConfig()) {
-                std::println("Graphics config reloaded successfully");
-            } else {
-                std::println("Failed to reload graphics config");
-            }
-        }
-    };
+    std::println("Hot reload enabled for assets and config files");
 
-    // Wire up shader file change callback (triggers shader recompilation)
-    hotReload.onShaderChanged = [](const std::filesystem::path& path) {
-        std::println("Shader changed: {} - shader system will reload on next frame",
-                     path.filename().string());
-    };
-
-    // Wire up material file change callback
-    hotReload.onMaterialChanged = [](const std::filesystem::path& path) {
-        std::println("Material changed: {} - material will reload on next frame",
-                     path.filename().string());
-    };
-
-    std::println("Hot reload enabled for shaders, materials, and config files");
-
-    // Get input system from container and initialize
-    auto& input = container.service<InputSystemService>();
-    input.setAssetSystem(&assetSystem);  // Set asset system before initialize for controller mappings
-    if (!input.initialize(g_window)) {
+    // Initialize input system
+    if (!input->initialize(g_window)) {
         std::println("Failed to initialize input system");
         glfwTerminate();
         return 1;
     }
 
     // Setup
-    setupInput(&input);
-    physics.setGravity(Vec3{0.0f, GRAVITY, 0.0f});
+    setupInput(input);
+    physics->setGravity(Vec3{0.0f, GRAVITY, 0.0f});
 
     // Create game objects
-    auto platforms = createPlatforms(&graphics, &physics);
-    auto player = createPlayer(&graphics, &physics);
+    auto platforms = createPlatforms(graphics, physics);
+    auto player = createPlayer(graphics, physics);
 
     // Create test sphere for material cycling demo
     {
-        auto sphereResult = graphics.createSphereMesh(g_testSphere.scale);
+        auto sphereResult = graphics->createSphereMesh(g_testSphere.scale);
         if (sphereResult) {
             g_testSphere.mesh = *sphereResult;
             std::println("Created test sphere for material cycling (press ` to cycle)");
@@ -677,33 +610,30 @@ int main(int argc, char* argv[]) {
         // Poll events
         glfwPollEvents();
 
-        // Update hot reload manager (check for config file changes)
-        hotReload.update();
-
         // Process asset system file change events (event-driven via efsw)
-        assetSystem.update();
+        assets->update();
 
         // Update input
-        input.update();
+        input->update();
 
         // Update physics
-        physics.update(dt, 4);
+        physics->update(dt, 4);
 
         // Update player
-        updatePlayer(player, &input, &physics, dt);
+        updatePlayer(player, input, physics, dt);
 
         // Update third-person camera collision (telescoping behind walls)
-        updateCameraCollision(player, &physics, dt);
+        updateCameraCollision(player, physics, dt);
 
         // Begin frame
-        graphics.beginFrame();
+        graphics->beginFrame();
 
         // Set camera (third-person with wall avoidance)
         Camera3D camera = getPlayerCamera(player);
-        graphics.setCamera(camera);
+        graphics->setCamera(camera);
 
         // Check for shader hot reload
-        graphics.updateShaders();
+        graphics->updateShaders();
 
         // Render platforms
         for (const auto& platform : platforms) {
@@ -719,15 +649,15 @@ int main(int argc, char* argv[]) {
 
                 // Pass per-object color to the shader
                 Vec4 colorOverride{platform.color.x, platform.color.y, platform.color.z, 1.0f};
-                auto result = graphics.drawMeshWithLuaMaterial(
+                auto result = graphics->drawMeshWithLuaMaterial(
                     platform.mesh, platform.luaMaterial, worldMatrix, colorOverride);
 
                 if (!result) {
                     // Fallback to regular PBR if shader fails
-                    graphics.drawMesh(platform.mesh, platform.material, transform);
+                    graphics->drawMesh(platform.mesh, platform.material, transform);
                 }
             } else {
-                graphics.drawMesh(platform.mesh, platform.material, transform);
+                graphics->drawMesh(platform.mesh, platform.material, transform);
             }
         }
 
@@ -740,15 +670,15 @@ int main(int argc, char* argv[]) {
             if (!player.luaMaterial.empty()) {
                 Mat4 worldMatrix = glm::translate(Mat4(1.0f), player.position);
                 Vec4 playerColor{0.3f, 0.5f, 0.95f, 1.0f};  // Bright cartoon blue
-                auto result = graphics.drawMeshWithLuaMaterial(
+                auto result = graphics->drawMeshWithLuaMaterial(
                     player.mesh, player.luaMaterial, worldMatrix, playerColor);
 
                 if (!result) {
                     // Fallback to PBR if shader fails
-                    graphics.drawMesh(player.mesh, player.material, transform);
+                    graphics->drawMesh(player.mesh, player.material, transform);
                 }
             } else {
-                graphics.drawMesh(player.mesh, player.material, transform);
+                graphics->drawMesh(player.mesh, player.material, transform);
             }
         }
 
@@ -763,7 +693,7 @@ int main(int argc, char* argv[]) {
             Vec4 sphereColor{1.0f, 1.0f, 1.0f, 1.0f};  // White - lets shader colors show through
 
             const std::string& currentMaterial = g_allMaterials[g_currentMaterialIndex];
-            auto result = graphics.drawMeshWithLuaMaterial(
+            auto result = graphics->drawMeshWithLuaMaterial(
                 g_testSphere.mesh, currentMaterial, sphereWorld, sphereColor);
 
             if (!result) {
@@ -781,7 +711,7 @@ int main(int argc, char* argv[]) {
         // graphics.debugDrawAxes(Transform3D{}, 2.0f);
 
         // End frame
-        graphics.endFrame();
+        graphics->endFrame();
     }
 
     std::println("Shutting down...");

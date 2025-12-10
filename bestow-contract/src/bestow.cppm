@@ -23,6 +23,7 @@ export import bestow.blueprints;
 export import bestow.ui;
 export import bestow.gamestate;
 export import bestow.shader;
+export import bestow.services;
 
 export namespace bestow {
 

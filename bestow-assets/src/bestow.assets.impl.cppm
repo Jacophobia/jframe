@@ -20,16 +20,7 @@ import bestow.services;
 
 export namespace bestow {
 
-// Note: TextureData is now in bestow.assets contract module
-
-// Data asset structure for JSON and text files
-// Note: JSON data is stored as std::any for MSVC C++23 module compatibility.
-// Use getJson() and setJson() helper functions to access the parsed JSON.
-struct DataAsset {
-    std::any jsonData;        // Holds nlohmann::json when isJson=true (type-erased for MSVC compatibility)
-    std::string rawText;      // Original text (for non-JSON or Lua)
-    bool isJson = false;
-};
+// Note: TextureData and DataAsset are now in bestow.assets contract module
 
 // Helper function declarations for JSON access (defined in AssetSystem.cpp)
 // These provide type-safe access to the type-erased JSON data.
@@ -52,12 +43,7 @@ const std::any& getDataAssetJsonAny(const DataAsset& asset);
 // Note: ShaderData is now defined in bestow.assets contract module
 // It includes GLSL source, compiled SPIR-V bytecode, and compilation status
 
-// NavMesh data structure - stores raw navmesh binary for AI system to process
-struct NavMeshData {
-    std::vector<unsigned char> fileData;  // Raw navmesh binary
-    std::string path;
-    size_t fileSize = 0;
-};
+// Note: NavMeshData is now defined in bestow.assets contract module
 
 // BehaviorTree data structure - stores tree definition for AI system
 // Note: JSON data is stored as std::any for MSVC C++23 module compatibility.

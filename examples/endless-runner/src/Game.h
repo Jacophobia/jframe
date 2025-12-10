@@ -5,15 +5,46 @@
 
 import bestow;
 import bestow.core;
-import bestow.camera.impl;
-import bestow.components;
-import bestow.config.impl;
 
 #if defined(BESTOW_DEV_TOOLS)
 import bestow.dev;
 #endif
 
 namespace endless_runner {
+
+// Camera component for smooth following
+struct Camera2D {
+    bestow::Entity target;
+    float smoothing = 5.0f;
+    float zoom = 1.0f;
+    bestow::Vec2 position = {0.0f, 0.0f};
+    bestow::Vec2 offset = {0.0f, 0.0f};
+    float shakeIntensity = 0.0f;
+    float shakeDuration = 0.0f;
+
+    void shake(float intensity, float duration) {
+        shakeIntensity = intensity;
+        shakeDuration = duration;
+    }
+
+    void update(bestow::DeltaTime dt) {
+        if (shakeDuration > 0.0f) {
+            shakeDuration -= dt;
+            if (shakeDuration <= 0.0f) {
+                shakeIntensity = 0.0f;
+            }
+        }
+    }
+
+    bestow::Camera getCamera() const {
+        bestow::Camera cam;
+        cam.transform.x = position.x;
+        cam.transform.y = position.y;
+        cam.zoom = zoom;
+        cam.viewportSize = {1280, 720};
+        return cam;
+    }
+};
 
 class Game : public bestow::core::Application {
 public:
@@ -43,9 +74,8 @@ private:
     void renderHUD();
 
     bestow::core::Engine* engine_ = nullptr;
-    std::unique_ptr<bestow::IConfigSystem> config_;
     bestow::Entity player_;
-    std::unique_ptr<bestow::CameraSystem> cameraSystem_;
+    bestow::Entity camera_;
 
     // Sprite sheets
     bestow::SpriteSheet playerSheet_;

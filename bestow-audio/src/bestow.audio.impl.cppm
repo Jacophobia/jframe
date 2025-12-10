@@ -24,7 +24,8 @@ public:
     explicit FMODAudioSystem(IAssetSystem* assetSystem = nullptr);
     ~FMODAudioSystem() override;
 
-    bool initialize();
+    bool initialize() override;
+    void shutdown() override;
 
     void update(DeltaTime dt) override;
 

@@ -9,7 +9,7 @@ module;
 module bestow.config.impl;
 
 import std;
-import bestow.assets.impl;  // For DataAsset
+import bestow.assets;  // For DataAsset
 import bestow.events;        // For Events namespace
 
 namespace bestow {

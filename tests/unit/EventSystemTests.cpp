@@ -8,20 +8,73 @@
 #include <gtest/gtest.h>
 #include <kangaru/kangaru.hpp>
 
-import bestow.events;
-import bestow.events.impl;
+import bestow;
 import bestow.types;
+import bestow.events.impl;  // For EventSystemService
 
 namespace bestow::tests {
+
+// Mock Event System for interface testing
+class MockEventSystem : public IEventSystem {
+public:
+    SubscriptionId subscribe(const EventType& eventType, EventCallback callback) override {
+        callbacks_[eventType].push_back({++nextId_, callback});
+        return nextId_;
+    }
+
+    void unsubscribe(SubscriptionId id) override {
+        for (auto& [type, subs] : callbacks_) {
+            subs.erase(std::remove_if(subs.begin(), subs.end(),
+                [id](const auto& sub) { return sub.first == id; }), subs.end());
+        }
+    }
+
+    void unsubscribeAll(const EventType& eventType) override {
+        callbacks_.erase(eventType);
+    }
+
+    void publish(const EventType& eventType, const EventData& data) override {
+        if (auto it = callbacks_.find(eventType); it != callbacks_.end()) {
+            for (const auto& [id, callback] : it->second) {
+                callback(data);
+            }
+        }
+    }
+
+    void queue(const EventType& eventType, const EventData& data) override {
+        eventQueue_.push_back({eventType, data});
+    }
+
+    void processQueue() override {
+        // Process all queued events
+        auto queueCopy = std::move(eventQueue_);
+        eventQueue_.clear();
+        for (const auto& [type, data] : queueCopy) {
+            publish(type, data);
+        }
+    }
+
+    void clearQueue() override {
+        eventQueue_.clear();
+    }
+
+    std::size_t queueSize() const override {
+        return eventQueue_.size();
+    }
+
+private:
+    SubscriptionId nextId_ = 0;
+    std::unordered_map<std::string, std::vector<std::pair<SubscriptionId, EventCallback>>> callbacks_;
+    std::vector<std::pair<std::string, EventData>> eventQueue_;
+};
 
 class EventSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        eventSystem_ = &container_.service<EventSystemService>();
+        eventSystem_ = std::make_unique<MockEventSystem>();
     }
 
-    kgr::container container_;
-    IEventSystem* eventSystem_ = nullptr;
+    std::unique_ptr<MockEventSystem> eventSystem_;
 };
 
 TEST_F(EventSystemTest, SubscribeAndPublish) {

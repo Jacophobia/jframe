@@ -16,9 +16,8 @@ module bestow.vulkan.impl;
 import std;
 import bestow.graphics3d;
 import bestow.types;
-import bestow.assets;
-import bestow.assets.impl;  // For DataAsset
-import bestow.core;
+import bestow.assets;  // For DataAsset
+import bestow.utils;
 import bestow.entity;
 import bestow.shader;
 

@@ -3,10 +3,6 @@
 
 import std;
 import bestow;
-import bestow.core;
-import bestow.camera.impl;
-import bestow.components;
-import bestow.config.impl;
 
 #if defined(BESTOW_DEV_TOOLS)
 import bestow.dev;

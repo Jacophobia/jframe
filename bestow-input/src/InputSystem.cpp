@@ -18,12 +18,6 @@ module bestow.input.impl;
 
 namespace bestow {
 
-// Forward declaration of DataAsset from bestow.assets.impl
-struct DataAsset {
-    std::any jsonData;
-    std::string rawText;
-    bool isJson = false;
-};
 
 InputSystem::~InputSystem() {
     for (auto* controller : controllers_) {
@@ -36,8 +30,8 @@ InputSystem::~InputSystem() {
     }
 }
 
-bool InputSystem::initialize(GLFWwindow* window) {
-    window_ = window;
+bool InputSystem::initialize(void* nativeWindow) {
+    window_ = static_cast<GLFWwindow*>(nativeWindow);
 
     // Initialize SDL2 for game controllers only
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
@@ -79,6 +73,24 @@ bool InputSystem::initialize(GLFWwindow* window) {
     }
 
     return true;
+}
+
+void InputSystem::shutdown() {
+    // Close all open controllers
+    for (auto& controller : controllers_) {
+        if (controller) {
+            SDL_GameControllerClose(controller);
+            controller = nullptr;
+        }
+    }
+    
+    // Shutdown SDL game controller subsystem
+    if (sdlInitialized_) {
+        SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
+        sdlInitialized_ = false;
+    }
+    
+    window_ = nullptr;
 }
 
 void InputSystem::setAssetSystem(IAssetSystem* assets) {

@@ -13,9 +13,8 @@
 #include <SDL.h>
 
 import std;
-import bestow.types;
-import bestow.input;
-import bestow.input.impl;
+import bestow;
+import bestow.core;
 
 using namespace bestow;
 
@@ -274,11 +273,11 @@ int main() {
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1);  // VSync
 
-    // Create input system using DI container
-    kgr::container container;
-    auto& input = container.service<InputSystemService>();
+    // Create input system using Engine
+    core::Engine engine;
+    auto& sys = engine.systems();
 
-    if (!input.initialize(window)) {
+    if (!sys.input->initialize(window)) {
         std::cerr << "Failed to initialize input system\n";
         glfwDestroyWindow(window);
         glfwTerminate();
@@ -291,75 +290,75 @@ int main() {
     std::cout << "Registering default input mappings...\n";
 
     // MoveLeft - Left Arrow, A key, Controller D-Pad Left, Controller Left Stick X (negative)
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 263, .scale = -1.0f},  // Left Arrow
         .action = "MoveLeft"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 65, .scale = -1.0f},   // A
         .action = "MoveLeft"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = SDL_CONTROLLER_BUTTON_DPAD_LEFT, .scale = -1.0f},
         .action = "MoveLeft"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0,
                    .keyCode = SDL_CONTROLLER_AXIS_LEFTX + SDL_CONTROLLER_BUTTON_MAX, .scale = -1.0f, .deadzone = 0.2f},
         .action = "MoveLeft"
     });
 
     // MoveRight - Right Arrow, D key, Controller D-Pad Right, Controller Left Stick X (positive)
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 262, .scale = 1.0f},   // Right Arrow
         .action = "MoveRight"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 68, .scale = 1.0f},    // D
         .action = "MoveRight"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = SDL_CONTROLLER_BUTTON_DPAD_RIGHT, .scale = 1.0f},
         .action = "MoveRight"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0,
                    .keyCode = SDL_CONTROLLER_AXIS_LEFTX + SDL_CONTROLLER_BUTTON_MAX, .scale = 1.0f, .deadzone = 0.2f},
         .action = "MoveRight"
     });
 
     // Jump - Space, Controller A button
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32, .scale = 1.0f},    // Space
         .action = "Jump"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = SDL_CONTROLLER_BUTTON_A, .scale = 1.0f},
         .action = "Jump"
     });
 
     // Attack - Left Ctrl, Controller X button
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 341, .scale = 1.0f},   // Left Ctrl
         .action = "Attack"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = SDL_CONTROLLER_BUTTON_X, .scale = 1.0f},
         .action = "Attack"
     });
 
     // Menu - Escape, Controller Start button
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 256, .scale = 1.0f},   // Escape
         .action = "Menu"
     });
-    input.registerMapping(InputMapping{
+    sys.input->registerMapping(InputMapping{
         .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = SDL_CONTROLLER_BUTTON_START, .scale = 1.0f},
         .action = "Menu"
     });
 
     std::cout << "Input mappings registered successfully!\n";
-    printMappings(input);
+    printMappings(*sys.input);
 
     // Demo state
     DemoMode mode = DemoMode::Normal;
@@ -369,13 +368,13 @@ int main() {
     // Main loop
     while (!glfwWindowShouldClose(window)) {
         // Update input system (CRITICAL: must be called every frame)
-        input.update();
+        sys.input->update();
 
         // Poll GLFW events
         glfwPollEvents();
 
         // Check for quit
-        if (input.wasActionJustPressed("Menu")) {
+        if (sys.input->wasActionJustPressed("Menu")) {
             std::cout << "\nMenu action pressed - exiting demo\n";
             break;
         }
@@ -384,16 +383,16 @@ int main() {
         if (glfwGetKey(window, 82) == GLFW_PRESS && mode == DemoMode::Normal) {  // R key
             std::cout << "\n>>> ENTERING REBINDING MODE <<<\n";
             std::cout << "Press any key, mouse button, or controller button to capture it...\n";
-            input.startListeningForInput();
+            sys.input->startListeningForInput();
             mode = DemoMode::Rebinding;
         }
 
         if (mode == DemoMode::Rebinding) {
-            if (input.isListeningForInput()) {
+            if (sys.input->isListeningForInput()) {
                 std::cout << "  Listening for input...\r" << std::flush;
             } else {
                 // Input was captured
-                auto lastInput = input.getLastInput();
+                auto lastInput = sys.input->getLastInput();
                 if (lastInput.has_value()) {
                     std::cout << "\n>>> INPUT CAPTURED <<<\n";
                     std::cout << "  Device: " << deviceTypeToString(lastInput->deviceType) << "\n";
@@ -416,7 +415,7 @@ int main() {
             if (glfwGetKey(window, 77) == GLFW_PRESS) {  // M key
                 static bool mKeyWasPressed = false;
                 if (!mKeyWasPressed) {
-                    printMappings(input);
+                    printMappings(*sys.input);
                     mKeyWasPressed = true;
                 }
             } else {
@@ -429,7 +428,7 @@ int main() {
                 static bool cKeyWasPressed = false;
                 if (!cKeyWasPressed) {
                     std::cout << "\n>>> CLEARING ALL MAPPINGS <<<\n";
-                    input.clearMappings();
+                    sys.input->clearMappings();
                     std::cout << "All mappings cleared.\n";
                     cKeyWasPressed = true;
                 }
@@ -442,7 +441,7 @@ int main() {
             if (glfwGetKey(window, 84) == GLFW_PRESS) {  // T key
                 static bool tKeyWasPressed = false;
                 if (!tKeyWasPressed) {
-                    testActionHelpers(input);
+                    testActionHelpers(*sys.input);
                     tKeyWasPressed = true;
                 }
             } else {
@@ -460,24 +459,24 @@ int main() {
         // Print active states periodically (every 30 frames to avoid spam)
         if (mode == DemoMode::Normal && frameCount % 30 == 0) {
             // Only print if something is active
-            auto allStates = input.getAllActionStates();
+            auto allStates = sys.input->getAllActionStates();
             bool anyActive = std::ranges::any_of(allStates, [](const ActionState& s) {
                 return s.active || s.justPressed || s.justReleased;
             });
 
-            bool mouseActive = input.isMouseButtonDown(0) || input.isMouseButtonDown(1) ||
-                             input.isMouseButtonDown(2);
+            bool mouseActive = sys.input->isMouseButtonDown(0) || sys.input->isMouseButtonDown(1) ||
+                             sys.input->isMouseButtonDown(2);
 
             if (anyActive) {
-                printActionStates(input);
+                printActionStates(*sys.input);
             }
 
             if (mouseActive || frameCount == 0) {
-                printMouseState(input);
+                printMouseState(*sys.input);
             }
 
-            if (frameCount == 0 || input.getConnectedControllerCount() > 0) {
-                printControllerState(input);
+            if (frameCount == 0 || sys.input->getConnectedControllerCount() > 0) {
+                printControllerState(*sys.input);
             }
         }
 
@@ -493,8 +492,8 @@ int main() {
     std::cout << "\n=== Demo Complete ===\n";
     std::cout << "Final statistics:\n";
     std::cout << "  Total frames: " << frameCount << "\n";
-    std::cout << "  Final mapping count: " << input.getMappings().size() << "\n";
-    printControllerState(input);
+    std::cout << "  Final mapping count: " << sys.input->getMappings().size() << "\n";
+    printControllerState(*sys.input);
 
     // Cleanup
     glfwDestroyWindow(window);

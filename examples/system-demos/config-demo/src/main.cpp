@@ -5,9 +5,8 @@
 #include <bestow/sol2_compat.hpp>
 
 import std;
-import bestow.types;
-import bestow.config;
-import bestow.config.impl;
+import bestow;
+import bestow.core;
 
 using namespace bestow;
 
@@ -461,24 +460,26 @@ int main() {
     std::println("Bestow Config System Demo");
     std::println("Comprehensive API coverage test\n");
 
-    // Create config system instance
-    ConfigSystem config;
+    // Create engine and get config system via interface
+    core::Engine engine;
+    auto& sys = engine.systems();
+    auto* config = sys.config;
 
     try {
         // Run all demos in sequence
-        demoLifecycle(config);
-        demoLoadingConfigs(config);
-        demoSimpleValueAccess(config);
-        demoDefaultValues(config);
-        demoArrayAccess(config);
-        demoRuntimeModification(config);
-        demoStateQueries(config);
-        demoHotReload(config);
-        demoChangeNotifications(config);
-        demoReloading(config);
-        demoUpdateCycle(config);
-        demoNestedAccess(config);
-        demoLoadConfigAsset(config);
+        demoLifecycle(*config);
+        demoLoadingConfigs(*config);
+        demoSimpleValueAccess(*config);
+        demoDefaultValues(*config);
+        demoArrayAccess(*config);
+        demoRuntimeModification(*config);
+        demoStateQueries(*config);
+        demoHotReload(*config);
+        demoChangeNotifications(*config);
+        demoReloading(*config);
+        demoUpdateCycle(*config);
+        demoNestedAccess(*config);
+        demoLoadConfigAsset(*config);
 
         // Summary
         printSectionHeader("DEMO COMPLETE");
@@ -534,14 +535,14 @@ int main() {
         // Cleanup
         printSectionHeader("CLEANUP");
         std::cout << "Shutting down config system...\n";
-        config.shutdown();
+        config->shutdown();
         std::cout << "Demo completed successfully!\n";
 
         return 0;
 
     } catch (const std::exception& e) {
         std::println("ERROR: Exception during demo: {}", e.what());
-        config.shutdown();
+        config->shutdown();
         return 1;
     }
 }

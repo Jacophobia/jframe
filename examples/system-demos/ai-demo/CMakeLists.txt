@@ -27,6 +27,7 @@ target_link_libraries(ai-demo
         bestow-physics
         bestow-assets
         bestow-events
+        bestow-core
 )
 
 # Set output directory

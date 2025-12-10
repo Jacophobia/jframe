@@ -27,6 +27,8 @@ public:
     // Lifecycle
     //======================================================================
 
+    virtual bool initialize() = 0;
+    virtual void shutdown() = 0;
     virtual void update(DeltaTime dt) = 0;
 
     //======================================================================

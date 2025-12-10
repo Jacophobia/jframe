@@ -15,11 +15,12 @@ add_executable(config-demo
 # Enable std module support
 target_use_std_module(config-demo)
 
-# Link against bestow-config and bestow-contract
+# Link against bestow modules
 # Note: sol2 linked explicitly for Windows - module imports require the symbols
 target_link_libraries(config-demo PRIVATE
     bestow-contract
     bestow-config
+    bestow-core
     lua
     sol2::sol2
 )

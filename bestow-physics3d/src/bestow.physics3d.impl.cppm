@@ -3,6 +3,9 @@
 
 module;
 
+// Required for Jolt's use of std::is_trivial before import std
+#include <type_traits>
+
 // Jolt Physics headers - MUST be in global module fragment
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
