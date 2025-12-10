@@ -84,9 +84,16 @@ jobs:
           echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
           echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
 
+          # Get the macOS SDK path - LLVM Clang needs this to find system headers
+          SDK_PATH=$(xcrun --show-sdk-path)
+          echo "Using macOS SDK at: $SDK_PATH"
+          echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
+
           # Set library paths for consistent libc++ usage
           echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I${LLVM_PATH}/include" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
 
           # Verify version
           ${LLVM_PATH}/bin/clang++ --version
@@ -185,9 +192,14 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           # Pass compiler paths directly to CMake to ensure they're used
+          CMAKE_EXTRA_ARGS=""
+          if [ "$(uname)" = "Darwin" ] && [ -n "$SDKROOT" ]; then
+            CMAKE_EXTRA_ARGS="-DCMAKE_OSX_SYSROOT=$SDKROOT"
+          fi
           cmake --preset ${{ matrix.preset }} \
             -DCMAKE_C_COMPILER=$BESTOW_CC \
-            -DCMAKE_CXX_COMPILER=$BESTOW_CXX
+            -DCMAKE_CXX_COMPILER=$BESTOW_CXX \
+            $CMAKE_EXTRA_ARGS
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
