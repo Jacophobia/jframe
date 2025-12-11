@@ -7,6 +7,81 @@ module;
 
 #include <kangaru/kangaru.hpp>
 
+//==========================================================================
+// Service Definition Helper Macros
+//
+// These macros reduce boilerplate when defining concrete services that
+// override abstract services with constructor injection.
+//
+// Usage examples (in implementation modules):
+//
+// For a service with no dependencies:
+//   BESTOW_SERVICE(EventSystem, EventSystem)
+//   // Creates: struct EventSystemService : kgr::single_service<EventSystem>, ...
+//
+// For a service with one dependency:
+//   BESTOW_SERVICE_1(AssetSystem, AssetSystem, EventSystem)
+//   // Creates service with IEventSystem* injected via constructor
+//
+// For a service with two dependencies:
+//   BESTOW_SERVICE_2(ConfigSystem, ConfigSystem, AssetSystem, EventSystem)
+//
+// For a service with three dependencies:
+//   BESTOW_SERVICE_3(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem)
+//
+// Note: The macro uses I##InterfaceType##Service naming convention.
+// So AssetSystem maps to IAssetSystemService, EventSystem to IEventSystemService, etc.
+//==========================================================================
+
+// Service with no injected dependencies (default constructible)
+#define BESTOW_SERVICE(ImplType, InterfaceType) \
+    struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> {}
+
+// Service with 1 injected dependency
+#define BESTOW_SERVICE_1(ImplType, InterfaceType, Dep1Type) \
+    struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct(kgr::inject_t<bestow::I##Dep1Type##Service> d1) \
+            -> kgr::inject_result<bestow::I##Dep1Type*> { \
+            return kgr::inject(&d1.service()); \
+        } \
+    }
+
+// Service with 2 injected dependencies
+#define BESTOW_SERVICE_2(ImplType, InterfaceType, Dep1Type, Dep2Type) \
+    struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*> { \
+            return kgr::inject(&d1.service(), &d2.service()); \
+        } \
+    }
+
+// Service with 3 injected dependencies
+#define BESTOW_SERVICE_3(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type) \
+    struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2, \
+            kgr::inject_t<bestow::I##Dep3Type##Service> d3) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*> { \
+            return kgr::inject(&d1.service(), &d2.service(), &d3.service()); \
+        } \
+    }
+
+// Service with 4 injected dependencies (rarely needed)
+#define BESTOW_SERVICE_4(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type, Dep4Type) \
+    struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2, \
+            kgr::inject_t<bestow::I##Dep3Type##Service> d3, \
+            kgr::inject_t<bestow::I##Dep4Type##Service> d4) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*, bestow::I##Dep4Type*> { \
+            return kgr::inject(&d1.service(), &d2.service(), &d3.service(), &d4.service()); \
+        } \
+    }
+
 export module bestow.services;
 
 import std;

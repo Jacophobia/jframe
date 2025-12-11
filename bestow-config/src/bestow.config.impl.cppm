@@ -180,13 +180,7 @@ private:
 };
 
 // Kangaru service definitions
-struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
-    // ConfigSystem depends on AssetSystem for file I/O and EventSystem for notifications
-    static auto construct(kgr::inject_t<IAssetSystemService> assetService,
-                          kgr::inject_t<IEventSystemService> eventService)
-        -> kgr::inject_result<IAssetSystem*, IEventSystem*> {
-        return kgr::inject(&assetService.service(), &eventService.service());
-    }
-};
+// ConfigSystem depends on AssetSystem for file I/O and EventSystem for notifications
+BESTOW_SERVICE_2(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

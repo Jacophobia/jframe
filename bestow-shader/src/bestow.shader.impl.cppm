@@ -1516,12 +1516,7 @@ void main() {
 //==========================================================================
 
 // Concrete service that provides OpenGLShaderSystem as IShaderSystem
-struct ShaderSystemService : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {
-    // ShaderSystem depends on AssetSystem for loading shader source files
-    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
-        -> kgr::inject_result<IAssetSystem*> {
-        return kgr::inject(&assetService.service());
-    }
-};
+// ShaderSystem depends on AssetSystem for loading shader source files
+BESTOW_SERVICE_1(OpenGLShaderSystem, ShaderSystem, AssetSystem);
 
 }  // namespace bestow

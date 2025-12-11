@@ -4516,22 +4516,10 @@ bool OpenGLGraphics3DSystem::reloadRuntimeConfig() {
 
 // Concrete services that provide OpenGL implementations
 // Abstract services are imported from bestow.services
-struct GraphicsSystemService : kgr::single_service<OpenGLGraphicsSystem>, kgr::overrides<IGraphicsSystemService> {
-    // OpenGLGraphicsSystem depends on AssetSystem for texture loading
-    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
-        -> kgr::inject_result<IAssetSystem*> {
-        return kgr::inject(&assetService.service());
-    }
-};
+// OpenGLGraphicsSystem depends on AssetSystem for texture loading
+BESTOW_SERVICE_1(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
 
-struct Graphics3DSystemService : kgr::single_service<OpenGLGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
-    // OpenGLGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-    static auto construct(kgr::inject_t<IAssetSystemService> assetService,
-                          kgr::inject_t<IShaderSystemService> shaderService,
-                          kgr::inject_t<IConfigSystemService> configService)
-        -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
-        return kgr::inject(&assetService.service(), &shaderService.service(), &configService.service());
-    }
-};
+// OpenGLGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
+BESTOW_SERVICE_3(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow

@@ -204,13 +204,7 @@ private:
 
 // Kangaru service definitions
 // Concrete service that provides AssetSystem as IAssetSystem
-// Dependencies are injected via constructor: IEventSystem (optional)
-struct AssetSystemService : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {
-    // Constructor injection: AssetSystem receives IEventSystem* from container
-    // Note: JobSystem uses void* to avoid circular dependency, injected separately
-    static auto construct(kgr::inject_t<IEventSystemService> eventService) -> kgr::inject_result<IEventSystem*> {
-        return kgr::inject(&eventService.service());
-    }
-};
+// Note: JobSystem uses void* to avoid circular dependency, not injected via DI
+BESTOW_SERVICE_1(AssetSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

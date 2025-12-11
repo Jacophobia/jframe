@@ -102,13 +102,7 @@ private:
 };
 
 // Kangaru service definitions
-// Concrete service that provides InputSystem as IInputSystem
-struct InputSystemService : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
-    // InputSystem optionally depends on AssetSystem for loading controller mappings
-    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
-        -> kgr::inject_result<IAssetSystem*> {
-        return kgr::inject(&assetService.service());
-    }
-};
+// InputSystem optionally depends on AssetSystem for loading controller mappings
+BESTOW_SERVICE_1(InputSystem, InputSystem, AssetSystem);
 
 }  // namespace bestow

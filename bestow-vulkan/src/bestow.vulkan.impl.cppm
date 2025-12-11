@@ -891,22 +891,10 @@ private:
 //==========================================================================
 
 // Vulkan concrete services that override the abstract services from bestow.services
-struct VulkanGraphicsSystemService : kgr::single_service<VulkanGraphicsSystem>, kgr::overrides<bestow::IGraphicsSystemService> {
-    // VulkanGraphicsSystem depends on AssetSystem for texture loading
-    static auto construct(kgr::inject_t<bestow::IAssetSystemService> assetService)
-        -> kgr::inject_result<bestow::IAssetSystem*> {
-        return kgr::inject(&assetService.service());
-    }
-};
+// VulkanGraphicsSystem depends on AssetSystem for texture loading
+BESTOW_SERVICE_1(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
-struct VulkanGraphics3DSystemService : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<bestow::IGraphics3DSystemService> {
-    // VulkanGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-    static auto construct(kgr::inject_t<bestow::IAssetSystemService> assetService,
-                          kgr::inject_t<bestow::IShaderSystemService> shaderService,
-                          kgr::inject_t<bestow::IConfigSystemService> configService)
-        -> kgr::inject_result<bestow::IAssetSystem*, bestow::IShaderSystem*, bestow::IConfigSystem*> {
-        return kgr::inject(&assetService.service(), &shaderService.service(), &configService.service());
-    }
-};
+// VulkanGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
+BESTOW_SERVICE_3(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow::vulkan
