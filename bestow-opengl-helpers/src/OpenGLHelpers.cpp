@@ -3,6 +3,8 @@
 
 module;
 
+#include <cstdio>
+#include <stdio.h>  // For stderr in global module fragment
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>

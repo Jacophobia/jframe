@@ -13,8 +13,6 @@ target_sources(bestow-ai
 target_link_libraries(bestow-ai
     PUBLIC
         bestow-contract
-        bestow-assets
-        bestow-physics
         kangaru::kangaru
         RecastNavigation::Recast
         RecastNavigation::Detour

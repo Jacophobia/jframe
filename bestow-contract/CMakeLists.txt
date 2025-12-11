@@ -3,6 +3,7 @@ add_library(bestow-contract)
 target_sources(bestow-contract
     PUBLIC FILE_SET CXX_MODULES FILES
         src/bestow.types.cppm
+        src/bestow.utils.cppm
         src/bestow.entity.cppm
         src/bestow.graphics.cppm
         src/bestow.graphics3d.cppm
@@ -31,6 +32,7 @@ target_link_libraries(bestow-contract
         glm::glm
         EnTT::EnTT
         kangaru::kangaru
+        spdlog::spdlog
 )
 
 target_compile_features(bestow-contract PUBLIC cxx_std_23)

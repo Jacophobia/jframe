@@ -12,7 +12,6 @@ target_sources(bestow-level
 target_link_libraries(bestow-level
     PUBLIC
         bestow-contract
-        bestow-assets
         lua
         sol2::sol2
         kangaru::kangaru

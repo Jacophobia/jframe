@@ -99,6 +99,36 @@ bool FMODAudioSystem::initialize() {
 #endif
 }
 
+void FMODAudioSystem::shutdown() {
+#ifdef BESTOW_HAS_FMOD
+    if (fmodSystem_) {
+        // Release all channel groups
+        for (auto& [name, group] : fmodGroups_) {
+            if (group) {
+                FMOD_ChannelGroup_Release(group);
+            }
+        }
+        fmodGroups_.clear();
+
+        // Release all cached sounds
+        for (auto& [handle, sound] : soundCache_) {
+            if (sound) {
+                FMOD_Sound_Release(sound);
+            }
+        }
+        soundCache_.clear();
+
+        // Close and release FMOD system
+        FMOD_System_Close(fmodSystem_);
+        FMOD_System_Release(fmodSystem_);
+        fmodSystem_ = nullptr;
+        masterGroup_ = nullptr;
+
+        std::cout << "FMOD Audio System shut down" << std::endl;
+    }
+#endif
+}
+
 #ifdef BESTOW_HAS_FMOD
 FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode) {
     // Check cache first

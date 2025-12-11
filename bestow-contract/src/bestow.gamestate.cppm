@@ -10,6 +10,7 @@ module;
 
 export module bestow.gamestate;
 
+import std;
 import bestow.types;
 
 export namespace bestow {

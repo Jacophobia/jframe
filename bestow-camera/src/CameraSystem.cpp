@@ -10,7 +10,7 @@ module;
 module bestow.camera.impl;
 
 import std;
-import bestow.core;
+import bestow.utils;
 
 namespace bestow {
 

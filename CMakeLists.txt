@@ -13,7 +13,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Options
 option(BESTOW_BUILD_TESTS "Build tests" ON)
-option(BESTOW_BUILD_EXAMPLES "Build examples" ON)
 option(BESTOW_ENABLE_TRACY "Enable Tracy profiler" ON)
 option(BESTOW_ENABLE_ASAN "Enable AddressSanitizer" OFF)
 option(BESTOW_DEV_TOOLS "Enable development tools (hot reload, inspector)" ON)
@@ -91,12 +90,8 @@ if(BESTOW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-if(BESTOW_BUILD_EXAMPLES)
-    add_subdirectory(examples)
-endif()
-
-# Template game project (always built as a reference)
-add_subdirectory(template)
+# Examples and template removed - outdated API
+# TODO: Create new template using the simplified Engine composition root pattern
 
 # =============================================================================
 # Installation Configuration

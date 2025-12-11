@@ -26,16 +26,25 @@ public:
     void publish(const EventType& type, const EventData& data) override {
         auto it = subscribers_.find(type);
         if (it != subscribers_.end()) {
-            // Copy callbacks to avoid iterator invalidation if unsubscribe is called during callback execution
-            std::vector<EventCallback> callbacks;
-            callbacks.reserve(it->second.size());
-            for (const auto& [id, callback] : it->second) {
-                callbacks.push_back(callback);
+            // Copy subscription IDs to avoid iterator invalidation if unsubscribe
+            // is called during callback execution. We look up each callback by ID
+            // before calling to ensure it hasn't been unsubscribed.
+            std::vector<SubscriptionId> ids;
+            ids.reserve(it->second.size());
+            for (const auto& [id, _] : it->second) {
+                ids.push_back(id);
             }
 
-            // Execute callbacks from the copy
-            for (const auto& callback : callbacks) {
-                callback(data);
+            // Execute callbacks, checking validity before each call
+            for (const auto& id : ids) {
+                // Re-lookup to ensure callback wasn't unsubscribed during iteration
+                auto subIt = subscribers_.find(type);
+                if (subIt != subscribers_.end()) {
+                    auto callbackIt = subIt->second.find(id);
+                    if (callbackIt != subIt->second.end() && callbackIt->second) {
+                        callbackIt->second(data);
+                    }
+                }
             }
         }
     }

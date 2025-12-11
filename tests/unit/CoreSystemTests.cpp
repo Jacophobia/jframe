@@ -312,255 +312,40 @@ TEST_F(LoggingTest, LogDebugDoesNotCrash) {
 }
 
 //==========================================================================
-// GraphicsConfig Tests
-//==========================================================================
-
-class GraphicsConfigTest : public ::testing::Test {};
-
-TEST_F(GraphicsConfigTest, DefaultValues) {
-    core::GraphicsConfig config;
-    EXPECT_EQ(config.width, 1280);
-    EXPECT_EQ(config.height, 720);
-    EXPECT_EQ(config.title, "Bestow Application");
-    EXPECT_TRUE(config.vsync);
-    EXPECT_EQ(config.clearColor.r, 26);
-    EXPECT_EQ(config.clearColor.g, 26);
-    EXPECT_EQ(config.clearColor.b, 26);
-    EXPECT_EQ(config.clearColor.a, 255);
-}
-
-TEST_F(GraphicsConfigTest, CustomValues) {
-    core::GraphicsConfig config;
-    config.width = 1920;
-    config.height = 1080;
-    config.title = "Custom Title";
-    config.vsync = false;
-    config.clearColor = Color{255, 0, 0, 255};
-
-    EXPECT_EQ(config.width, 1920);
-    EXPECT_EQ(config.height, 1080);
-    EXPECT_EQ(config.title, "Custom Title");
-    EXPECT_FALSE(config.vsync);
-    EXPECT_EQ(config.clearColor.r, 255);
-    EXPECT_EQ(config.clearColor.g, 0);
-    EXPECT_EQ(config.clearColor.b, 0);
-}
-
-TEST_F(GraphicsConfigTest, CopyConstruction) {
-    core::GraphicsConfig config1;
-    config1.width = 800;
-    config1.height = 600;
-    config1.title = "Test Window";
-
-    core::GraphicsConfig config2 = config1;
-    EXPECT_EQ(config2.width, 800);
-    EXPECT_EQ(config2.height, 600);
-    EXPECT_EQ(config2.title, "Test Window");
-}
-
-//==========================================================================
-// Engine Tests
+// Engine Tests - New Composition Root API
 //==========================================================================
 
 class EngineTest : public ::testing::Test {};
 
 TEST_F(EngineTest, DefaultConstruction) {
+    // Engine should be default constructible
     core::Engine engine;
-    EXPECT_FALSE(engine.isRunning());
+    // Container should be accessible
+    EXPECT_NO_THROW(engine.container());
 }
 
-TEST_F(EngineTest, SystemsAccessor) {
+TEST_F(EngineTest, MoveConstruction) {
+    core::Engine engine1;
+    core::Engine engine2 = std::move(engine1);
+    // Moved-to engine should be valid
+    EXPECT_NO_THROW(engine2.container());
+}
+
+TEST_F(EngineTest, MoveAssignment) {
+    core::Engine engine1;
+    core::Engine engine2;
+    engine2 = std::move(engine1);
+    // Moved-to engine should be valid
+    EXPECT_NO_THROW(engine2.container());
+}
+
+TEST_F(EngineTest, ContainerAccess) {
     core::Engine engine;
-    const auto& systems = engine.systems();
-    // Engine with no systems should have nullptrs
-    EXPECT_EQ(systems.events, nullptr);
-    EXPECT_EQ(systems.entities, nullptr);
-    EXPECT_EQ(systems.graphics, nullptr);
-}
-
-TEST_F(EngineTest, QuitStopsRunning) {
-    core::Engine engine;
-    // Note: Can't easily test run() in a unit test without a full application
-    // This is a basic sanity check
-    EXPECT_FALSE(engine.isRunning());
-    engine.quit();
-    EXPECT_FALSE(engine.isRunning());
-}
-
-//==========================================================================
-// EngineBuilder Tests
-//==========================================================================
-
-class EngineBuilderTest : public ::testing::Test {};
-
-TEST_F(EngineBuilderTest, BuildEmptyEngine) {
-    core::EngineBuilder builder;
-    auto result = builder.build();
-    EXPECT_TRUE(result.has_value());
-}
-
-TEST_F(EngineBuilderTest, BuildWithEvents) {
-    core::EngineBuilder builder;
-    auto result = builder.withEvents().build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().events, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, BuildWithEntities) {
-    core::EngineBuilder builder;
-    auto result = builder.withEntities().build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().entities, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, BuildWithMultipleSystems) {
-    core::EngineBuilder builder;
-    auto result = builder
-        .withEvents()
-        .withEntities()
-        .withAssets("assets")
-        .build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().events, nullptr);
-        EXPECT_NE(engine.systems().entities, nullptr);
-        EXPECT_NE(engine.systems().assets, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, GraphicsRequiresConfig) {
-    core::EngineBuilder builder;
-    // Graphics without config should succeed (uses default config internally)
-    core::GraphicsConfig config;
-    config.width = 800;
-    config.height = 600;
-    config.title = "Test";
-    auto result = builder.withGraphics(config).build();
-    // This may fail if we're in a headless environment, but should not crash
-    // Just check it returns an expected type
-    EXPECT_TRUE(result.has_value() || result.error().size() > 0);
-}
-
-TEST_F(EngineBuilderTest, FluentInterface) {
-    core::EngineBuilder builder;
-    // Test that methods return references for chaining
-    auto& b1 = builder.withEvents();
-    auto& b2 = b1.withEntities();
-    auto& b3 = b2.withAssets("assets");
-    EXPECT_EQ(&builder, &b1);
-    EXPECT_EQ(&builder, &b2);
-    EXPECT_EQ(&builder, &b3);
-}
-
-TEST_F(EngineBuilderTest, WithPhysics) {
-    core::EngineBuilder builder;
-    auto result = builder.withPhysics().build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().physics, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, WithSave) {
-    core::EngineBuilder builder;
-    auto result = builder.withSave("saves").build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().save, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, WithCamera) {
-    core::EngineBuilder builder;
-    Size viewportSize{1280, 720};
-    auto result = builder.withCamera(viewportSize).build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().camera, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, WithGAS) {
-    core::EngineBuilder builder;
-    auto result = builder.withGAS().build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().gas, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, WithBlueprints) {
-    core::EngineBuilder builder;
-    // Blueprints requires entities
-    auto result = builder.withEntities().withBlueprints().build();
-    EXPECT_TRUE(result.has_value());
-    if (result.has_value()) {
-        auto& engine = result.value();
-        EXPECT_NE(engine.systems().entities, nullptr);
-        EXPECT_NE(engine.systems().blueprints, nullptr);
-    }
-}
-
-TEST_F(EngineBuilderTest, BlueprintsWithoutEntitiesFails) {
-    core::EngineBuilder builder;
-    auto result = builder.withBlueprints().build();
-    // Should fail because blueprints requires entities
-    EXPECT_FALSE(result.has_value());
-    if (!result.has_value()) {
-        EXPECT_FALSE(result.error().empty());
-    }
-}
-
-//==========================================================================
-// Application Tests
-//==========================================================================
-
-class ApplicationTest : public ::testing::Test {};
-
-// Mock application for testing
-class MockApplication : public core::Application {
-public:
-    bool initializeCalled = false;
-    bool shutdownCalled = false;
-    int updateFixedCallCount = 0;
-    int renderCallCount = 0;
-
-    bool initialize(core::Engine& engine) override {
-        initializeCalled = true;
-        return true;
-    }
-
-    void updateFixed(DeltaTime dt) override {
-        updateFixedCallCount++;
-    }
-
-    void render(float alpha) override {
-        renderCallCount++;
-    }
-
-    void shutdown() override {
-        shutdownCalled = true;
-    }
-};
-
-TEST_F(ApplicationTest, VirtualMethodsExist) {
-    // Test that Application interface is abstract and has virtual methods
-    MockApplication app;
-    EXPECT_FALSE(app.initializeCalled);
-    EXPECT_FALSE(app.shutdownCalled);
-    EXPECT_EQ(app.updateFixedCallCount, 0);
-    EXPECT_EQ(app.renderCallCount, 0);
+    // Both const and non-const container access should work
+    kgr::container& container = engine.container();
+    const kgr::container& constContainer =
+        static_cast<const core::Engine&>(engine).container();
+    EXPECT_EQ(&container, &constContainer);
 }
 
 //==========================================================================

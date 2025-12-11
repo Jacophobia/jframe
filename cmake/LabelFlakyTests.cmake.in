@@ -6,13 +6,25 @@
 # Flaky tests defined in: cmake/FlakyTests.cmake
 
 # List of flaky test patterns (configured from FlakyTests.cmake)
+# Note: configure_file turns the list into a semicolon-separated string
 set(_FLAKY_TESTS "@BESTOW_FLAKY_TESTS@")
+
+# Debug: uncomment to see what tests are being processed
+# message(STATUS "LabelFlakyTests: flaky patterns = ${_FLAKY_TESTS}")
 
 # Label each flaky test
 foreach(_flaky_pattern IN LISTS _FLAKY_TESTS)
+    # Skip empty entries (can happen with list processing)
+    if(NOT _flaky_pattern)
+        continue()
+    endif()
+
     # Try to set properties on tests matching this pattern
     # The test name format from gtest_discover_tests is: TestSuiteName.TestName
     if(TEST "${_flaky_pattern}")
         set_tests_properties("${_flaky_pattern}" PROPERTIES LABELS "Flaky")
+        # Debug: message(STATUS "LabelFlakyTests: Labeled ${_flaky_pattern} as Flaky")
+    else()
+        # Debug: message(STATUS "LabelFlakyTests: Test ${_flaky_pattern} not found")
     endif()
 endforeach()

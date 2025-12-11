@@ -129,6 +129,143 @@ import bestow.dev;  // Only available in debug builds
 
 ## Architecture Principles
 
+### Contract-Based Architecture (CRITICAL)
+
+**Bestow follows a strict contract-based architecture where systems ONLY depend on interfaces, never implementations.** This enables complete system interchangeability by the client.
+
+#### The Contract Rule (FUNDAMENTAL)
+
+**ALL systems MUST ONLY depend on `bestow-contract` interfaces. NEVER depend on other system implementations.**
+
+In this context:
+- **Contract** = Interface (abstract base class) that defines behavior
+- **Implementation** = Concrete class that fulfills the contract
+- **System** = A module that implements one or more contracts
+
+```cpp
+// ✅ CORRECT - System depends only on contract interfaces
+class GraphicsSystem : public IGraphicsSystem {
+    IAssetSystem* assets_;     // Interface dependency - GOOD
+    IEntitySystem* entities_;  // Interface dependency - GOOD
+    IEventSystem* events_;     // Interface dependency - GOOD
+};
+
+// ❌ WRONG - System depends on implementation
+class GraphicsSystem : public IGraphicsSystem {
+    AssetSystem* assets_;      // Implementation dependency - FORBIDDEN
+    EntityManager* entities_;  // Implementation dependency - FORBIDDEN
+};
+```
+
+#### Why This Matters
+
+1. **Complete Interchangeability** - Clients can provide custom implementations of ANY system
+2. **Clean Boundaries** - Clear separation between interface and implementation
+3. **Testing** - Easy to mock interfaces for unit testing
+4. **Flexibility** - Multiple implementations can coexist (OpenGL vs Vulkan renderers)
+
+#### Dependency Injection with Kangaru
+
+Systems receive their dependencies through constructor injection using Kangaru DI:
+
+```cpp
+// System constructor - dependencies injected as interfaces
+GraphicsSystem::GraphicsSystem(
+    IAssetSystem& assets,
+    IEntitySystem& entities, 
+    IEventSystem& events
+) : assets_(&assets), entities_(&entities), events_(&events) {
+    // Implementation
+}
+
+// Kangaru service definition (in engine composition root)
+auto graphicsService() -> kangaru::service_map<IGraphicsSystem, GraphicsSystem>;
+```
+
+### Engine Class Architecture
+
+**The Engine class is the composition root that binds contracts to implementations and provides the client interface.**
+
+#### Engine Registration Pattern
+
+```cpp
+class Engine {
+public:
+    // Register implementation type for contract
+    template<typename Contract, typename Implementation>
+    void registerSystem() {
+        container_.service<Contract, Implementation>();
+    }
+    
+    // Register implementation with factory callback
+    template<typename Contract>
+    void registerSystem(std::function<std::unique_ptr<Contract>()> factory) {
+        container_.invoke(factory);
+    }
+    
+    // Start the engine with client application
+    template<typename App>
+    void run() {
+        auto app = container_.service<App>();
+        app->run();
+    }
+    
+private:
+    kangaru::container container_;
+};
+```
+
+#### Client Usage Pattern
+
+```cpp
+// Game client configures engine with their implementations
+int main() {
+    Engine engine;
+    
+    // Use default implementations
+    engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
+    engine.registerSystem<IAssetSystem, AssetSystemImpl>();
+    
+    // Use custom implementation
+    engine.registerSystem<IAudioSystem>([]{
+        return std::make_unique<MyCustomAudioSystem>();
+    });
+    
+    // Run with custom application
+    engine.run<MyPlatformerApp>();
+}
+```
+
+#### Application Interface
+
+```cpp
+// Client implements this interface
+class IApplication {
+public:
+    virtual ~IApplication() = default;
+    virtual void run() = 0;
+};
+
+// Client application receives system contracts via DI
+class MyPlatformerApp : public IApplication {
+public:
+    MyPlatformerApp(
+        IGraphicsSystem& graphics,
+        IAssetSystem& assets,
+        IPhysicsSystem& physics
+    ) : graphics_(&graphics), assets_(&assets), physics_(&physics) {}
+    
+    void run() override {
+        // Game logic using injected systems
+    }
+    
+private:
+    IGraphicsSystem* graphics_;
+    IAssetSystem* assets_;
+    IPhysicsSystem* physics_;
+};
+```
+
 ### Program to Interfaces
 
 All systems implement abstract interfaces from `bestow-contract`:
@@ -154,7 +291,7 @@ Use ECS architecture with EnTT. Prefer components over class hierarchies.
 
 ### Dependency Injection
 
-Use Fruit DI for system wiring in the composition root.
+Use Kangaru DI for system wiring in the composition root. Systems must never create their own dependencies - all dependencies are injected via constructor parameters.
 
 ### AssetSystem Architecture (CRITICAL)
 
@@ -702,15 +839,52 @@ Each system has clear file boundaries. Agents should claim ownership of exactly 
 
 ### Rules for Independent Work
 
-1. **Never modify files outside your claimed system** - If you need a change to a dependency interface, document the requirement and leave a `// TODO(agent): Need X from Y system` comment.
+1. **ONLY depend on contracts** - Systems MUST only `#include` or `import` interfaces from `bestow-contract`. NEVER include headers from other system implementations.
 
-2. **Interface contracts are immutable** - The `.cppm` files in `bestow-contract/` define the API. Don't change signatures without orchestrator approval.
+2. **Never modify files outside your claimed system** - If you need a change to a dependency interface, document the requirement and leave a `// TODO(agent): Need X from Y system` comment.
 
-3. **Use the test harness** - Each system has its own test file (`tests/test_*.cpp`). Write tests before implementing.
+3. **Interface contracts are immutable** - The `.cppm` files in `bestow-contract/` define the API. Don't change signatures without orchestrator approval.
 
-4. **Document assumptions** - If your implementation depends on behavior from another system, add a comment explaining the assumption.
+4. **Use dependency injection** - All system dependencies must be injected via constructor parameters as interface references/pointers.
 
-5. **Compile in isolation** - Your system should compile independently: `cmake --build --preset macos-debug --target bestow-yoursystem`
+5. **Use the test harness** - Each system has its own test file (`tests/test_*.cpp`). Write tests before implementing.
+
+6. **Document assumptions** - If your implementation depends on behavior from another system, add a comment explaining the assumption.
+
+7. **Compile in isolation** - Your system should compile independently: `cmake --build --preset macos-debug --target bestow-yoursystem`
+
+### CRITICAL: Contract Boundary Violations
+
+**The following are FORBIDDEN and will be rejected:**
+
+```cpp
+// ❌ FORBIDDEN - Direct implementation dependency
+#include "bestow-entity/EntitySystem.h"
+#include "bestow-assets/AssetManager.h"
+
+// ❌ FORBIDDEN - Calling implementations directly
+auto assets = static_cast<AssetManager*>(assets_);
+assets->internalMethod();
+
+// ❌ FORBIDDEN - Creating implementations directly
+auto entitySys = std::make_unique<EntitySystemImpl>();
+```
+
+**The following are REQUIRED:**
+
+```cpp
+// ✅ REQUIRED - Contract dependency only  
+#include "bestow-contract/IAssetSystem.h"
+#include "bestow-contract/IEntitySystem.h"
+
+// ✅ REQUIRED - Interface-only usage
+assets_->loadAsset(handle);
+entities_->createEntity();
+
+// ✅ REQUIRED - DI constructor injection
+MySystem::MySystem(IAssetSystem& assets, IEntitySystem& entities)
+    : assets_(&assets), entities_(&entities) {}
+```
 
 ### Parallel-Safe Systems (No Coordination Needed)
 

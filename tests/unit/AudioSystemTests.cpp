@@ -1,6 +1,7 @@
 // tests/unit/AudioSystemTests.cpp
 // Audio system unit tests
 
+#include <cmath>
 #include <cstddef>
 #include <memory>
 #include <string>
@@ -19,12 +20,9 @@ protected:
     void SetUp() override {
         audio_ = &container_.service<AudioSystemService>();
 
-        // Initialize the audio system (works in stub mode)
-        auto* fmodAudio = dynamic_cast<FMODAudioSystem*>(audio_);
-        if (fmodAudio) {
-            bool initialized = fmodAudio->initialize();
-            EXPECT_TRUE(initialized);
-        }
+        // Initialize the audio system through interface (works in stub mode)
+        bool initialized = audio_->initialize();
+        EXPECT_TRUE(initialized);
     }
 
     kgr::container container_;

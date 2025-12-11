@@ -6,33 +6,19 @@ target_sources(bestow-core
         src/bestow.core.cppm
     PRIVATE
         src/Application.cpp
-        src/Engine.cpp
-        src/EngineBuilder.cpp
         src/JobSystem.cpp
         src/Easing.cpp
         src/Timer.cpp
 )
 
+# Engine is now a simple composition root that uses Kangaru DI
+# It doesn't need to link against all system implementations
+# Clients import the implementations they need
 target_link_libraries(bestow-core
     PUBLIC
         bestow-contract
-        bestow-metrics
         spdlog::spdlog
         Taskflow::Taskflow
-    PRIVATE
-        bestow-events
-        bestow-entity
-        bestow-physics
-        bestow-opengl
-        bestow-audio
-        bestow-input
-        bestow-assets
-        bestow-save
-        bestow-level
-        bestow-ai
-        bestow-camera
-        bestow-gas
-        bestow-blueprints
 )
 
 # Tracy is already linked via bestow-metrics (PRIVATE), and TRACY_ENABLE

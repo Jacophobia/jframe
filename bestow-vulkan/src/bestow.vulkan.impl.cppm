@@ -15,14 +15,7 @@ export module bestow.vulkan.impl;
 
 import std;
 import bestow.vulkan;
-import bestow.graphics;
-import bestow.graphics3d;
-import bestow.types;
-import bestow.assets;
-import bestow.entity;
-import bestow.shader;
-import bestow.config;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.graphics, bestow.assets, etc.
 
 export namespace bestow::vulkan {
 

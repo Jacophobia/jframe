@@ -175,7 +175,7 @@ inline constexpr bool shouldCollide(CollisionLayer layerA, CollisionMask maskA,
 }
 
 /// Check if a slope angle is walkable
-inline constexpr bool isWalkableSlope(float slopeAngleDegrees, float maxSlopeAngle) {
+inline bool isWalkableSlope(float slopeAngleDegrees, float maxSlopeAngle) {
     return std::abs(slopeAngleDegrees) <= maxSlopeAngle;
 }
 

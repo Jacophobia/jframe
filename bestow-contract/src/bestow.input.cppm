@@ -21,6 +21,8 @@ public:
     // Lifecycle
     //======================================================================
 
+    virtual bool initialize(void* nativeWindow) = 0;
+    virtual void shutdown() = 0;
     virtual void update() = 0;
 
     //======================================================================

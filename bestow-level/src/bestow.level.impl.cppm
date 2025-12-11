@@ -9,11 +9,7 @@ module;
 export module bestow.level.impl;
 
 import std;
-import bestow.level;
-import bestow.types;
-import bestow.assets;
-import bestow.assets.impl;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.level, bestow.assets, bestow.types
 
 export namespace bestow {
 

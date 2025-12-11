@@ -10,10 +10,7 @@ module;
 export module bestow.config.impl;
 
 import std;
-import bestow.types;
-import bestow.config;
-import bestow.assets;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.config, bestow.assets, bestow.types
 
 export namespace bestow {
 

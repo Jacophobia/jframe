@@ -12,10 +12,7 @@ module;
 export module bestow.audio.impl;
 
 import std;
-import bestow.audio;
-import bestow.assets;
-import bestow.types;
-import bestow.services;
+import bestow.services;  // Re-exports all contracts including bestow.audio, bestow.assets, bestow.types
 
 export namespace bestow {
 
@@ -24,7 +21,8 @@ public:
     explicit FMODAudioSystem(IAssetSystem* assetSystem = nullptr);
     ~FMODAudioSystem() override;
 
-    bool initialize();
+    bool initialize() override;
+    void shutdown() override;
 
     void update(DeltaTime dt) override;
 

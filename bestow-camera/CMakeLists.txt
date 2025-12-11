@@ -12,7 +12,6 @@ target_sources(bestow-camera
 target_link_libraries(bestow-camera
     PUBLIC
         bestow-contract
-        bestow-core
         glm::glm
         EnTT::EnTT
         kangaru::kangaru

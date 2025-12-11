@@ -15,10 +15,7 @@ module;
 export module bestow.ui.impl;
 
 import std;
-import bestow.ui;
-import bestow.types;
-import bestow.services;
-import bestow.assets;
+import bestow.services;  // Re-exports all contracts including bestow.ui, bestow.assets, bestow.types
 
 export namespace bestow {
 
