@@ -224,18 +224,6 @@ public:
     virtual void update() = 0;
 
     //======================================================================
-    // System Integration
-    //======================================================================
-
-    /// Set the event system for publishing asset change events
-    virtual void setEventSystem(class IEventSystem* events) = 0;
-
-    /// Set the job system for async asset loading
-    /// Takes a void* to avoid circular dependency with bestow.core
-    /// Implementation should cast to bestow::core::JobSystem*
-    virtual void setJobSystem(void* jobs) = 0;
-
-    //======================================================================
     // Registration
     //======================================================================
 

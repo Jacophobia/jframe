@@ -59,7 +59,10 @@ struct FontAtlas {
 
 class OpenGLGraphicsSystem : public IGraphicsSystem {
 public:
-    OpenGLGraphicsSystem() = default;
+    /// Constructor with asset system dependency injected via Kangaru
+    /// @param assets Asset system for texture loading
+    explicit OpenGLGraphicsSystem(IAssetSystem* assets = nullptr)
+        : assetSystem_(assets) {}
     ~OpenGLGraphicsSystem() override;
 
     bool initialize(int width, int height, const std::string& title);
@@ -134,12 +137,6 @@ public:
 
     void setClearColor(const Color& color) override;
     void setVSync(bool enabled) override;
-
-    //======================================================================
-    // Asset System Integration
-    //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
 
     //======================================================================
     // Automatic Entity Rendering
@@ -576,7 +573,14 @@ void main() {
 
 class OpenGLGraphics3DSystem : public IGraphics3DSystem {
 public:
-    OpenGLGraphics3DSystem() = default;
+    /// Constructor with dependencies injected via Kangaru
+    /// @param assets Asset system for loading textures and meshes
+    /// @param shaders Shader system for custom shader/material support
+    /// @param config Config system for runtime configuration
+    explicit OpenGLGraphics3DSystem(IAssetSystem* assets = nullptr,
+                                     IShaderSystem* shaders = nullptr,
+                                     IConfigSystem* config = nullptr)
+        : assetSystem_(assets), shaderSystem_(shaders), configSystem_(config) {}
     ~OpenGLGraphics3DSystem() override;
 
     //======================================================================
@@ -828,8 +832,6 @@ public:
     // Shader System Integration
     //======================================================================
 
-    void setShaderSystem(IShaderSystem* shaders) override;
-    IShaderSystem* getShaderSystem() const override;
     void drawMeshWithShaderMaterial(
         MeshHandle mesh,
         ShaderProgramHandle shader,
@@ -852,9 +854,6 @@ public:
     //======================================================================
     // Asset System Integration
     //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
-    void setConfigSystem(IConfigSystem* config) override;
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override;
     Result<MaterialHandle, Graphics3DError> createMaterialFromData(const MaterialData& data) override;
@@ -2547,31 +2546,8 @@ float OpenGLGraphics3DSystem::getRenderScale() const {
 }
 
 //==========================================================================
-// Asset System Integration
-//==========================================================================
-
-void OpenGLGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
-}
-
-void OpenGLGraphics3DSystem::setConfigSystem(IConfigSystem* config) {
-    configSystem_ = config;
-}
-
-//==========================================================================
 // Shader System Integration
 //==========================================================================
-
-void OpenGLGraphics3DSystem::setShaderSystem(IShaderSystem* shaders) {
-    shaderSystem_ = shaders;
-    if (shaderSystem_) {
-        shaderSystem_->setAssetSystem(assetSystem_);
-    }
-}
-
-IShaderSystem* OpenGLGraphics3DSystem::getShaderSystem() const {
-    return shaderSystem_;
-}
 
 void OpenGLGraphics3DSystem::drawMeshWithShaderMaterial(
     MeshHandle mesh,
@@ -4540,7 +4516,22 @@ bool OpenGLGraphics3DSystem::reloadRuntimeConfig() {
 
 // Concrete services that provide OpenGL implementations
 // Abstract services are imported from bestow.services
-struct GraphicsSystemService : kgr::single_service<OpenGLGraphicsSystem>, kgr::overrides<IGraphicsSystemService> {};
-struct Graphics3DSystemService : kgr::single_service<OpenGLGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {};
+struct GraphicsSystemService : kgr::single_service<OpenGLGraphicsSystem>, kgr::overrides<IGraphicsSystemService> {
+    // OpenGLGraphicsSystem depends on AssetSystem for texture loading
+    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&assetService.service());
+    }
+};
+
+struct Graphics3DSystemService : kgr::single_service<OpenGLGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
+    // OpenGLGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
+    static auto construct(kgr::inject_t<IAssetSystemService> assetService,
+                          kgr::inject_t<IShaderSystemService> shaderService,
+                          kgr::inject_t<IConfigSystemService> configService)
+        -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
+        return kgr::inject(&assetService.service(), &shaderService.service(), &configService.service());
+    }
+};
 
 }  // namespace bestow

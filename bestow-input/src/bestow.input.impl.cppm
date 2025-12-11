@@ -16,12 +16,14 @@ export namespace bestow {
 
 class InputSystem : public IInputSystem {
 public:
-    InputSystem() = default;
+    /// Constructor with optional asset system for loading controller mappings
+    /// @param assets Optional asset system for loading gamecontrollerdb.txt
+    explicit InputSystem(IAssetSystem* assets = nullptr)
+        : assetSystem_(assets) {}
     ~InputSystem() override;
 
     bool initialize(void* nativeWindow) override;
     void shutdown() override;
-    void setAssetSystem(IAssetSystem* assets);
 
     void update() override;
 
@@ -101,6 +103,12 @@ private:
 
 // Kangaru service definitions
 // Concrete service that provides InputSystem as IInputSystem
-struct InputSystemService : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {};
+struct InputSystemService : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
+    // InputSystem optionally depends on AssetSystem for loading controller mappings
+    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&assetService.service());
+    }
+};
 
 }  // namespace bestow

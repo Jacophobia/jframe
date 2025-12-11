@@ -247,17 +247,6 @@ public:
     }
 
     //==========================================================================
-    // Asset System Integration
-    //==========================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override {
-        assetSystem_ = assets;
-    }
-
-    IAssetSystem* getAssetSystem() const {
-        return assetSystem_;
-    }
-
     //==========================================================================
     // Automatic Entity Rendering
     //==========================================================================

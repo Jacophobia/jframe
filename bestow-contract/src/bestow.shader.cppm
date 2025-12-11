@@ -319,9 +319,6 @@ public:
     // Asset Integration
     //======================================================================
 
-    /// Set asset system for texture loading
-    virtual void setAssetSystem(IAssetSystem* assets) = 0;
-
     /// Set base path for shader files (default: "assets/shaders/")
     virtual void setShaderBasePath(std::string_view path) = 0;
 

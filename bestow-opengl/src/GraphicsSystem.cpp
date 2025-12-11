@@ -1107,10 +1107,6 @@ const FontAtlas& OpenGLGraphicsSystem::getFontAtlas(AssetHandle fontHandle, floa
     return inserted->second;
 }
 
-void OpenGLGraphicsSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
-}
-
 GLuint OpenGLGraphicsSystem::getOrUploadTexture(AssetHandle handle) {
     // Check cache first
     auto it = textureCache_.find(handle);

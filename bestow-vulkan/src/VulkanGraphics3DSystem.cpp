@@ -120,6 +120,19 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
     createDefaultMaterials();
     createPipelines();
 
+    // Subscribe to shader type changes for hot reload if asset system is available
+    if (assetSystem_ && useAssetSystemHotReload_) {
+        shaderSubscriptionId_ = assetSystem_->subscribeToType(
+            AssetType::Shader,
+            [this](AssetHandle handle, AssetType type) {
+                onShaderAssetChanged(handle, type);
+            }
+        );
+        // Enable hot reload on the asset system
+        assetSystem_->enableHotReload(true);
+        std::fprintf(stderr, "[Vulkan] Subscribed to shader asset changes for hot reload\n");
+    }
+
     initialized_ = true;
     return true;
 }
@@ -1423,14 +1436,6 @@ bool VulkanGraphics3DSystem::reloadRuntimeConfig() {
     return loadRuntimeConfig(configPath_);
 }
 
-void VulkanGraphics3DSystem::setShaderSystem(IShaderSystem* shaders) {
-    shaderSystem_ = shaders;
-}
-
-IShaderSystem* VulkanGraphics3DSystem::getShaderSystem() const {
-    return shaderSystem_;
-}
-
 void VulkanGraphics3DSystem::drawMeshWithShaderMaterial(
     MeshHandle mesh, ShaderProgramHandle shader, const Mat4& worldMatrix,
     bool castShadow, bool receiveShadow) {
@@ -1812,33 +1817,6 @@ void VulkanGraphics3DSystem::updateShaders() {
     if (shaderSystem_) {
         shaderSystem_->update();
     }
-}
-
-void VulkanGraphics3DSystem::setAssetSystem(IAssetSystem* assets) {
-    // Unsubscribe from previous asset system if any
-    if (assetSystem_ && shaderSubscriptionId_ != InvalidSubscriptionId) {
-        assetSystem_->unsubscribe(shaderSubscriptionId_);
-        shaderSubscriptionId_ = InvalidSubscriptionId;
-    }
-
-    assetSystem_ = assets;
-
-    // Subscribe to shader type changes for hot reload
-    if (assetSystem_ && useAssetSystemHotReload_) {
-        shaderSubscriptionId_ = assetSystem_->subscribeToType(
-            AssetType::Shader,
-            [this](AssetHandle handle, AssetType type) {
-                onShaderAssetChanged(handle, type);
-            }
-        );
-        // Enable hot reload on the asset system
-        assetSystem_->enableHotReload(true);
-        std::fprintf(stderr, "[Vulkan] Subscribed to shader asset changes for hot reload\n");
-    }
-}
-
-void VulkanGraphics3DSystem::setConfigSystem(IConfigSystem* config) {
-    configSystem_ = config;
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {

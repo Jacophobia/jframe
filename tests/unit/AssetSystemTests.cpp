@@ -32,8 +32,6 @@ struct MockAssetInfo {
 class MockAssetSystem : public IAssetSystem {
 public:
     void update() override {}
-    void setEventSystem(IEventSystem* events) override {}
-    void setJobSystem(void* jobs) override {}
 
     AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override {
         AssetHandle handle{++nextId_, type};

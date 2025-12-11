@@ -403,10 +403,6 @@ void VulkanGraphicsSystem::setVSync(bool enabled) {
     // Would need to recreate swapchain to change
 }
 
-void VulkanGraphicsSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
-}
-
 void VulkanGraphicsSystem::renderEntities(IEntitySystem& entities) {
     // Would iterate through entities with visual components and render them
 }

@@ -232,7 +232,10 @@ private:
 
 class VulkanGraphicsSystem : public IGraphicsSystem {
 public:
-    VulkanGraphicsSystem();
+    /// Constructor with asset system dependency injected via Kangaru
+    /// @param assets Asset system for texture loading
+    explicit VulkanGraphicsSystem(IAssetSystem* assets = nullptr)
+        : assetSystem_(assets) {}
     ~VulkanGraphicsSystem() override;
 
     Result<void, VulkanError> initialize(const VulkanConfig& config);
@@ -309,12 +312,6 @@ public:
     void setVSync(bool enabled) override;
 
     //======================================================================
-    // Asset System Integration
-    //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
-
-    //======================================================================
     // Automatic Entity Rendering
     //======================================================================
 
@@ -366,7 +363,14 @@ private:
 
 class VulkanGraphics3DSystem : public IGraphics3DSystem {
 public:
-    VulkanGraphics3DSystem();
+    /// Constructor with dependencies injected via Kangaru
+    /// @param assets Asset system for loading textures and meshes
+    /// @param shaders Shader system for custom shader/material support
+    /// @param config Config system for runtime configuration
+    explicit VulkanGraphics3DSystem(IAssetSystem* assets = nullptr,
+                                     IShaderSystem* shaders = nullptr,
+                                     IConfigSystem* config = nullptr)
+        : assetSystem_(assets), shaderSystem_(shaders), configSystem_(config) {}
     ~VulkanGraphics3DSystem() override;
 
     //======================================================================
@@ -585,9 +589,6 @@ public:
     // Shader System Integration
     //======================================================================
 
-    void setShaderSystem(IShaderSystem* shaders) override;
-    IShaderSystem* getShaderSystem() const override;
-
     void drawMeshWithShaderMaterial(
         MeshHandle mesh,
         ShaderProgramHandle shader,
@@ -611,9 +612,6 @@ public:
     //======================================================================
     // Asset System Integration
     //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
-    void setConfigSystem(IConfigSystem* config);
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override;
     Result<MaterialHandle, Graphics3DError> createMaterialFromData(const MaterialData& data) override;
@@ -893,7 +891,22 @@ private:
 //==========================================================================
 
 // Vulkan concrete services that override the abstract services from bestow.services
-struct VulkanGraphicsSystemService : kgr::single_service<VulkanGraphicsSystem>, kgr::overrides<bestow::IGraphicsSystemService> {};
-struct VulkanGraphics3DSystemService : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<bestow::IGraphics3DSystemService> {};
+struct VulkanGraphicsSystemService : kgr::single_service<VulkanGraphicsSystem>, kgr::overrides<bestow::IGraphicsSystemService> {
+    // VulkanGraphicsSystem depends on AssetSystem for texture loading
+    static auto construct(kgr::inject_t<bestow::IAssetSystemService> assetService)
+        -> kgr::inject_result<bestow::IAssetSystem*> {
+        return kgr::inject(&assetService.service());
+    }
+};
+
+struct VulkanGraphics3DSystemService : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<bestow::IGraphics3DSystemService> {
+    // VulkanGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
+    static auto construct(kgr::inject_t<bestow::IAssetSystemService> assetService,
+                          kgr::inject_t<bestow::IShaderSystemService> shaderService,
+                          kgr::inject_t<bestow::IConfigSystemService> configService)
+        -> kgr::inject_result<bestow::IAssetSystem*, bestow::IShaderSystem*, bestow::IConfigSystem*> {
+        return kgr::inject(&assetService.service(), &shaderService.service(), &configService.service());
+    }
+};
 
 }  // namespace bestow::vulkan

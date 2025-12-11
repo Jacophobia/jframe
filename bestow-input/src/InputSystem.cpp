@@ -93,10 +93,6 @@ void InputSystem::shutdown() {
     window_ = nullptr;
 }
 
-void InputSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
-}
-
 void InputSystem::update() {
     prevActionStates_ = actionStates_;
     prevMousePosition_ = mousePosition_;

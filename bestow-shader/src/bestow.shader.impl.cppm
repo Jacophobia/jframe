@@ -86,7 +86,10 @@ struct ShaderMaterialResource {
 
 class OpenGLShaderSystem : public IShaderSystem {
 public:
-    OpenGLShaderSystem() = default;
+    /// Constructor with asset system dependency injected via Kangaru
+    /// @param assets Asset system for loading shader source files
+    explicit OpenGLShaderSystem(IAssetSystem* assets = nullptr)
+        : assets_(assets) {}
     ~OpenGLShaderSystem() override {
         // Unsubscribe from all AssetSystem notifications
         if (assets_) {
@@ -837,10 +840,6 @@ public:
     // Asset Integration
     //======================================================================
 
-    void setAssetSystem(IAssetSystem* assets) override {
-        assets_ = assets;
-    }
-
     void setShaderBasePath(std::string_view path) override {
         shaderBasePath_ = std::string(path);
         if (!shaderBasePath_.empty() && shaderBasePath_.back() != '/') {
@@ -1517,6 +1516,12 @@ void main() {
 //==========================================================================
 
 // Concrete service that provides OpenGLShaderSystem as IShaderSystem
-struct ShaderSystemService : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {};
+struct ShaderSystemService : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {
+    // ShaderSystem depends on AssetSystem for loading shader source files
+    static auto construct(kgr::inject_t<IAssetSystemService> assetService)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&assetService.service());
+    }
+};
 
 }  // namespace bestow

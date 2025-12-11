@@ -61,14 +61,14 @@ const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
 class AssetSystem : public IAssetSystem {
 public:
-    AssetSystem() = default;
+    /// Constructor with optional dependencies (injected via Kangaru)
+    /// @param events Optional event system for publishing asset change events
+    /// @param jobs Optional job system for async loading (void* to avoid circular dep)
+    explicit AssetSystem(IEventSystem* events = nullptr, void* jobs = nullptr)
+        : eventSystem_(events), jobSystem_(jobs) {}
     ~AssetSystem() override = default;
 
     void update() override;
-
-    // System integration
-    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
-    void setJobSystem(void* jobs) override { jobSystem_ = jobs; }
 
     // Registration
     AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override;
@@ -204,6 +204,13 @@ private:
 
 // Kangaru service definitions
 // Concrete service that provides AssetSystem as IAssetSystem
-struct AssetSystemService : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {};
+// Dependencies are injected via constructor: IEventSystem (optional)
+struct AssetSystemService : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {
+    // Constructor injection: AssetSystem receives IEventSystem* from container
+    // Note: JobSystem uses void* to avoid circular dependency, injected separately
+    static auto construct(kgr::inject_t<IEventSystemService> eventService) -> kgr::inject_result<IEventSystem*> {
+        return kgr::inject(&eventService.service());
+    }
+};
 
 }  // namespace bestow

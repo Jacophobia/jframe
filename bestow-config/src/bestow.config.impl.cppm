@@ -31,7 +31,11 @@ struct ConfigSubscription {
 
 class ConfigSystem : public IConfigSystem {
 public:
-    ConfigSystem() = default;
+    /// Constructor with dependencies injected via Kangaru
+    /// @param assetSystem Asset system for file I/O (required)
+    /// @param events Event system for publishing config change events (optional)
+    explicit ConfigSystem(IAssetSystem* assetSystem = nullptr, IEventSystem* events = nullptr)
+        : assetSystem_(assetSystem), eventSystem_(events) {}
     ~ConfigSystem() override = default;
 
     //==========================================================================
@@ -41,18 +45,6 @@ public:
     bool initialize() override;
     void update(DeltaTime dt) override;
     void shutdown() override;
-
-    //==========================================================================
-    // Asset System Integration
-    //==========================================================================
-
-    void setAssetSystem(IAssetSystem* assetSystem) { assetSystem_ = assetSystem; }
-
-    //==========================================================================
-    // EventSystem Integration
-    //==========================================================================
-
-    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
 
     //==========================================================================
     // Configuration Loading
@@ -189,10 +181,11 @@ private:
 
 // Kangaru service definitions
 struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
-    // ConfigSystem depends on AssetSystem for file I/O
-    template<typename... T>
-    static auto construct(T&&... args) -> decltype(kgr::inject(std::forward<T>(args)...)) {
-        return kgr::inject(std::forward<T>(args)...);
+    // ConfigSystem depends on AssetSystem for file I/O and EventSystem for notifications
+    static auto construct(kgr::inject_t<IAssetSystemService> assetService,
+                          kgr::inject_t<IEventSystemService> eventService)
+        -> kgr::inject_result<IAssetSystem*, IEventSystem*> {
+        return kgr::inject(&assetService.service(), &eventService.service());
     }
 };
 
