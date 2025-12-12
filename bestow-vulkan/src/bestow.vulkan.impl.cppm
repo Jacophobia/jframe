@@ -230,12 +230,8 @@ private:
 // VulkanGraphicsSystem - 2D Vulkan Renderer
 //==========================================================================
 
-class VulkanGraphicsSystem : public IGraphicsSystem {
+BESTOW_SYSTEM(VulkanGraphicsSystem, IGraphicsSystem, IAssetSystem) {
 public:
-    /// Constructor with asset system dependency injected via Kangaru
-    /// @param assets Asset system for texture loading
-    explicit VulkanGraphicsSystem(IAssetSystem* assets = nullptr)
-        : assetSystem_(assets) {}
     ~VulkanGraphicsSystem() override;
 
     Result<void, VulkanError> initialize(const VulkanConfig& config);
@@ -333,7 +329,6 @@ private:
     Camera camera_;
     Color clearColor_ = Color::black();
     bool viewportCullingEnabled_ = false;
-    IAssetSystem* assetSystem_ = nullptr;
     bool isFullscreen_ = false;
 
     // Sprite batching
@@ -361,16 +356,8 @@ private:
 // VulkanGraphics3DSystem - 3D Vulkan Renderer
 //==========================================================================
 
-class VulkanGraphics3DSystem : public IGraphics3DSystem {
+BESTOW_SYSTEM(VulkanGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem) {
 public:
-    /// Constructor with dependencies injected via Kangaru
-    /// @param assets Asset system for loading textures and meshes
-    /// @param shaders Shader system for custom shader/material support
-    /// @param config Config system for runtime configuration
-    explicit VulkanGraphics3DSystem(IAssetSystem* assets = nullptr,
-                                     IShaderSystem* shaders = nullptr,
-                                     IConfigSystem* config = nullptr)
-        : assetSystem_(assets), shaderSystem_(shaders), configSystem_(config) {}
     ~VulkanGraphics3DSystem() override;
 
     //======================================================================
@@ -718,9 +705,6 @@ private:
     VulkanContext context_;
     Camera3D camera_;
     Color clearColor_ = Color::black();
-    IAssetSystem* assetSystem_ = nullptr;
-    IShaderSystem* shaderSystem_ = nullptr;
-    IConfigSystem* configSystem_ = nullptr;
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
 
@@ -885,16 +869,5 @@ private:
     void updateLightUBO();
     void renderDebugLines();
 };
-
-//==========================================================================
-// Kangaru Service Definitions
-//==========================================================================
-
-// Vulkan concrete services that override the abstract services from bestow.services
-// VulkanGraphicsSystem depends on AssetSystem for texture loading
-BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
-
-// VulkanGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow::vulkan

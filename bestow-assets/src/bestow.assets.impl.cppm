@@ -59,13 +59,8 @@ void setBehaviorTreeJson(BehaviorTreeData& data, const std::string& jsonText);
 bool hasBehaviorTreeJson(const BehaviorTreeData& data);
 const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
-class AssetSystem : public IAssetSystem {
+BESTOW_SYSTEM(AssetSystem, IAssetSystem, IEventSystem) {
 public:
-    /// Constructor with optional dependencies (injected via Kangaru)
-    /// @param events Optional event system for publishing asset change events
-    /// @param jobs Optional job system for async loading (void* to avoid circular dep)
-    explicit AssetSystem(IEventSystem* events = nullptr, void* jobs = nullptr)
-        : eventSystem_(events), jobSystem_(jobs) {}
     ~AssetSystem() override = default;
 
     void update() override;
@@ -173,10 +168,6 @@ private:
     bool hotReloadEnabled_ = false;
     UUID nextUUID_ = 1;
 
-    // System integration
-    IEventSystem* eventSystem_ = nullptr;
-    void* jobSystem_ = nullptr;  // Actually a core::JobSystem*, stored as void* to avoid circular dependency
-
     // File watcher infrastructure (event-driven, not polling)
     std::unique_ptr<efsw::FileWatcher> fileWatcher_;
     std::unique_ptr<FileWatchListener> fileWatchListener_;
@@ -201,10 +192,5 @@ private:
     // Helper to notify subscribers when an asset changes
     void notifySubscribers(AssetHandle handle, AssetType type);
 };
-
-// Kangaru service definitions
-// Concrete service that provides AssetSystem as IAssetSystem
-// Note: JobSystem uses void* to avoid circular dependency, not injected via DI
-BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

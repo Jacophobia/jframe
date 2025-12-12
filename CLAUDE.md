@@ -166,20 +166,56 @@ class GraphicsSystem : public IGraphicsSystem {
 
 #### Dependency Injection with Kangaru
 
-Systems receive their dependencies through constructor injection using Kangaru DI:
+Systems receive their dependencies through constructor injection using Kangaru DI. Bestow provides macros to reduce boilerplate.
+
+#### BESTOW_SYSTEM Macro (Preferred)
+
+The `BESTOW_SYSTEM` macro combines class declaration, service definition, constructor, and member variables into a single declaration:
 
 ```cpp
-// System constructor - dependencies injected as interfaces
-GraphicsSystem::GraphicsSystem(
-    IAssetSystem& assets,
-    IEntitySystem& entities, 
-    IEventSystem& events
-) : assets_(&assets), entities_(&entities), events_(&events) {
-    // Implementation
-}
+// In your .cppm file:
+BESTOW_SYSTEM(AssetSystem, IAssetSystem, IEventSystem) {
+public:
+    ~AssetSystem() override = default;
+    void update() override;
+    // ... interface methods
 
-// Kangaru service definition (in engine composition root)
-auto graphicsService() -> kangaru::service_map<IGraphicsSystem, GraphicsSystem>;
+private:
+    // Your own members (injected deps are auto-generated as protected)
+    UUID nextUUID_ = 1;
+};
+
+// The macro generates:
+// - class AssetSystem : public IAssetSystem { ... }
+// - nested AssetSystem::Service struct for Kangaru registration
+// - constructor: explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
+// - protected member: IEventSystem* pIEventSystem_ = nullptr;
+```
+
+**Member Variable Naming Convention:**
+- Injected dependencies become `p<TypeName>_` (e.g., `pIEventSystem_`, `pIAssetSystem_`)
+- The 'p' prefix indicates pointer
+- Use the full type name (including 'I' for interfaces)
+
+**Multiple Dependencies:**
+```cpp
+// 3D Graphics system with multiple dependencies
+BESTOW_SYSTEM(VulkanGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem) {
+public:
+    ~VulkanGraphics3DSystem() override;
+    // ...
+private:
+    // Access injected deps via: pIAssetSystem_, pIShaderSystem_, pIConfigSystem_
+};
+```
+
+#### BESTOW_SERVICE Macro (Standalone Service Definitions)
+
+For defining service registration separately from class declaration:
+
+```cpp
+// After the class definition:
+BESTOW_SERVICE(MyImplementation, MyInterface, Dependency1, Dependency2);
 ```
 
 ### Engine Class Architecture

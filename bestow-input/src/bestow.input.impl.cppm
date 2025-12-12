@@ -14,12 +14,8 @@ import bestow.services;  // Re-exports all contracts including bestow.input, bes
 
 export namespace bestow {
 
-class InputSystem : public IInputSystem {
+BESTOW_SYSTEM(InputSystem, IInputSystem, IAssetSystem) {
 public:
-    /// Constructor with optional asset system for loading controller mappings
-    /// @param assets Optional asset system for loading gamecontrollerdb.txt
-    explicit InputSystem(IAssetSystem* assets = nullptr)
-        : assetSystem_(assets) {}
     ~InputSystem() override;
 
     bool initialize(void* nativeWindow) override;
@@ -98,11 +94,6 @@ private:
     std::string textInputBuffer_;
 
     bool sdlInitialized_ = false;
-    IAssetSystem* assetSystem_ = nullptr;
 };
-
-// Kangaru service definitions
-// InputSystem optionally depends on AssetSystem for loading controller mappings
-BESTOW_SERVICE(InputSystem, InputSystem, AssetSystem);
 
 }  // namespace bestow

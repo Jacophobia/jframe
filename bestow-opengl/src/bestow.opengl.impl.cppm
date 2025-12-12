@@ -57,12 +57,8 @@ struct FontAtlas {
     AssetHandle fontHandle;
 };
 
-class OpenGLGraphicsSystem : public IGraphicsSystem {
+BESTOW_SYSTEM(OpenGLGraphicsSystem, IGraphicsSystem, IAssetSystem) {
 public:
-    /// Constructor with asset system dependency injected via Kangaru
-    /// @param assets Asset system for texture loading
-    explicit OpenGLGraphicsSystem(IAssetSystem* assets = nullptr)
-        : assetSystem_(assets) {}
     ~OpenGLGraphicsSystem() override;
 
     bool initialize(int width, int height, const std::string& title);
@@ -149,8 +145,6 @@ public:
     bool isViewportCullingEnabled() const override;
 
 private:
-    // Asset system reference for texture loading
-    IAssetSystem* assetSystem_ = nullptr;
     GLFWwindow* window_ = nullptr;
     Camera camera_;
     Color clearColor_ = Color::black();
@@ -571,16 +565,8 @@ void main() {
 // OpenGL Graphics3D System Implementation
 //==========================================================================
 
-class OpenGLGraphics3DSystem : public IGraphics3DSystem {
+BESTOW_SYSTEM(OpenGLGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem) {
 public:
-    /// Constructor with dependencies injected via Kangaru
-    /// @param assets Asset system for loading textures and meshes
-    /// @param shaders Shader system for custom shader/material support
-    /// @param config Config system for runtime configuration
-    explicit OpenGLGraphics3DSystem(IAssetSystem* assets = nullptr,
-                                     IShaderSystem* shaders = nullptr,
-                                     IConfigSystem* config = nullptr)
-        : assetSystem_(assets), shaderSystem_(shaders), configSystem_(config) {}
     ~OpenGLGraphics3DSystem() override;
 
     //======================================================================
@@ -1081,15 +1067,8 @@ private:
     // Statistics
     mutable RenderStats stats_;
 
-    // Asset system
-    IAssetSystem* assetSystem_ = nullptr;
-
-    // Shader system
-    IShaderSystem* shaderSystem_ = nullptr;
+    // Lua material caching
     std::unordered_map<std::string, MaterialHandle> luaMaterialCache_;
-
-    // Config system (for Lua parsing)
-    IConfigSystem* configSystem_ = nullptr;
 
     // Runtime configuration
     Graphics3DRuntimeConfig runtimeConfig_;
@@ -2556,7 +2535,7 @@ void OpenGLGraphics3DSystem::drawMeshWithShaderMaterial(
     bool /*castShadow*/,
     bool /*receiveShadow*/)
 {
-    if (!shaderSystem_) return;
+    if (!pIShaderSystem_) return;
 
     auto meshIt = meshes_.find(mesh);
     if (meshIt == meshes_.end()) return;
@@ -2564,28 +2543,28 @@ void OpenGLGraphics3DSystem::drawMeshWithShaderMaterial(
     const auto& meshRes = meshIt->second;
 
     // Bind the shader
-    shaderSystem_->bindShader(shader);
+    pIShaderSystem_->bindShader(shader);
 
     // Set standard uniforms that all shaders expect
-    shaderSystem_->setUniform("uModel", worldMatrix);
-    shaderSystem_->setUniform("uView", viewMatrix_);
-    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+    pIShaderSystem_->setUniform("uModel", worldMatrix);
+    pIShaderSystem_->setUniform("uView", viewMatrix_);
+    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
 
     // Calculate normal matrix
     Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
 
     // Set camera and lighting uniforms
-    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
     if (directionalLight_) {
-        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
     } else {
-        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
     }
-    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
 
     // Draw the mesh
     glBindVertexArray(meshRes.vao);
@@ -2602,7 +2581,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     std::string_view materialPath,
     const Mat4& worldMatrix)
 {
-    if (!shaderSystem_) {
+    if (!pIShaderSystem_) {
         return std::unexpected(Graphics3DError::InvalidShader);
     }
 
@@ -2615,7 +2594,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
         material = cacheIt->second;
     } else {
         // Load the material
-        auto result = shaderSystem_->loadMaterial(materialPath);
+        auto result = pIShaderSystem_->loadMaterial(materialPath);
         if (!result) {
             return std::unexpected(Graphics3DError::InvalidShader);
         }
@@ -2624,7 +2603,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     }
 
     // Bind the material (sets shader and all uniforms)
-    shaderSystem_->bindMaterial(material);
+    pIShaderSystem_->bindMaterial(material);
 
     // Now draw with the material's shader
     auto meshIt = meshes_.find(mesh);
@@ -2635,22 +2614,22 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     const auto& meshRes = meshIt->second;
 
     // Set standard uniforms
-    shaderSystem_->setUniform("uModel", worldMatrix);
-    shaderSystem_->setUniform("uView", viewMatrix_);
-    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+    pIShaderSystem_->setUniform("uModel", worldMatrix);
+    pIShaderSystem_->setUniform("uView", viewMatrix_);
+    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
 
     Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
-    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
     if (directionalLight_) {
-        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
     } else {
-        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
     }
-    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
 
     // Draw
     glBindVertexArray(meshRes.vao);
@@ -2670,7 +2649,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     const Mat4& worldMatrix,
     const Vec4& colorOverride)
 {
-    if (!shaderSystem_) {
+    if (!pIShaderSystem_) {
         return std::unexpected(Graphics3DError::InvalidShader);
     }
 
@@ -2683,7 +2662,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
         material = cacheIt->second;
     } else {
         // Load the material
-        auto result = shaderSystem_->loadMaterial(materialPath);
+        auto result = pIShaderSystem_->loadMaterial(materialPath);
         if (!result) {
             return std::unexpected(Graphics3DError::InvalidShader);
         }
@@ -2692,10 +2671,10 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     }
 
     // Bind the material (sets shader and all uniforms from Lua)
-    shaderSystem_->bindMaterial(material);
+    pIShaderSystem_->bindMaterial(material);
 
     // Override the base color with per-object color
-    shaderSystem_->setUniform("uBaseColor", colorOverride);
+    pIShaderSystem_->setUniform("uBaseColor", colorOverride);
 
     // Now draw with the material's shader
     auto meshIt = meshes_.find(mesh);
@@ -2706,22 +2685,22 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     const auto& meshRes = meshIt->second;
 
     // Set standard uniforms
-    shaderSystem_->setUniform("uModel", worldMatrix);
-    shaderSystem_->setUniform("uView", viewMatrix_);
-    shaderSystem_->setUniform("uProjection", projectionMatrix_);
+    pIShaderSystem_->setUniform("uModel", worldMatrix);
+    pIShaderSystem_->setUniform("uView", viewMatrix_);
+    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
 
     Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    shaderSystem_->setUniform("uNormalMatrix", normalMatrix);
-    shaderSystem_->setUniform("uCameraPos", camera_.transform.position);
+    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
+    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
     if (directionalLight_) {
-        shaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        shaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
+        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
+        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
     } else {
-        shaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        shaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
     }
-    shaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    shaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
+    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
 
     // Draw
     glBindVertexArray(meshRes.vao);
@@ -2736,8 +2715,8 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
 }
 
 void OpenGLGraphics3DSystem::updateShaders() {
-    if (shaderSystem_) {
-        shaderSystem_->update();  // Check for hot reload
+    if (pIShaderSystem_) {
+        pIShaderSystem_->update();  // Check for hot reload
     }
 }
 
@@ -4316,12 +4295,12 @@ bool OpenGLGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& conf
 
     try {
         // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
-        if (!configSystem_) {
+        if (!pIConfigSystem_) {
             std::cerr << "[OpenGL Graphics3D] ERROR: ConfigSystem is required for loading config" << std::endl;
             return false;
         }
 
-        auto result = configSystem_->parseLuaString(luaContent, configPath.string());
+        auto result = pIConfigSystem_->parseLuaString(luaContent, configPath.string());
         if (!result) {
             std::cerr << "[OpenGL Graphics3D] Failed to load config: " << configPath << std::endl;
             return false;
@@ -4512,14 +4491,4 @@ bool OpenGLGraphics3DSystem::reloadRuntimeConfig() {
 
 //==========================================================================
 // Kangaru Service Definitions
-//==========================================================================
-
-// Concrete services that provide OpenGL implementations
-// Abstract services are imported from bestow.services
-// OpenGLGraphicsSystem depends on AssetSystem for texture loading
-BESTOW_SERVICE(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
-
-// OpenGLGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
-
 }  // namespace bestow

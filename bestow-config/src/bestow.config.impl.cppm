@@ -29,13 +29,8 @@ struct ConfigSubscription {
     ConfigChangeCallback callback;
 };
 
-class ConfigSystem : public IConfigSystem {
+BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem) {
 public:
-    /// Constructor with dependencies injected via Kangaru
-    /// @param assetSystem Asset system for file I/O (required)
-    /// @param events Event system for publishing config change events (optional)
-    explicit ConfigSystem(IAssetSystem* assetSystem = nullptr, IEventSystem* events = nullptr)
-        : assetSystem_(assetSystem), eventSystem_(events) {}
     ~ConfigSystem() override = default;
 
     //==========================================================================
@@ -147,12 +142,6 @@ private:
     // Configuration storage
     std::unordered_map<ConfigKey, ConfigEntry> config_;
 
-    // Asset system integration
-    IAssetSystem* assetSystem_ = nullptr;
-
-    // Event system integration
-    IEventSystem* eventSystem_ = nullptr;
-
     // Loaded file tracking
     struct LoadedFile {
         std::string path;
@@ -178,9 +167,5 @@ private:
     // Current time tracking
     Timestamp currentTime_ = 0.0f;
 };
-
-// Kangaru service definitions
-// ConfigSystem depends on AssetSystem for file I/O and EventSystem for notifications
-BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow
