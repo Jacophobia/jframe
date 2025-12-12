@@ -10,29 +10,32 @@ module;
 //==========================================================================
 // Service Definition Helper Macros
 //
-// These macros reduce boilerplate when defining concrete services that
-// override abstract services with constructor injection.
+// Two patterns are available:
 //
-// PREFERRED: Use the variadic BESTOW_SERVICE macro which auto-selects:
+// PATTERN 1: BESTOW_SYSTEM - Nested Service class (PREFERRED)
+// ============================================================
+// Place inside your class to generate a nested Service type, constructor,
+// and dependency member variables. Access service via MyClass::Service.
 //
-//   BESTOW_SERVICE(EventSystem, EventSystem)                    // 0 deps
-//   BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem)       // 1 dep
-//   BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem)  // 2 deps
-//   BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem)  // 3 deps
+//   class AssetSystem : public IAssetSystem {
+//       BESTOW_SYSTEM(AssetSystem, AssetSystem, EventSystem)
+//   public:
+//       void doWork() { dep1_->emit(...); }  // dep1_ is IEventSystem*
+//   };
+//   // Register: container.service<AssetSystem::Service>()
 //
-// The macro automatically counts dependencies and generates the appropriate
-// Kangaru service struct with constructor injection.
+// PATTERN 2: BESTOW_SERVICE - Standalone service struct
+// ======================================================
+// Place after your class definition for a standalone service struct.
 //
-// Note: The macro uses I##InterfaceType##Service naming convention.
-// So AssetSystem maps to IAssetSystemService, EventSystem to IEventSystemService, etc.
+//   class AssetSystem : public IAssetSystem { ... };
+//   BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
 //
-// WHY CLASS + SERVICE CAN'T BE COMBINED:
-// C++ preprocessor macros cannot contain arbitrary code blocks. A macro like
-// BESTOW(AssetSystem, IAssetSystem, IEventSystem) { /* body */ } would need
-// to expand both before and after the body, which isn't possible. The class
-// definition and service struct must remain separate, but placing the
-// BESTOW_SERVICE macro immediately after the class closing brace keeps them
-// visually connected.
+// Both patterns support 0-4 dependencies and auto-select based on count.
+//
+// Naming conventions:
+//   - Interface: I##InterfaceType##Service (e.g., IAssetSystemService)
+//   - Dependencies: dep1_, dep2_, dep3_, dep4_ (injected as I##DepType*)
 //==========================================================================
 
 // Helper macros for argument counting (supports 0-4 dependencies)
@@ -101,6 +104,118 @@ module;
 // Usage: BESTOW_SERVICE(ImplType, InterfaceType [, Dep1, Dep2, ...])
 #define BESTOW_SERVICE(ImplType, InterfaceType, ...) \
     BESTOW_CONCAT(BESTOW_DEPS_, BESTOW_DEP_COUNT(__VA_ARGS__ __VA_OPT__(,) _))(ImplType, InterfaceType __VA_OPT__(,) __VA_ARGS__)
+
+//==========================================================================
+// BESTOW_SYSTEM - Nested Service class pattern
+//
+// Place inside your class definition to generate:
+//   - A nested 'Service' struct for Kangaru registration
+//   - Constructor with dependency injection
+//   - Private member variables (dep1_, dep2_, etc.)
+//
+// The class type is available within the nested Service because C++ allows
+// the enclosing class name to be used in nested class definitions.
+//==========================================================================
+
+// 0 dependencies - default constructible
+#define BESTOW_SYSTEM_0(ImplType, InterfaceType) \
+public: \
+    struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> {}; \
+    ImplType() = default; \
+public:
+
+// 1 dependency
+#define BESTOW_SYSTEM_1(ImplType, InterfaceType, Dep1Type) \
+public: \
+    struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct(kgr::inject_t<bestow::I##Dep1Type##Service> d1) \
+            -> kgr::inject_result<bestow::I##Dep1Type*> { \
+            return kgr::inject(&d1.service()); \
+        } \
+    }; \
+    explicit ImplType(bestow::I##Dep1Type* dep1 = nullptr) : dep1_(dep1) {} \
+protected: \
+    bestow::I##Dep1Type* dep1_ = nullptr; \
+public:
+
+// 2 dependencies
+#define BESTOW_SYSTEM_2(ImplType, InterfaceType, Dep1Type, Dep2Type) \
+public: \
+    struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*> { \
+            return kgr::inject(&d1.service(), &d2.service()); \
+        } \
+    }; \
+    explicit ImplType(bestow::I##Dep1Type* dep1 = nullptr, bestow::I##Dep2Type* dep2 = nullptr) \
+        : dep1_(dep1), dep2_(dep2) {} \
+protected: \
+    bestow::I##Dep1Type* dep1_ = nullptr; \
+    bestow::I##Dep2Type* dep2_ = nullptr; \
+public:
+
+// 3 dependencies
+#define BESTOW_SYSTEM_3(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type) \
+public: \
+    struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2, \
+            kgr::inject_t<bestow::I##Dep3Type##Service> d3) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*> { \
+            return kgr::inject(&d1.service(), &d2.service(), &d3.service()); \
+        } \
+    }; \
+    explicit ImplType( \
+        bestow::I##Dep1Type* dep1 = nullptr, \
+        bestow::I##Dep2Type* dep2 = nullptr, \
+        bestow::I##Dep3Type* dep3 = nullptr) \
+        : dep1_(dep1), dep2_(dep2), dep3_(dep3) {} \
+protected: \
+    bestow::I##Dep1Type* dep1_ = nullptr; \
+    bestow::I##Dep2Type* dep2_ = nullptr; \
+    bestow::I##Dep3Type* dep3_ = nullptr; \
+public:
+
+// 4 dependencies
+#define BESTOW_SYSTEM_4(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type, Dep4Type) \
+public: \
+    struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
+        static auto construct( \
+            kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
+            kgr::inject_t<bestow::I##Dep2Type##Service> d2, \
+            kgr::inject_t<bestow::I##Dep3Type##Service> d3, \
+            kgr::inject_t<bestow::I##Dep4Type##Service> d4) \
+            -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*, bestow::I##Dep4Type*> { \
+            return kgr::inject(&d1.service(), &d2.service(), &d3.service(), &d4.service()); \
+        } \
+    }; \
+    explicit ImplType( \
+        bestow::I##Dep1Type* dep1 = nullptr, \
+        bestow::I##Dep2Type* dep2 = nullptr, \
+        bestow::I##Dep3Type* dep3 = nullptr, \
+        bestow::I##Dep4Type* dep4 = nullptr) \
+        : dep1_(dep1), dep2_(dep2), dep3_(dep3), dep4_(dep4) {} \
+protected: \
+    bestow::I##Dep1Type* dep1_ = nullptr; \
+    bestow::I##Dep2Type* dep2_ = nullptr; \
+    bestow::I##Dep3Type* dep3_ = nullptr; \
+    bestow::I##Dep4Type* dep4_ = nullptr; \
+public:
+
+// Dispatch helpers for BESTOW_SYSTEM
+#define BESTOW_SYS_0(ImplType, InterfaceType) BESTOW_SYSTEM_0(ImplType, InterfaceType)
+#define BESTOW_SYS_1(ImplType, InterfaceType, D1) BESTOW_SYSTEM_1(ImplType, InterfaceType, D1)
+#define BESTOW_SYS_2(ImplType, InterfaceType, D1, D2) BESTOW_SYSTEM_2(ImplType, InterfaceType, D1, D2)
+#define BESTOW_SYS_3(ImplType, InterfaceType, D1, D2, D3) BESTOW_SYSTEM_3(ImplType, InterfaceType, D1, D2, D3)
+#define BESTOW_SYS_4(ImplType, InterfaceType, D1, D2, D3, D4) BESTOW_SYSTEM_4(ImplType, InterfaceType, D1, D2, D3, D4)
+
+// Primary variadic macro for nested Service pattern
+// Usage: BESTOW_SYSTEM(ImplType, InterfaceType [, Dep1, Dep2, ...])
+#define BESTOW_SYSTEM(ImplType, InterfaceType, ...) \
+    BESTOW_CONCAT(BESTOW_SYS_, BESTOW_DEP_COUNT(__VA_ARGS__ __VA_OPT__(,) _))(ImplType, InterfaceType __VA_OPT__(,) __VA_ARGS__)
 
 export module bestow.services;
 
