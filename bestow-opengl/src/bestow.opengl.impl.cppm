@@ -4517,9 +4517,9 @@ bool OpenGLGraphics3DSystem::reloadRuntimeConfig() {
 // Concrete services that provide OpenGL implementations
 // Abstract services are imported from bestow.services
 // OpenGLGraphicsSystem depends on AssetSystem for texture loading
-BESTOW_SERVICE_1(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
+BESTOW_SERVICE(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
 
 // OpenGLGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-BESTOW_SERVICE_3(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
+BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow

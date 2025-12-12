@@ -13,31 +13,38 @@ module;
 // These macros reduce boilerplate when defining concrete services that
 // override abstract services with constructor injection.
 //
-// Usage examples (in implementation modules):
+// PREFERRED: Use the variadic BESTOW_SERVICE macro which auto-selects:
 //
-// For a service with no dependencies:
-//   BESTOW_SERVICE(EventSystem, EventSystem)
-//   // Creates: struct EventSystemService : kgr::single_service<EventSystem>, ...
+//   BESTOW_SERVICE(EventSystem, EventSystem)                    // 0 deps
+//   BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem)       // 1 dep
+//   BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem)  // 2 deps
+//   BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem)  // 3 deps
 //
-// For a service with one dependency:
-//   BESTOW_SERVICE_1(AssetSystem, AssetSystem, EventSystem)
-//   // Creates service with IEventSystem* injected via constructor
-//
-// For a service with two dependencies:
-//   BESTOW_SERVICE_2(ConfigSystem, ConfigSystem, AssetSystem, EventSystem)
-//
-// For a service with three dependencies:
-//   BESTOW_SERVICE_3(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem)
+// The macro automatically counts dependencies and generates the appropriate
+// Kangaru service struct with constructor injection.
 //
 // Note: The macro uses I##InterfaceType##Service naming convention.
 // So AssetSystem maps to IAssetSystemService, EventSystem to IEventSystemService, etc.
+//
+// WHY CLASS + SERVICE CAN'T BE COMBINED:
+// C++ preprocessor macros cannot contain arbitrary code blocks. A macro like
+// BESTOW(AssetSystem, IAssetSystem, IEventSystem) { /* body */ } would need
+// to expand both before and after the body, which isn't possible. The class
+// definition and service struct must remain separate, but placing the
+// BESTOW_SERVICE macro immediately after the class closing brace keeps them
+// visually connected.
 //==========================================================================
 
-// Service with no injected dependencies (default constructible)
-#define BESTOW_SERVICE(ImplType, InterfaceType) \
+// Helper macros for argument counting (supports 0-4 dependencies)
+#define BESTOW_ARG_N(_0, _1, _2, _3, _4, N, ...) N
+#define BESTOW_NARGS(...) BESTOW_ARG_N(__VA_ARGS__ __VA_OPT__(,) 4, 3, 2, 1, 0)
+#define BESTOW_CONCAT_IMPL(a, b) a##b
+#define BESTOW_CONCAT(a, b) BESTOW_CONCAT_IMPL(a, b)
+
+// Internal service macros (numbered versions)
+#define BESTOW_SERVICE_0(ImplType, InterfaceType) \
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> {}
 
-// Service with 1 injected dependency
 #define BESTOW_SERVICE_1(ImplType, InterfaceType, Dep1Type) \
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
         static auto construct(kgr::inject_t<bestow::I##Dep1Type##Service> d1) \
@@ -46,7 +53,6 @@ module;
         } \
     }
 
-// Service with 2 injected dependencies
 #define BESTOW_SERVICE_2(ImplType, InterfaceType, Dep1Type, Dep2Type) \
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
         static auto construct( \
@@ -57,7 +63,6 @@ module;
         } \
     }
 
-// Service with 3 injected dependencies
 #define BESTOW_SERVICE_3(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type) \
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
         static auto construct( \
@@ -69,7 +74,6 @@ module;
         } \
     }
 
-// Service with 4 injected dependencies (rarely needed)
 #define BESTOW_SERVICE_4(ImplType, InterfaceType, Dep1Type, Dep2Type, Dep3Type, Dep4Type) \
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
         static auto construct( \
@@ -81,6 +85,22 @@ module;
             return kgr::inject(&d1.service(), &d2.service(), &d3.service(), &d4.service()); \
         } \
     }
+
+// Dispatch helpers - extract just the dependency arguments (skip first 2)
+#define BESTOW_DEPS_0(ImplType, InterfaceType) BESTOW_SERVICE_0(ImplType, InterfaceType)
+#define BESTOW_DEPS_1(ImplType, InterfaceType, D1) BESTOW_SERVICE_1(ImplType, InterfaceType, D1)
+#define BESTOW_DEPS_2(ImplType, InterfaceType, D1, D2) BESTOW_SERVICE_2(ImplType, InterfaceType, D1, D2)
+#define BESTOW_DEPS_3(ImplType, InterfaceType, D1, D2, D3) BESTOW_SERVICE_3(ImplType, InterfaceType, D1, D2, D3)
+#define BESTOW_DEPS_4(ImplType, InterfaceType, D1, D2, D3, D4) BESTOW_SERVICE_4(ImplType, InterfaceType, D1, D2, D3, D4)
+
+// Count only the dependency arguments (total args minus 2 for ImplType and InterfaceType)
+#define BESTOW_DEP_COUNT_IMPL(_1, _2, _3, _4, _5, _6, N, ...) N
+#define BESTOW_DEP_COUNT(...) BESTOW_DEP_COUNT_IMPL(__VA_ARGS__, 4, 3, 2, 1, 0, 0)
+
+// Primary variadic macro - automatically dispatches based on dependency count
+// Usage: BESTOW_SERVICE(ImplType, InterfaceType [, Dep1, Dep2, ...])
+#define BESTOW_SERVICE(ImplType, InterfaceType, ...) \
+    BESTOW_CONCAT(BESTOW_DEPS_, BESTOW_DEP_COUNT(__VA_ARGS__ __VA_OPT__(,) _))(ImplType, InterfaceType __VA_OPT__(,) __VA_ARGS__)
 
 export module bestow.services;
 

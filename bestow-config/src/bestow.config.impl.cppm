@@ -181,6 +181,6 @@ private:
 
 // Kangaru service definitions
 // ConfigSystem depends on AssetSystem for file I/O and EventSystem for notifications
-BESTOW_SERVICE_2(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
+BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

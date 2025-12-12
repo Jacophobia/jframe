@@ -1517,6 +1517,6 @@ void main() {
 
 // Concrete service that provides OpenGLShaderSystem as IShaderSystem
 // ShaderSystem depends on AssetSystem for loading shader source files
-BESTOW_SERVICE_1(OpenGLShaderSystem, ShaderSystem, AssetSystem);
+BESTOW_SERVICE(OpenGLShaderSystem, ShaderSystem, AssetSystem);
 
 }  // namespace bestow

@@ -892,9 +892,9 @@ private:
 
 // Vulkan concrete services that override the abstract services from bestow.services
 // VulkanGraphicsSystem depends on AssetSystem for texture loading
-BESTOW_SERVICE_1(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
+BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
 // VulkanGraphics3DSystem depends on AssetSystem, ShaderSystem, and ConfigSystem
-BESTOW_SERVICE_3(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
+BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow::vulkan

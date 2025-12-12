@@ -103,6 +103,6 @@ private:
 
 // Kangaru service definitions
 // InputSystem optionally depends on AssetSystem for loading controller mappings
-BESTOW_SERVICE_1(InputSystem, InputSystem, AssetSystem);
+BESTOW_SERVICE(InputSystem, InputSystem, AssetSystem);
 
 }  // namespace bestow

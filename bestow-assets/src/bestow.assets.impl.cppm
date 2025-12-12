@@ -205,6 +205,6 @@ private:
 // Kangaru service definitions
 // Concrete service that provides AssetSystem as IAssetSystem
 // Note: JobSystem uses void* to avoid circular dependency, not injected via DI
-BESTOW_SERVICE_1(AssetSystem, AssetSystem, EventSystem);
+BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow
