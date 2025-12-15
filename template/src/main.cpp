@@ -16,7 +16,7 @@ import bestow.events.impl;     // EventSystem
 import bestow.audio.impl;      // AudioSystem
 import bestow.assets.impl;     // AssetSystem
 import bestow.config.impl;     // ConfigSystem
-import bestow.shader.impl;     // ShaderSystem (OpenGL shader system)
+import bestow.shader.impl;     // OpenGLShaderSystem
 
 // Import your game
 import my.game;
@@ -46,7 +46,7 @@ int main() {
     engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
 
     // Graphics system (depends on assets, shaders, config)
-    engine.use<bestow::IGraphics3DSystem, bestow::vulkan::VulkanGraphics3DSystem>();
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
 
     // Input system (depends on assets)
     engine.use<bestow::IInputSystem, bestow::InputSystem>();
@@ -59,13 +59,18 @@ int main() {
     }
 
     //=========================================================================
-    // Run the Game
+    // Run the Game with Constructor Injection
     //
-    // Your game receives Engine& and uses engine.get<Contract>() to
-    // retrieve the systems it needs.
+    // List the contract interfaces that your game's constructor needs.
+    // Engine resolves and injects them automatically.
     //=========================================================================
 
-    engine.run<mygame::MyGame>();
+    engine.run<mygame::MyGame,
+        bestow::IGraphics3DSystem,
+        bestow::IInputSystem,
+        bestow::IEntitySystem,
+        bestow::IEventSystem,
+        bestow::IAudioSystem>();
 
     return 0;
 }

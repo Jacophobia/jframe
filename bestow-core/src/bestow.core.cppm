@@ -79,21 +79,41 @@ private:
 /// The Engine is the composition root that binds contracts to implementations
 /// and provides the client interface for running the application.
 ///
-/// Usage:
+/// Usage Option 1 - Constructor Injection (.NET-style):
 /// ```cpp
 /// class MyGame : public IApplication {
 /// public:
-///     MyGame(Engine& e) : graphics_(e.get<IGraphics3DSystem>()) {}
+///     MyGame(IGraphics3DSystem& g, IInputSystem& i)
+///         : graphics_(&g), input_(&i) {}
 ///     void run() override { /* game loop */ }
 /// private:
-///     IGraphics3DSystem& graphics_;
+///     IGraphics3DSystem* graphics_;
+///     IInputSystem* input_;
 /// };
 ///
 /// int main() {
 ///     Engine engine;
-///     engine.use<EventSystemService>();
-///     engine.use<VulkanGraphics3DSystemService>();
-///     engine.run<MyGame>();
+///     engine.use<IEventSystem, EventSystem>();
+///     engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+///     engine.use<IInputSystem, InputSystem>();
+///     engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+/// }
+/// ```
+///
+/// Usage Option 2 - Engine& pattern (when you want dynamic access):
+/// ```cpp
+/// class MyGame : public IApplication {
+/// public:
+///     MyGame(Engine& e) : graphics_(&e.get<IGraphics3DSystem>()) {}
+///     void run() override { /* game loop */ }
+/// private:
+///     IGraphics3DSystem* graphics_;
+/// };
+///
+/// int main() {
+///     Engine engine;
+///     engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+///     engine.run<MyGame>();  // No deps = Engine& constructor
 /// }
 /// ```
 class Engine {
@@ -122,14 +142,23 @@ public:
         return container_.service<typename ServiceFor<Contract>::type>();
     }
 
-    /// Run the application. App must inherit from IApplication
-    /// and have a constructor that takes Engine&.
-    template<typename App>
+    /// Run the application with constructor injection.
+    /// List the contract interfaces your App constructor needs.
+    /// Example: engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+    template<typename App, typename... Contracts>
     void run() {
         static_assert(std::is_base_of_v<IApplication, App>,
             "App must inherit from IApplication");
-        App app(*this);
-        app.run();
+
+        if constexpr (sizeof...(Contracts) == 0) {
+            // No contracts specified - use Engine& constructor
+            App app(*this);
+            app.run();
+        } else {
+            // Inject specified contracts into App constructor
+            App app(get<Contracts>()...);
+            app.run();
+        }
     }
 
 private:

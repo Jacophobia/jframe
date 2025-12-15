@@ -1,10 +1,10 @@
 // src/game.cppm
-// Bestow Game Template - Application with Dependency Injection
+// Bestow Game Template - Application with Constructor Injection
 //
-// This template demonstrates the proper Bestow architecture:
-// 1. Application receives Engine& and uses engine.get<Contract>() for systems
+// This template demonstrates .NET-style constructor injection:
+// 1. Application receives dependencies directly in constructor
 // 2. All interactions are through contract interfaces
-// 3. Engine wires up implementations in main.cpp with engine.use<Contract, Impl>()
+// 3. Engine wires implementations and injects via engine.run<App, Deps...>()
 
 module;
 
@@ -16,7 +16,6 @@ module;
 export module my.game;
 
 import std;
-import bestow.core;       // Engine class
 import bestow.services;   // All contract interfaces
 import bestow.types;
 import bestow.graphics3d;
@@ -26,27 +25,31 @@ export namespace mygame {
 //==========================================================================
 // MyGame Application
 //
-// Your game extends IApplication and receives Engine& in the constructor.
-// Use engine.get<IContract>() to retrieve the systems you need.
+// Your game extends IApplication and receives dependencies via constructor
+// injection. Just declare what you need - no Service boilerplate!
 //
 // Benefits of this pattern:
 // - Systems are interchangeable (use Bestow's or your own implementations)
 // - Easy to mock for testing
 // - Clear dependencies - you see exactly what the game needs
 // - Decoupled from specific implementations
-// - No Service boilerplate in your game code!
+// - .NET-style DI - familiar to many developers
 //==========================================================================
 
 class MyGame : public bestow::IApplication {
 public:
-    // Constructor receives Engine& and retrieves systems via get<Contract>()
-    // Only request the systems your game actually needs
-    explicit MyGame(bestow::core::Engine& engine)
-        : graphics_(&engine.get<bestow::IGraphics3DSystem>())
-        , input_(&engine.get<bestow::IInputSystem>())
-        , entities_(&engine.get<bestow::IEntitySystem>())
-        , events_(&engine.get<bestow::IEventSystem>())
-        , audio_(&engine.get<bestow::IAudioSystem>()) {}
+    // Constructor receives dependencies directly via DI
+    // List only the systems your game actually needs
+    MyGame(bestow::IGraphics3DSystem& graphics,
+           bestow::IInputSystem& input,
+           bestow::IEntitySystem& entities,
+           bestow::IEventSystem& events,
+           bestow::IAudioSystem& audio)
+        : graphics_(&graphics)
+        , input_(&input)
+        , entities_(&entities)
+        , events_(&events)
+        , audio_(&audio) {}
 
     ~MyGame() override = default;
 

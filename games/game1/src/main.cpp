@@ -1,7 +1,7 @@
 // games/game1/src/main.cpp
 // 3D Isometric Snake Game - Entry Point
 //
-// Uses the Engine class for system registration with engine.use<Contract, Impl>().
+// Uses .NET-style constructor injection with engine.run<App, Deps...>().
 
 import std;
 import bestow.core;       // Engine class
@@ -14,7 +14,7 @@ import bestow.events.impl;     // EventSystem
 import bestow.audio.impl;      // AudioSystem
 import bestow.assets.impl;     // AssetSystem
 import bestow.config.impl;     // ConfigSystem
-import bestow.shader.impl;     // ShaderSystem
+import bestow.shader.impl;     // OpenGLShaderSystem
 
 // Import the snake game
 import snake.game;
@@ -28,7 +28,7 @@ int main() {
     engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
     engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
     engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
-    engine.use<bestow::IGraphics3DSystem, bestow::vulkan::VulkanGraphics3DSystem>();
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
     engine.use<bestow::IInputSystem, bestow::InputSystem>();
 
     // Audio (optional)
@@ -38,8 +38,11 @@ int main() {
         std::cerr << "Warning: Audio system not available\n";
     }
 
-    // Run the game
-    engine.run<snake::SnakeGame>();
+    // Run the game with constructor injection
+    engine.run<snake::SnakeGame,
+        bestow::IGraphics3DSystem,
+        bestow::IInputSystem,
+        bestow::IAudioSystem>();
 
     return 0;
 }

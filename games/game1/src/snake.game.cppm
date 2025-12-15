@@ -1,7 +1,7 @@
 // games/game1/src/snake.game.cppm
 // 3D Isometric Snake Game
 //
-// A simple snake game demonstrating the Bestow contract-based DI architecture.
+// A simple snake game demonstrating .NET-style constructor injection.
 // Uses 3D isometric view with camera following the snake head.
 // Controls: ,AOE (Dvorak) or Arrow Keys for movement
 
@@ -17,7 +17,6 @@ module;
 export module snake.game;
 
 import std;
-import bestow.core;       // Engine class
 import bestow.services;   // All contract interfaces
 import bestow.types;
 import bestow.graphics3d;
@@ -75,17 +74,19 @@ GridPos directionToOffset(Direction dir) {
 //==========================================================================
 // Snake Game Application
 //
-// This game extends IApplication and receives Engine& in the constructor.
-// Use engine.get<IContract>() to retrieve the systems you need.
+// This game extends IApplication and receives dependencies via constructor
+// injection. Just declare what you need - no Service boilerplate!
 //==========================================================================
 
 class SnakeGame : public bestow::IApplication {
 public:
-    // Constructor receives Engine& and retrieves systems via get<Contract>()
-    explicit SnakeGame(bestow::core::Engine& engine)
-        : graphics_(&engine.get<bestow::IGraphics3DSystem>())
-        , input_(&engine.get<bestow::IInputSystem>())
-        , audio_(&engine.get<bestow::IAudioSystem>()) {}
+    // Constructor receives dependencies directly via DI
+    SnakeGame(bestow::IGraphics3DSystem& graphics,
+              bestow::IInputSystem& input,
+              bestow::IAudioSystem& audio)
+        : graphics_(&graphics)
+        , input_(&input)
+        , audio_(&audio) {}
 
     ~SnakeGame() override = default;
 

@@ -936,3 +936,8 @@ public:
 using VulkanGraphics3DSystemService = VulkanGraphics3DSystem::Service;
 
 }  // namespace bestow::vulkan
+
+// Export to bestow namespace for cleaner API
+export namespace bestow {
+    using VulkanGraphics3DSystem = vulkan::VulkanGraphics3DSystem;
+}
