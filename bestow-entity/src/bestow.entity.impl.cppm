@@ -143,10 +143,13 @@ public:
 
 private:
     entt::registry registry_;
+
+public:
+    // Service type for Engine::use<IEntitySystem, EntitySystem>()
+    struct Service : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
 };
 
-// Kangaru service definitions
-// Concrete service that provides EntitySystem as IEntitySystem
-struct EntitySystemService : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
+// Backwards compatibility alias
+using EntitySystemService = EntitySystem::Service;
 
 }  // namespace bestow

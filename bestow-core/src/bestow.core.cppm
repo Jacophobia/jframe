@@ -81,16 +81,19 @@ private:
 ///
 /// Usage:
 /// ```cpp
+/// class MyGame : public IApplication {
+/// public:
+///     MyGame(Engine& e) : graphics_(e.get<IGraphics3DSystem>()) {}
+///     void run() override { /* game loop */ }
+/// private:
+///     IGraphics3DSystem& graphics_;
+/// };
+///
 /// int main() {
 ///     Engine engine;
-///
-///     // Register system implementations against contracts
-///     engine.registerSystem<IEventSystem, EventSystem>();
-///     engine.registerSystem<IEntitySystem, EntitySystem>();
-///     engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
-///
-///     // Run the client application (dependencies injected via constructor)
-///     engine.run<MyGameApp>();
+///     engine.use<EventSystemService>();
+///     engine.use<VulkanGraphics3DSystemService>();
+///     engine.run<MyGame>();
 /// }
 /// ```
 class Engine {
@@ -98,62 +101,36 @@ public:
     Engine() = default;
     ~Engine() = default;
 
-    // Non-copyable, movable
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
     Engine(Engine&&) noexcept = default;
     Engine& operator=(Engine&&) noexcept = default;
 
-    /// Register a service type with the DI container.
-    /// The service definition handles interface-to-implementation mapping.
-    ///
-    /// Example:
-    /// ```cpp
-    /// engine.registerSystem<EventSystemService>();
-    /// engine.registerSystem<EntitySystemService>();
-    /// engine.registerSystem<vulkan::VulkanGraphics3DSystemService>();
-    /// ```
-    template<typename ServiceType>
-    void registerSystem() {
-        container_.service<ServiceType>();
+    /// Register an implementation for a contract interface.
+    /// Example: engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+    template<typename Contract, typename Implementation>
+    void use() {
+        static_assert(std::is_base_of_v<Contract, Implementation>,
+            "Implementation must inherit from Contract");
+        container_.service<typename Implementation::Service>();
     }
 
-    /// Run the application. The App type must:
-    /// 1. Inherit from IApplication
-    /// 2. Have a nested `Service` type (Kangaru service definition)
-    /// 3. Implement the run() method
-    ///
-    /// Example:
-    /// ```cpp
-    /// class MyGame : public IApplication {
-    /// public:
-    ///     MyGame(IGraphicsSystem* graphics, IInputSystem* input)
-    ///         : graphics_(graphics), input_(input) {}
-    ///
-    ///     void run() override { /* Game loop */ }
-    ///
-    ///     // Kangaru service definition
-    ///     struct Service : kgr::single_service<MyGame> { ... };
-    /// };
-    ///
-    /// engine.run<MyGame>();
-    /// ```
+    /// Get a system by its contract interface.
+    /// Example: engine.get<IGraphics3DSystem>()
+    template<typename Contract>
+    Contract& get() {
+        return container_.service<typename ServiceFor<Contract>::type>();
+    }
+
+    /// Run the application. App must inherit from IApplication
+    /// and have a constructor that takes Engine&.
     template<typename App>
     void run() {
         static_assert(std::is_base_of_v<IApplication, App>,
             "App must inherit from IApplication");
-
-        // Resolve the application from the DI container
-        // Kangaru will inject all constructor dependencies
-        auto& app = container_.service<typename App::Service>();
-
-        // Run the application
+        App app(*this);
         app.run();
     }
-
-    /// Get the Kangaru container for advanced usage.
-    kgr::container& container() { return container_; }
-    const kgr::container& container() const { return container_; }
 
 private:
     kgr::container container_;

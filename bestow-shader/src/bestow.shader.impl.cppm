@@ -1937,9 +1937,18 @@ void main() {
 
     // Injected dependencies
     IAssetSystem* pIAssetSystem_ = nullptr;
+
+public:
+    // Service type for Engine::use<IShaderSystem, OpenGLShaderSystem>()
+    struct Service : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {
+        static auto construct(kgr::inject_t<IAssetSystemService> d1)
+            -> kgr::inject_result<IAssetSystem*> {
+            return kgr::inject(&d1.service());
+        }
+    };
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(OpenGLShaderSystem, ShaderSystem, AssetSystem);
+// Backwards compatibility alias
+using ShaderSystemService = OpenGLShaderSystem::Service;
 
 }  // namespace bestow

@@ -334,6 +334,34 @@ struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
 struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 
 //==========================================================================
+// Contract -> Service Type Mapping
+//
+// This trait maps contract interfaces to their abstract service types.
+// Used by Engine::get<Contract>() to resolve services.
+//==========================================================================
+
+template<typename Contract> struct ServiceFor;
+template<> struct ServiceFor<IEntitySystem> { using type = IEntitySystemService; };
+template<> struct ServiceFor<IEventSystem> { using type = IEventSystemService; };
+template<> struct ServiceFor<IConfigSystem> { using type = IConfigSystemService; };
+template<> struct ServiceFor<IAssetSystem> { using type = IAssetSystemService; };
+template<> struct ServiceFor<IInputSystem> { using type = IInputSystemService; };
+template<> struct ServiceFor<IAudioSystem> { using type = IAudioSystemService; };
+template<> struct ServiceFor<ISaveSystem> { using type = ISaveSystemService; };
+template<> struct ServiceFor<ILevelSystem> { using type = ILevelSystemService; };
+template<> struct ServiceFor<ICameraSystem> { using type = ICameraSystemService; };
+template<> struct ServiceFor<IGraphicsSystem> { using type = IGraphicsSystemService; };
+template<> struct ServiceFor<IGraphics3DSystem> { using type = IGraphics3DSystemService; };
+template<> struct ServiceFor<IPhysicsSystem> { using type = IPhysicsSystemService; };
+template<> struct ServiceFor<IPhysics3DSystem> { using type = IPhysics3DSystemService; };
+template<> struct ServiceFor<IAISystem> { using type = IAISystemService; };
+template<> struct ServiceFor<IUISystem> { using type = IUISystemService; };
+template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemService; };
+template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
+template<> struct ServiceFor<IShaderSystem> { using type = IShaderSystemService; };
+template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
+
+//==========================================================================
 // Application Interface
 //==========================================================================
 

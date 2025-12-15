@@ -2,13 +2,12 @@
 // Bestow Game Template - Application with Dependency Injection
 //
 // This template demonstrates the proper Bestow architecture:
-// 1. Application receives systems via constructor injection (DI)
+// 1. Application receives Engine& and uses engine.get<Contract>() for systems
 // 2. All interactions are through contract interfaces
-// 3. Engine wires up implementations in main.cpp
+// 3. Engine wires up implementations in main.cpp with engine.use<Contract, Impl>()
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <GLFW/glfw3.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -17,7 +16,8 @@ module;
 export module my.game;
 
 import std;
-import bestow.services;  // All contracts + BESTOW_SYSTEM/BESTOW_SERVICE macros
+import bestow.core;       // Engine class
+import bestow.services;   // All contract interfaces
 import bestow.types;
 import bestow.graphics3d;
 
@@ -26,31 +26,27 @@ export namespace mygame {
 //==========================================================================
 // MyGame Application
 //
-// Your game extends IApplication and receives its dependencies via
-// constructor injection. The Engine resolves these from registered services.
+// Your game extends IApplication and receives Engine& in the constructor.
+// Use engine.get<IContract>() to retrieve the systems you need.
 //
 // Benefits of this pattern:
 // - Systems are interchangeable (use Bestow's or your own implementations)
 // - Easy to mock for testing
 // - Clear dependencies - you see exactly what the game needs
 // - Decoupled from specific implementations
+// - No Service boilerplate in your game code!
 //==========================================================================
 
 class MyGame : public bestow::IApplication {
 public:
-    // Constructor receives dependencies via Kangaru DI
-    // List only the systems your game actually needs
-    explicit MyGame(
-        bestow::IGraphics3DSystem* graphics = nullptr,
-        bestow::IInputSystem* input = nullptr,
-        bestow::IEntitySystem* entities = nullptr,
-        bestow::IEventSystem* events = nullptr,
-        bestow::IAudioSystem* audio = nullptr)
-        : graphics_(graphics)
-        , input_(input)
-        , entities_(entities)
-        , events_(events)
-        , audio_(audio) {}
+    // Constructor receives Engine& and retrieves systems via get<Contract>()
+    // Only request the systems your game actually needs
+    explicit MyGame(bestow::core::Engine& engine)
+        : graphics_(&engine.get<bestow::IGraphics3DSystem>())
+        , input_(&engine.get<bestow::IInputSystem>())
+        , entities_(&engine.get<bestow::IEntitySystem>())
+        , events_(&engine.get<bestow::IEventSystem>())
+        , audio_(&engine.get<bestow::IAudioSystem>()) {}
 
     ~MyGame() override = default;
 
@@ -231,33 +227,6 @@ private:
     float rotation_ = 0.0f;
     bool running_ = false;
 
-public:
-    //======================================================================
-    // Kangaru Service Definition (nested inside class for Engine::run<>)
-    //======================================================================
-    struct Service : kgr::single_service<MyGame> {
-        static auto construct(
-            kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
-            kgr::inject_t<bestow::IInputSystemService> input,
-            kgr::inject_t<bestow::IEntitySystemService> entities,
-            kgr::inject_t<bestow::IEventSystemService> events,
-            kgr::inject_t<bestow::IAudioSystemService> audio)
-            -> kgr::inject_result<
-                bestow::IGraphics3DSystem*,
-                bestow::IInputSystem*,
-                bestow::IEntitySystem*,
-                bestow::IEventSystem*,
-                bestow::IAudioSystem*>
-        {
-            return kgr::inject(
-                &graphics.service(),
-                &input.service(),
-                &entities.service(),
-                &events.service(),
-                &audio.service()
-            );
-        }
-    };
 };
 
 }  // namespace mygame

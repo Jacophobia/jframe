@@ -7,7 +7,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <GLFW/glfw3.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -18,7 +17,8 @@ module;
 export module snake.game;
 
 import std;
-import bestow.services;  // All contracts + service definitions
+import bestow.core;       // Engine class
+import bestow.services;   // All contract interfaces
 import bestow.types;
 import bestow.graphics3d;
 
@@ -75,20 +75,17 @@ GridPos directionToOffset(Direction dir) {
 //==========================================================================
 // Snake Game Application
 //
-// This game extends IApplication and receives its systems via DI.
-// The main.cpp registers the implementations and resolves this.
+// This game extends IApplication and receives Engine& in the constructor.
+// Use engine.get<IContract>() to retrieve the systems you need.
 //==========================================================================
 
 class SnakeGame : public bestow::IApplication {
 public:
-    // Constructor receives dependencies via Kangaru DI
-    explicit SnakeGame(
-        bestow::IGraphics3DSystem* graphics = nullptr,
-        bestow::IInputSystem* input = nullptr,
-        bestow::IAudioSystem* audio = nullptr)
-        : graphics_(graphics)
-        , input_(input)
-        , audio_(audio) {}
+    // Constructor receives Engine& and retrieves systems via get<Contract>()
+    explicit SnakeGame(bestow::core::Engine& engine)
+        : graphics_(&engine.get<bestow::IGraphics3DSystem>())
+        , input_(&engine.get<bestow::IInputSystem>())
+        , audio_(&engine.get<bestow::IAudioSystem>()) {}
 
     ~SnakeGame() override = default;
 
@@ -537,27 +534,6 @@ private:
         );
     }
 
-public:
-    //======================================================================
-    // Kangaru Service Definition (nested inside class for Engine::run<>)
-    //======================================================================
-    struct Service : kgr::single_service<SnakeGame> {
-        static auto construct(
-            kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
-            kgr::inject_t<bestow::IInputSystemService> input,
-            kgr::inject_t<bestow::IAudioSystemService> audio)
-            -> kgr::inject_result<
-                bestow::IGraphics3DSystem*,
-                bestow::IInputSystem*,
-                bestow::IAudioSystem*>
-        {
-            return kgr::inject(
-                &graphics.service(),
-                &input.service(),
-                &audio.service()
-            );
-        }
-    };
 };
 
 }  // namespace snake

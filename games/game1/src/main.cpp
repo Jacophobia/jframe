@@ -1,37 +1,39 @@
 // games/game1/src/main.cpp
 // 3D Isometric Snake Game - Entry Point
 //
-// Uses the Engine class for system registration and DI.
+// Uses the Engine class for system registration with engine.use<Contract, Impl>().
 
 import std;
 import bestow.core;       // Engine class
 import bestow.services;   // Contract interfaces
 
 // Import Bestow's default implementations
-import bestow.vulkan.impl;     // VulkanGraphics3DSystemService
-import bestow.input.impl;      // InputSystemService
-import bestow.audio.impl;      // AudioSystemService
-import bestow.assets.impl;     // AssetSystemService
-import bestow.config.impl;     // ConfigSystemService
-import bestow.shader.impl;     // ShaderSystemService
+import bestow.vulkan.impl;     // VulkanGraphics3DSystem
+import bestow.input.impl;      // InputSystem
+import bestow.events.impl;     // EventSystem
+import bestow.audio.impl;      // AudioSystem
+import bestow.assets.impl;     // AssetSystem
+import bestow.config.impl;     // ConfigSystem
+import bestow.shader.impl;     // ShaderSystem
 
 // Import the snake game
 import snake.game;
 
 int main() {
-    // Create the Engine
+    // Create the Engine - the composition root
     bestow::core::Engine engine;
 
-    // Register system implementations
-    engine.registerSystem<bestow::ConfigSystemService>();
-    engine.registerSystem<bestow::AssetSystemService>();
-    engine.registerSystem<bestow::ShaderSystemService>();
-    engine.registerSystem<bestow::vulkan::VulkanGraphics3DSystemService>();
-    engine.registerSystem<bestow::InputSystemService>();
+    // Register system implementations with engine.use<Contract, Implementation>()
+    engine.use<bestow::IEventSystem, bestow::EventSystem>();
+    engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
+    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
+    engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
+    engine.use<bestow::IGraphics3DSystem, bestow::vulkan::VulkanGraphics3DSystem>();
+    engine.use<bestow::IInputSystem, bestow::InputSystem>();
 
     // Audio (optional)
     try {
-        engine.registerSystem<bestow::AudioSystemService>();
+        engine.use<bestow::IAudioSystem, bestow::AudioSystem>();
     } catch (...) {
         std::cerr << "Warning: Audio system not available\n";
     }
