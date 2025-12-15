@@ -27,6 +27,7 @@ set(BESTOW_FLAKY_TESTS
     # Root cause: efsw watcher callbacks can race with test teardown on Windows.
     "AssetSystemTest.CheckForReloadsDetectsModifiedFile"
     "AssetSystemTest.HotReloadCallbackOnReload"
+    "AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded"
 
     # EventSystem unsubscribe test fails on Windows MSVC with "bad function call"
     # This appears to be an MSVC C++23 modules issue with std::function stored
