@@ -1,12 +1,13 @@
 // games/game1/src/snake.game.cppm
 // 3D Isometric Snake Game
 //
-// A simple snake game demonstrating the bestow::Game API.
+// A simple snake game demonstrating the Bestow contract-based DI architecture.
 // Uses 3D isometric view with camera following the snake head.
 // Controls: ,AOE (Dvorak) or Arrow Keys for movement
 
 module;
 
+#include <kangaru/kangaru.hpp>
 #include <GLFW/glfw3.h>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -17,9 +18,9 @@ module;
 export module snake.game;
 
 import std;
-import bestow.runtime;
+import bestow.services;  // All contracts + service definitions
 import bestow.types;
-import bestow.graphics3d;  // For DirectionalLight
+import bestow.graphics3d;
 
 export namespace snake {
 
@@ -72,19 +73,119 @@ GridPos directionToOffset(Direction dir) {
 }
 
 //==========================================================================
-// Snake Game Class
+// Snake Game Application
+//
+// This game extends IApplication and receives its systems via DI.
+// The main.cpp registers the implementations and resolves this.
 //==========================================================================
 
-class SnakeGame : public bestow::Game {
+class SnakeGame : public bestow::IApplication {
 public:
-    void onStart() override {
+    // Constructor receives dependencies via Kangaru DI
+    explicit SnakeGame(
+        bestow::IGraphics3DSystem* graphics = nullptr,
+        bestow::IInputSystem* input = nullptr,
+        bestow::IAudioSystem* audio = nullptr)
+        : graphics_(graphics)
+        , input_(input)
+        , audio_(audio) {}
+
+    ~SnakeGame() override = default;
+
+    //======================================================================
+    // IApplication Interface
+    //======================================================================
+
+    void run() override {
+        if (!initialize()) {
+            return;
+        }
+
+        gameLoop();
+        cleanup();
+    }
+
+    void shutdown() override {
+        running_ = false;
+    }
+
+private:
+    //======================================================================
+    // Dependencies (injected via constructor)
+    //======================================================================
+    bestow::IGraphics3DSystem* graphics_ = nullptr;
+    bestow::IInputSystem* input_ = nullptr;
+    bestow::IAudioSystem* audio_ = nullptr;
+
+    //======================================================================
+    // Meshes
+    //======================================================================
+    bestow::MeshHandle cubeMesh_ = 0;
+    bestow::MeshHandle groundMesh_ = 0;
+
+    //======================================================================
+    // Materials
+    //======================================================================
+    bestow::MaterialHandle snakeMaterial_ = 0;
+    bestow::MaterialHandle groundMaterial_ = 0;
+    bestow::MaterialHandle foodMaterial_ = 0;
+
+    //======================================================================
+    // Game State
+    //======================================================================
+    std::vector<GridPos> snake_;
+    GridPos food_;
+    Direction direction_ = Direction::Right;
+    Direction nextDirection_ = Direction::Right;
+    float moveTimer_ = 0.0f;
+    int score_ = 0;
+    bool gameOver_ = false;
+    bool running_ = false;
+
+    //======================================================================
+    // Camera
+    //======================================================================
+    bestow::Vec3 cameraTarget_{0.0f};
+    float cameraAngle_ = 45.0f;  // Degrees around Y axis
+
+    //======================================================================
+    // Initialization
+    //======================================================================
+
+    bool initialize() {
+        if (!graphics_) {
+            std::cerr << "Graphics system not available\n";
+            return false;
+        }
+
+        // Initialize graphics
+        bestow::Graphics3DConfig gfxConfig{
+            .windowWidth = 1280,
+            .windowHeight = 720,
+            .windowTitle = "Snake 3D - Bestow Demo",
+            .vsync = true,
+            .fullscreen = false
+        };
+
+        if (!graphics_->initialize(gfxConfig)) {
+            std::cerr << "Failed to initialize graphics\n";
+            return false;
+        }
+
+        graphics_->setClearColor(bestow::Color{20, 25, 35, 255});
+
+        // Initialize input
+        if (input_) {
+            input_->initialize(graphics_->getNativeWindowHandle());
+        }
+
         // Create meshes
-        auto cubeResult = graphics3d()->createCubeMesh(CELL_SIZE * 0.9f);
+        auto cubeResult = graphics_->createCubeMesh(CELL_SIZE * 0.9f);
         if (cubeResult) {
             cubeMesh_ = *cubeResult;
         }
 
-        auto planeResult = graphics3d()->createPlaneMesh(
+        auto planeResult = graphics_->createPlaneMesh(
             GRID_SIZE * CELL_SIZE,
             GRID_SIZE * CELL_SIZE,
             GRID_SIZE,
@@ -95,9 +196,9 @@ public:
         }
 
         // Create materials
-        snakeMaterial_ = graphics3d()->getDefaultPBRMaterial();
-        groundMaterial_ = graphics3d()->getDefaultUnlitMaterial();
-        foodMaterial_ = graphics3d()->getDefaultPBRMaterial();
+        snakeMaterial_ = graphics_->getDefaultPBRMaterial();
+        groundMaterial_ = graphics_->getDefaultUnlitMaterial();
+        foodMaterial_ = graphics_->getDefaultPBRMaterial();
 
         // Initialize snake
         snake_.clear();
@@ -121,63 +222,87 @@ public:
             .intensity = 1.0f,
             .castShadows = true
         };
-        graphics3d()->setDirectionalLight(light);
-        graphics3d()->setAmbientLight({0.2f, 0.25f, 0.3f}, 0.4f);
+        graphics_->setDirectionalLight(light);
+        graphics_->setAmbientLight({0.2f, 0.25f, 0.3f}, 0.4f);
+
+        return true;
     }
 
-    void onUpdate(bestow::DeltaTime dt) override {
-        handleInput();
+    //======================================================================
+    // Game Loop
+    //======================================================================
 
-        moveTimer_ += dt;
-        if (moveTimer_ >= MOVE_INTERVAL) {
-            moveTimer_ = 0.0f;
-            moveSnake();
+    void gameLoop() {
+        constexpr bestow::DeltaTime fixedDt = 1.0f / 60.0f;
+        auto previousTime = std::chrono::high_resolution_clock::now();
+        bestow::DeltaTime accumulator = 0.0f;
+
+        running_ = true;
+
+        while (running_ && !graphics_->shouldClose()) {
+            // Calculate delta time
+            auto currentTime = std::chrono::high_resolution_clock::now();
+            bestow::DeltaTime frameTime =
+                std::chrono::duration<float>(currentTime - previousTime).count();
+            previousTime = currentTime;
+
+            // Clamp to prevent spiral of death
+            if (frameTime > 0.25f) {
+                frameTime = 0.25f;
+            }
+            accumulator += frameTime;
+
+            // Update input
+            if (input_) {
+                input_->update();
+            }
+
+            // Update audio
+            if (audio_) {
+                audio_->update(frameTime);
+            }
+
+            // Fixed timestep updates
+            while (accumulator >= fixedDt) {
+                handleInput();
+                moveTimer_ += fixedDt;
+                if (moveTimer_ >= MOVE_INTERVAL) {
+                    moveTimer_ = 0.0f;
+                    moveSnake();
+                }
+                updateCamera(fixedDt);
+                accumulator -= fixedDt;
+            }
+
+            // Render
+            graphics_->beginFrame();
+            drawGround();
+            drawSnake();
+            drawFood();
+            drawGridBorder();
+            graphics_->endFrame();
         }
-
-        updateCamera(dt);
     }
 
-    void onRender() override {
-        // Draw ground
-        drawGround();
-
-        // Draw snake
-        drawSnake();
-
-        // Draw food
-        drawFood();
-
-        // Draw grid border (debug lines)
-        drawGridBorder();
+    void cleanup() {
+        if (input_) {
+            input_->shutdown();
+        }
+        if (graphics_) {
+            graphics_->shutdown();
+        }
     }
 
-private:
-    // Meshes
-    bestow::MeshHandle cubeMesh_ = 0;
-    bestow::MeshHandle groundMesh_ = 0;
-
-    // Materials
-    bestow::MaterialHandle snakeMaterial_ = 0;
-    bestow::MaterialHandle groundMaterial_ = 0;
-    bestow::MaterialHandle foodMaterial_ = 0;
-
-    // Game state
-    std::vector<GridPos> snake_;
-    GridPos food_;
-    Direction direction_ = Direction::Right;
-    Direction nextDirection_ = Direction::Right;
-    float moveTimer_ = 0.0f;
-    int score_ = 0;
-    bool gameOver_ = false;
-
-    // Camera
-    bestow::Vec3 cameraTarget_{0.0f};
-    float cameraAngle_ = 45.0f;  // Degrees around Y axis
+    //======================================================================
+    // Input Handling
+    //======================================================================
 
     void handleInput() {
+        if (!input_) return;
+
         if (gameOver_) {
             // R to restart
-            if (input()->wasKeyJustPressed(GLFW_KEY_R)) {
+            if (input_->wasKeyJustPressed(GLFW_KEY_R)) {
                 restartGame();
             }
             return;
@@ -187,35 +312,39 @@ private:
         // Also support arrow keys for QWERTY users
 
         // Up: Comma (Dvorak W) or Up Arrow
-        if ((input()->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-             input()->wasKeyJustPressed(GLFW_KEY_UP)) &&
+        if ((input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
+             input_->wasKeyJustPressed(GLFW_KEY_UP)) &&
             direction_ != Direction::Down) {
             nextDirection_ = Direction::Up;
         }
         // Down: O (Dvorak S) or Down Arrow
-        if ((input()->wasKeyJustPressed(GLFW_KEY_O) ||
-             input()->wasKeyJustPressed(GLFW_KEY_DOWN)) &&
+        if ((input_->wasKeyJustPressed(GLFW_KEY_O) ||
+             input_->wasKeyJustPressed(GLFW_KEY_DOWN)) &&
             direction_ != Direction::Up) {
             nextDirection_ = Direction::Down;
         }
         // Left: A or Left Arrow
-        if ((input()->wasKeyJustPressed(GLFW_KEY_A) ||
-             input()->wasKeyJustPressed(GLFW_KEY_LEFT)) &&
+        if ((input_->wasKeyJustPressed(GLFW_KEY_A) ||
+             input_->wasKeyJustPressed(GLFW_KEY_LEFT)) &&
             direction_ != Direction::Right) {
             nextDirection_ = Direction::Left;
         }
         // Right: E (Dvorak D) or Right Arrow
-        if ((input()->wasKeyJustPressed(GLFW_KEY_E) ||
-             input()->wasKeyJustPressed(GLFW_KEY_RIGHT)) &&
+        if ((input_->wasKeyJustPressed(GLFW_KEY_E) ||
+             input_->wasKeyJustPressed(GLFW_KEY_RIGHT)) &&
             direction_ != Direction::Left) {
             nextDirection_ = Direction::Right;
         }
 
         // ESC to quit
-        if (input()->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
-            quit();
+        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+            running_ = false;
         }
     }
+
+    //======================================================================
+    // Game Logic
+    //======================================================================
 
     void moveSnake() {
         if (gameOver_) return;
@@ -284,6 +413,10 @@ private:
         spawnFood();
     }
 
+    //======================================================================
+    // Camera
+    //======================================================================
+
     void setupCamera() {
         bestow::Camera3D cam;
         cam.fovY = 45.0f;
@@ -291,7 +424,7 @@ private:
         cam.farPlane = 100.0f;
 
         updateCameraTransform(cam);
-        graphics3d()->setCamera(cam);
+        graphics_->setCamera(cam);
     }
 
     void updateCamera(float dt) {
@@ -301,9 +434,9 @@ private:
             cameraTarget_ = cameraTarget_ + (headWorldPos - cameraTarget_) * (5.0f * dt);
         }
 
-        bestow::Camera3D cam = graphics3d()->getCamera();
+        bestow::Camera3D cam = graphics_->getCamera();
         updateCameraTransform(cam);
-        graphics3d()->setCamera(cam);
+        graphics_->setCamera(cam);
     }
 
     void updateCameraTransform(bestow::Camera3D& cam) {
@@ -318,19 +451,20 @@ private:
         cam.transform.position = cameraPos;
 
         // Calculate rotation to look at target
-        // lookAt direction: target - position
         glm::vec3 lookDir = glm::normalize(glm::vec3(
             cameraTarget_.x - cameraPos.x,
             cameraTarget_.y - cameraPos.y,
             cameraTarget_.z - cameraPos.z
         ));
 
-        // Convert look direction to quaternion
-        // Using glm::quatLookAt which creates a rotation from -Z axis to lookDir
         glm::vec3 up(0.0f, 1.0f, 0.0f);
         glm::quat rotation = glm::quatLookAt(lookDir, up);
         cam.transform.rotation = {rotation.w, rotation.x, rotation.y, rotation.z};
     }
+
+    //======================================================================
+    // Rendering
+    //======================================================================
 
     bestow::Vec3 gridToWorld(const GridPos& pos) const {
         float halfGrid = GRID_SIZE * CELL_SIZE * 0.5f;
@@ -345,8 +479,7 @@ private:
         if (!groundMesh_) return;
 
         bestow::Mat4 groundMatrix = glm::identity<glm::mat4>();
-        // Ground plane is at Y=0, already centered at origin
-        graphics3d()->drawMesh(groundMesh_, groundMaterial_, groundMatrix, false, true);
+        graphics_->drawMesh(groundMesh_, groundMaterial_, groundMatrix, false, true);
     }
 
     void drawSnake() {
@@ -355,15 +488,10 @@ private:
         for (std::size_t i = 0; i < snake_.size(); ++i) {
             bestow::Vec3 worldPos = gridToWorld(snake_[i]);
 
-            // Head is brighter
-            bestow::Vec4 color = (i == 0)
-                ? bestow::Vec4{0.2f, 0.8f, 0.3f, 1.0f}   // Bright green head
-                : bestow::Vec4{0.1f, 0.6f, 0.2f, 1.0f}; // Darker green body
-
             bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(),
                 glm::vec3(worldPos.x, worldPos.y, worldPos.z));
 
-            graphics3d()->drawMesh(cubeMesh_, snakeMaterial_, transform, true, true);
+            graphics_->drawMesh(cubeMesh_, snakeMaterial_, transform, true, true);
         }
     }
 
@@ -379,7 +507,7 @@ private:
             glm::vec3(worldPos.x, worldPos.y, worldPos.z));
         transform = glm::scale(transform, glm::vec3(pulse));
 
-        graphics3d()->drawMesh(cubeMesh_, foodMaterial_, transform, true, true);
+        graphics_->drawMesh(cubeMesh_, foodMaterial_, transform, true, true);
     }
 
     void drawGridBorder() {
@@ -387,29 +515,48 @@ private:
         bestow::Color borderColor = bestow::Color{100, 100, 100, 255};
 
         // Draw border lines
-        graphics3d()->debugDrawLine(
+        graphics_->debugDrawLine(
             {-halfGrid, 0.01f, -halfGrid},
             {halfGrid, 0.01f, -halfGrid},
             borderColor, 0.0f, false
         );
-        graphics3d()->debugDrawLine(
+        graphics_->debugDrawLine(
             {halfGrid, 0.01f, -halfGrid},
             {halfGrid, 0.01f, halfGrid},
             borderColor, 0.0f, false
         );
-        graphics3d()->debugDrawLine(
+        graphics_->debugDrawLine(
             {halfGrid, 0.01f, halfGrid},
             {-halfGrid, 0.01f, halfGrid},
             borderColor, 0.0f, false
         );
-        graphics3d()->debugDrawLine(
+        graphics_->debugDrawLine(
             {-halfGrid, 0.01f, halfGrid},
             {-halfGrid, 0.01f, -halfGrid},
             borderColor, 0.0f, false
         );
+    }
+};
 
-        // Game over message (via debug text would be nice, but we don't have that)
-        // For now, the screen just stops updating
+//==========================================================================
+// Kangaru Service Definition
+//==========================================================================
+
+struct SnakeGameService : kgr::single_service<SnakeGame> {
+    static auto construct(
+        kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
+        kgr::inject_t<bestow::IInputSystemService> input,
+        kgr::inject_t<bestow::IAudioSystemService> audio)
+        -> kgr::inject_result<
+            bestow::IGraphics3DSystem*,
+            bestow::IInputSystem*,
+            bestow::IAudioSystem*>
+    {
+        return kgr::inject(
+            &graphics.service(),
+            &input.service(),
+            &audio.service()
+        );
     }
 };
 
