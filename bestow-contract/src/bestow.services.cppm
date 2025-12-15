@@ -370,14 +370,37 @@ template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactory
 class IApplication {
 public:
     virtual ~IApplication() = default;
-    
+
     /// Called by the Engine to start the application.
     /// All systems have been initialized and are available via DI.
     virtual void run() = 0;
-    
+
     /// Called by the Engine when shutdown is requested.
     /// Application should clean up and exit gracefully.
     virtual void shutdown() {}
+};
+
+//==========================================================================
+// Application Base Class (CRTP)
+//
+// Use this base class to enable automatic dependency injection with
+// engine.run<MyGame>() - no need to list dependencies in the run call.
+//
+// Usage:
+//   class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem> {
+//   public:
+//       MyGame(IGraphics3DSystem& g, IInputSystem& i) : graphics_(&g), input_(&i) {}
+//       void run() override { /* game loop */ }
+//   };
+//
+//   engine.run<MyGame>();  // Dependencies auto-detected from base class
+//==========================================================================
+
+template<typename Derived, typename... Deps>
+class Application : public IApplication {
+public:
+    /// Type alias for Engine to detect dependencies
+    using Dependencies = std::tuple<Deps...>;
 };
 
 // Application Service for DI

@@ -74,13 +74,17 @@ GridPos directionToOffset(Direction dir) {
 //==========================================================================
 // Snake Game Application
 //
-// This game extends IApplication and receives dependencies via constructor
-// injection. Just declare what you need - no Service boilerplate!
+// Inherit from Application<> to enable automatic dependency injection.
+// Just call engine.run<SnakeGame>() - dependencies auto-detected!
 //==========================================================================
 
-class SnakeGame : public bestow::IApplication {
+class SnakeGame : public bestow::Application<SnakeGame,
+    bestow::IGraphics3DSystem,
+    bestow::IInputSystem,
+    bestow::IAudioSystem>
+{
 public:
-    // Constructor receives dependencies directly via DI
+    // Constructor receives dependencies - params match base class template args
     SnakeGame(bestow::IGraphics3DSystem& graphics,
               bestow::IInputSystem& input,
               bestow::IAudioSystem& audio)

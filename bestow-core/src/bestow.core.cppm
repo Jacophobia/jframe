@@ -79,9 +79,9 @@ private:
 /// The Engine is the composition root that binds contracts to implementations
 /// and provides the client interface for running the application.
 ///
-/// Usage Option 1 - Constructor Injection (.NET-style):
+/// Usage Option 1 - Application base class (RECOMMENDED):
 /// ```cpp
-/// class MyGame : public IApplication {
+/// class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem> {
 /// public:
 ///     MyGame(IGraphics3DSystem& g, IInputSystem& i)
 ///         : graphics_(&g), input_(&i) {}
@@ -93,28 +93,23 @@ private:
 ///
 /// int main() {
 ///     Engine engine;
-///     engine.use<IEventSystem, EventSystem>();
 ///     engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
 ///     engine.use<IInputSystem, InputSystem>();
-///     engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+///     engine.run<MyGame>();  // Dependencies auto-detected!
 /// }
 /// ```
 ///
-/// Usage Option 2 - Engine& pattern (when you want dynamic access):
+/// Usage Option 2 - Explicit deps in run<>():
+/// ```cpp
+/// engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+/// ```
+///
+/// Usage Option 3 - Engine& pattern (dynamic access):
 /// ```cpp
 /// class MyGame : public IApplication {
-/// public:
 ///     MyGame(Engine& e) : graphics_(&e.get<IGraphics3DSystem>()) {}
-///     void run() override { /* game loop */ }
-/// private:
-///     IGraphics3DSystem* graphics_;
 /// };
-///
-/// int main() {
-///     Engine engine;
-///     engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
-///     engine.run<MyGame>();  // No deps = Engine& constructor
-/// }
+/// engine.run<MyGame>();
 /// ```
 class Engine {
 public:
@@ -142,26 +137,36 @@ public:
         return container_.service<typename ServiceFor<Contract>::type>();
     }
 
-    /// Run the application with constructor injection.
-    /// List the contract interfaces your App constructor needs.
-    /// Example: engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+    /// Run the application.
+    /// Dependencies are auto-detected if App inherits from Application<App, Deps...>,
+    /// or can be specified explicitly: engine.run<MyGame, IDep1, IDep2>()
     template<typename App, typename... Contracts>
     void run() {
         static_assert(std::is_base_of_v<IApplication, App>,
-            "App must inherit from IApplication");
+            "App must inherit from IApplication or Application<>");
 
-        if constexpr (sizeof...(Contracts) == 0) {
-            // No contracts specified - use Engine& constructor
-            App app(*this);
-            app.run();
-        } else {
-            // Inject specified contracts into App constructor
+        if constexpr (sizeof...(Contracts) > 0) {
+            // Explicit contracts provided - use them
             App app(get<Contracts>()...);
+            app.run();
+        } else if constexpr (requires { typename App::Dependencies; }) {
+            // App has Dependencies type (from Application<> base) - use it
+            runWithDeps<App>(typename App::Dependencies{});
+        } else {
+            // Fallback to Engine& constructor
+            App app(*this);
             app.run();
         }
     }
 
 private:
+    /// Helper to unpack tuple and inject dependencies
+    template<typename App, typename... Deps>
+    void runWithDeps(std::tuple<Deps...>) {
+        App app(get<Deps>()...);
+        app.run();
+    }
+
     kgr::container container_;
 };
 

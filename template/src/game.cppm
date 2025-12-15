@@ -1,10 +1,10 @@
 // src/game.cppm
-// Bestow Game Template - Application with Constructor Injection
+// Bestow Game Template - Application with Automatic Dependency Injection
 //
-// This template demonstrates .NET-style constructor injection:
-// 1. Application receives dependencies directly in constructor
-// 2. All interactions are through contract interfaces
-// 3. Engine wires implementations and injects via engine.run<App, Deps...>()
+// This template demonstrates the recommended Application<> base class pattern:
+// 1. Inherit from Application<YourGame, Dep1, Dep2, ...>
+// 2. Constructor receives dependencies directly
+// 3. Engine auto-detects deps: engine.run<MyGame>()
 
 module;
 
@@ -16,7 +16,7 @@ module;
 export module my.game;
 
 import std;
-import bestow.services;   // All contract interfaces
+import bestow.services;   // All contract interfaces + Application base
 import bestow.types;
 import bestow.graphics3d;
 
@@ -25,21 +25,26 @@ export namespace mygame {
 //==========================================================================
 // MyGame Application
 //
-// Your game extends IApplication and receives dependencies via constructor
-// injection. Just declare what you need - no Service boilerplate!
+// Inherit from Application<YourGame, Dependencies...> to enable automatic
+// dependency injection. Just call engine.run<MyGame>() - no need to list
+// dependencies in the run call!
 //
-// Benefits of this pattern:
-// - Systems are interchangeable (use Bestow's or your own implementations)
+// Benefits:
+// - Clean run call: engine.run<MyGame>()
+// - Dependencies declared once in base class
+// - Constructor params naturally match
 // - Easy to mock for testing
-// - Clear dependencies - you see exactly what the game needs
-// - Decoupled from specific implementations
-// - .NET-style DI - familiar to many developers
 //==========================================================================
 
-class MyGame : public bestow::IApplication {
+class MyGame : public bestow::Application<MyGame,
+    bestow::IGraphics3DSystem,
+    bestow::IInputSystem,
+    bestow::IEntitySystem,
+    bestow::IEventSystem,
+    bestow::IAudioSystem>
+{
 public:
-    // Constructor receives dependencies directly via DI
-    // List only the systems your game actually needs
+    // Constructor receives dependencies - params match base class template args
     MyGame(bestow::IGraphics3DSystem& graphics,
            bestow::IInputSystem& input,
            bestow::IEntitySystem& entities,

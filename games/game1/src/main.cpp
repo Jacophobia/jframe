@@ -38,11 +38,8 @@ int main() {
         std::cerr << "Warning: Audio system not available\n";
     }
 
-    // Run the game with constructor injection
-    engine.run<snake::SnakeGame,
-        bestow::IGraphics3DSystem,
-        bestow::IInputSystem,
-        bestow::IAudioSystem>();
+    // Run the game - dependencies auto-detected from Application<> base
+    engine.run<snake::SnakeGame>();
 
     return 0;
 }

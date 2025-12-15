@@ -59,18 +59,13 @@ int main() {
     }
 
     //=========================================================================
-    // Run the Game with Constructor Injection
+    // Run the Game
     //
-    // List the contract interfaces that your game's constructor needs.
-    // Engine resolves and injects them automatically.
+    // Dependencies are auto-detected from Application<> base class.
+    // No need to list them here!
     //=========================================================================
 
-    engine.run<mygame::MyGame,
-        bestow::IGraphics3DSystem,
-        bestow::IInputSystem,
-        bestow::IEntitySystem,
-        bestow::IEventSystem,
-        bestow::IAudioSystem>();
+    engine.run<mygame::MyGame>();
 
     return 0;
 }
