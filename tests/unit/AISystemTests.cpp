@@ -15,6 +15,7 @@ import bestow.ai;
 import bestow.ai.impl;
 import bestow.assets;
 import bestow.assets.impl;
+import bestow.events.impl;
 import bestow.physics;
 import bestow.physics.impl;
 import bestow.types;
@@ -24,6 +25,10 @@ namespace bestow::tests {
 class AISystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // First instantiate EventSystemService to register the override
+        // (Kangaru needs this to resolve abstract IEventSystemService dependencies)
+        container_.service<EventSystemService>();
+
         // Get asset system from container
         assetSystem_ = &container_.service<AssetSystemService>();
 
@@ -1111,6 +1116,9 @@ TEST(AISystemKangaruTest, CannotInstantiateWithoutDependencies) {
 
 TEST(AISystemKangaruTest, CanInstantiateViaKangaruWithDependencies) {
     kgr::container container;
+
+    // Register EventSystemService first (AssetSystem depends on it)
+    container.service<EventSystemService>();
 
     // Get dependencies from container
     auto& physicsSystem = container.service<PhysicsSystemService>();

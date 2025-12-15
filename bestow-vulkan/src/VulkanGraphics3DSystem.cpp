@@ -19,8 +19,6 @@ import bestow.utils;
 
 namespace bestow::vulkan {
 
-VulkanGraphics3DSystem::VulkanGraphics3DSystem() = default;
-
 VulkanGraphics3DSystem::~VulkanGraphics3DSystem() {
     shutdown();
 }
@@ -121,15 +119,15 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
     createPipelines();
 
     // Subscribe to shader type changes for hot reload if asset system is available
-    if (assetSystem_ && useAssetSystemHotReload_) {
-        shaderSubscriptionId_ = assetSystem_->subscribeToType(
+    if (pIAssetSystem_ && useAssetSystemHotReload_) {
+        shaderSubscriptionId_ = pIAssetSystem_->subscribeToType(
             AssetType::Shader,
             [this](AssetHandle handle, AssetType type) {
                 onShaderAssetChanged(handle, type);
             }
         );
         // Enable hot reload on the asset system
-        assetSystem_->enableHotReload(true);
+        pIAssetSystem_->enableHotReload(true);
         std::fprintf(stderr, "[Vulkan] Subscribed to shader asset changes for hot reload\n");
     }
 
@@ -1244,18 +1242,18 @@ bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& conf
     // Load config file through AssetSystem (or fall back to direct I/O if no AssetSystem)
     std::string luaContent;
 
-    if (assetSystem_) {
+    if (pIAssetSystem_) {
         // Use AssetSystem as the sole gateway to the file system
-        AssetHandle configHandle = assetSystem_->registerAsset(AssetType::Data, configPath);
-        assetSystem_->loadAsset(configHandle);
+        AssetHandle configHandle = pIAssetSystem_->registerAsset(AssetType::Data, configPath);
+        pIAssetSystem_->loadAsset(configHandle);
 
-        if (!assetSystem_->isLoaded(configHandle)) {
+        if (!pIAssetSystem_->isLoaded(configHandle)) {
             std::fprintf(stderr, "[Vulkan] Config file not found or failed to load: %s\n", configPath.string().c_str());
             return false;
         }
 
         // Get the DataAsset and extract raw text (Lua content)
-        const DataAsset* dataAsset = assetSystem_->getAsset<DataAsset>(configHandle);
+        const DataAsset* dataAsset = pIAssetSystem_->getAsset<DataAsset>(configHandle);
         if (!dataAsset) {
             std::fprintf(stderr, "[Vulkan] Failed to get config data: %s\n", configPath.string().c_str());
             return false;
@@ -1269,12 +1267,12 @@ bool VulkanGraphics3DSystem::loadRuntimeConfig(const std::filesystem::path& conf
 
     try {
         // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
-        if (!configSystem_) {
+        if (!pIConfigSystem_) {
             std::fprintf(stderr, "[Vulkan] ERROR: ConfigSystem is required for loading config\n");
             return false;
         }
 
-        auto result = configSystem_->parseLuaString(luaContent, configPath.string());
+        auto result = pIConfigSystem_->parseLuaString(luaContent, configPath.string());
         if (!result) {
             std::fprintf(stderr, "[Vulkan] Failed to load config: %s\n", configPath.string().c_str());
             return false;
@@ -1444,24 +1442,24 @@ void VulkanGraphics3DSystem::drawMeshWithShaderMaterial(
 
 VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
     std::string_view vertPath, std::string_view fragPath) {
-    if (!assetSystem_) {
+    if (!pIAssetSystem_) {
         std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading shaders\n");
         return 0;
     }
 
     // Load shaders through AssetSystem
-    auto vertHandle = assetSystem_->loadShader(std::string(vertPath));
-    auto fragHandle = assetSystem_->loadShader(std::string(fragPath));
+    auto vertHandle = pIAssetSystem_->loadShader(std::string(vertPath));
+    auto fragHandle = pIAssetSystem_->loadShader(std::string(fragPath));
 
-    if (!assetSystem_->isLoaded(vertHandle) || !assetSystem_->isLoaded(fragHandle)) {
+    if (!pIAssetSystem_->isLoaded(vertHandle) || !pIAssetSystem_->isLoaded(fragHandle)) {
         std::fprintf(stderr, "[Vulkan] Failed to load shaders: %.*s, %.*s\n",
             static_cast<int>(vertPath.size()), vertPath.data(),
             static_cast<int>(fragPath.size()), fragPath.data());
         return 0;
     }
 
-    const ShaderData* vertShader = assetSystem_->getShaderData(vertHandle);
-    const ShaderData* fragShader = assetSystem_->getShaderData(fragHandle);
+    const ShaderData* vertShader = pIAssetSystem_->getShaderData(vertHandle);
+    const ShaderData* fragShader = pIAssetSystem_->getShaderData(fragHandle);
 
     if (!vertShader || !fragShader) {
         std::fprintf(stderr, "[Vulkan] Failed to get shader data: %.*s, %.*s\n",
@@ -1521,18 +1519,18 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
 
         // Register shaders with asset system for subscription-based hot reload
         // AssetSystem will handle file existence checks internally
-        if (assetSystem_ && useAssetSystemHotReload_) {
+        if (pIAssetSystem_ && useAssetSystemHotReload_) {
             info.vertGlslPath = vertGlsl;
             info.fragGlslPath = fragGlsl;
 
             // Register vertex shader - AssetSystem handles existence checking
-            info.vertShaderAsset = assetSystem_->loadShader(vertGlsl);
+            info.vertShaderAsset = pIAssetSystem_->loadShader(vertGlsl);
             if (info.vertShaderAsset.uuid != 0) {
                 shaderAssetToPipelines_[info.vertShaderAsset.uuid].push_back(pipeline);
             }
 
             // Register fragment shader
-            info.fragShaderAsset = assetSystem_->loadShader(fragGlsl);
+            info.fragShaderAsset = pIAssetSystem_->loadShader(fragGlsl);
             if (info.fragShaderAsset.uuid != 0) {
                 shaderAssetToPipelines_[info.fragShaderAsset.uuid].push_back(pipeline);
             }
@@ -1558,9 +1556,9 @@ void VulkanGraphics3DSystem::checkShaderHotReload() {
     // Event-driven hot reload: AssetSystem uses efsw file watcher to detect changes.
     // The asset system will call our onShaderAssetChanged callback when files change.
     // We just need to pump the asset system's update to process any queued events.
-    if (assetSystem_) {
+    if (pIAssetSystem_) {
         // This processes queued efsw file change events (no polling!)
-        assetSystem_->update();
+        pIAssetSystem_->update();
     }
     // Note: No polling fallback - event-driven only via asset system subscriptions
 }
@@ -1597,13 +1595,13 @@ void VulkanGraphics3DSystem::reloadPipelineShaders(VulkanPipelineHandle oldPipel
     const ShaderData* vertShader = nullptr;
     const ShaderData* fragShader = nullptr;
 
-    if (info.vertShaderAsset.uuid != 0 && assetSystem_) {
-        assetSystem_->reloadAsset(info.vertShaderAsset);  // Force reload to recompile
-        vertShader = assetSystem_->getShaderData(info.vertShaderAsset);
+    if (info.vertShaderAsset.uuid != 0 && pIAssetSystem_) {
+        pIAssetSystem_->reloadAsset(info.vertShaderAsset);  // Force reload to recompile
+        vertShader = pIAssetSystem_->getShaderData(info.vertShaderAsset);
     }
-    if (info.fragShaderAsset.uuid != 0 && assetSystem_) {
-        assetSystem_->reloadAsset(info.fragShaderAsset);  // Force reload to recompile
-        fragShader = assetSystem_->getShaderData(info.fragShaderAsset);
+    if (info.fragShaderAsset.uuid != 0 && pIAssetSystem_) {
+        pIAssetSystem_->reloadAsset(info.fragShaderAsset);  // Force reload to recompile
+        fragShader = pIAssetSystem_->getShaderData(info.fragShaderAsset);
     }
 
     if (!vertShader || !fragShader || !vertShader->compiled || !fragShader->compiled) {
@@ -1702,13 +1700,13 @@ VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::st
     std::string luaContent;
     bool materialLoaded = false;
 
-    if (assetSystem_) {
+    if (pIAssetSystem_) {
         // Use AssetSystem as the sole gateway to the file system
-        AssetHandle materialHandle = assetSystem_->registerAsset(AssetType::Material, resolvedMaterialPath);
-        assetSystem_->loadAsset(materialHandle);
+        AssetHandle materialHandle = pIAssetSystem_->registerAsset(AssetType::Material, resolvedMaterialPath);
+        pIAssetSystem_->loadAsset(materialHandle);
 
-        if (assetSystem_->isLoaded(materialHandle)) {
-            const DataAsset* dataAsset = assetSystem_->getAsset<DataAsset>(materialHandle);
+        if (pIAssetSystem_->isLoaded(materialHandle)) {
+            const DataAsset* dataAsset = pIAssetSystem_->getAsset<DataAsset>(materialHandle);
             if (dataAsset) {
                 luaContent = dataAsset->rawText;
                 materialLoaded = true;
@@ -1723,10 +1721,10 @@ VulkanPipelineHandle VulkanGraphics3DSystem::getOrCreateMaterialPipeline(std::st
     if (materialLoaded) {
         try {
             // Use ConfigSystem's unified Lua parsing instead of creating our own sol::state
-            if (!configSystem_) {
+            if (!pIConfigSystem_) {
                 std::fprintf(stderr, "[Vulkan] ERROR: ConfigSystem is required for parsing materials\n");
             } else {
-                auto result = configSystem_->parseLuaString(luaContent, resolvedMaterialPath.string());
+                auto result = pIConfigSystem_->parseLuaString(luaContent, resolvedMaterialPath.string());
                 if (result) {
                     sol::table mat = result->as<sol::table>();
 
@@ -1814,8 +1812,8 @@ Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
 }
 
 void VulkanGraphics3DSystem::updateShaders() {
-    if (shaderSystem_) {
-        shaderSystem_->update();
+    if (pIShaderSystem_) {
+        pIShaderSystem_->update();
     }
 }
 
@@ -2044,18 +2042,18 @@ void VulkanGraphics3DSystem::createDefaultMaterials() {
 }
 
 void VulkanGraphics3DSystem::createPipelines() {
-    if (!assetSystem_) {
+    if (!pIAssetSystem_) {
         std::fprintf(stderr, "[Vulkan] ERROR: AssetSystem is required for loading shaders\n");
         return;
     }
 
     // Load debug pipeline shaders (for debug line rendering)
-    auto debugVertHandle = assetSystem_->loadShader("debug.vert");
-    auto debugFragHandle = assetSystem_->loadShader("debug.frag");
+    auto debugVertHandle = pIAssetSystem_->loadShader("debug.vert");
+    auto debugFragHandle = pIAssetSystem_->loadShader("debug.frag");
 
-    if (assetSystem_->isLoaded(debugVertHandle) && assetSystem_->isLoaded(debugFragHandle)) {
-        const ShaderData* debugVert = assetSystem_->getShaderData(debugVertHandle);
-        const ShaderData* debugFrag = assetSystem_->getShaderData(debugFragHandle);
+    if (pIAssetSystem_->isLoaded(debugVertHandle) && pIAssetSystem_->isLoaded(debugFragHandle)) {
+        const ShaderData* debugVert = pIAssetSystem_->getShaderData(debugVertHandle);
+        const ShaderData* debugFrag = pIAssetSystem_->getShaderData(debugFragHandle);
 
         if (debugVert && debugFrag && !debugVert->spirvBytecode.empty() && !debugFrag->spirvBytecode.empty()) {
             VulkanPipelineDef debugDef;
@@ -2093,12 +2091,12 @@ void VulkanGraphics3DSystem::createPipelines() {
     }
 
     // Load basic 3D pipeline shaders (for mesh rendering)
-    auto basic3dVertHandle = assetSystem_->loadShader("basic3d.vert");
-    auto basic3dFragHandle = assetSystem_->loadShader("basic3d.frag");
+    auto basic3dVertHandle = pIAssetSystem_->loadShader("basic3d.vert");
+    auto basic3dFragHandle = pIAssetSystem_->loadShader("basic3d.frag");
 
-    if (assetSystem_->isLoaded(basic3dVertHandle) && assetSystem_->isLoaded(basic3dFragHandle)) {
-        const ShaderData* basic3dVert = assetSystem_->getShaderData(basic3dVertHandle);
-        const ShaderData* basic3dFrag = assetSystem_->getShaderData(basic3dFragHandle);
+    if (pIAssetSystem_->isLoaded(basic3dVertHandle) && pIAssetSystem_->isLoaded(basic3dFragHandle)) {
+        const ShaderData* basic3dVert = pIAssetSystem_->getShaderData(basic3dVertHandle);
+        const ShaderData* basic3dFrag = pIAssetSystem_->getShaderData(basic3dFragHandle);
 
         if (basic3dVert && basic3dFrag && !basic3dVert->spirvBytecode.empty() && !basic3dFrag->spirvBytecode.empty()) {
             VulkanPipelineDef pbrDef;

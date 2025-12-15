@@ -17,8 +17,6 @@ import bestow.utils;
 
 namespace bestow::vulkan {
 
-VulkanGraphicsSystem::VulkanGraphicsSystem() = default;
-
 VulkanGraphicsSystem::~VulkanGraphicsSystem() {
     // Cleanup resources
     if (spriteVertexBuffer_ != 0) {
