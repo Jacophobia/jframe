@@ -15,7 +15,7 @@ import bestow.services;  // Re-exports all contracts including bestow.input, bes
 
 export namespace bestow {
 
-BESTOW_SYSTEM(InputSystem, IInputSystem, IAssetSystem) {
+BESTOW_SYSTEM(InputSystem, IInputSystem, IAssetSystem)
 public:
     ~InputSystem() override;
 

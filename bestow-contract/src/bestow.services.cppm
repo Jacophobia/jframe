@@ -145,8 +145,7 @@ module;
 class ImplType : public InterfaceType { \
 public: \
     struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::InterfaceType##Service> {}; \
-    ImplType() = default; \
-public:
+    ImplType() = default;
 
 // 1 dependency
 #define BESTOW_SYSTEM_1(ImplType, InterfaceType, Dep1) \
@@ -159,9 +158,8 @@ public: \
         } \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr) : p##Dep1##_(p##Dep1) {} \
-protected: \
-    bestow::Dep1* p##Dep1##_ = nullptr; \
-public:
+private: \
+    bestow::Dep1* p##Dep1##_ = nullptr;
 
 // 2 dependencies
 #define BESTOW_SYSTEM_2(ImplType, InterfaceType, Dep1, Dep2) \
@@ -177,10 +175,9 @@ public: \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr, bestow::Dep2* p##Dep2 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
-    bestow::Dep2* p##Dep2##_ = nullptr; \
-public:
+    bestow::Dep2* p##Dep2##_ = nullptr;
 
 // 3 dependencies
 #define BESTOW_SYSTEM_3(ImplType, InterfaceType, Dep1, Dep2, Dep3) \
@@ -200,11 +197,10 @@ public: \
         bestow::Dep2* p##Dep2 = nullptr, \
         bestow::Dep3* p##Dep3 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2), p##Dep3##_(p##Dep3) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
     bestow::Dep2* p##Dep2##_ = nullptr; \
-    bestow::Dep3* p##Dep3##_ = nullptr; \
-public:
+    bestow::Dep3* p##Dep3##_ = nullptr;
 
 // 4 dependencies
 #define BESTOW_SYSTEM_4(ImplType, InterfaceType, Dep1, Dep2, Dep3, Dep4) \
@@ -226,12 +222,11 @@ public: \
         bestow::Dep3* p##Dep3 = nullptr, \
         bestow::Dep4* p##Dep4 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2), p##Dep3##_(p##Dep3), p##Dep4##_(p##Dep4) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
     bestow::Dep2* p##Dep2##_ = nullptr; \
     bestow::Dep3* p##Dep3##_ = nullptr; \
-    bestow::Dep4* p##Dep4##_ = nullptr; \
-public:
+    bestow::Dep4* p##Dep4##_ = nullptr;
 
 // Dispatch helpers for BESTOW_SYSTEM
 #define BESTOW_SYS_0(ImplType, InterfaceType) BESTOW_SYSTEM_0(ImplType, InterfaceType)

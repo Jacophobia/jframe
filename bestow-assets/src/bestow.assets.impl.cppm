@@ -60,7 +60,7 @@ void setBehaviorTreeJson(BehaviorTreeData& data, const std::string& jsonText);
 bool hasBehaviorTreeJson(const BehaviorTreeData& data);
 const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
-BESTOW_SYSTEM(AssetSystem, IAssetSystem, IEventSystem) {
+BESTOW_SYSTEM(AssetSystem, IAssetSystem, IEventSystem)
 public:
     ~AssetSystem() override = default;
 

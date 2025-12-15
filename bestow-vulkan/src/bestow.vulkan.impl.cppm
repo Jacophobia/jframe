@@ -231,7 +231,7 @@ private:
 // VulkanGraphicsSystem - 2D Vulkan Renderer
 //==========================================================================
 
-BESTOW_SYSTEM(VulkanGraphicsSystem, IGraphicsSystem, IAssetSystem) {
+BESTOW_SYSTEM(VulkanGraphicsSystem, IGraphicsSystem, IAssetSystem)
 public:
     ~VulkanGraphicsSystem() override;
 
@@ -357,7 +357,7 @@ private:
 // VulkanGraphics3DSystem - 3D Vulkan Renderer
 //==========================================================================
 
-BESTOW_SYSTEM(VulkanGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem) {
+BESTOW_SYSTEM(VulkanGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem)
 public:
     ~VulkanGraphics3DSystem() override;
 

@@ -58,7 +58,7 @@ struct FontAtlas {
     AssetHandle fontHandle;
 };
 
-BESTOW_SYSTEM(OpenGLGraphicsSystem, IGraphicsSystem, IAssetSystem) {
+BESTOW_SYSTEM(OpenGLGraphicsSystem, IGraphicsSystem, IAssetSystem)
 public:
     ~OpenGLGraphicsSystem() override;
 
@@ -566,7 +566,7 @@ void main() {
 // OpenGL Graphics3D System Implementation
 //==========================================================================
 
-BESTOW_SYSTEM(OpenGLGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem) {
+BESTOW_SYSTEM(OpenGLGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem)
 public:
     ~OpenGLGraphics3DSystem() override;
 

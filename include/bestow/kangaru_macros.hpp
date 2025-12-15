@@ -13,7 +13,7 @@
 //   import bestow.services;
 //
 //   export namespace bestow {
-//   BESTOW_SYSTEM(YourSystem, IYourSystem, IDep1, IDep2) {
+//   BESTOW_SYSTEM(YourSystem, IYourSystem, IDep1, IDep2)
 //   public:
 //       void doWork() { pIDep1_->method(); }
 //   };
@@ -35,10 +35,10 @@
 //   - Class opening line with inheritance
 //   - Nested Service struct for Kangaru registration
 //   - Constructor with dependency injection
-//   - Protected member variables (pSystemName_)
+//   - Private member variables (pSystemName_)
 //
 // Usage:
-//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem) {
+//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
 //   public:
 //       void loadConfig() {
 //           pIAssetSystem_->load(...);
@@ -138,15 +138,15 @@
 //   - Class declaration line: class ImplType : public InterfaceType {
 //   - Nested Service struct for Kangaru registration
 //   - Constructor with dependency injection
-//   - Protected member variables (pDepName_)
+//   - Private member variables (pDepName_)
 //
-// Usage: BESTOW_SYSTEM(ImplType, InterfaceType, Dep1, Dep2, ...) { body };
+// Usage: BESTOW_SYSTEM(ImplType, InterfaceType, Dep1, Dep2, ...) body };
 //
 // Pass FULL type names - no automatic I prefix is added anywhere.
 // This allows injecting both interfaces and non-interface types.
 //
 // Example:
-//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem) {
+//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
 //   public:
 //       void work() { pIAssetSystem_->load(); pIEventSystem_->emit(); }
 //   };
@@ -160,8 +160,7 @@
 class ImplType : public InterfaceType { \
 public: \
     struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::InterfaceType##Service> {}; \
-    ImplType() = default; \
-public:
+    ImplType() = default;
 
 // 1 dependency
 #define BESTOW_SYSTEM_1(ImplType, InterfaceType, Dep1) \
@@ -174,9 +173,8 @@ public: \
         } \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr) : p##Dep1##_(p##Dep1) {} \
-protected: \
-    bestow::Dep1* p##Dep1##_ = nullptr; \
-public:
+private: \
+    bestow::Dep1* p##Dep1##_ = nullptr;
 
 // 2 dependencies
 #define BESTOW_SYSTEM_2(ImplType, InterfaceType, Dep1, Dep2) \
@@ -192,10 +190,9 @@ public: \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr, bestow::Dep2* p##Dep2 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
-    bestow::Dep2* p##Dep2##_ = nullptr; \
-public:
+    bestow::Dep2* p##Dep2##_ = nullptr;
 
 // 3 dependencies
 #define BESTOW_SYSTEM_3(ImplType, InterfaceType, Dep1, Dep2, Dep3) \
@@ -215,11 +212,10 @@ public: \
         bestow::Dep2* p##Dep2 = nullptr, \
         bestow::Dep3* p##Dep3 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2), p##Dep3##_(p##Dep3) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
     bestow::Dep2* p##Dep2##_ = nullptr; \
-    bestow::Dep3* p##Dep3##_ = nullptr; \
-public:
+    bestow::Dep3* p##Dep3##_ = nullptr;
 
 // 4 dependencies
 #define BESTOW_SYSTEM_4(ImplType, InterfaceType, Dep1, Dep2, Dep3, Dep4) \
@@ -241,12 +237,11 @@ public: \
         bestow::Dep3* p##Dep3 = nullptr, \
         bestow::Dep4* p##Dep4 = nullptr) \
         : p##Dep1##_(p##Dep1), p##Dep2##_(p##Dep2), p##Dep3##_(p##Dep3), p##Dep4##_(p##Dep4) {} \
-protected: \
+private: \
     bestow::Dep1* p##Dep1##_ = nullptr; \
     bestow::Dep2* p##Dep2##_ = nullptr; \
     bestow::Dep3* p##Dep3##_ = nullptr; \
-    bestow::Dep4* p##Dep4##_ = nullptr; \
-public:
+    bestow::Dep4* p##Dep4##_ = nullptr;
 
 // Dispatch helpers for BESTOW_SYSTEM
 #define BESTOW_SYS_0(ImplType, InterfaceType) BESTOW_SYSTEM_0(ImplType, InterfaceType)
@@ -256,7 +251,7 @@ public:
 #define BESTOW_SYS_4(ImplType, InterfaceType, D1, D2, D3, D4) BESTOW_SYSTEM_4(ImplType, InterfaceType, D1, D2, D3, D4)
 
 // Primary variadic macro for complete class definition
-// Usage: BESTOW_SYSTEM(ImplType, InterfaceType [, Dep1, Dep2, ...]) { body };
+// Usage: BESTOW_SYSTEM(ImplType, InterfaceType [, Dep1, Dep2, ...]) body };
 #define BESTOW_SYSTEM(ImplType, InterfaceType, ...) \
     BESTOW_CONCAT(BESTOW_SYS_, BESTOW_DEP_COUNT(__VA_ARGS__ __VA_OPT__(,) _))(ImplType, InterfaceType __VA_OPT__(,) __VA_ARGS__)
 

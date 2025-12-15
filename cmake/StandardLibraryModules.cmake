@@ -25,9 +25,11 @@ if(MSVC)
     function(target_use_std_module TARGET_NAME)
         # Use /std:c++latest for full module support (includes import std;)
         # /std:c++23 alone may not enable all module features
+        # /Zc:preprocessor enables the conforming C++20 preprocessor (required for __VA_OPT__)
         target_compile_options(${TARGET_NAME} PRIVATE
             /std:c++latest
             /experimental:module
+            /Zc:preprocessor
         )
 
         # Enable standard library modules

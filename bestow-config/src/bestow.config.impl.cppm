@@ -30,7 +30,7 @@ struct ConfigSubscription {
     ConfigChangeCallback callback;
 };
 
-BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem) {
+BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
 public:
     ~ConfigSystem() override = default;
 

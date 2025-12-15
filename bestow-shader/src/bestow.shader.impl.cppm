@@ -85,7 +85,7 @@ struct ShaderMaterialResource {
 // OpenGLShaderSystem Implementation
 //==========================================================================
 
-BESTOW_SYSTEM(OpenGLShaderSystem, IShaderSystem, IAssetSystem) {
+BESTOW_SYSTEM(OpenGLShaderSystem, IShaderSystem, IAssetSystem)
 public:
     ~OpenGLShaderSystem() override {
         // Unsubscribe from all AssetSystem notifications
