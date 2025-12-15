@@ -1,7 +1,7 @@
 // games/game1/src/main.cpp
 // 3D Isometric Snake Game - Entry Point
 //
-// Uses .NET-style constructor injection with engine.run<App, Deps...>().
+// Uses the Application<> base class pattern for automatic dependency injection.
 
 import std;
 import bestow.core;       // Engine class

@@ -128,13 +128,33 @@ public:
         static_assert(std::is_base_of_v<Contract, Implementation>,
             "Implementation must inherit from Contract");
         container_.service<typename Implementation::Service>();
+        registered_.insert(typeid(Contract).hash_code());
+    }
+
+    /// Check if a system has been registered for a contract interface.
+    /// Useful for optional systems like audio.
+    /// Example: if (engine.has<IAudioSystem>()) { ... }
+    template<typename Contract>
+    bool has() const {
+        return registered_.contains(typeid(Contract).hash_code());
     }
 
     /// Get a system by its contract interface.
+    /// Throws if the system is not registered. Use has<>() to check first.
     /// Example: engine.get<IGraphics3DSystem>()
     template<typename Contract>
     Contract& get() {
         return container_.service<typename ServiceFor<Contract>::type>();
+    }
+
+    /// Get a system by its contract interface, or nullptr if not registered.
+    /// Example: auto* audio = engine.tryGet<IAudioSystem>();
+    template<typename Contract>
+    Contract* tryGet() {
+        if (!has<Contract>()) {
+            return nullptr;
+        }
+        return &container_.service<typename ServiceFor<Contract>::type>();
     }
 
     /// Run the application.
@@ -168,6 +188,7 @@ private:
     }
 
     kgr::container container_;
+    std::unordered_set<std::size_t> registered_;  // Track registered contract types
 };
 
 }  // namespace bestow::core

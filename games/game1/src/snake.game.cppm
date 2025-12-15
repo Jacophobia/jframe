@@ -1,7 +1,7 @@
 // games/game1/src/snake.game.cppm
 // 3D Isometric Snake Game
 //
-// A simple snake game demonstrating .NET-style constructor injection.
+// A simple snake game demonstrating the Application<> base class pattern.
 // Uses 3D isometric view with camera following the snake head.
 // Controls: ,AOE (Dvorak) or Arrow Keys for movement
 
