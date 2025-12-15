@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 

@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <VkBootstrap.h>

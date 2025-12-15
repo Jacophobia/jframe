@@ -5,6 +5,7 @@ module;
 
 // Kangaru DI
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 
 // OpenGL headers - MUST be in global module fragment
 #include <glad/glad.h>

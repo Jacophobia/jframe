@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 
 // OpenGL and windowing headers - MUST be in global module fragment
 #include <glad/glad.h>

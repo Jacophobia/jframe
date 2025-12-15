@@ -9,6 +9,7 @@ module;
 
 #include <cstddef>  // For size_t
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <efsw/efsw.hpp>
 
 export module bestow.assets.impl;

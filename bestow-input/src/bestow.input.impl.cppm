@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <GLFW/glfw3.h>
 #include <SDL.h>
 
