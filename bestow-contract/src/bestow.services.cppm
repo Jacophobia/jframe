@@ -102,9 +102,14 @@ module;
 #define BESTOW_DEPS_3(ImplType, InterfaceType, D1, D2, D3) BESTOW_SERVICE_3(ImplType, InterfaceType, D1, D2, D3)
 #define BESTOW_DEPS_4(ImplType, InterfaceType, D1, D2, D3, D4) BESTOW_SERVICE_4(ImplType, InterfaceType, D1, D2, D3, D4)
 
-// Count only the dependency arguments (total args minus 2 for ImplType and InterfaceType)
-#define BESTOW_DEP_COUNT_IMPL(_1, _2, _3, _4, _5, _6, N, ...) N
-#define BESTOW_DEP_COUNT(...) BESTOW_DEP_COUNT_IMPL(__VA_ARGS__, 4, 3, 2, 1, 0, 0)
+// Count only the dependency arguments (accounts for trailing sentinel '_')
+// The sentinel '_' is always added via __VA_OPT__, so we need 5 placeholders before N:
+// - 0 deps: (_)           -> N at position 6 -> 0
+// - 1 dep:  (D1, _)       -> N at position 6 -> 1
+// - 2 deps: (D1, D2, _)   -> N at position 6 -> 2
+// - etc.
+#define BESTOW_DEP_COUNT_IMPL(_1, _2, _3, _4, _5, N, ...) N
+#define BESTOW_DEP_COUNT(...) BESTOW_DEP_COUNT_IMPL(__VA_ARGS__, 4, 3, 2, 1, 0)
 
 // Primary variadic macro - automatically dispatches based on dependency count
 // Usage: BESTOW_SERVICE(ImplType, InterfaceType [, Dep1, Dep2, ...])
