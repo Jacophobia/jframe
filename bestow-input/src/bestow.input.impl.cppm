@@ -15,8 +15,10 @@ import bestow.services;  // Re-exports all contracts including bestow.input, bes
 
 export namespace bestow {
 
-BESTOW_SYSTEM(InputSystem, IInputSystem, IAssetSystem)
+class InputSystem : public IInputSystem {
 public:
+    explicit InputSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~InputSystem() override;
 
     bool initialize(void* nativeWindow) override;
@@ -95,6 +97,12 @@ private:
     std::string textInputBuffer_;
 
     bool sdlInitialized_ = false;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(InputSystem, InputSystem, AssetSystem);
 
 }  // namespace bestow

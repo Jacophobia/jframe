@@ -85,8 +85,10 @@ struct ShaderMaterialResource {
 // OpenGLShaderSystem Implementation
 //==========================================================================
 
-BESTOW_SYSTEM(OpenGLShaderSystem, IShaderSystem, IAssetSystem)
+class OpenGLShaderSystem : public IShaderSystem {
 public:
+    explicit OpenGLShaderSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~OpenGLShaderSystem() override {
         // Unsubscribe from all AssetSystem notifications
         if (pIAssetSystem_) {
@@ -1505,6 +1507,12 @@ void main() {
     MaterialReloadCallback materialReloadCallback_;
 
     mutable ShaderStats stats_;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(OpenGLShaderSystem, ShaderSystem, AssetSystem);
 
 }  // namespace bestow

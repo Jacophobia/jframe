@@ -58,8 +58,10 @@ struct FontAtlas {
     AssetHandle fontHandle;
 };
 
-BESTOW_SYSTEM(OpenGLGraphicsSystem, IGraphicsSystem, IAssetSystem)
+class OpenGLGraphicsSystem : public IGraphicsSystem {
 public:
+    explicit OpenGLGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~OpenGLGraphicsSystem() override;
 
     bool initialize(int width, int height, const std::string& title);
@@ -192,7 +194,13 @@ private:
 
     // Texture helpers
     GLuint getOrUploadTexture(AssetHandle handle);
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
 
 
 //==========================================================================
@@ -566,8 +574,14 @@ void main() {
 // OpenGL Graphics3D System Implementation
 //==========================================================================
 
-BESTOW_SYSTEM(OpenGLGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem)
+class OpenGLGraphics3DSystem : public IGraphics3DSystem {
 public:
+    explicit OpenGLGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
+                                     IShaderSystem* pIShaderSystem = nullptr,
+                                     IConfigSystem* pIConfigSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem)
+        , pIShaderSystem_(pIShaderSystem)
+        , pIConfigSystem_(pIConfigSystem) {}
     ~OpenGLGraphics3DSystem() override;
 
     //======================================================================
@@ -1102,7 +1116,15 @@ private:
 
     // Transform AABB by world matrix to get world-space AABB
     AABB3D transformAABB(const AABB3D& aabb, const glm::mat4& worldMatrix) const;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
+    IShaderSystem* pIShaderSystem_ = nullptr;
+    IConfigSystem* pIConfigSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 //==========================================================================
 // Implementation

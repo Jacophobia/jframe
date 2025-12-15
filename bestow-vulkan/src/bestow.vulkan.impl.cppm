@@ -231,8 +231,10 @@ private:
 // VulkanGraphicsSystem - 2D Vulkan Renderer
 //==========================================================================
 
-BESTOW_SYSTEM(VulkanGraphicsSystem, IGraphicsSystem, IAssetSystem)
+class VulkanGraphicsSystem : public IGraphicsSystem {
 public:
+    explicit VulkanGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~VulkanGraphicsSystem() override;
 
     Result<void, VulkanError> initialize(const VulkanConfig& config);
@@ -351,14 +353,26 @@ private:
     void flushSpriteBatch();
     void flushPrimitives();
     void createPipelines();
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
 //==========================================================================
 // VulkanGraphics3DSystem - 3D Vulkan Renderer
 //==========================================================================
 
-BESTOW_SYSTEM(VulkanGraphics3DSystem, IGraphics3DSystem, IAssetSystem, IShaderSystem, IConfigSystem)
+class VulkanGraphics3DSystem : public IGraphics3DSystem {
 public:
+    explicit VulkanGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
+                                     IShaderSystem* pIShaderSystem = nullptr,
+                                     IConfigSystem* pIConfigSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem)
+        , pIShaderSystem_(pIShaderSystem)
+        , pIConfigSystem_(pIConfigSystem) {}
     ~VulkanGraphics3DSystem() override;
 
     //======================================================================
@@ -869,6 +883,14 @@ private:
     void updateCameraUBO();
     void updateLightUBO();
     void renderDebugLines();
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
+    IShaderSystem* pIShaderSystem_ = nullptr;
+    IConfigSystem* pIConfigSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow::vulkan

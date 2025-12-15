@@ -60,8 +60,10 @@ void setBehaviorTreeJson(BehaviorTreeData& data, const std::string& jsonText);
 bool hasBehaviorTreeJson(const BehaviorTreeData& data);
 const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
-BESTOW_SYSTEM(AssetSystem, IAssetSystem, IEventSystem)
+class AssetSystem : public IAssetSystem {
 public:
+    explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
+        : pIEventSystem_(pIEventSystem) {}
     ~AssetSystem() override = default;
 
     void update() override;
@@ -192,6 +194,12 @@ private:
 
     // Helper to notify subscribers when an asset changes
     void notifySubscribers(AssetHandle handle, AssetType type);
+
+    // Injected dependencies
+    IEventSystem* pIEventSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

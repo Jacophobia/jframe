@@ -30,8 +30,11 @@ struct ConfigSubscription {
     ConfigChangeCallback callback;
 };
 
-BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
+class ConfigSystem : public IConfigSystem {
 public:
+    explicit ConfigSystem(IAssetSystem* pIAssetSystem = nullptr,
+                          IEventSystem* pIEventSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem), pIEventSystem_(pIEventSystem) {}
     ~ConfigSystem() override = default;
 
     //==========================================================================
@@ -167,6 +170,13 @@ private:
 
     // Current time tracking
     Timestamp currentTime_ = 0.0f;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
+    IEventSystem* pIEventSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow
