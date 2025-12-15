@@ -1,0 +1,50 @@
+# Build artifacts
+build/
+install/
+out/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Documentation that's not needed for builds
+docs/
+
+# External dependencies (will be fetched by vcpkg)
+external/
+
+# Test data that might be large
+test_data/
+
+# Temporary files
+*.tmp
+*.log
+*.cache
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Compiled objects (shouldn't be in repo but just in case)
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
