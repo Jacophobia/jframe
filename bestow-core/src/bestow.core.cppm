@@ -104,57 +104,36 @@ public:
     Engine(Engine&&) noexcept = default;
     Engine& operator=(Engine&&) noexcept = default;
 
-    /// Register an implementation type for a contract interface.
-    /// The implementation will be instantiated by Kangaru with its dependencies injected.
+    /// Register a service type with the DI container.
+    /// The service definition handles interface-to-implementation mapping.
     ///
     /// Example:
     /// ```cpp
-    /// engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
+    /// engine.registerSystem<EventSystemService>();
+    /// engine.registerSystem<EntitySystemService>();
+    /// engine.registerSystem<vulkan::VulkanGraphics3DSystemService>();
     /// ```
-    template<typename Contract, typename Implementation>
+    template<typename ServiceType>
     void registerSystem() {
-        static_assert(std::is_base_of_v<Contract, Implementation>,
-            "Implementation must inherit from Contract interface");
-
-        // Register the service mapping in Kangaru
-        // The Implementation's Kangaru service definition handles the wiring
-        registrations_.push_back([this]() {
-            // This will be called when we need to resolve the service
-            // Kangaru services are auto-registered when their modules are imported
-        });
-    }
-
-    /// Register a factory function that creates an implementation.
-    /// Useful when the implementation requires custom initialization.
-    ///
-    /// Example:
-    /// ```cpp
-    /// engine.registerSystem<IAudioSystem>([]() {
-    ///     return std::make_unique<FMODAudioSystem>("config.json");
-    /// });
-    /// ```
-    template<typename Contract>
-    void registerSystem(std::function<std::unique_ptr<Contract>()> factory) {
-        factories_[std::type_index(typeid(Contract))] = [factory = std::move(factory)]() -> void* {
-            return factory().release();
-        };
+        container_.service<ServiceType>();
     }
 
     /// Run the application. The App type must:
     /// 1. Inherit from IApplication
-    /// 2. Have a constructor that accepts its dependencies (injected by Kangaru)
+    /// 2. Have a nested `Service` type (Kangaru service definition)
     /// 3. Implement the run() method
     ///
     /// Example:
     /// ```cpp
     /// class MyGame : public IApplication {
     /// public:
-    ///     MyGame(IGraphicsSystem& graphics, IInputSystem& input)
-    ///         : graphics_(&graphics), input_(&input) {}
+    ///     MyGame(IGraphicsSystem* graphics, IInputSystem* input)
+    ///         : graphics_(graphics), input_(input) {}
     ///
-    ///     void run() override {
-    ///         // Game loop
-    ///     }
+    ///     void run() override { /* Game loop */ }
+    ///
+    ///     // Kangaru service definition
+    ///     struct Service : kgr::single_service<MyGame> { ... };
     /// };
     ///
     /// engine.run<MyGame>();
@@ -166,21 +145,18 @@ public:
 
         // Resolve the application from the DI container
         // Kangaru will inject all constructor dependencies
-        auto& app = container_.service<typename App::service_type>();
+        auto& app = container_.service<typename App::Service>();
 
         // Run the application
         app.run();
     }
 
     /// Get the Kangaru container for advanced usage.
-    /// Prefer using registerSystem() and run() instead.
     kgr::container& container() { return container_; }
     const kgr::container& container() const { return container_; }
 
 private:
     kgr::container container_;
-    std::vector<std::function<void()>> registrations_;
-    std::unordered_map<std::type_index, std::function<void*()>> factories_;
 };
 
 }  // namespace bestow::core

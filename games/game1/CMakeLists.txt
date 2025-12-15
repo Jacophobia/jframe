@@ -17,11 +17,11 @@ target_sources(snake-game
         src/snake.game.cppm
 )
 
-# Link against Bestow contract and implementation libraries
+# Link against Bestow core and implementation libraries
 target_link_libraries(snake-game
     PRIVATE
-        # Core contract definitions (interfaces)
-        bestow-contract
+        # Core (includes Engine class and contracts)
+        bestow-core
 
         # Implementation libraries used by this game
         bestow-vulkan      # Vulkan 3D graphics

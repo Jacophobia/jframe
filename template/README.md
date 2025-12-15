@@ -99,11 +99,10 @@ struct MyGameService : kgr::single_service<MyGame> {
 
 ### 2. `main.cpp` - System Registration
 
-This is where you wire up your systems. You explicitly choose which implementations to use:
+This is where you wire up your systems using the Engine class:
 
 ```cpp
-#include <kangaru/kangaru.hpp>
-
+import bestow.core;              // Engine class
 import bestow.services;          // Contract interfaces
 import bestow.vulkan.impl;       // Vulkan implementation
 import bestow.entity.impl;       // Entity implementation
@@ -111,16 +110,15 @@ import bestow.input.impl;        // Input implementation
 import my.game;                  // Your game
 
 int main() {
-    kgr::container container;
+    bestow::core::Engine engine;
 
     // Register implementations for each contract
-    container.service<bestow::EntitySystemService>();
-    container.service<bestow::InputSystemService>();
-    container.service<bestow::vulkan::VulkanGraphics3DSystemService>();
+    engine.registerSystem<bestow::EntitySystemService>();
+    engine.registerSystem<bestow::InputSystemService>();
+    engine.registerSystem<bestow::vulkan::VulkanGraphics3DSystemService>();
 
     // Run your game - dependencies are automatically injected
-    auto& game = container.service<mygame::MyGameService>();
-    game.run();
+    engine.run<mygame::MyGame>();
 
     return 0;
 }
@@ -163,7 +161,7 @@ struct MyCustomEntitySystemService
     , kgr::overrides<bestow::IEntitySystemService> {};
 
 // 3. In main.cpp, register your implementation instead
-container.service<MyCustomEntitySystemService>();  // Instead of bestow::EntitySystemService
+engine.registerSystem<MyCustomEntitySystemService>();  // Instead of bestow::EntitySystemService
 ```
 
 Your game code remains unchanged because it only uses `IEntitySystem*`.
@@ -180,9 +178,10 @@ struct MockEntitySystemService
     , kgr::overrides<bestow::IEntitySystemService> {};
 
 // In your test
-kgr::container testContainer;
-testContainer.service<MockEntitySystemService>();
-testContainer.service<mygame::MyGameService>();
+bestow::core::Engine testEngine;
+testEngine.registerSystem<MockEntitySystemService>();
+// Register other systems...
+testEngine.run<mygame::MyGame>();
 // MyGame now receives the mock!
 ```
 

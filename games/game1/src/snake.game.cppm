@@ -536,28 +536,28 @@ private:
             borderColor, 0.0f, false
         );
     }
-};
 
-//==========================================================================
-// Kangaru Service Definition
-//==========================================================================
-
-struct SnakeGameService : kgr::single_service<SnakeGame> {
-    static auto construct(
-        kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
-        kgr::inject_t<bestow::IInputSystemService> input,
-        kgr::inject_t<bestow::IAudioSystemService> audio)
-        -> kgr::inject_result<
-            bestow::IGraphics3DSystem*,
-            bestow::IInputSystem*,
-            bestow::IAudioSystem*>
-    {
-        return kgr::inject(
-            &graphics.service(),
-            &input.service(),
-            &audio.service()
-        );
-    }
+public:
+    //======================================================================
+    // Kangaru Service Definition (nested inside class for Engine::run<>)
+    //======================================================================
+    struct Service : kgr::single_service<SnakeGame> {
+        static auto construct(
+            kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
+            kgr::inject_t<bestow::IInputSystemService> input,
+            kgr::inject_t<bestow::IAudioSystemService> audio)
+            -> kgr::inject_result<
+                bestow::IGraphics3DSystem*,
+                bestow::IInputSystem*,
+                bestow::IAudioSystem*>
+        {
+            return kgr::inject(
+                &graphics.service(),
+                &input.service(),
+                &audio.service()
+            );
+        }
+    };
 };
 
 }  // namespace snake

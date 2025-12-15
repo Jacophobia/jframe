@@ -19,13 +19,9 @@ target_sources(my-game
 )
 
 # Link against Bestow contract and implementation libraries
-# You only need to link the implementations you're actually using
 target_link_libraries(my-game
     PRIVATE
-        # Core contract definitions (interfaces)
-        bestow-contract
-
-        # Core utilities (JobSystem, etc.)
+        # Core (includes Engine class and contracts)
         bestow-core
 
         # Implementation libraries - choose which ones you need:

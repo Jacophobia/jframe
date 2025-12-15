@@ -230,37 +230,34 @@ private:
     bestow::MaterialHandle material_ = 0;
     float rotation_ = 0.0f;
     bool running_ = false;
-};
 
-//==========================================================================
-// Kangaru Service Definition
-//
-// This defines how Kangaru constructs MyGame with its dependencies.
-// The dependencies listed here must be registered in main.cpp.
-//==========================================================================
-
-struct MyGameService : kgr::single_service<MyGame> {
-    static auto construct(
-        kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
-        kgr::inject_t<bestow::IInputSystemService> input,
-        kgr::inject_t<bestow::IEntitySystemService> entities,
-        kgr::inject_t<bestow::IEventSystemService> events,
-        kgr::inject_t<bestow::IAudioSystemService> audio)
-        -> kgr::inject_result<
-            bestow::IGraphics3DSystem*,
-            bestow::IInputSystem*,
-            bestow::IEntitySystem*,
-            bestow::IEventSystem*,
-            bestow::IAudioSystem*>
-    {
-        return kgr::inject(
-            &graphics.service(),
-            &input.service(),
-            &entities.service(),
-            &events.service(),
-            &audio.service()
-        );
-    }
+public:
+    //======================================================================
+    // Kangaru Service Definition (nested inside class for Engine::run<>)
+    //======================================================================
+    struct Service : kgr::single_service<MyGame> {
+        static auto construct(
+            kgr::inject_t<bestow::IGraphics3DSystemService> graphics,
+            kgr::inject_t<bestow::IInputSystemService> input,
+            kgr::inject_t<bestow::IEntitySystemService> entities,
+            kgr::inject_t<bestow::IEventSystemService> events,
+            kgr::inject_t<bestow::IAudioSystemService> audio)
+            -> kgr::inject_result<
+                bestow::IGraphics3DSystem*,
+                bestow::IInputSystem*,
+                bestow::IEntitySystem*,
+                bestow::IEventSystem*,
+                bestow::IAudioSystem*>
+        {
+            return kgr::inject(
+                &graphics.service(),
+                &input.service(),
+                &entities.service(),
+                &events.service(),
+                &audio.service()
+            );
+        }
+    };
 };
 
 }  // namespace mygame
