@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <GLFW/glfw3.h>
 #include <SDL.h>
 
@@ -16,12 +17,12 @@ export namespace bestow {
 
 class InputSystem : public IInputSystem {
 public:
-    InputSystem() = default;
+    explicit InputSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~InputSystem() override;
 
     bool initialize(void* nativeWindow) override;
     void shutdown() override;
-    void setAssetSystem(IAssetSystem* assets);
 
     void update() override;
 
@@ -96,11 +97,12 @@ private:
     std::string textInputBuffer_;
 
     bool sdlInitialized_ = false;
-    IAssetSystem* assetSystem_ = nullptr;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
 
-// Kangaru service definitions
-// Concrete service that provides InputSystem as IInputSystem
-struct InputSystemService : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {};
+// Service definition - must be after class is complete
+BESTOW_SERVICE(InputSystem, InputSystem, AssetSystem);
 
 }  // namespace bestow

@@ -18,6 +18,7 @@
 import bestow;
 import bestow.types;
 import bestow.assets.impl;  // For AssetSystemService
+import bestow.events.impl;  // AssetSystem depends on EventSystem
 
 namespace bestow::tests {
 
@@ -32,8 +33,6 @@ struct MockAssetInfo {
 class MockAssetSystem : public IAssetSystem {
 public:
     void update() override {}
-    void setEventSystem(IEventSystem* events) override {}
-    void setJobSystem(void* jobs) override {}
 
     AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override {
         AssetHandle handle{++nextId_, type};
@@ -2236,10 +2235,10 @@ TEST_F(AssetSystemTest, ConcurrentGetRawAssetCalls) {
 TEST(AssetSystemKangaruTest, CanInstantiateViaService) {
     kgr::container container;
 
-    // Register the service
-    container.emplace<AssetSystemService>();
+    // Register EventSystemService first (AssetSystem depends on it)
+    container.service<EventSystemService>();
 
-    // Get the service instance
+    // Get the asset service instance
     auto& assetSystem = container.service<AssetSystemService>();
 
     EXPECT_NE(&assetSystem, nullptr);
@@ -2247,7 +2246,8 @@ TEST(AssetSystemKangaruTest, CanInstantiateViaService) {
 
 TEST(AssetSystemKangaruTest, ServiceIsSingleton) {
     kgr::container container;
-    container.emplace<AssetSystemService>();
+    // Register EventSystemService first (AssetSystem depends on it)
+    container.service<EventSystemService>();
 
     auto& assetSystem1 = container.service<AssetSystemService>();
     auto& assetSystem2 = container.service<AssetSystemService>();
@@ -2258,7 +2258,8 @@ TEST(AssetSystemKangaruTest, ServiceIsSingleton) {
 
 TEST(AssetSystemKangaruTest, CanRegisterAssetViaService) {
     kgr::container container;
-    container.emplace<AssetSystemService>();
+    // Register EventSystemService first (AssetSystem depends on it)
+    container.service<EventSystemService>();
 
     auto& assetSystem = container.service<AssetSystemService>();
 

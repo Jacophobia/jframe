@@ -11,6 +11,8 @@
 import bestow.input;
 import bestow.input.impl;
 import bestow.types;
+import bestow.assets.impl;   // InputSystem depends on AssetSystem
+import bestow.events.impl;   // AssetSystem depends on EventSystem
 
 namespace bestow::tests {
 
@@ -715,6 +717,10 @@ TEST_F(InputSystemTest, DisableTextInputWithoutEnabling) {
 TEST(InputSystemKangaruTest, ServiceInjection) {
     kgr::container container;
 
+    // Register dependencies first - InputSystem depends on AssetSystem which depends on EventSystem
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
+
     // Register the InputSystem service
     auto& service = container.service<InputSystemService>();
 
@@ -724,6 +730,10 @@ TEST(InputSystemKangaruTest, ServiceInjection) {
 
 TEST(InputSystemKangaruTest, SingletonBehavior) {
     kgr::container container;
+
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
 
     // Get references to the same service multiple times
     auto& inputSystem1 = container.service<InputSystemService>();
@@ -735,6 +745,10 @@ TEST(InputSystemKangaruTest, SingletonBehavior) {
 
 TEST(InputSystemKangaruTest, ServicePersistsState) {
     kgr::container container;
+
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
 
     auto& inputSystem1 = container.service<InputSystemService>();
 
@@ -756,6 +770,10 @@ TEST(InputSystemKangaruTest, ServicePersistsState) {
 TEST(InputSystemKangaruTest, InterfacePointer) {
     kgr::container container;
 
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
+
     // Get as interface pointer
     IInputSystem* inputSystemPtr = &container.service<InputSystemService>();
 
@@ -765,6 +783,10 @@ TEST(InputSystemKangaruTest, InterfacePointer) {
 
 TEST(InputSystemKangaruTest, ServiceUpdate) {
     kgr::container container;
+
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
 
     auto& inputSystem = container.service<InputSystemService>();
 

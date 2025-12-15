@@ -641,12 +641,6 @@ public:
     // Shader System Integration
     //======================================================================
 
-    /// Set shader system for custom shader/material support
-    virtual void setShaderSystem(IShaderSystem* shaders) = 0;
-
-    /// Get the shader system (for direct access to shader features)
-    virtual IShaderSystem* getShaderSystem() const = 0;
-
     /// Draw mesh with a shader system material (from Lua or custom shaders)
     virtual void drawMeshWithShaderMaterial(
         MeshHandle mesh,
@@ -674,9 +668,6 @@ public:
     //======================================================================
     // Asset System Integration
     //======================================================================
-
-    virtual void setAssetSystem(IAssetSystem* assets) = 0;
-    virtual void setConfigSystem(IConfigSystem* config) = 0;
 
     /// Create GPU mesh from asset system's MeshData
     /// Use: assets->getMeshData(handle) to get MeshData, then call this

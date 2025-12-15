@@ -1,11 +1,28 @@
-// bestow-contract/src/bestow.services.cppm
-// Central module for all abstract Kangaru service definitions
-// Clients import this module to get abstract services for dependency injection.
-// Implementation modules import this and provide concrete overrides.
+// include/bestow/kangaru_macros.hpp
+// Kangaru DI helper macros for system implementation
+//
+// These macros must be #included in the global module fragment of implementation
+// modules because macros are NOT exported through C++20 modules.
+//
+// Usage in implementation modules:
+//   module;
+//   #include <kangaru/kangaru.hpp>
+//   #include <bestow/kangaru_macros.hpp>
+//   ...
+//   export module bestow.yoursystem.impl;
+//   import bestow.services;
+//
+//   export namespace bestow {
+//   BESTOW_SYSTEM(YourSystem, IYourSystem, IDep1, IDep2)
+//   public:
+//       void doWork() { pIDep1_->method(); }
+//   };
+//   }
+//
+// Note: This header requires <kangaru/kangaru.hpp> to be included first.
 
-module;
-
-#include <kangaru/kangaru.hpp>
+#ifndef BESTOW_KANGARU_MACROS_HPP
+#define BESTOW_KANGARU_MACROS_HPP
 
 //==========================================================================
 // Service Definition Helper Macros
@@ -18,21 +35,19 @@ module;
 //   - Class opening line with inheritance
 //   - Nested Service struct for Kangaru registration
 //   - Constructor with dependency injection
-//   - Protected member variables (pSystemName_)
+//   - Private member variables (pSystemName_)
 //
 // Usage:
-//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, AssetSystem, EventSystem) {
+//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
 //   public:
 //       void loadConfig() {
-//           pAssetSystem_->load(...);   // IAssetSystem*
-//           pEventSystem_->emit(...);   // IEventSystem*
+//           pIAssetSystem_->load(...);
+//           pIEventSystem_->emit(...);
 //       }
 //   };
 //   // Register: container.service<ConfigSystem::Service>()
 //
-// Note: Pass base names (AssetSystem, not IAssetSystem) for dependencies.
-// The macro adds the I prefix for types and service lookup.
-// Interface parameter (2nd arg) should include I if it's an interface.
+// Pass FULL type names for dependencies (IAssetSystem, not AssetSystem).
 //
 // PATTERN 2: BESTOW_SERVICE - Standalone service struct
 // ======================================================
@@ -58,7 +73,7 @@ module;
     struct ImplType##Service : kgr::single_service<ImplType>, kgr::overrides<bestow::I##InterfaceType##Service> { \
         static auto construct(kgr::inject_t<bestow::I##Dep1Type##Service> d1) \
             -> kgr::inject_result<bestow::I##Dep1Type*> { \
-            return kgr::inject(&d1.service()); \
+            return kgr::inject(&d1.forward()); \
         } \
     }
 
@@ -68,7 +83,7 @@ module;
             kgr::inject_t<bestow::I##Dep1Type##Service> d1, \
             kgr::inject_t<bestow::I##Dep2Type##Service> d2) \
             -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*> { \
-            return kgr::inject(&d1.service(), &d2.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward()); \
         } \
     }
 
@@ -79,7 +94,7 @@ module;
             kgr::inject_t<bestow::I##Dep2Type##Service> d2, \
             kgr::inject_t<bestow::I##Dep3Type##Service> d3) \
             -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*> { \
-            return kgr::inject(&d1.service(), &d2.service(), &d3.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward()); \
         } \
     }
 
@@ -91,7 +106,7 @@ module;
             kgr::inject_t<bestow::I##Dep3Type##Service> d3, \
             kgr::inject_t<bestow::I##Dep4Type##Service> d4) \
             -> kgr::inject_result<bestow::I##Dep1Type*, bestow::I##Dep2Type*, bestow::I##Dep3Type*, bestow::I##Dep4Type*> { \
-            return kgr::inject(&d1.service(), &d2.service(), &d3.service(), &d4.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward(), &d4.forward()); \
         } \
     }
 
@@ -123,15 +138,15 @@ module;
 //   - Class declaration line: class ImplType : public InterfaceType {
 //   - Nested Service struct for Kangaru registration
 //   - Constructor with dependency injection
-//   - Protected member variables (pDepName_)
+//   - Private member variables (pDepName_)
 //
-// Usage: BESTOW_SYSTEM(ImplType, InterfaceType, Dep1, Dep2, ...) { body };
+// Usage: BESTOW_SYSTEM(ImplType, InterfaceType, Dep1, Dep2, ...) body };
 //
 // Pass FULL type names - no automatic I prefix is added anywhere.
 // This allows injecting both interfaces and non-interface types.
 //
 // Example:
-//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem) {
+//   BESTOW_SYSTEM(ConfigSystem, IConfigSystem, IAssetSystem, IEventSystem)
 //   public:
 //       void work() { pIAssetSystem_->load(); pIEventSystem_->emit(); }
 //   };
@@ -154,7 +169,7 @@ public: \
     struct Service : kgr::single_service<ImplType>, kgr::overrides<bestow::InterfaceType##Service> { \
         static auto construct(kgr::inject_t<bestow::Dep1##Service> d1) \
             -> kgr::inject_result<bestow::Dep1*> { \
-            return kgr::inject(&d1.service()); \
+            return kgr::inject(&d1.forward()); \
         } \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr) : p##Dep1##_(p##Dep1) {} \
@@ -170,7 +185,7 @@ public: \
             kgr::inject_t<bestow::Dep1##Service> d1, \
             kgr::inject_t<bestow::Dep2##Service> d2) \
             -> kgr::inject_result<bestow::Dep1*, bestow::Dep2*> { \
-            return kgr::inject(&d1.service(), &d2.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward()); \
         } \
     }; \
     explicit ImplType(bestow::Dep1* p##Dep1 = nullptr, bestow::Dep2* p##Dep2 = nullptr) \
@@ -189,7 +204,7 @@ public: \
             kgr::inject_t<bestow::Dep2##Service> d2, \
             kgr::inject_t<bestow::Dep3##Service> d3) \
             -> kgr::inject_result<bestow::Dep1*, bestow::Dep2*, bestow::Dep3*> { \
-            return kgr::inject(&d1.service(), &d2.service(), &d3.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward()); \
         } \
     }; \
     explicit ImplType( \
@@ -213,7 +228,7 @@ public: \
             kgr::inject_t<bestow::Dep3##Service> d3, \
             kgr::inject_t<bestow::Dep4##Service> d4) \
             -> kgr::inject_result<bestow::Dep1*, bestow::Dep2*, bestow::Dep3*, bestow::Dep4*> { \
-            return kgr::inject(&d1.service(), &d2.service(), &d3.service(), &d4.service()); \
+            return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward(), &d4.forward()); \
         } \
     }; \
     explicit ImplType( \
@@ -236,203 +251,8 @@ private: \
 #define BESTOW_SYS_4(ImplType, InterfaceType, D1, D2, D3, D4) BESTOW_SYSTEM_4(ImplType, InterfaceType, D1, D2, D3, D4)
 
 // Primary variadic macro for complete class definition
-// Usage: BESTOW_SYSTEM(ImplType, InterfaceType [, Dep1, Dep2, ...]) { body };
+// Usage: BESTOW_SYSTEM(ImplType, InterfaceType [, Dep1, Dep2, ...]) body };
 #define BESTOW_SYSTEM(ImplType, InterfaceType, ...) \
     BESTOW_CONCAT(BESTOW_SYS_, BESTOW_DEP_COUNT(__VA_ARGS__ __VA_OPT__(,) _))(ImplType, InterfaceType __VA_OPT__(,) __VA_ARGS__)
 
-export module bestow.services;
-
-import std;
-
-// Re-export all contract modules so implementation modules can access interfaces
-// through a single import of bestow.services
-export import bestow.types;
-export import bestow.entity;
-export import bestow.graphics;
-export import bestow.graphics3d;
-export import bestow.audio;
-export import bestow.input;
-export import bestow.assets;
-export import bestow.save;
-export import bestow.level;
-export import bestow.events;
-export import bestow.physics;
-export import bestow.physics3d;
-export import bestow.ai;
-export import bestow.camera;
-export import bestow.config;
-export import bestow.gas;
-export import bestow.blueprints;
-export import bestow.ui;
-export import bestow.gamestate;
-export import bestow.shader;
-
-export namespace bestow {
-
-//==========================================================================
-// Abstract Service Definitions
-//
-// These are the abstract service types that backends override.
-// Use kgr::service<IXxxSystemService>(container) to get the interface.
-//==========================================================================
-
-// Core Entity System
-struct IEntitySystemService : kgr::abstract_service<IEntitySystem> {};
-
-// Event System
-struct IEventSystemService : kgr::abstract_service<IEventSystem> {};
-
-// Configuration System
-struct IConfigSystemService : kgr::abstract_service<IConfigSystem> {};
-
-// Asset System
-struct IAssetSystemService : kgr::abstract_service<IAssetSystem> {};
-
-// Input System
-struct IInputSystemService : kgr::abstract_service<IInputSystem> {};
-
-// Audio System
-struct IAudioSystemService : kgr::abstract_service<IAudioSystem> {};
-
-// Save System
-struct ISaveSystemService : kgr::abstract_service<ISaveSystem> {};
-
-// Level System
-struct ILevelSystemService : kgr::abstract_service<ILevelSystem> {};
-
-// Camera System
-struct ICameraSystemService : kgr::abstract_service<ICameraSystem> {};
-
-// 2D Graphics System
-struct IGraphicsSystemService : kgr::abstract_service<IGraphicsSystem> {};
-
-// 3D Graphics System
-struct IGraphics3DSystemService : kgr::abstract_service<IGraphics3DSystem> {};
-
-// 2D Physics System
-struct IPhysicsSystemService : kgr::abstract_service<IPhysicsSystem> {};
-
-// 3D Physics System
-struct IPhysics3DSystemService : kgr::abstract_service<IPhysics3DSystem> {};
-
-// AI System
-struct IAISystemService : kgr::abstract_service<IAISystem> {};
-
-// UI System
-struct IUISystemService : kgr::abstract_service<IUISystem> {};
-
-// Game State System
-struct IGameStateSystemService : kgr::abstract_service<IGameStateSystem> {};
-
-// Gameplay Ability System (GAS)
-struct IGASSystemService : kgr::abstract_service<IGASSystem> {};
-
-// Shader System
-struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
-
-// Blueprint Factory
-struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
-
-//==========================================================================
-// Application Interface
-//==========================================================================
-
-/// Application interface that clients implement.
-/// The Engine will instantiate the client's Application via DI and call run().
-class IApplication {
-public:
-    virtual ~IApplication() = default;
-    
-    /// Called by the Engine to start the application.
-    /// All systems have been initialized and are available via DI.
-    virtual void run() = 0;
-    
-    /// Called by the Engine when shutdown is requested.
-    /// Application should clean up and exit gracefully.
-    virtual void shutdown() {}
-};
-
-// Application Service for DI
-struct IApplicationService : kgr::abstract_service<IApplication> {};
-
-//==========================================================================
-// Engine Interface
-//==========================================================================
-
-/// Engine interface for composition root and client interaction.
-class IEngine {
-public:
-    virtual ~IEngine() = default;
-    
-    /// Register an implementation type for a contract interface.
-    /// The implementation must be constructible and satisfy the contract.
-    template<typename Contract, typename Implementation>
-    void registerSystem() {
-        static_assert(std::is_base_of_v<Contract, Implementation>, 
-            "Implementation must inherit from Contract interface");
-        doRegisterSystem<Contract, Implementation>();
-    }
-    
-    /// Register a factory function that creates an implementation.
-    /// Useful for complex initialization or when implementation is not default constructible.
-    template<typename Contract>
-    void registerSystem(std::function<std::unique_ptr<Contract>()> factory) {
-        doRegisterFactory<Contract>(std::move(factory));
-    }
-    
-    /// Register an existing instance of an implementation.
-    /// Engine takes ownership of the instance.
-    template<typename Contract>
-    void registerInstance(std::unique_ptr<Contract> instance) {
-        doRegisterInstance<Contract>(std::move(instance));
-    }
-    
-    /// Initialize all registered systems and start the application.
-    /// Will call the registered Application's run() method.
-    virtual void run() = 0;
-    
-    /// Request engine shutdown. Will call Application's shutdown() method.
-    virtual void shutdown() = 0;
-    
-    /// Get a system instance by contract interface.
-    /// Useful for late binding or optional system access.
-    template<typename Contract>
-    Contract* getSystem() {
-        return doGetSystem<Contract>();
-    }
-
-protected:
-    virtual void doRegisterSystem_impl(const std::type_info& contract, const std::type_info& impl) = 0;
-    virtual void doRegisterFactory_impl(const std::type_info& contract, std::function<void*()> factory) = 0;
-    virtual void doRegisterInstance_impl(const std::type_info& contract, void* instance) = 0;
-    virtual void* doGetSystem_impl(const std::type_info& contract) = 0;
-    
-private:
-    template<typename Contract, typename Implementation>
-    void doRegisterSystem() {
-        doRegisterSystem_impl(typeid(Contract), typeid(Implementation));
-    }
-    
-    template<typename Contract>
-    void doRegisterFactory(std::function<std::unique_ptr<Contract>()> factory) {
-        auto voidFactory = [f = std::move(factory)]() -> void* {
-            return f().release();
-        };
-        doRegisterFactory_impl(typeid(Contract), std::move(voidFactory));
-    }
-    
-    template<typename Contract>
-    void doRegisterInstance(std::unique_ptr<Contract> instance) {
-        doRegisterInstance_impl(typeid(Contract), instance.release());
-    }
-    
-    template<typename Contract>
-    Contract* doGetSystem() {
-        return static_cast<Contract*>(doGetSystem_impl(typeid(Contract)));
-    }
-};
-
-// Engine Service for DI
-struct IEngineService : kgr::abstract_service<IEngine> {};
-
-}  // namespace bestow
+#endif // BESTOW_KANGARU_MACROS_HPP

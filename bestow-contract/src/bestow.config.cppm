@@ -56,13 +56,6 @@ public:
     virtual void shutdown() = 0;
 
     //==========================================================================
-    // EventSystem Integration
-    //==========================================================================
-
-    /// Set the event system for publishing config change events
-    virtual void setEventSystem(class IEventSystem* events) = 0;
-
-    //==========================================================================
     // Configuration Loading
     //==========================================================================
 

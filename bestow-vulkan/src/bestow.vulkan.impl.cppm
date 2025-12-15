@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <VkBootstrap.h>
@@ -232,7 +233,8 @@ private:
 
 class VulkanGraphicsSystem : public IGraphicsSystem {
 public:
-    VulkanGraphicsSystem();
+    explicit VulkanGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~VulkanGraphicsSystem() override;
 
     Result<void, VulkanError> initialize(const VulkanConfig& config);
@@ -309,12 +311,6 @@ public:
     void setVSync(bool enabled) override;
 
     //======================================================================
-    // Asset System Integration
-    //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
-
-    //======================================================================
     // Automatic Entity Rendering
     //======================================================================
 
@@ -336,7 +332,6 @@ private:
     Camera camera_;
     Color clearColor_ = Color::black();
     bool viewportCullingEnabled_ = false;
-    IAssetSystem* assetSystem_ = nullptr;
     bool isFullscreen_ = false;
 
     // Sprite batching
@@ -358,7 +353,13 @@ private:
     void flushSpriteBatch();
     void flushPrimitives();
     void createPipelines();
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
+
+// Service definition - must be after class is complete
+BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
 //==========================================================================
 // VulkanGraphics3DSystem - 3D Vulkan Renderer
@@ -366,7 +367,12 @@ private:
 
 class VulkanGraphics3DSystem : public IGraphics3DSystem {
 public:
-    VulkanGraphics3DSystem();
+    explicit VulkanGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
+                                     IShaderSystem* pIShaderSystem = nullptr,
+                                     IConfigSystem* pIConfigSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem)
+        , pIShaderSystem_(pIShaderSystem)
+        , pIConfigSystem_(pIConfigSystem) {}
     ~VulkanGraphics3DSystem() override;
 
     //======================================================================
@@ -585,9 +591,6 @@ public:
     // Shader System Integration
     //======================================================================
 
-    void setShaderSystem(IShaderSystem* shaders) override;
-    IShaderSystem* getShaderSystem() const override;
-
     void drawMeshWithShaderMaterial(
         MeshHandle mesh,
         ShaderProgramHandle shader,
@@ -611,9 +614,6 @@ public:
     //======================================================================
     // Asset System Integration
     //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override;
-    void setConfigSystem(IConfigSystem* config);
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override;
     Result<MaterialHandle, Graphics3DError> createMaterialFromData(const MaterialData& data) override;
@@ -720,9 +720,6 @@ private:
     VulkanContext context_;
     Camera3D camera_;
     Color clearColor_ = Color::black();
-    IAssetSystem* assetSystem_ = nullptr;
-    IShaderSystem* shaderSystem_ = nullptr;
-    IConfigSystem* configSystem_ = nullptr;
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
 
@@ -886,14 +883,14 @@ private:
     void updateCameraUBO();
     void updateLightUBO();
     void renderDebugLines();
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
+    IShaderSystem* pIShaderSystem_ = nullptr;
+    IConfigSystem* pIConfigSystem_ = nullptr;
 };
 
-//==========================================================================
-// Kangaru Service Definitions
-//==========================================================================
-
-// Vulkan concrete services that override the abstract services from bestow.services
-struct VulkanGraphicsSystemService : kgr::single_service<VulkanGraphicsSystem>, kgr::overrides<bestow::IGraphicsSystemService> {};
-struct VulkanGraphics3DSystemService : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<bestow::IGraphics3DSystemService> {};
+// Service definition - must be after class is complete
+BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
 
 }  // namespace bestow::vulkan

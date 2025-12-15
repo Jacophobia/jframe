@@ -16,6 +16,8 @@ import bestow.core;
 import bestow.types;
 import bestow.config;
 import bestow.config.impl;
+import bestow.assets.impl;   // ConfigSystem depends on AssetSystem
+import bestow.events.impl;   // ConfigSystem depends on EventSystem
 
 namespace bestow::tests {
 
@@ -893,7 +895,10 @@ TEST_F(ConfigSystemTest, KangaruServiceInstantiation) {
     // Test that ConfigSystem can be instantiated via Kangaru DI
     kgr::container container;
 
-    // ConfigSystemService has no dependencies, should instantiate cleanly
+    // Register dependencies first - ConfigSystem depends on AssetSystem and EventSystem
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
+
     auto& configSystem = container.service<ConfigSystemService>();
 
     // Verify the service is valid
@@ -915,6 +920,9 @@ TEST_F(ConfigSystemTest, KangaruServiceInstantiation) {
 TEST_F(ConfigSystemTest, KangaruServiceWithSetGet) {
     // Test set/get operations using Kangaru-instantiated service
     kgr::container container;
+    // Register dependencies first - ConfigSystem depends on AssetSystem and EventSystem
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
     auto& configSystem = container.service<ConfigSystemService>();
 
     ASSERT_TRUE(configSystem.initialize());

@@ -17,8 +17,6 @@ import bestow.utils;
 
 namespace bestow::vulkan {
 
-VulkanGraphicsSystem::VulkanGraphicsSystem() = default;
-
 VulkanGraphicsSystem::~VulkanGraphicsSystem() {
     // Cleanup resources
     if (spriteVertexBuffer_ != 0) {
@@ -401,10 +399,6 @@ void VulkanGraphicsSystem::setClearColor(const Color& color) {
 void VulkanGraphicsSystem::setVSync(bool enabled) {
     // VSync is set during swapchain creation
     // Would need to recreate swapchain to change
-}
-
-void VulkanGraphicsSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
 }
 
 void VulkanGraphicsSystem::renderEntities(IEntitySystem& entities) {

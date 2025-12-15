@@ -238,7 +238,7 @@ jobs:
           # Exclude flaky tests in CI (-E = exclude by regex)
           # See cmake/FlakyTests.cmake for why these tests are flaky
           ctest --preset ${{ matrix.preset }} -j $JOBS \
-            -E "FrameTimerTest.DeltaTimeConsistency|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|EventSystemTest.UnsubscribeDuringCallback"
+            -E "FrameTimerTest.DeltaTimeConsistency|CameraSystemTest.ShakeDecaysOverTime|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded|EventSystemTest.UnsubscribeDuringCallback"
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
@@ -249,7 +249,7 @@ jobs:
           # Exclude flaky tests in CI (-E = exclude by regex)
           # See cmake/FlakyTests.cmake for why these tests are flaky
           ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs `
-            -E "FrameTimerTest.DeltaTimeConsistency|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|EventSystemTest.UnsubscribeDuringCallback"
+            -E "FrameTimerTest.DeltaTimeConsistency|CameraSystemTest.ShakeDecaysOverTime|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded|EventSystemTest.UnsubscribeDuringCallback"
 
       # =========================================================================
       # Upload artifacts

@@ -9,6 +9,7 @@ module;
 
 #include <cstddef>  // For size_t
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <efsw/efsw.hpp>
 
 export module bestow.assets.impl;
@@ -61,14 +62,11 @@ const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
 class AssetSystem : public IAssetSystem {
 public:
-    AssetSystem() = default;
+    explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
+        : pIEventSystem_(pIEventSystem) {}
     ~AssetSystem() override = default;
 
     void update() override;
-
-    // System integration
-    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
-    void setJobSystem(void* jobs) override { jobSystem_ = jobs; }
 
     // Registration
     AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override;
@@ -173,10 +171,6 @@ private:
     bool hotReloadEnabled_ = false;
     UUID nextUUID_ = 1;
 
-    // System integration
-    IEventSystem* eventSystem_ = nullptr;
-    void* jobSystem_ = nullptr;  // Actually a core::JobSystem*, stored as void* to avoid circular dependency
-
     // File watcher infrastructure (event-driven, not polling)
     std::unique_ptr<efsw::FileWatcher> fileWatcher_;
     std::unique_ptr<FileWatchListener> fileWatchListener_;
@@ -200,10 +194,12 @@ private:
 
     // Helper to notify subscribers when an asset changes
     void notifySubscribers(AssetHandle handle, AssetType type);
+
+    // Injected dependencies
+    IEventSystem* pIEventSystem_ = nullptr;
 };
 
-// Kangaru service definitions
-// Concrete service that provides AssetSystem as IAssetSystem
-struct AssetSystemService : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {};
+// Service definition - must be after class is complete
+BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

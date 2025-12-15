@@ -492,14 +492,6 @@ public:
     // Shader System Integration
     //==========================================================================
 
-    void setShaderSystem(IShaderSystem* shaders) override {
-        shaderSystem_ = shaders;
-    }
-
-    IShaderSystem* getShaderSystem() const override {
-        return shaderSystem_;
-    }
-
     void drawMeshWithShaderMaterial(
         MeshHandle mesh,
         ShaderProgramHandle shader,
@@ -531,10 +523,6 @@ public:
     //==========================================================================
     // Asset System Integration
     //==========================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override {
-        assetSystem_ = assets;
-    }
 
     Result<MeshHandle, Graphics3DError> createMeshFromData(const MeshData& data) override {
         return createMesh(MeshDef{});

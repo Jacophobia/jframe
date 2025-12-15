@@ -64,8 +64,6 @@ public:
     bool shouldClose() const override { return false; }
     void* getNativeWindowHandle() const override { return nullptr; }
 
-    void setAssetSystem(IAssetSystem* assets) override { assets_ = assets; }
-
     void renderEntities(IEntitySystem& entities) override {}
     void renderEntities(IEntitySystem& entities, RenderLayer minLayer, RenderLayer maxLayer) override {}
 

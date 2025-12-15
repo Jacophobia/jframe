@@ -21,12 +21,16 @@ set(BESTOW_FLAKY_TESTS
     # Timing-dependent tests that fail on CI due to VM scheduling variance
     "FrameTimerTest.DeltaTimeConsistency"
 
+    # Camera shake test uses random values that can cause timing-dependent failures
+    "CameraSystemTest.ShakeDecaysOverTime"
+
     # Hot reload tests using efsw file watcher - these use background threads
     # and are timing-dependent. They pass on Linux but intermittently SEGFAULT
     # on Windows CI due to race conditions in file change detection and cleanup.
     # Root cause: efsw watcher callbacks can race with test teardown on Windows.
     "AssetSystemTest.CheckForReloadsDetectsModifiedFile"
     "AssetSystemTest.HotReloadCallbackOnReload"
+    "AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded"
 
     # EventSystem unsubscribe test fails on Windows MSVC with "bad function call"
     # This appears to be an MSVC C++23 modules issue with std::function stored

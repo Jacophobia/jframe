@@ -4,6 +4,7 @@
 module;
 
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 
@@ -31,7 +32,9 @@ struct ConfigSubscription {
 
 class ConfigSystem : public IConfigSystem {
 public:
-    ConfigSystem() = default;
+    explicit ConfigSystem(IAssetSystem* pIAssetSystem = nullptr,
+                          IEventSystem* pIEventSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem), pIEventSystem_(pIEventSystem) {}
     ~ConfigSystem() override = default;
 
     //==========================================================================
@@ -41,18 +44,6 @@ public:
     bool initialize() override;
     void update(DeltaTime dt) override;
     void shutdown() override;
-
-    //==========================================================================
-    // Asset System Integration
-    //==========================================================================
-
-    void setAssetSystem(IAssetSystem* assetSystem) { assetSystem_ = assetSystem; }
-
-    //==========================================================================
-    // EventSystem Integration
-    //==========================================================================
-
-    void setEventSystem(IEventSystem* events) override { eventSystem_ = events; }
 
     //==========================================================================
     // Configuration Loading
@@ -155,12 +146,6 @@ private:
     // Configuration storage
     std::unordered_map<ConfigKey, ConfigEntry> config_;
 
-    // Asset system integration
-    IAssetSystem* assetSystem_ = nullptr;
-
-    // Event system integration
-    IEventSystem* eventSystem_ = nullptr;
-
     // Loaded file tracking
     struct LoadedFile {
         std::string path;
@@ -185,15 +170,13 @@ private:
 
     // Current time tracking
     Timestamp currentTime_ = 0.0f;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
+    IEventSystem* pIEventSystem_ = nullptr;
 };
 
-// Kangaru service definitions
-struct ConfigSystemService : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
-    // ConfigSystem depends on AssetSystem for file I/O
-    template<typename... T>
-    static auto construct(T&&... args) -> decltype(kgr::inject(std::forward<T>(args)...)) {
-        return kgr::inject(std::forward<T>(args)...);
-    }
-};
+// Service definition - must be after class is complete
+BESTOW_SERVICE(ConfigSystem, ConfigSystem, AssetSystem, EventSystem);
 
 }  // namespace bestow

@@ -40,16 +40,16 @@ bool InputSystem::initialize(void* nativeWindow) {
     sdlInitialized_ = true;
 
     // Load controller mappings from AssetSystem if available
-    if (assetSystem_) {
-        AssetHandle mappingsHandle = assetSystem_->registerAsset(
+    if (pIAssetSystem_) {
+        AssetHandle mappingsHandle = pIAssetSystem_->registerAsset(
             AssetType::Data,
             "data/config/gamecontrollerdb.txt"
         );
-        assetSystem_->loadAsset(mappingsHandle);
+        pIAssetSystem_->loadAsset(mappingsHandle);
 
-        if (assetSystem_->isLoaded(mappingsHandle)) {
+        if (pIAssetSystem_->isLoaded(mappingsHandle)) {
             const DataAsset* data = static_cast<const DataAsset*>(
-                assetSystem_->getRawAsset(mappingsHandle)
+                pIAssetSystem_->getRawAsset(mappingsHandle)
             );
             if (data && !data->rawText.empty()) {
                 // Use SDL_RWFromMem to load mappings from memory instead of file
@@ -91,10 +91,6 @@ void InputSystem::shutdown() {
     }
     
     window_ = nullptr;
-}
-
-void InputSystem::setAssetSystem(IAssetSystem* assets) {
-    assetSystem_ = assets;
 }
 
 void InputSystem::update() {

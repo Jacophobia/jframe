@@ -5,6 +5,7 @@ module;
 
 // Kangaru DI
 #include <kangaru/kangaru.hpp>
+#include <bestow/kangaru_macros.hpp>
 
 // OpenGL headers - MUST be in global module fragment
 #include <glad/glad.h>
@@ -86,22 +87,23 @@ struct ShaderMaterialResource {
 
 class OpenGLShaderSystem : public IShaderSystem {
 public:
-    OpenGLShaderSystem() = default;
+    explicit OpenGLShaderSystem(IAssetSystem* pIAssetSystem = nullptr)
+        : pIAssetSystem_(pIAssetSystem) {}
     ~OpenGLShaderSystem() override {
         // Unsubscribe from all AssetSystem notifications
-        if (assets_) {
+        if (pIAssetSystem_) {
             for (auto& [handle, shader] : shaders_) {
                 if (shader.vertSubscriptionId != InvalidSubscriptionId) {
-                    assets_->unsubscribe(shader.vertSubscriptionId);
+                    pIAssetSystem_->unsubscribe(shader.vertSubscriptionId);
                 }
                 if (shader.fragSubscriptionId != InvalidSubscriptionId) {
-                    assets_->unsubscribe(shader.fragSubscriptionId);
+                    pIAssetSystem_->unsubscribe(shader.fragSubscriptionId);
                 }
             }
 
             for (auto& [handle, material] : materials_) {
                 if (material.matSubscriptionId != InvalidSubscriptionId) {
-                    assets_->unsubscribe(material.matSubscriptionId);
+                    pIAssetSystem_->unsubscribe(material.matSubscriptionId);
                 }
             }
         }
@@ -144,7 +146,7 @@ public:
         std::string_view fragmentPath,
         bool enableHotReload) override
     {
-        if (!assets_) {
+        if (!pIAssetSystem_) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "AssetSystem not initialized"
@@ -155,8 +157,8 @@ public:
         std::string fullFragPath = resolvePath(shaderBasePath_, fragmentPath);
 
         // Load vertex shader through AssetSystem
-        AssetHandle vertHandle = assets_->loadShader(fullVertPath);
-        const ShaderData* vertShaderData = assets_->getShaderData(vertHandle);
+        AssetHandle vertHandle = pIAssetSystem_->loadShader(fullVertPath);
+        const ShaderData* vertShaderData = pIAssetSystem_->getShaderData(vertHandle);
         if (!vertShaderData || vertShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
@@ -166,8 +168,8 @@ public:
         }
 
         // Load fragment shader through AssetSystem
-        AssetHandle fragHandle = assets_->loadShader(fullFragPath);
-        const ShaderData* fragShaderData = assets_->getShaderData(fragHandle);
+        AssetHandle fragHandle = pIAssetSystem_->loadShader(fullFragPath);
+        const ShaderData* fragShaderData = pIAssetSystem_->getShaderData(fragHandle);
         if (!fragShaderData || fragShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
@@ -190,10 +192,10 @@ public:
             shader.fragAssetHandle = fragHandle;
 
             // Subscribe to shader changes via AssetSystem
-            SubscriptionId vertSub = assets_->subscribe(vertHandle, [this, handle = *result](AssetHandle, AssetType) {
+            SubscriptionId vertSub = pIAssetSystem_->subscribe(vertHandle, [this, handle = *result](AssetHandle, AssetType) {
                 onShaderFileChanged(handle);
             });
-            SubscriptionId fragSub = assets_->subscribe(fragHandle, [this, handle = *result](AssetHandle, AssetType) {
+            SubscriptionId fragSub = pIAssetSystem_->subscribe(fragHandle, [this, handle = *result](AssetHandle, AssetType) {
                 onShaderFileChanged(handle);
             });
 
@@ -205,7 +207,7 @@ public:
     }
 
     Result<ShaderProgramHandle, ShaderCompileError> createShader(const ShaderProgramDef& def) override {
-        if (!assets_) {
+        if (!pIAssetSystem_) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "AssetSystem not initialized"
@@ -220,8 +222,8 @@ public:
                 std::string fullPath = resolvePath(shaderBasePath_, stage.filePath);
 
                 // Load shader through AssetSystem
-                AssetHandle handle = assets_->loadShader(fullPath);
-                const ShaderData* shaderData = assets_->getShaderData(handle);
+                AssetHandle handle = pIAssetSystem_->loadShader(fullPath);
+                const ShaderData* shaderData = pIAssetSystem_->getShaderData(handle);
                 if (!shaderData || shaderData->glslSource.empty()) {
                     return std::unexpected(ShaderCompileError{
                         .error = ShaderError::FileNotFound,
@@ -253,12 +255,12 @@ public:
         auto it = shaders_.find(handle);
         if (it != shaders_.end()) {
             // Unsubscribe from AssetSystem notifications
-            if (assets_) {
+            if (pIAssetSystem_) {
                 if (it->second.vertSubscriptionId != InvalidSubscriptionId) {
-                    assets_->unsubscribe(it->second.vertSubscriptionId);
+                    pIAssetSystem_->unsubscribe(it->second.vertSubscriptionId);
                 }
                 if (it->second.fragSubscriptionId != InvalidSubscriptionId) {
-                    assets_->unsubscribe(it->second.fragSubscriptionId);
+                    pIAssetSystem_->unsubscribe(it->second.fragSubscriptionId);
                 }
             }
 
@@ -382,7 +384,7 @@ public:
 
     Result<MaterialHandle, ShaderCompileError> loadMaterial(std::string_view luaPath) override {
 #ifdef BESTOW_HAS_SOL2
-        if (!assets_) {
+        if (!pIAssetSystem_) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "AssetSystem not initialized"
@@ -392,10 +394,10 @@ public:
         std::string fullPath = resolvePath(materialBasePath_, luaPath);
 
         // Load material Lua file through AssetSystem as Data asset
-        AssetHandle matAssetHandle = assets_->registerAsset(AssetType::Data, fullPath);
-        assets_->loadAsset(matAssetHandle);
+        AssetHandle matAssetHandle = pIAssetSystem_->registerAsset(AssetType::Data, fullPath);
+        pIAssetSystem_->loadAsset(matAssetHandle);
 
-        if (!assets_->isLoaded(matAssetHandle)) {
+        if (!pIAssetSystem_->isLoaded(matAssetHandle)) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
                 .message = "Could not load material Lua file",
@@ -453,8 +455,8 @@ public:
 
             // Load textures
             for (const auto& [samplerName, texturePath] : def.texturePaths) {
-                if (assets_) {
-                    AssetHandle texHandle = assets_->registerAsset(AssetType::Texture, texturePath);
+                if (pIAssetSystem_) {
+                    AssetHandle texHandle = pIAssetSystem_->registerAsset(AssetType::Texture, texturePath);
                     materials_[handle].textures.push_back(TextureBinding{
                         .slot = static_cast<uint32_t>(materials_[handle].textures.size()),
                         .samplerName = samplerName,
@@ -465,7 +467,7 @@ public:
 
             if (def.hotReload && hotReloadEnabled_) {
                 // Subscribe to material file changes via AssetSystem
-                SubscriptionId matSub = assets_->subscribe(matAssetHandle, [this, handle](AssetHandle, AssetType) {
+                SubscriptionId matSub = pIAssetSystem_->subscribe(matAssetHandle, [this, handle](AssetHandle, AssetType) {
                     onMaterialFileChanged(handle);
                 });
                 materials_[handle].matAssetHandle = matAssetHandle;
@@ -525,8 +527,8 @@ public:
         auto it = materials_.find(handle);
         if (it != materials_.end()) {
             // Unsubscribe from AssetSystem notifications
-            if (assets_ && it->second.matSubscriptionId != InvalidSubscriptionId) {
-                assets_->unsubscribe(it->second.matSubscriptionId);
+            if (pIAssetSystem_ && it->second.matSubscriptionId != InvalidSubscriptionId) {
+                pIAssetSystem_->unsubscribe(it->second.matSubscriptionId);
             }
             materials_.erase(it);
         }
@@ -732,7 +734,7 @@ public:
     }
 
     Result<void, ShaderCompileError> reloadShader(ShaderProgramHandle handle) override {
-        if (!assets_) {
+        if (!pIAssetSystem_) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "AssetSystem not initialized"
@@ -756,7 +758,7 @@ public:
         }
 
         // Get reloaded shader data from AssetSystem
-        const ShaderData* vertShaderData = assets_->getShaderData(shader.vertAssetHandle);
+        const ShaderData* vertShaderData = pIAssetSystem_->getShaderData(shader.vertAssetHandle);
         if (!vertShaderData || vertShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
@@ -764,7 +766,7 @@ public:
             });
         }
 
-        const ShaderData* fragShaderData = assets_->getShaderData(shader.fragAssetHandle);
+        const ShaderData* fragShaderData = pIAssetSystem_->getShaderData(shader.fragAssetHandle);
         if (!fragShaderData || fragShaderData->glslSource.empty()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::FileNotFound,
@@ -836,10 +838,6 @@ public:
     //======================================================================
     // Asset Integration
     //======================================================================
-
-    void setAssetSystem(IAssetSystem* assets) override {
-        assets_ = assets;
-    }
 
     void setShaderBasePath(std::string_view path) override {
         shaderBasePath_ = std::string(path);
@@ -1414,19 +1412,19 @@ void main() {
         }
 
         // Load texture from asset system
-        if (!assets_) return 0;
+        if (!pIAssetSystem_) return 0;
 
         // Ensure asset is loaded
-        if (assets_->getAssetState(handle) != AssetState::Loaded) {
-            assets_->loadAsset(handle);
+        if (pIAssetSystem_->getAssetState(handle) != AssetState::Loaded) {
+            pIAssetSystem_->loadAsset(handle);
         }
 
-        if (assets_->getAssetState(handle) != AssetState::Loaded) {
+        if (pIAssetSystem_->getAssetState(handle) != AssetState::Loaded) {
             return 0;  // Failed to load
         }
 
         // Get texture data
-        const TextureData* texData = assets_->getAsset<TextureData>(handle);
+        const TextureData* texData = pIAssetSystem_->getAsset<TextureData>(handle);
         if (!texData || texData->pixels.empty()) {
             return 0;
         }
@@ -1488,7 +1486,6 @@ void main() {
     std::unordered_map<MaterialHandle, ShaderMaterialResource> materials_;
     std::unordered_map<AssetHandle, GLuint, AssetHandleHash> textureCache_;  // Maps asset handles to OpenGL texture IDs
 
-    IAssetSystem* assets_ = nullptr;
     std::string shaderBasePath_ = "assets/shaders/";
     std::string materialBasePath_ = "assets/materials/";
 
@@ -1510,13 +1507,12 @@ void main() {
     MaterialReloadCallback materialReloadCallback_;
 
     mutable ShaderStats stats_;
+
+    // Injected dependencies
+    IAssetSystem* pIAssetSystem_ = nullptr;
 };
 
-//==========================================================================
-// Kangaru Service Definitions
-//==========================================================================
-
-// Concrete service that provides OpenGLShaderSystem as IShaderSystem
-struct ShaderSystemService : kgr::single_service<OpenGLShaderSystem>, kgr::overrides<IShaderSystemService> {};
+// Service definition - must be after class is complete
+BESTOW_SERVICE(OpenGLShaderSystem, ShaderSystem, AssetSystem);
 
 }  // namespace bestow
