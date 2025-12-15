@@ -966,7 +966,7 @@ void OpenGLGraphicsSystem::createDefaultFont() {
 
 const FontAtlas& OpenGLGraphicsSystem::getFontAtlas(AssetHandle fontHandle, float size) const {
     // If no handle or invalid, return default font
-    if (!fontHandle.isValid() || !assetSystem_) {
+    if (!fontHandle.isValid() || !pIAssetSystem_) {
         return defaultFontAtlas_;
     }
 
@@ -977,12 +977,12 @@ const FontAtlas& OpenGLGraphicsSystem::getFontAtlas(AssetHandle fontHandle, floa
     }
 
     // Check if asset is loaded
-    if (!assetSystem_->isLoaded(fontHandle)) {
+    if (!pIAssetSystem_->isLoaded(fontHandle)) {
         return defaultFontAtlas_;
     }
 
     // Get font data from asset system
-    void* rawData = assetSystem_->getRawAsset(fontHandle);
+    void* rawData = pIAssetSystem_->getRawAsset(fontHandle);
     if (!rawData) {
         return defaultFontAtlas_;
     }
@@ -1115,12 +1115,12 @@ GLuint OpenGLGraphicsSystem::getOrUploadTexture(AssetHandle handle) {
     }
 
     // Not in cache - need to upload from asset system
-    if (!assetSystem_ || !assetSystem_->isLoaded(handle)) {
+    if (!pIAssetSystem_ || !pIAssetSystem_->isLoaded(handle)) {
         return whiteTexture_;  // Fallback if asset not available
     }
 
     // Get texture data from asset system
-    void* rawData = assetSystem_->getRawAsset(handle);
+    void* rawData = pIAssetSystem_->getRawAsset(handle);
     if (!rawData) {
         return whiteTexture_;
     }
