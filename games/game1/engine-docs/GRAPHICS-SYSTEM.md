@@ -1,180 +1,176 @@
-# Bestow Graphics System Guide
+# Graphics System Guide
 
-> **Comprehensive guide for 2D and 3D rendering in Bestow Engine**
+> **Comprehensive guide for 2D rendering in Bestow Engine**
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Renderer Selection](#renderer-selection)
-3. [2D Graphics API](#2d-graphics-api)
-4. [3D Graphics API](#3d-graphics-api)
-5. [Shader System](#shader-system)
-6. [Material System](#material-system)
-7. [Best Practices](#best-practices)
-8. [Complete Examples](#complete-examples)
+2. [Frame Lifecycle](#frame-lifecycle)
+3. [Sprite Rendering](#sprite-rendering)
+4. [Primitive Rendering](#primitive-rendering)
+5. [Text Rendering](#text-rendering)
+6. [Camera System](#camera-system)
+7. [Entity Rendering](#entity-rendering)
+8. [Window Management](#window-management)
+9. [Render State](#render-state)
+10. [Best Practices](#best-practices)
+11. [Complete Examples](#complete-examples)
 
 ---
 
 ## Overview
 
-Bestow provides two comprehensive graphics systems:
-
-- **IGraphicsSystem** - 2D rendering for sprites, primitives, and text
-- **IGraphics3DSystem** - 3D rendering for meshes, materials, lighting, and effects
-
-Both systems support **two rendering backends**:
-
-| Backend | Status | Use Case |
-|---------|--------|----------|
-| **Vulkan** | **Primary** | Production, best performance, advanced features |
-| **OpenGL** | Fallback | Rapid prototyping, debugging, older hardware |
+The **IGraphicsSystem** provides complete 2D rendering capabilities for Bestow games. It handles sprites, primitives, text, and automatic entity rendering with layer-based sorting.
 
 ### Key Features
 
-**2D Rendering:**
-- Sprite batching for optimal performance
-- Sprite sheets and animations
-- Debug shapes (rectangles, circles, lines, polygons)
-- MSDF text rendering with font atlases
-- Camera system with zoom and viewport culling
+- **Sprite rendering** - Individual sprites and batch rendering for performance
+- **Sprite sheets & animation** - Frame-based animation system
+- **Primitive shapes** - Rectangles, circles, lines, and polygons for debug visualization
+- **Text rendering** - MSDF (Multi-channel Signed Distance Field) for crisp text at any size
+- **Camera system** - Viewport control with zoom and coordinate conversion
+- **Entity rendering** - Automatic rendering from ECS components with layer sorting
+- **Viewport culling** - Only render entities visible in the camera view
 
-**3D Rendering:**
-- PBR and unlit materials
-- Directional, point, and spot lights
-- Shadows, fog, and post-processing
-- Mesh generation (cube, sphere, cylinder, capsule, plane)
-- Skeletal animation and LOD support
-- Debug visualization (lines, boxes, spheres, axes)
-- Hot-reloadable Lua materials
-
----
-
-## Renderer Selection
-
-### Vulkan (Primary)
-
-**Vulkan is the recommended renderer for production games.** It provides:
-
-- Better performance on modern hardware
-- Advanced features (compute shaders, descriptor sets)
-- GLSL hot reload with runtime SPIR-V compilation
-- Comprehensive validation layers for debugging
+### Interface Location
 
 ```cpp
-import bestow;
+// bestow-contract/src/bestow.graphics.cppm
+import bestow.graphics;
 
-int main() {
-    Engine engine;
-
-    // Register Vulkan renderer (primary choice)
-    engine.registerSystem<IGraphics3DSystem, VulkanGraphics3DSystem>();
-
-    engine.run<MyGame>();
-}
-```
-
-### OpenGL (Fallback)
-
-OpenGL is available for **rapid prototyping** and **older hardware support**:
-
-```cpp
-import bestow;
-
-int main() {
-    Engine engine;
-
-    // Register OpenGL renderer (fallback)
-    engine.registerSystem<IGraphics3DSystem, OpenGLGraphics3DSystem>();
-
-    engine.run<MyGame>();
-}
-```
-
-### Runtime Configuration
-
-Both renderers support hot-reloadable configuration via `config/graphics3d.lua`:
-
-```lua
-return {
-    -- Unified settings (apply to all backends)
-    gammaCorrection = true,
-    msaaSamples = 4,
-    vsync = "FIFO",  -- "Immediate", "FIFO", "Mailbox"
-
-    -- Lighting (in LINEAR space when gammaCorrection=true)
-    lightDirection = {0.5, -1.0, 0.3},
-    lightColor = {1.0, 0.89, 0.79},  -- Warm sunlight
-    ambientColor = {0.13, 0.17, 0.26},  -- Cool sky
-    ambientIntensity = 0.3,
-
-    clearColor = {61, 158, 212, 255},  -- Sky blue
-
-    -- Debug
-    debugWireframe = false,
-    debugShowNormals = false,
-    debugShowFps = true,
-    hotReload = true
-}
+// Access through engine
+auto& sys = engine.systems();
+sys.graphics->beginFrame();
 ```
 
 ---
 
-## 2D Graphics API
+## Frame Lifecycle
 
-### Frame Management
-
-Every frame must begin and end properly:
+Every frame must begin and end properly. All rendering calls must occur between `beginFrame()` and `endFrame()`.
 
 ```cpp
-void MyGame::render() {
-    graphics->beginFrame();
+void MyGame::render(float alpha) {
+    auto& sys = engine_->systems();
+
+    // Begin the frame (clears screen, resets state)
+    sys.graphics->beginFrame();
 
     // All rendering calls go here
+    sys.graphics->renderEntities(*sys.entities);
+    renderUI();
 
-    graphics->endFrame();
+    // End the frame (presents to screen)
+    sys.graphics->endFrame();
 }
 ```
 
-### Sprite Rendering
+**Visual:**
+```
+┌─────────────────┐
+│  beginFrame()   │ ← Clear screen, prepare for drawing
+├─────────────────┤
+│  draw(...)      │
+│  drawBatch(...) │ ← All rendering calls
+│  drawText(...)  │
+│  renderEntities │
+├─────────────────┤
+│  endFrame()     │ ← Present to screen, swap buffers
+└─────────────────┘
+```
 
-#### Simple Sprite
+---
+
+## Sprite Rendering
+
+### Simple Sprite Drawing
+
+```cpp
+void draw(const Sprite& sprite);
+```
+
+**Example:**
 
 ```cpp
 // Load texture through AssetSystem
-AssetHandle playerTexture = assets->loadTexture("textures/player.png");
+AssetHandle playerTexture = sys.assets->registerAsset(
+    AssetType::Texture, "textures/player.png"
+);
+sys.assets->loadAsset(playerTexture);
 
-// Draw sprite
+// Create sprite
 Sprite sprite{
     .textureHandle = &playerTexture,
-    .sourceRect = Canvas{{0, 0}, {32, 32}},  // Source region
-    .transform = Transform2D{100, 200, 0.0f, 1.0f, 1.0f},
+    .sourceRect = Canvas{{0, 0}, {32, 32}},  // Source region in texture
+    .transform = Transform2D{
+        .x = 100,
+        .y = 200,
+        .rotation = 0.0f,
+        .scaleX = 1.0f,
+        .scaleY = 1.0f
+    },
     .tint = Color::white(),
     .layer = RenderLayers::Player,
-    .anchor = {0.5f, 0.5f}  // Center pivot
+    .anchor = {0.5f, 0.5f}  // Pivot point: (0,0) = top-left, (0.5,0.5) = center
 };
 
-graphics->draw(sprite);
+// Draw the sprite
+sys.graphics->draw(sprite);
 ```
 
-#### Batch Rendering
+**Visual:**
+```
+Anchor points:
+  (0,0)─────────(0.5,0)─────────(1,0)
+    │             │              │
+    │             │              │
+(0,0.5)────────(0.5,0.5)────────(1,0.5)  ← Center anchor
+    │             │              │
+    │             │              │
+  (0,1)────────(0.5,1)──────────(1,1)
+```
 
-Batch sprites for better performance:
+### Batch Rendering
+
+For better performance when rendering many sprites:
 
 ```cpp
+void drawBatch(std::span<const Sprite> sprites);
+```
+
+**Example:**
+
+```cpp
+// Collect sprites into a batch
 std::vector<Sprite> enemies;
 for (const auto& enemy : enemyList) {
     enemies.push_back(Sprite{
         .textureHandle = &enemyTexture,
+        .sourceRect = Canvas{{0, 0}, {32, 32}},
         .transform = enemy.transform,
         .tint = enemy.color,
         .layer = RenderLayers::Enemies
     });
 }
 
-graphics->drawBatch(enemies);  // Single draw call
+// Single draw call for all enemies
+sys.graphics->drawBatch(enemies);
 ```
 
-#### Sprite Sheets
+**Performance:**
+```
+Without batching:  100 sprites = 100 draw calls
+With batching:     100 sprites = 1 draw call (100x faster!)
+```
+
+### Sprite Sheet Rendering
+
+```cpp
+void drawSprite(const SpriteSheet& sheet, int frameIndex,
+               const Transform2D& transform, Color tint = Color::white());
+```
+
+**Example:**
 
 ```cpp
 // Define sprite sheet layout
@@ -182,16 +178,35 @@ SpriteSheet coinSheet{
     .texture = coinTexture,
     .frameWidth = 16,
     .frameHeight = 16,
-    .columns = 8,
-    .rows = 1,
-    .padding = 0
+    .columns = 8,   // 8 frames per row
+    .rows = 1,      // 1 row
+    .padding = 0    // No padding between frames
 };
 
 // Draw specific frame
-graphics->drawSprite(coinSheet, frameIndex, transform, Color::white());
+int frameIndex = 3;  // Fourth frame (0-indexed)
+Transform2D transform{.x = 100, .y = 200};
+sys.graphics->drawSprite(coinSheet, frameIndex, transform, Color::white());
 ```
 
-#### Animated Sprites
+**Visual:**
+```
+Sprite sheet layout (8 columns × 1 row):
+┌────┬────┬────┬────┬────┬────┬────┬────┐
+│ 0  │ 1  │ 2  │ 3  │ 4  │ 5  │ 6  │ 7  │
+└────┴────┴────┴────┴────┴────┴────┴────┘
+  ^frameIndex 3 draws the 4th frame
+```
+
+### Animated Sprite Rendering
+
+```cpp
+void drawAnimatedSprite(AnimatedSprite& sprite,
+                       const Transform2D& transform,
+                       Color tint = Color::white());
+```
+
+**Example:**
 
 ```cpp
 // Define animation
@@ -200,976 +215,664 @@ player.sheet = playerSheet;
 player.animations["idle"] = Animation{
     .name = "idle",
     .frames = {
-        {0, 0.1f}, {1, 0.1f}, {2, 0.1f}, {3, 0.1f}
+        {0, 0.1f},  // Frame 0 for 0.1 seconds
+        {1, 0.1f},  // Frame 1 for 0.1 seconds
+        {2, 0.1f},  // Frame 2 for 0.1 seconds
+        {3, 0.1f}   // Frame 3 for 0.1 seconds
     },
     .looping = true
 };
 
+player.animations["run"] = Animation{
+    .name = "run",
+    .frames = {
+        {4, 0.08f}, {5, 0.08f}, {6, 0.08f}, {7, 0.08f}
+    },
+    .looping = true
+};
+
+// Start animation
 player.play("idle");
 
-// Update in game loop
-void update(float dt) {
-    player.update(dt);
+// Update in game loop (fixed timestep)
+void updateFixed(float dt) {
+    player.update(dt);  // Advances frame timer
 }
 
-// Render
-void render() {
-    graphics->drawAnimatedSprite(player, transform);
+// Render in render loop
+void render(float alpha) {
+    sys.graphics->beginFrame();
+    sys.graphics->drawAnimatedSprite(player, playerTransform);
+    sys.graphics->endFrame();
 }
 ```
 
-### Debug Primitives
+---
 
-Perfect for prototyping and physics visualization:
+## Primitive Rendering
+
+Perfect for prototyping, debug visualization, and physics debugging.
+
+### Rectangle
 
 ```cpp
-// Rectangle
-graphics->drawRect(
-    Canvas{{100, 100}, {50, 50}},  // x, y, width, height
-    Color::red(),
-    true  // filled
-);
+void drawRect(const Canvas& rect, const Color& color, bool filled = true);
+```
 
-// Circle
-graphics->drawCircle(
-    Vec2{200, 200},  // center
-    25.0f,           // radius
+**Example:**
+
+```cpp
+// Filled rectangle
+Canvas rect{{100, 100}, {50, 50}};  // Position (100,100), size 50×50
+sys.graphics->drawRect(rect, Color::red(), true);
+
+// Outline only
+sys.graphics->drawRect(rect, Color::green(), false);
+```
+
+**Visual:**
+```
+Filled:              Outline:
+┏━━━━━━━━━┓         ┌─────────┐
+┃█████████┃         │         │
+┃█████████┃         │         │
+┃█████████┃         │         │
+┗━━━━━━━━━┛         └─────────┘
+```
+
+### Circle
+
+```cpp
+void drawCircle(Vec2 center, float radius, const Color& color,
+               bool filled = true, int segments = 32);
+```
+
+**Example:**
+
+```cpp
+// Filled circle
+sys.graphics->drawCircle(
+    Vec2{200, 200},  // Center
+    25.0f,           // Radius
     Color::green(),
-    true,            // filled
-    32               // segments
+    true,            // Filled
+    32               // Segments (higher = smoother)
 );
 
-// Line
-graphics->drawLine(
-    Vec2{0, 0},      // start
-    Vec2{100, 100},  // end
+// Outline circle
+sys.graphics->drawCircle(
+    Vec2{200, 200}, 25.0f, Color::blue(), false, 64
+);
+```
+
+**Visual:**
+```
+segments=8 (low):    segments=32 (smooth):
+    ╱──╲                 ╭───╮
+   ╱    ╲               ╱     ╲
+  │      │             │       │
+   ╲    ╱               ╲     ╱
+    ╲──╱                 ╰───╯
+```
+
+### Line
+
+```cpp
+void drawLine(Vec2 from, Vec2 to, const Color& color, float thickness = 1.0f);
+```
+
+**Example:**
+
+```cpp
+// Thin line
+sys.graphics->drawLine(
+    Vec2{0, 0},      // Start
+    Vec2{100, 100},  // End
     Color::blue(),
-    2.0f             // thickness
+    1.0f             // Thickness in pixels
 );
 
-// Polygon
+// Thick line
+sys.graphics->drawLine(
+    Vec2{0, 100}, Vec2{100, 0}, Color::red(), 5.0f
+);
+```
+
+### Polygon
+
+```cpp
+void drawPolygon(std::span<const Vec2> vertices,
+                const Color& color,
+                bool filled = true);
+```
+
+**Example:**
+
+```cpp
+// Triangle
 std::vector<Vec2> triangle = {
     {100, 100}, {150, 50}, {200, 100}
 };
-graphics->drawPolygon(triangle, Color::yellow(), true);
+sys.graphics->drawPolygon(triangle, Color::yellow(), true);
+
+// Pentagon
+std::vector<Vec2> pentagon;
+for (int i = 0; i < 5; ++i) {
+    float angle = (i * 2.0f * 3.14159f) / 5.0f;
+    pentagon.push_back({
+        200 + std::cos(angle) * 50,
+        200 + std::sin(angle) * 50
+    });
+}
+sys.graphics->drawPolygon(pentagon, Color::cyan(), false);
 ```
 
-### Text Rendering
+---
 
-Bestow uses **MSDF (Multi-channel Signed Distance Field)** fonts for crisp text at any size:
+## Text Rendering
+
+Bestow uses **MSDF (Multi-channel Signed Distance Field)** fonts for crisp text at any scale.
+
+### Draw Text
 
 ```cpp
-// Load font
-AssetHandle font = assets->loadFont("fonts/PressStart2P.ttf");
+void drawText(const std::string& text, Vec2 position,
+             AssetHandle fontHandle, float size,
+             const Color& color = Color::white());
+```
 
-// Draw text
-graphics->drawText(
+**Example:**
+
+```cpp
+// Load font through AssetSystem
+AssetHandle font = sys.assets->registerAsset(
+    AssetType::Font, "fonts/PressStart2P.ttf"
+);
+sys.assets->loadAsset(font);
+
+// Draw text at position (top-left)
+sys.graphics->drawText(
     "Score: 100",
-    Vec2{10, 10},    // position
+    Vec2{10, 10},    // Top-left corner
     font,
-    24.0f,           // size
+    24.0f,           // Size in pixels
     Color::white()
 );
+```
 
-// Draw centered text
-graphics->drawTextCentered(
+### Draw Centered Text
+
+```cpp
+void drawTextCentered(const std::string& text, Vec2 position,
+                     AssetHandle fontHandle, float size,
+                     const Color& color = Color::white());
+```
+
+**Example:**
+
+```cpp
+// Center text at a point
+Size windowSize = sys.graphics->getWindowSize();
+sys.graphics->drawTextCentered(
     "GAME OVER",
-    Vec2{screenWidth/2, screenHeight/2},
+    Vec2{windowSize.width / 2.0f, windowSize.height / 2.0f},  // Screen center
     font,
     48.0f,
     Color::red()
 );
-
-// Measure text for layout
-Vec2 textSize = graphics->measureText("Hello", font, 24.0f);
 ```
 
-### Camera System
+**Visual:**
+```
+drawText (top-left):      drawTextCentered (center):
+┌──────────────            ──────────────
+│HELLO                          HELLO
+│                                  ↑
+↑ position                    position
+```
+
+### Measure Text
 
 ```cpp
-// Set camera
+Vec2 measureText(const std::string& text, AssetHandle fontHandle,
+                float size) const;
+```
+
+**Example:**
+
+```cpp
+// Measure text bounds for UI layout
+Vec2 textSize = sys.graphics->measureText("Hello World", font, 24.0f);
+// textSize.x = width in pixels
+// textSize.y = height in pixels
+
+// Center text manually
+float x = (windowSize.width - textSize.x) / 2.0f;
+float y = (windowSize.height - textSize.y) / 2.0f;
+sys.graphics->drawText("Hello World", Vec2{x, y}, font, 24.0f);
+```
+
+---
+
+## Camera System
+
+The camera controls what portion of the game world is visible on screen.
+
+### Set Camera
+
+```cpp
+void setCamera(const Camera& camera);
+Camera getCamera() const;
+```
+
+**Example:**
+
+```cpp
+// Create camera
 Camera camera{
-    .transform = Transform2D{0, 0, 0.0f, 1.0f, 1.0f},
-    .zoom = 1.0f,
-    .viewportSize = graphics->getWindowSize()
+    .transform = Transform2D{.x = 0, .y = 0},  // Camera center position
+    .zoom = 1.0f,                               // 1.0 = normal, 2.0 = 2x zoom in
+    .viewportSize = sys.graphics->getWindowSize()
 };
-graphics->setCamera(camera);
 
-// Screen to world conversion
-Vec2 worldPos = graphics->screenToWorld(mousePos);
+sys.graphics->setCamera(camera);
 
-// World to screen conversion
-Vec2 screenPos = graphics->worldToScreen(entityPos);
-```
+// Update camera to follow player
+void updateCamera(float dt) {
+    auto playerPos = sys.entities->get<Transform2D>(player_);
 
-### Entity Rendering (ECS)
-
-Automatically render all entities with visual components:
-
-```cpp
-// Render all entities
-graphics->renderEntities(entities);
-
-// Render specific layers
-graphics->renderEntities(
-    entities,
-    RenderLayers::Background,
-    RenderLayers::Foreground
-);
-
-// Enable viewport culling (only render visible entities)
-graphics->setViewportCulling(true);
-```
-
-**Supported visual components:**
-- `Sprite` + `Transform2D`
-- `DebugRect` + `Transform2D`
-- `DebugCircle` + `Transform2D`
-- `DebugLine` + `Transform2D`
-
----
-
-## 3D Graphics API
-
-### Initialization
-
-```cpp
-bool MyGame::init() {
-    Graphics3DConfig config{
-        .windowWidth = 1280,
-        .windowHeight = 720,
-        .windowTitle = "My 3D Game",
-        .vsync = true,
-        .fullscreen = false,
-        .enableValidation = true  // Enable for debugging
-    };
-
-    if (!graphics3D->initialize(config)) {
-        return false;
-    }
-
-    // Set asset and shader systems
-    graphics3D->setAssetSystem(assets);
-    graphics3D->setShaderSystem(shaders);
-
-    return true;
+    Camera cam = sys.graphics->getCamera();
+    cam.transform.x = playerPos.x;
+    cam.transform.y = playerPos.y;
+    sys.graphics->setCamera(cam);
 }
 ```
 
-### Mesh Creation
-
-#### Primitive Meshes
-
-```cpp
-// Cube
-auto cubeResult = graphics3D->createCubeMesh(1.0f);
-MeshHandle cube = *cubeResult;
-
-// Sphere
-auto sphereResult = graphics3D->createSphereMesh(
-    0.5f,   // radius
-    32,     // segments
-    16      // rings
-);
-
-// Cylinder
-auto cylinderResult = graphics3D->createCylinderMesh(
-    0.5f,   // radius
-    2.0f,   // height
-    32      // segments
-);
-
-// Capsule
-auto capsuleResult = graphics3D->createCapsuleMesh(
-    0.5f,   // radius
-    2.0f,   // height
-    32,     // segments
-    8       // rings
-);
-
-// Plane
-auto planeResult = graphics3D->createPlaneMesh(
-    10.0f,  // width
-    10.0f,  // height
-    10,     // width segments
-    10      // height segments
-);
+**Visual:**
+```
+Zoom levels:
+zoom=0.5 (zoomed out):   zoom=1.0 (normal):    zoom=2.0 (zoomed in):
+┌──────────────────┐     ┌──────────┐          ┌─────┐
+│  ╭────────────╮  │     │ ╭──────╮ │          │ ╭─╮ │
+│  │            │  │     │ │      │ │          │ │█│ │
+│  │     ██     │  │     │ │  ██  │ │          │ ╰─╯ │
+│  │            │  │     │ │      │ │          │     │
+│  ╰────────────╯  │     │ ╰──────╯ │          └─────┘
+└──────────────────┘     └──────────┘
 ```
 
-#### Custom Meshes
+### Coordinate Conversion
 
 ```cpp
-// Define vertices
-std::vector<Vertex3D> vertices = {
-    {{-0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
-    {{ 0.5f, 0.0f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
-    {{ 0.0f, 1.0f,  0.0f}, {0.0f, 1.0f, 0.0f}, {0.5f, 1.0f}}
-};
-
-// Define indices
-std::vector<std::uint32_t> indices = {0, 1, 2};
-
-// Create mesh
-MeshDef meshDef{
-    .vertices = vertices,
-    .indices = indices,
-    .bounds = AABB3D{{-0.5f, 0.0f, -0.5f}, {0.5f, 1.0f, 0.5f}},
-    .isDynamic = false
-};
-
-auto meshResult = graphics3D->createMesh(meshDef);
-MeshHandle mesh = *meshResult;
+Vec2 worldToScreen(Vec2 worldPos) const;
+Vec2 screenToWorld(Vec2 screenPos) const;
 ```
 
-#### Loading Meshes from Assets
+**Example:**
 
 ```cpp
-// Load model file (glTF, OBJ, FBX)
-AssetHandle modelAsset = assets->loadModel("models/character.gltf");
-const ModelData* modelData = assets->getModelData(modelAsset);
+// Convert mouse position to world coordinates
+Vec2 mouseScreenPos = sys.input->getMousePosition();
+Vec2 worldPos = sys.graphics->screenToWorld(mouseScreenPos);
 
-// Create GPU mesh from asset data
-auto meshResult = graphics3D->createMeshFromData(modelData->meshes[0]);
-MeshHandle mesh = *meshResult;
-```
-
-### Material Creation
-
-#### PBR Materials
-
-```cpp
-// Create PBR material
-PBRMaterial pbrMat{
-    .baseColorFactor = Vec4{1.0f, 0.8f, 0.6f, 1.0f},
-    .baseColorTexture = assets->loadTexture("textures/albedo.png"),
-    .metallicFactor = 0.5f,
-    .roughnessFactor = 0.3f,
-    .normalTexture = assets->loadTexture("textures/normal.png"),
-    .normalScale = 1.0f,
-    .emissiveFactor = Vec3{0.0f},
-    .blendMode = BlendMode::Opaque,
-    .cullMode = CullMode::Back
-};
-
-auto matResult = graphics3D->createMaterial(pbrMat);
-MaterialHandle material = *matResult;
-```
-
-#### Unlit Materials
-
-```cpp
-UnlitMaterial unlitMat{
-    .color = Vec4{1.0f, 1.0f, 1.0f, 1.0f},
-    .texture = assets->loadTexture("textures/sprite.png"),
-    .blendMode = BlendMode::AlphaBlend,
-    .cullMode = CullMode::None
-};
-
-auto matResult = graphics3D->createUnlitMaterial(unlitMat);
-```
-
-#### Default Materials
-
-```cpp
-// Get built-in materials
-MaterialHandle defaultPBR = graphics3D->getDefaultPBRMaterial();
-MaterialHandle defaultUnlit = graphics3D->getDefaultUnlitMaterial();
-MaterialHandle errorMat = graphics3D->getErrorMaterial();  // Checkerboard
-```
-
-### Rendering Meshes
-
-#### Immediate Mode
-
-```cpp
-// Draw mesh with transform
-Transform3D transform{
-    .position = Vec3{0.0f, 0.0f, 0.0f},
-    .rotation = Quat{1.0f, 0.0f, 0.0f, 0.0f},
-    .scale = Vec3{1.0f, 1.0f, 1.0f}
-};
-
-graphics3D->drawMesh(mesh, material, transform);
-
-// Draw with matrix
-Mat4 worldMatrix = glm::translate(Mat4{1.0f}, Vec3{0, 0, 0});
-graphics3D->drawMesh(mesh, material, worldMatrix);
-```
-
-#### Batch Rendering
-
-For better performance when rendering many objects:
-
-```cpp
-// Queue render items
-for (const auto& obj : objects) {
-    RenderItem item{
-        .mesh = obj.mesh,
-        .material = obj.material,
-        .worldMatrix = obj.getWorldMatrix(),
-        .layer = RenderLayers::Default,
-        .castShadow = true,
-        .receiveShadow = true
-    };
-    graphics3D->queueRenderItem(item);
+// Check if mouse clicked on an entity
+if (sys.input->isMouseButtonJustPressed(MouseButton::Left)) {
+    // worldPos now contains the click position in game world coordinates
+    checkEntityAtPosition(worldPos);
 }
 
-// Flush queue (in endFrame or manually)
-graphics3D->flushRenderQueue();
+// Convert world position to screen coordinates (for UI above entities)
+Vec2 entityWorldPos = sys.entities->get<Transform2D>(enemy).position();
+Vec2 screenPos = sys.graphics->worldToScreen(entityWorldPos);
+drawHealthBarAt(screenPos);  // Draw UI at screen position
 ```
 
-#### Entity Rendering (ECS)
-
-```cpp
-// Render all entities with Mesh3DComponent + Transform3D
-graphics3D->renderEntities(entities);
-
-// Frustum culling (only render visible objects)
-Frustum frustum = camera.getFrustum();
-graphics3D->renderEntities(entities, frustum);
-
-// Render specific layers
-graphics3D->renderEntities(
-    entities,
-    RenderLayers::Background,
-    RenderLayers::Foreground
-);
+**Visual:**
 ```
-
-**Entity components:**
-```cpp
-Entity player = entities->createEntity();
-entities->emplace<Transform3D>(player, Transform3D{
-    .position = Vec3{0, 1, 0},
-    .rotation = Quat{1, 0, 0, 0},
-    .scale = Vec3{1, 1, 1}
-});
-entities->emplace<Mesh3DComponent>(player, Mesh3DComponent{
-    .mesh = playerMesh,
-    .material = playerMaterial,
-    .layer = RenderLayers::Player,
-    .visible = true,
-    .castShadow = true,
-    .receiveShadow = true
-});
-```
-
-### Camera 3D
-
-```cpp
-// Create 3D camera
-Camera3D camera{
-    .transform = Transform3D{
-        .position = Vec3{0, 2, 5},
-        .rotation = Quat{1, 0, 0, 0},
-        .scale = Vec3{1, 1, 1}
-    },
-    .projection = ProjectionType::Perspective,
-    .fovY = 60.0f,
-    .aspectRatio = 16.0f / 9.0f,
-    .nearPlane = 0.1f,
-    .farPlane = 1000.0f
-};
-
-graphics3D->setCamera(camera);
-
-// Screen to ray for picking
-Ray3D ray = graphics3D->screenToWorldRay(mousePos);
-
-// World to screen (returns nullopt if behind camera)
-std::optional<Vec2> screenPos = graphics3D->worldToScreen(worldPos);
-```
-
-### Lighting
-
-#### Directional Light
-
-```cpp
-DirectionalLight sun{
-    .direction = Vec3{0.5f, -1.0f, 0.3f},
-    .color = Vec3{1.0f, 0.89f, 0.79f},  // Warm sunlight
-    .intensity = 1.0f,
-    .castShadows = true,
-    .shadowMapResolution = 2048
-};
-
-graphics3D->setDirectionalLight(sun);
-```
-
-#### Point Lights
-
-```cpp
-PointLight torch{
-    .color = Vec3{1.0f, 0.6f, 0.3f},  // Orange fire
-    .intensity = 2.0f,
-    .range = 10.0f,
-    .castShadows = false
-};
-
-std::uint32_t lightId = graphics3D->addPointLight(torch, Vec3{0, 2, 0});
-
-// Update position
-graphics3D->setLightPosition(lightId, Vec3{5, 2, 0});
-
-// Remove
-graphics3D->removeLight(lightId);
-```
-
-#### Spot Lights
-
-```cpp
-SpotLight flashlight{
-    .direction = Vec3{0.0f, -1.0f, 0.0f},
-    .color = Vec3{1.0f, 1.0f, 1.0f},
-    .intensity = 3.0f,
-    .range = 20.0f,
-    .innerConeAngle = 0.3f,  // Radians
-    .outerConeAngle = 0.5f,
-    .castShadows = true
-};
-
-std::uint32_t spotId = graphics3D->addSpotLight(flashlight, Vec3{0, 5, 0});
-```
-
-#### Ambient Light
-
-```cpp
-graphics3D->setAmbientLight(
-    Vec3{0.2f, 0.3f, 0.4f},  // Cool blue ambient
-    0.5f                      // intensity
-);
-```
-
-#### Entity Lights (ECS)
-
-```cpp
-// Attach light to entity
-Entity lamp = entities->createEntity();
-entities->emplace<Transform3D>(lamp, Transform3D{.position = Vec3{0, 3, 0}});
-entities->emplace<Light3DComponent>(lamp, Light3DComponent{
-    .light = Light3D{
-        .type = LightType::Point,
-        .color = Vec3{1, 1, 0.8f},
-        .intensity = 2.0f,
-        .range = 15.0f
-    },
-    .enabled = true
-});
-
-// Update lights from entities each frame
-graphics3D->updateEntityLights(entities);
-```
-
-### Environment
-
-#### Skybox
-
-```cpp
-Skybox sky{
-    .cubemapTexture = assets->loadCubemap("textures/sky.hdr"),
-    .rotation = 0.0f,
-    .exposure = 1.0f
-};
-
-graphics3D->setSkybox(sky);
-```
-
-#### Fog
-
-```cpp
-Fog fog{
-    .enabled = true,
-    .color = Vec3{0.5f, 0.6f, 0.7f},
-    .density = 0.02f,
-    .startDistance = 10.0f,
-    .endDistance = 100.0f
-};
-
-graphics3D->setFog(fog);
-```
-
-### Debug Rendering
-
-Perfect for physics visualization and debugging:
-
-```cpp
-// Line
-graphics3D->debugDrawLine(
-    Vec3{0, 0, 0},      // start
-    Vec3{1, 0, 0},      // end
-    Color::red(),
-    0.0f,               // duration (0 = one frame)
-    true                // depth test
-);
-
-// Box
-graphics3D->debugDrawBox(
-    Vec3{0, 0, 0},      // center
-    Vec3{0.5f, 0.5f, 0.5f},  // half extents
-    Quat{1, 0, 0, 0},   // rotation
-    Color::green(),
-    5.0f                // duration (5 seconds)
-);
-
-// Sphere
-graphics3D->debugDrawSphere(
-    Vec3{0, 1, 0},      // center
-    0.5f,               // radius
-    Color::blue()
-);
-
-// AABB
-graphics3D->debugDrawAABB(
-    AABB3D{Vec3{-1, 0, -1}, Vec3{1, 2, 1}},
-    Color::yellow()
-);
-
-// Axes (X=red, Y=green, Z=blue)
-graphics3D->debugDrawAxes(
-    transform,
-    1.0f                // size
-);
-
-// Clear all debug shapes
-graphics3D->debugClear();
+Screen space:         World space:
+┌──────────────┐
+│ 0,0          │      Camera (400,300)
+│    cursor    │         ↓
+│    @800,450  │      ┌──────────────┐
+│              │      │  world pos   │
+└──────────────┘      │  @1200,750   │
+                      │              │
+                      └──────────────┘
 ```
 
 ---
 
-## Shader System
+## Entity Rendering
 
-Bestow includes a **dynamic shader system** with **hot reload** and **Lua material support**.
+Automatically render all entities with visual components.
 
-### Loading Shaders
-
-#### From Files
+### Render All Entities
 
 ```cpp
-// Load vertex + fragment shader
-auto shaderResult = shaders->loadShader(
-    "shaders/pbr.vert",
-    "shaders/pbr.frag",
-    true  // enable hot reload
-);
+void renderEntities(IEntitySystem& entities);
+```
 
-if (shaderResult) {
-    ShaderProgramHandle shader = *shaderResult;
+**Example:**
+
+```cpp
+void render(float alpha) {
+    sys.graphics->beginFrame();
+
+    // Automatically draws all entities with visual components
+    sys.graphics->renderEntities(*sys.entities);
+
+    sys.graphics->endFrame();
 }
 ```
 
-#### From Source
+**How it works:**
+
+The system automatically finds and renders entities with:
+- `Sprite` + `Transform2D` → Textured sprites
+- `AnimatedSprite` + `Transform2D` → Animated sprites
+- `DebugRect` + `Transform2D` → Debug rectangles
+- `DebugCircle` + `Transform2D` → Debug circles
+- `DebugLine` + `Transform2D` → Debug lines
+
+Entities are sorted by `RenderLayer` (lower values drawn first).
+
+### Render Layer Range
 
 ```cpp
-std::string vertSource = R"(
-    #version 410 core
-    layout(location = 0) in vec3 aPos;
-    void main() {
-        gl_Position = vec4(aPos, 1.0);
-    }
-)";
+void renderEntities(IEntitySystem& entities,
+                   RenderLayer minLayer, RenderLayer maxLayer);
+```
 
-std::string fragSource = R"(
-    #version 410 core
-    out vec4 FragColor;
-    void main() {
-        FragColor = vec4(1.0, 0.0, 0.0, 1.0);
-    }
-)";
+**Example:**
 
-auto shaderResult = shaders->createShaderFromSource(
-    vertSource,
-    fragSource,
-    "RedShader"
+```cpp
+// Render background layers
+sys.graphics->renderEntities(
+    *sys.entities,
+    RenderLayers::Background,   // Min layer (-100)
+    RenderLayers::Platforms     // Max layer (0)
+);
+
+// Render gameplay layers
+sys.graphics->renderEntities(
+    *sys.entities,
+    RenderLayers::Items,        // Min layer (10)
+    RenderLayers::Effects       // Max layer (40)
+);
+
+// Render UI on top
+sys.graphics->renderEntities(
+    *sys.entities,
+    RenderLayers::UI,           // Min layer (100)
+    RenderLayers::Debug         // Max layer (1000)
 );
 ```
 
-### Uniform Management
-
-```cpp
-// Bind shader
-shaders->bindShader(shader);
-
-// Set uniforms by name
-shaders->setUniform("uColor", UniformValue{Vec4{1, 0, 0, 1}});
-shaders->setUniform("uTime", UniformValue{currentTime});
-shaders->setUniform("uModelMatrix", UniformValue{worldMatrix});
-
-// Cache location for performance
-std::int32_t colorLoc = shaders->getUniformLocation(shader, "uColor");
-shaders->setUniform(colorLoc, UniformValue{Vec4{1, 0, 0, 1}});
+**Visual:**
+```
+Layer order (bottom to top):
+┌──────────────────────┐
+│ Debug (1000)         │ ← Drawn last (on top)
+│ UI (100)             │
+│ Foreground (50)      │
+│ Effects (40)         │
+│ Player (30)          │
+│ Enemies (20)         │
+│ Items (10)           │
+│ Platforms (0)        │
+│ BackgroundDecor (-50)│
+│ Background (-100)    │ ← Drawn first (on bottom)
+└──────────────────────┘
 ```
 
-### Hot Reload
-
-Shaders automatically reload when files change:
+### Viewport Culling
 
 ```cpp
-// Enable hot reload globally
-shaders->setHotReloadEnabled(true);
+void setViewportCulling(bool enabled);
+bool isViewportCullingEnabled() const;
+```
 
-// Register callback
-shaders->setShaderReloadCallback([](ShaderProgramHandle shader, bool success, const std::string& error) {
-    if (success) {
-        std::cout << "Shader reloaded successfully\n";
-    } else {
-        std::cerr << "Shader reload failed: " << error << "\n";
-    }
-});
+**Example:**
 
-// Update each frame to check for changes
-void update() {
-    shaders->update();
-}
+```cpp
+// Enable culling to only render visible entities
+sys.graphics->setViewportCulling(true);
+
+// Entities outside the camera viewport are skipped
+sys.graphics->renderEntities(*sys.entities);
+```
+
+**Visual:**
+```
+Without culling:         With culling:
+(all entities drawn)     (only visible drawn)
+
+   ┌──────────┐            ┌──────────┐
+   │ Camera   │            │ Camera   │
+ ██│  ██  ██  │██        ██│  ██  ██  │██
+   │  ██  ██  │            │  ██  ██  │
+ ██│  ██  ██  │██        ██│  ██  ██  │██
+   └──────────┘            └──────────┘
+   ↑ Wasted draws          ↑ Efficient!
 ```
 
 ---
 
-## Material System
+## Window Management
 
-### Creating Materials
-
-#### From Shader Program
+### Window Size
 
 ```cpp
-// Create bare material
-auto matResult = shaders->createMaterial(shaderProgram, "MyMaterial");
-MaterialHandle material = *matResult;
-
-// Set uniforms
-shaders->setMaterialUniform(material, "uColor", UniformValue{Vec4{1, 0, 0, 1}});
-shaders->setMaterialUniform(material, "uMetallic", UniformValue{0.5f});
-
-// Set textures
-shaders->setMaterialTexture(material, "uAlbedo", albedoTexture);
-shaders->setMaterialTexture(material, "uNormal", normalTexture);
-
-// Set blend/cull modes
-shaders->setMaterialBlendMode(material, BlendMode::AlphaBlend);
-shaders->setMaterialCullMode(material, CullMode::Back);
+Size getWindowSize() const;
+void setWindowSize(Size size);
 ```
 
-#### From Material Definition
+**Example:**
 
 ```cpp
-ShaderMaterialDef matDef{
-    .name = "GlowMaterial",
-    .shader = shaderProgram,
-    .uniforms = {
-        {"uGlowColor", UniformValue{Vec3{0, 1, 1}}},
-        {"uGlowIntensity", UniformValue{2.0f}}
-    },
-    .textures = {
-        TextureBinding{0, "uAlbedo", albedoTexture},
-        TextureBinding{1, "uEmissive", emissiveTexture}
-    },
-    .blendMode = BlendMode::Additive,
-    .cullMode = CullMode::Back
-};
+Size windowSize = sys.graphics->getWindowSize();
+std::cout << "Window: " << windowSize.width << "x" << windowSize.height << std::endl;
 
-auto matResult = shaders->createMaterial(matDef);
+// Resize window
+sys.graphics->setWindowSize(Size{1920, 1080});
 ```
 
-### Lua Materials
-
-**Lua materials are the primary way to define materials in Bestow.** They support hot reload and are easy to iterate on.
-
-#### Lua Material Structure
-
-Create `assets/materials/my_material.lua`:
-
-```lua
-return {
-    shader = {
-        vertex = "shaders/util/basic.vert",
-        fragment = "shaders/effects/hologram.frag"
-    },
-
-    uniforms = {
-        uBaseColor = {1.0, 1.0, 1.0, 0.5},
-        uHologramColor = {0.0, 1.0, 1.0},
-        uScanlineSpeed = 2.0,
-        uGlitchIntensity = 0.1,
-        uTime = 0.0
-    },
-
-    textures = {
-        uAlbedo = "textures/hologram_pattern.png",
-        uNoise = "textures/noise.png"
-    },
-
-    blendMode = "alphaBlend",  -- "opaque", "alphaTest", "alphaBlend", "additive"
-    cullMode = "none",         -- "none", "front", "back"
-    depthWrite = false,
-    depthTest = true,
-    hotReload = true
-}
-```
-
-#### Loading Lua Materials
+### Fullscreen
 
 ```cpp
-// Load material
-auto matResult = shaders->loadMaterial("materials/hologram.lua");
-if (matResult) {
-    MaterialHandle material = *matResult;
-}
-
-// Use with 3D graphics
-graphics3D->drawMeshWithLuaMaterial(
-    mesh,
-    "materials/hologram.lua",
-    worldMatrix
-);
-
-// With color override
-graphics3D->drawMeshWithLuaMaterial(
-    mesh,
-    "materials/toon.lua",
-    worldMatrix,
-    Vec4{1.0f, 0.5f, 0.5f, 1.0f}  // Tint red
-);
+bool isFullscreen() const;
+void setFullscreen(bool fullscreen);
 ```
 
-#### Material Hot Reload
-
-Materials automatically reload when their Lua files or shader files change:
+**Example:**
 
 ```cpp
-// Register callback
-shaders->setMaterialReloadCallback([](MaterialHandle material, bool success, const std::string& error) {
-    if (success) {
-        std::cout << "Material reloaded\n";
-    }
-});
-
-// Update each frame
-void update() {
-    shaders->update();
-    // OR
-    graphics3D->updateShaders();  // Convenience wrapper
+// Toggle fullscreen
+if (sys.input->isKeyJustPressed(Key::F11)) {
+    bool currentFullscreen = sys.graphics->isFullscreen();
+    sys.graphics->setFullscreen(!currentFullscreen);
 }
 ```
 
-### Example Materials
+### Should Close
 
-**Toon/Cel Shading:**
-```lua
-return {
-    shader = {
-        vertex = "shaders/cel/toon.vert",
-        fragment = "shaders/cel/toon.frag"
-    },
-    uniforms = {
-        uBaseColor = {1.0, 1.0, 1.0, 1.0},
-        uBands = 3,              -- Discrete light bands
-        uRimPower = 3.0,
-        uRimColor = {1.0, 1.0, 1.0}
-    },
-    blendMode = "opaque",
-    cullMode = "back"
+```cpp
+bool shouldClose() const;
+```
+
+**Example:**
+
+```cpp
+// Custom game loop
+while (!sys.graphics->shouldClose()) {
+    updateFixed(dt);
+    render(alpha);
 }
 ```
 
-**Hologram Effect:**
-```lua
-return {
-    shader = {
-        vertex = "shaders/util/basic.vert",
-        fragment = "shaders/effects/hologram.frag"
-    },
-    uniforms = {
-        uHologramColor = {0.0, 1.0, 1.0},
-        uScanlineSpeed = 2.0,
-        uFlickerSpeed = 5.0,
-        uGlitchIntensity = 0.1
-    },
-    blendMode = "alphaBlend",
-    cullMode = "none",
-    depthWrite = false
-}
+### Native Window Handle
+
+```cpp
+void* getNativeWindowHandle() const;
 ```
 
-**Lava/Animated:**
-```lua
-return {
-    shader = {
-        vertex = "shaders/util/basic.vert",
-        fragment = "shaders/materials/lava.frag"
-    },
-    uniforms = {
-        uLavaColor1 = {1.0, 0.3, 0.0},
-        uLavaColor2 = {1.0, 0.8, 0.0},
-        uFlowSpeed = 1.0,
-        uDistortionAmount = 0.1
-    },
-    textures = {
-        uNoiseTexture = "textures/noise.png"
-    },
-    blendMode = "opaque"
-}
+**Example:**
+
+```cpp
+// For integrating with native APIs or third-party libraries
+void* nativeHandle = sys.graphics->getNativeWindowHandle();
+// Cast to platform-specific type (GLFWwindow*, HWND, etc.)
+```
+
+---
+
+## Render State
+
+### Clear Color
+
+```cpp
+void setClearColor(const Color& color);
+```
+
+**Example:**
+
+```cpp
+// Set sky blue background
+sys.graphics->setClearColor(Color::fromFloat(0.53f, 0.81f, 0.92f));
+
+// Black background
+sys.graphics->setClearColor(Color::black());
+```
+
+### VSync
+
+```cpp
+void setVSync(bool enabled);
+```
+
+**Example:**
+
+```cpp
+// Enable VSync (cap framerate to monitor refresh rate)
+sys.graphics->setVSync(true);
+
+// Disable VSync (uncapped framerate)
+sys.graphics->setVSync(false);
+```
+
+**Visual:**
+```
+VSync ON:                VSync OFF:
+60 FPS (smooth)          300 FPS (screen tearing)
+┌─┬─┬─┬─┬─┬─┐           ┌┬┬┬┬┬┬┬┬┬┬┬┬┐
+└─┴─┴─┴─┴─┴─┘           └┴┴┴┴┴┴┴┴┴┴┴┴┘
 ```
 
 ---
 
 ## Best Practices
 
-### Draw Order and Layers
+### 1. Layer Organization
 
-**Use RenderLayer for proper draw order:**
+Use `RenderLayer` constants for predictable draw order:
 
 ```cpp
-namespace RenderLayers {
-    inline constexpr RenderLayer Background = -100;
-    inline constexpr RenderLayer BackgroundDecor = -50;
-    inline constexpr RenderLayer Platforms = 0;
-    inline constexpr RenderLayer Items = 10;
-    inline constexpr RenderLayer Enemies = 20;
-    inline constexpr RenderLayer Player = 30;
-    inline constexpr RenderLayer Effects = 40;
-    inline constexpr RenderLayer Foreground = 50;
-    inline constexpr RenderLayer UI = 100;
-    inline constexpr RenderLayer Debug = 1000;
+// Define in your game
+namespace MyLayers {
+    inline constexpr RenderLayer Sky = RenderLayers::Background;
+    inline constexpr RenderLayer Ground = RenderLayers::Platforms;
+    inline constexpr RenderLayer Collectibles = RenderLayers::Items;
+    inline constexpr RenderLayer Characters = RenderLayers::Player;
+    inline constexpr RenderLayer Particles = RenderLayers::Effects;
+    inline constexpr RenderLayer HUD = RenderLayers::UI;
 }
+
+// Use in components
+entity.emplace<Sprite>(Sprite{
+    .layer = MyLayers::Characters
+});
 ```
 
-**Lower numbers render first (background), higher numbers render last (foreground).**
+### 2. Batch Rendering
 
-### Texture Management
-
-**Always use AssetSystem for texture loading:**
-
-```cpp
-// CORRECT - AssetSystem handles caching and lifecycle
-AssetHandle texture = assets->loadTexture("textures/player.png");
-
-// WRONG - Never load textures directly
-// std::ifstream file("player.png");  // DON'T DO THIS
-```
-
-**Benefits:**
-- Automatic caching (same texture loaded once)
-- Hot reload support
-- Proper GPU resource management
-- Async loading
-
-### Performance Optimization
-
-#### Sprite Batching
+Collect sprites and draw in batches:
 
 ```cpp
 // BAD - Many draw calls
-for (const auto& enemy : enemies) {
-    graphics->draw(enemy.sprite);  // 100 draw calls
+for (const auto& coin : coins) {
+    sys.graphics->draw(coin.sprite);  // 100 draw calls
 }
 
 // GOOD - Single draw call
-std::vector<Sprite> sprites;
-for (const auto& enemy : enemies) {
-    sprites.push_back(enemy.sprite);
+std::vector<Sprite> coinSprites;
+for (const auto& coin : coins) {
+    coinSprites.push_back(coin.sprite);
 }
-graphics->drawBatch(sprites);  // 1 draw call
+sys.graphics->drawBatch(coinSprites);  // 1 draw call
 ```
 
-#### Mesh Instancing
+### 3. Asset Loading
 
-For rendering many identical meshes:
-
-```cpp
-// Create instance buffer
-auto bufferResult = graphics3D->createInstanceBuffer(1000);
-InstanceBufferHandle instanceBuffer = *bufferResult;
-
-// Fill instance data
-std::vector<InstanceData> instances;
-for (const auto& tree : trees) {
-    instances.push_back(InstanceData{
-        .worldMatrix = tree.getWorldMatrix(),
-        .customData = Vec4{tree.color, tree.id}
-    });
-}
-
-graphics3D->updateInstanceBuffer(instanceBuffer, instances);
-
-// Draw all instances in one call
-InstancedRenderItem item{
-    .mesh = treeMesh,
-    .material = treeMaterial,
-    .instances = instanceBuffer,
-    .instanceCount = static_cast<std::uint32_t>(instances.size())
-};
-
-graphics3D->drawInstanced(item);  // 1 draw call for 1000 trees
-```
-
-#### Frustum Culling
-
-Enable culling to only render visible objects:
+Always use AssetSystem:
 
 ```cpp
-// 2D
-graphics->setViewportCulling(true);
-
-// 3D
-graphics3D->setFrustumCulling(true);
-
-// Manual culling
-Frustum frustum = camera.getFrustum();
-graphics3D->renderEntities(entities, frustum);
-```
-
-#### LOD (Level of Detail)
-
-For distant objects:
-
-```cpp
-// Set LOD distances (meters)
-std::vector<float> distances = {10.0f, 50.0f, 100.0f};
-graphics3D->setLODDistances(distances);
-
-// Register LOD meshes
-graphics3D->registerLODMeshes(
-    highDetailMesh,
-    {mediumDetailMesh, lowDetailMesh, impostorMesh}
+// CORRECT - Through AssetSystem
+AssetHandle texture = sys.assets->registerAsset(
+    AssetType::Texture, "textures/player.png"
 );
+sys.assets->loadAsset(texture);
 
-// Adjust LOD bias (< 1.0 = lower detail, > 1.0 = higher detail)
-graphics3D->setLODBias(0.8f);
+// WRONG - Direct file I/O (DON'T DO THIS)
+// std::ifstream file("textures/player.png");
 ```
 
-### Shader Best Practices
+### 4. Enable Viewport Culling
 
-1. **Use Lua materials for game content** - Easy to iterate and hot reload
-2. **Keep uniforms minimal** - Cache locations for frequently updated uniforms
-3. **Batch by material** - Minimize material switches
-4. **Use uniform buffers** - For per-frame data (camera, lights)
-5. **Enable hot reload in development** - Disable in production builds
-
-### Memory Management
+For large worlds with many entities:
 
 ```cpp
-// ALWAYS destroy resources when done
-graphics3D->destroyMesh(mesh);
-graphics3D->destroyMaterial(material);
-shaders->destroyShader(shader);
-shaders->destroyMaterial(material);
-graphics3D->destroyInstanceBuffer(instanceBuffer);
+void initialize() {
+    // Enable culling to skip off-screen entities
+    sys.graphics->setViewportCulling(true);
+}
+
+void render(float alpha) {
+    // Only visible entities are drawn
+    sys.graphics->renderEntities(*sys.entities);
+}
 ```
 
-### Debug Rendering Workflow
+### 5. Camera Smoothing
+
+Smooth camera movement for better feel:
+
+```cpp
+void updateCamera(float dt) {
+    auto& playerPos = sys.entities->get<Transform2D>(player_);
+
+    Camera cam = sys.graphics->getCamera();
+
+    // Lerp camera toward player
+    float lerpFactor = 5.0f * dt;
+    cam.transform.x += (playerPos.x - cam.transform.x) * lerpFactor;
+    cam.transform.y += (playerPos.y - cam.transform.y) * lerpFactor;
+
+    sys.graphics->setCamera(cam);
+}
+```
+
+### 6. Debug Primitives in Debug Builds
 
 ```cpp
 #ifdef BESTOW_DEBUG
-    // Enable debug rendering
-    graphics3D->setDebugRenderingEnabled(true);
-
-    // Draw physics shapes
+    // Draw physics debug shapes
     for (const auto& body : physicsBodies) {
-        graphics3D->debugDrawBox(body.position, body.halfExtents, body.rotation, Color::green());
+        sys.graphics->drawRect(body.bounds, Color::green(), false);
     }
 
     // Draw AI paths
     for (size_t i = 0; i < path.size() - 1; ++i) {
-        graphics3D->debugDrawLine(path[i], path[i+1], Color::yellow());
+        sys.graphics->drawLine(path[i], path[i+1], Color::yellow(), 2.0f);
     }
 #endif
 ```
@@ -1178,387 +881,235 @@ graphics3D->destroyInstanceBuffer(instanceBuffer);
 
 ## Complete Examples
 
-### Example 1: 2D Platformer Renderer
+### Example 1: Platformer Renderer
 
 ```cpp
 class PlatformerRenderer {
 public:
-    PlatformerRenderer(IGraphicsSystem* graphics, IAssetSystem* assets, IEntitySystem* entities)
-        : graphics_(graphics), assets_(assets), entities_(entities)
+    PlatformerRenderer(bestow::core::Engine& engine)
+        : engine_(&engine)
     {
+        auto& sys = engine.systems();
+
         // Load assets
-        playerTexture_ = assets->loadTexture("textures/player.png");
-        tileTexture_ = assets->loadTexture("textures/tiles.png");
-        coinTexture_ = assets->loadTexture("textures/coin.png");
-        font_ = assets->loadFont("fonts/PressStart2P.ttf");
+        playerTexture_ = sys.assets->registerAsset(
+            AssetType::Texture, "textures/player.png"
+        );
+        sys.assets->loadAsset(playerTexture_);
+
+        font_ = sys.assets->registerAsset(
+            AssetType::Font, "fonts/PressStart2P.ttf"
+        );
+        sys.assets->loadAsset(font_);
 
         // Setup camera
-        camera_.viewportSize = graphics->getWindowSize();
-        camera_.zoom = 1.0f;
+        Camera camera{
+            .transform = {.x = 0, .y = 0},
+            .zoom = 1.0f,
+            .viewportSize = sys.graphics->getWindowSize()
+        };
+        sys.graphics->setCamera(camera);
 
-        // Enable culling
-        graphics->setViewportCulling(true);
+        // Enable culling for performance
+        sys.graphics->setViewportCulling(true);
+
+        // Set clear color
+        sys.graphics->setClearColor(
+            Color::fromFloat(0.53f, 0.81f, 0.92f)  // Sky blue
+        );
     }
 
-    void render(float dt) {
-        graphics_->beginFrame();
-        graphics_->setClearColor(Color::fromFloat(0.53f, 0.81f, 0.92f));  // Sky blue
+    void render(float alpha) {
+        auto& sys = engine_->systems();
+
+        sys.graphics->beginFrame();
 
         // Update camera to follow player
         updateCamera();
-        graphics_->setCamera(camera_);
 
-        // Render layers in order
+        // Render world layers
         renderBackground();
-        renderEntities(RenderLayers::Platforms, RenderLayers::Items);
-        renderEntities(RenderLayers::Enemies, RenderLayers::Player);
-        renderEntities(RenderLayers::Effects, RenderLayers::Foreground);
+        sys.graphics->renderEntities(*sys.entities);
+
+        // Render UI on top
         renderUI();
 
-        graphics_->endFrame();
+        sys.graphics->endFrame();
     }
 
 private:
     void updateCamera() {
-        // Get player position
-        auto playerView = entities_->view<Transform2D, PlayerTag>();
-        for (auto entity : playerView) {
-            const auto& transform = playerView.get<Transform2D>(entity);
-            camera_.transform.x = transform.x;
-            camera_.transform.y = transform.y;
+        auto& sys = engine_->systems();
+
+        // Find player
+        auto view = sys.entities->view<Transform2D, PlayerTag>();
+        for (auto entity : view) {
+            const auto& transform = view.get<Transform2D>(entity);
+
+            Camera cam = sys.graphics->getCamera();
+            cam.transform.x = transform.x;
+            cam.transform.y = transform.y;
+            sys.graphics->setCamera(cam);
+            break;
         }
     }
 
     void renderBackground() {
-        // Draw parallax background layers
-        Canvas bgRect{{0, 0}, graphics_->getWindowSize()};
-        graphics_->drawRect(bgRect, Color::fromFloat(0.3f, 0.5f, 0.7f), true);
-    }
+        auto& sys = engine_->systems();
 
-    void renderEntities(RenderLayer minLayer, RenderLayer maxLayer) {
-        graphics_->renderEntities(*entities_, minLayer, maxLayer);
+        // Simple gradient sky
+        Size windowSize = sys.graphics->getWindowSize();
+        Canvas skyRect{{0, 0}, windowSize};
+        sys.graphics->drawRect(skyRect,
+            Color::fromFloat(0.3f, 0.5f, 0.7f), true);
     }
 
     void renderUI() {
+        auto& sys = engine_->systems();
+
         // Draw score
-        graphics_->drawText(
-            "Score: " + std::to_string(score_),
+        sys.graphics->drawText(
+            std::format("Score: {}", score_),
             Vec2{10, 10},
             font_,
             16.0f,
             Color::white()
         );
 
-        // Draw health bar
+        // Draw health hearts
         for (int i = 0; i < health_; ++i) {
             Canvas heart{{10 + i * 20, 40}, {16, 16}};
-            graphics_->drawRect(heart, Color::red(), true);
+            sys.graphics->drawRect(heart, Color::red(), true);
         }
     }
 
-    IGraphicsSystem* graphics_;
-    IAssetSystem* assets_;
-    IEntitySystem* entities_;
-
-    Camera camera_;
+    bestow::core::Engine* engine_;
     AssetHandle playerTexture_;
-    AssetHandle tileTexture_;
-    AssetHandle coinTexture_;
     AssetHandle font_;
-
     int score_ = 0;
     int health_ = 3;
 };
 ```
 
-### Example 2: 3D Scene Renderer
+### Example 2: Sprite Batching System
 
 ```cpp
-class SceneRenderer {
+class ParticleSystem {
 public:
-    SceneRenderer(IGraphics3DSystem* graphics, IShaderSystem* shaders, IAssetSystem* assets)
-        : graphics_(graphics), shaders_(shaders), assets_(assets)
-    {
-        // Initialize graphics
-        Graphics3DConfig config{
-            .windowWidth = 1920,
-            .windowHeight = 1080,
-            .windowTitle = "3D Scene",
-            .vsync = true,
-            .enableValidation = true
-        };
-        graphics->initialize(config);
-        graphics->setAssetSystem(assets);
-        graphics->setShaderSystem(shaders);
-
-        // Load runtime config
-        graphics->loadRuntimeConfig("config/graphics3d.lua");
-
-        // Setup camera
-        camera_.transform.position = Vec3{0, 5, 10};
-        camera_.fovY = 60.0f;
-        camera_.aspectRatio = 16.0f / 9.0f;
-        camera_.nearPlane = 0.1f;
-        camera_.farPlane = 1000.0f;
-        graphics->setCamera(camera_);
-
-        // Setup lighting
-        setupLighting();
-
-        // Load scene assets
-        loadScene();
-    }
-
-    void render(float dt) {
-        time_ += dt;
-
-        graphics_->beginFrame();
-
-        // Update camera
-        updateCamera(dt);
-        graphics_->setCamera(camera_);
-
-        // Render scene
-        renderTerrain();
-        renderObjects();
-        renderCharacters();
-        renderEffects();
-        renderDebugInfo();
-
-        graphics_->endFrame();
-    }
-
-private:
-    void setupLighting() {
-        // Directional light (sun)
-        DirectionalLight sun{
-            .direction = Vec3{0.5f, -1.0f, 0.3f},
-            .color = Vec3{1.0f, 0.89f, 0.79f},
-            .intensity = 1.0f,
-            .castShadows = true,
-            .shadowMapResolution = 2048
-        };
-        graphics_->setDirectionalLight(sun);
-
-        // Ambient light
-        graphics_->setAmbientLight(Vec3{0.2f, 0.3f, 0.4f}, 0.3f);
-
-        // Fog
-        Fog fog{
-            .enabled = true,
-            .color = Vec3{0.5f, 0.6f, 0.7f},
-            .density = 0.01f,
-            .startDistance = 50.0f,
-            .endDistance = 200.0f
-        };
-        graphics_->setFog(fog);
-    }
-
-    void loadScene() {
-        // Create terrain
-        terrainMesh_ = *graphics_->createPlaneMesh(100.0f, 100.0f, 50, 50);
-
-        PBRMaterial terrainMat{
-            .baseColorFactor = Vec4{0.5f, 0.7f, 0.3f, 1.0f},
-            .roughnessFactor = 0.8f,
-            .metallicFactor = 0.0f
-        };
-        terrainMaterial_ = *graphics_->createMaterial(terrainMat);
-
-        // Load tree model
-        AssetHandle treeAsset = assets_->loadModel("models/tree.gltf");
-        const ModelData* treeData = assets_->getModelData(treeAsset);
-        treeMesh_ = *graphics_->createMeshFromData(treeData->meshes[0]);
-
-        // Load character with Lua material
-        AssetHandle characterAsset = assets_->loadModel("models/character.gltf");
-        const ModelData* charData = assets_->getModelData(characterAsset);
-        characterMesh_ = *graphics_->createMeshFromData(charData->meshes[0]);
-    }
-
-    void renderTerrain() {
-        Transform3D transform{
-            .position = Vec3{0, 0, 0},
-            .rotation = Quat{1, 0, 0, 0},
-            .scale = Vec3{1, 1, 1}
-        };
-
-        graphics_->drawMesh(terrainMesh_, terrainMaterial_, transform);
-    }
-
-    void renderObjects() {
-        // Render trees with instancing
-        std::vector<InstanceData> treeInstances;
-        for (const auto& pos : treePositions_) {
-            Mat4 worldMatrix = glm::translate(Mat4{1.0f}, pos);
-            treeInstances.push_back(InstanceData{
-                .worldMatrix = worldMatrix,
-                .customData = Vec4{1.0f}
-            });
+    void update(float dt) {
+        // Update all particles
+        for (auto& particle : particles_) {
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.lifetime -= dt;
         }
 
-        if (!treeInstanceBuffer_) {
-            treeInstanceBuffer_ = *graphics_->createInstanceBuffer(treeInstances.size());
-        }
-        graphics_->updateInstanceBuffer(treeInstanceBuffer_, treeInstances);
-
-        InstancedRenderItem trees{
-            .mesh = treeMesh_,
-            .material = graphics_->getDefaultPBRMaterial(),
-            .instances = treeInstanceBuffer_,
-            .instanceCount = static_cast<std::uint32_t>(treeInstances.size())
-        };
-        graphics_->drawInstanced(trees);
-    }
-
-    void renderCharacters() {
-        // Render character with toon shader
-        Mat4 worldMatrix = glm::translate(Mat4{1.0f}, Vec3{0, 1, 0});
-
-        graphics_->drawMeshWithLuaMaterial(
-            characterMesh_,
-            "materials/toon.lua",
-            worldMatrix,
-            Vec4{1.0f, 0.8f, 0.6f, 1.0f}  // Skin tone
-        );
-    }
-
-    void renderEffects() {
-        // Render hologram effect
-        Mat4 holoMatrix = glm::translate(Mat4{1.0f}, Vec3{5, 2, 0});
-        holoMatrix = glm::rotate(holoMatrix, time_, Vec3{0, 1, 0});
-
-        auto cubeResult = graphics_->createCubeMesh(1.0f);
-        graphics_->drawMeshWithLuaMaterial(
-            *cubeResult,
-            "materials/hologram.lua",
-            holoMatrix
-        );
-    }
-
-    void renderDebugInfo() {
-        if (!debugEnabled_) return;
-
-        // Draw camera frustum
-        Frustum frustum = getFrustum(camera_);
-        graphics_->debugDrawFrustum(frustum, Color::yellow(), 0.0f);
-
-        // Draw light directions
-        graphics_->debugDrawLine(
-            Vec3{0, 0, 0},
-            Vec3{0, 0, 0} + Vec3{0.5f, -1.0f, 0.3f} * 5.0f,
-            Color::fromFloat(1.0f, 0.89f, 0.79f)
-        );
-
-        // Draw object bounds
-        for (const auto& pos : treePositions_) {
-            AABB3D bounds = graphics_->getMeshBounds(treeMesh_);
-            bounds.min += pos;
-            bounds.max += pos;
-            graphics_->debugDrawAABB(bounds, Color::green());
-        }
-    }
-
-    void updateCamera(float dt) {
-        // Simple orbit camera
-        float radius = 10.0f;
-        float angle = time_ * 0.5f;
-        camera_.transform.position = Vec3{
-            std::cos(angle) * radius,
-            5.0f,
-            std::sin(angle) * radius
-        };
-
-        // Look at center
-        // camera_.transform.rotation = lookAt(camera_.transform.position, Vec3{0, 0, 0});
-    }
-
-    IGraphics3DSystem* graphics_;
-    IShaderSystem* shaders_;
-    IAssetSystem* assets_;
-
-    Camera3D camera_;
-    float time_ = 0.0f;
-    bool debugEnabled_ = true;
-
-    MeshHandle terrainMesh_;
-    MaterialHandle terrainMaterial_;
-    MeshHandle treeMesh_;
-    MeshHandle characterMesh_;
-    InstanceBufferHandle treeInstanceBuffer_ = 0;
-
-    std::vector<Vec3> treePositions_ = {
-        {-10, 0, -10}, {10, 0, -10}, {-10, 0, 10}, {10, 0, 10},
-        {0, 0, -15}, {0, 0, 15}, {-15, 0, 0}, {15, 0, 0}
-    };
-};
-```
-
-### Example 3: Material Hot Reload System
-
-```cpp
-class MaterialManager {
-public:
-    MaterialManager(IShaderSystem* shaders, IAssetSystem* assets)
-        : shaders_(shaders), assets_(assets)
-    {
-        shaders->setHotReloadEnabled(true);
-
-        // Register reload callbacks
-        shaders->setMaterialReloadCallback([this](MaterialHandle mat, bool success, const std::string& error) {
-            if (success) {
-                std::cout << "[MaterialManager] Material reloaded: " << shaders_->getMaterialName(mat) << "\n";
-                onMaterialReloaded(mat);
-            } else {
-                std::cerr << "[MaterialManager] Material reload failed: " << error << "\n";
-            }
+        // Remove dead particles
+        std::erase_if(particles_, [](const Particle& p) {
+            return p.lifetime <= 0.0f;
         });
     }
 
-    MaterialHandle loadMaterial(const std::string& path) {
-        // Check cache
-        auto it = materialCache_.find(path);
-        if (it != materialCache_.end()) {
-            return it->second;
+    void render(IGraphicsSystem* graphics) {
+        // Batch all particle sprites
+        std::vector<Sprite> sprites;
+        sprites.reserve(particles_.size());
+
+        for (const auto& particle : particles_) {
+            sprites.push_back(Sprite{
+                .textureHandle = &particleTexture_,
+                .sourceRect = Canvas{{0, 0}, {8, 8}},
+                .transform = Transform2D{
+                    .x = particle.x,
+                    .y = particle.y,
+                    .scaleX = particle.scale,
+                    .scaleY = particle.scale
+                },
+                .tint = particle.color,
+                .layer = RenderLayers::Effects
+            });
         }
 
-        // Load new material
-        auto result = shaders_->loadMaterial(path);
-        if (result) {
-            MaterialHandle handle = *result;
-            materialCache_[path] = handle;
-            materialPaths_[handle] = path;
-            return handle;
-        }
-
-        return 0;  // Invalid
+        // Single draw call for all particles
+        graphics->drawBatch(sprites);
     }
 
-    void update() {
-        // Check for shader changes
-        shaders_->update();
-    }
-
-    void reloadAll() {
-        for (const auto& [path, handle] : materialCache_) {
-            shaders_->reloadMaterial(handle);
-        }
+    void spawn(Vec2 position, Vec2 velocity, Color color) {
+        particles_.push_back(Particle{
+            .x = position.x,
+            .y = position.y,
+            .vx = velocity.x,
+            .vy = velocity.y,
+            .color = color,
+            .scale = 1.0f,
+            .lifetime = 2.0f
+        });
     }
 
 private:
-    void onMaterialReloaded(MaterialHandle handle) {
-        // Notify systems that use this material
-        auto it = materialPaths_.find(handle);
-        if (it != materialPaths_.end()) {
-            std::cout << "  Path: " << it->second << "\n";
+    struct Particle {
+        float x, y;
+        float vx, vy;
+        Color color;
+        float scale;
+        float lifetime;
+    };
+
+    std::vector<Particle> particles_;
+    AssetHandle particleTexture_;
+};
+```
+
+### Example 3: Debug Overlay
+
+```cpp
+class DebugOverlay {
+public:
+    void render(IGraphicsSystem* graphics, IEntitySystem* entities) {
+        #ifdef BESTOW_DEBUG
+        if (!enabled_) return;
+
+        // Draw entity bounds
+        auto view = entities->view<Transform2D, Sprite>();
+        for (auto entity : view) {
+            const auto& transform = view.get<Transform2D>(entity);
+            const auto& sprite = view.get<Sprite>(entity);
+
+            Canvas bounds{
+                {static_cast<int>(transform.x), static_cast<int>(transform.y)},
+                sprite.sourceRect.size
+            };
+            graphics->drawRect(bounds, Color::green(), false);
         }
+
+        // Draw camera bounds
+        Camera cam = graphics->getCamera();
+        Size viewport = cam.viewportSize;
+        Canvas cameraBounds{
+            {static_cast<int>(cam.transform.x - viewport.width / 2),
+             static_cast<int>(cam.transform.y - viewport.height / 2)},
+            viewport
+        };
+        graphics->drawRect(cameraBounds, Color::cyan(), false);
+
+        // Draw FPS
+        graphics->drawText(
+            std::format("FPS: {:.1f}", fps_),
+            Vec2{10, graphics->getWindowSize().height - 30},
+            debugFont_,
+            12.0f,
+            Color::yellow()
+        );
+        #endif
     }
 
-    IShaderSystem* shaders_;
-    IAssetSystem* assets_;
+    void toggle() { enabled_ = !enabled_; }
+    void setFPS(float fps) { fps_ = fps; }
 
-    std::unordered_map<std::string, MaterialHandle> materialCache_;
-    std::unordered_map<MaterialHandle, std::string> materialPaths_;
+private:
+    bool enabled_ = true;
+    float fps_ = 60.0f;
+    AssetHandle debugFont_;
 };
 ```
 
@@ -1566,27 +1117,29 @@ private:
 
 ## Summary
 
-The Bestow Graphics System provides:
+The **IGraphicsSystem** provides everything you need for 2D rendering:
 
-1. **Dual rendering backends** - Vulkan (primary) and OpenGL (fallback)
-2. **Complete 2D system** - Sprites, text, primitives, camera
-3. **Complete 3D system** - Meshes, materials, lighting, shadows, post-processing
-4. **Dynamic shader system** - Hot reload, Lua materials, uniform management
-5. **Entity-based rendering** - Automatic rendering from ECS components
-6. **Performance features** - Batching, instancing, culling, LOD
-7. **Debug tools** - Comprehensive debug drawing API
+| Feature | Methods | Use Case |
+|---------|---------|----------|
+| **Frame lifecycle** | `beginFrame()`, `endFrame()` | Required for every frame |
+| **Sprite rendering** | `draw()`, `drawBatch()`, `drawSprite()`, `drawAnimatedSprite()` | Textured graphics |
+| **Primitives** | `drawRect()`, `drawCircle()`, `drawLine()`, `drawPolygon()` | Debug visualization |
+| **Text** | `drawText()`, `drawTextCentered()`, `measureText()` | UI and HUD |
+| **Camera** | `setCamera()`, `worldToScreen()`, `screenToWorld()` | Viewport control |
+| **Entity rendering** | `renderEntities()`, `setViewportCulling()` | Automatic ECS rendering |
+| **Window** | `getWindowSize()`, `setFullscreen()`, `shouldClose()` | Window management |
+| **Render state** | `setClearColor()`, `setVSync()` | Graphics configuration |
 
 **Key Principles:**
-- **Vulkan first** - Use Vulkan for production
-- **Lua materials** - Define materials in Lua for easy iteration
-- **Hot reload everything** - Shaders, materials, and configs reload on save
-- **Use AssetSystem** - Never load files directly
-- **Batch rendering** - Minimize draw calls
-- **Layer organization** - Use RenderLayers for proper draw order
+- Always wrap rendering in `beginFrame()` / `endFrame()`
+- Use batch rendering for multiple sprites
+- Enable viewport culling for large worlds
+- Use RenderLayers for proper draw order (lower = back, higher = front)
+- Load all assets through AssetSystem
+- Use primitives for debug visualization only
 
 For more information, see:
-- `/bestow-contract/src/bestow.graphics.cppm` - 2D interface
-- `/bestow-contract/src/bestow.graphics3d.cppm` - 3D interface
-- `/bestow-contract/src/bestow.shader.cppm` - Shader interface
-- `/bestow-shader/materials/` - Example Lua materials
-- `/bestow-shader/shaders/` - Example GLSL shaders
+- `/bestow-contract/src/bestow.graphics.cppm` - Interface definition
+- `/bestow-contract/src/bestow.types.cppm` - Type definitions (Sprite, Camera, Color, etc.)
+- [Asset System Guide](ASSET-SYSTEM.md) - Asset loading and hot reload
+- [Entity System Guide](ENTITY-SYSTEM.md) - ECS architecture

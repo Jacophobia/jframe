@@ -173,10 +173,11 @@ bool MyFirstGame::initialize(bestow::core::Engine& engine) {
     sys.physics->createBody(ground, groundDef);
 
     // Set up input mappings
+    // IMPORTANT: Using ,AOE for movement (Dvorak-friendly, equivalent to WASD)
     sys.input->registerMapping(bestow::InputMapping{
         .binding = bestow::InputBinding{
             .deviceType = bestow::InputDeviceType::Keyboard,
-            .keyCode = 65,  // A key
+            .keyCode = 44,  // Comma key (Dvorak 'A' position)
             .scale = -1.0f
         },
         .action = "move_left"
@@ -185,7 +186,7 @@ bool MyFirstGame::initialize(bestow::core::Engine& engine) {
     sys.input->registerMapping(bestow::InputMapping{
         .binding = bestow::InputBinding{
             .deviceType = bestow::InputDeviceType::Keyboard,
-            .keyCode = 68,  // D key
+            .keyCode = 69,  // E key (Dvorak 'D' position)
             .scale = 1.0f
         },
         .action = "move_right"
@@ -261,7 +262,7 @@ cmake --build --preset macos-debug
 You should see a window with a green square that:
 - Falls due to gravity
 - Lands on a platform
-- Moves left/right with A/D keys
+- Moves left/right with ,/E keys (Dvorak-friendly)
 - Jumps with Space
 
 ## Step 7: Modify Player Speed

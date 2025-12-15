@@ -156,6 +156,7 @@ struct VulkanImageDef {
     VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
     VkImageType type = VK_IMAGE_TYPE_2D;
     VulkanImageUsage usage = VulkanImageUsage::Sampled | VulkanImageUsage::TransferDst;
+    bool isCubemap = false;  // Set true for cubemap textures (6 faces)
     std::string_view debugName;
 };
 

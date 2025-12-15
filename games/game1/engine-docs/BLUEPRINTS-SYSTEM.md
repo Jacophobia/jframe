@@ -1,6 +1,6 @@
 # Blueprints System Guide
 
-The Blueprints System is Bestow's **data-driven entity creation system**. It allows you to define reusable entity templates in Lua files, complete with components, physics bodies, and inheritance hierarchies. This is the primary way to create game entities without writing C++ code.
+The Blueprints System is Bestow's **data-driven entity creation system**. It allows you to define reusable entity templates in Lua that specify components, physics bodies, and properties. This is the primary way to create game entities without writing C++ code.
 
 ## Table of Contents
 
@@ -8,10 +8,13 @@ The Blueprints System is Bestow's **data-driven entity creation system**. It all
 2. [Core Concepts](#core-concepts)
 3. [Lua Blueprint Format](#lua-blueprint-format)
 4. [API Reference](#api-reference)
-5. [Component Types](#component-types)
-6. [Inheritance System](#inheritance-system)
-7. [Best Practices](#best-practices)
-8. [Complete Examples](#complete-examples)
+5. [Built-in Components](#built-in-components)
+6. [Blueprint Inheritance](#blueprint-inheritance)
+7. [Property Overrides](#property-overrides)
+8. [Physics Definitions](#physics-definitions)
+9. [Component Registration](#component-registration)
+10. [Best Practices](#best-practices)
+11. [Complete Examples](#complete-examples)
 
 ---
 
@@ -21,11 +24,10 @@ The Blueprints System is Bestow's **data-driven entity creation system**. It all
 
 A **blueprint** is a Lua-defined template for creating entities. Think of it as a recipe that describes:
 
-- What components the entity should have (DebugRect, DebugCircle, custom tags)
-- What those components' properties are (size, color, layer)
-- Whether the entity has a physics body (static, dynamic, kinematic)
-- Physics properties (density, friction, restitution)
-- Optional metadata for game-specific logic
+- What components the entity should have (Transform2D, DebugRect, custom components)
+- Component properties (sizes, colors, values)
+- Physics body configuration (type, shape, material properties, collision layers)
+- Custom metadata and properties
 
 ### Why Use Blueprints?
 
@@ -34,10 +36,24 @@ A **blueprint** is a Lua-defined template for creating entities. Think of it as 
 **Benefits:**
 - **Hot Reload**: Change blueprints and see updates instantly without recompiling
 - **No C++ Required**: Create complex entities without touching engine code
-- **Inheritance**: Define base blueprints and extend them with variations
-- **Reusability**: Define once, instantiate many times with different positions/sizes
-- **Separation of Concerns**: Keep entity definitions separate from game logic
+- **Reusability**: Define once, instantiate many times at different positions
+- **Inheritance**: Build entity hierarchies with minimal duplication
+- **Property Overrides**: Customize entities at spawn time
 - **Version Control Friendly**: Lua files are human-readable and diff-friendly
+
+### Why Lua Instead of JSON?
+
+Blueprints use Lua because it's a **programming language**, not just a data format:
+
+| Feature | Lua | JSON |
+|---------|-----|------|
+| Comments | `-- comment` | Not allowed |
+| Trailing commas | Always OK | Breaks parsing |
+| Variables | `local GROUND_Y = 100` | Not supported |
+| Math | `math.sin(i) * 100` | Not supported |
+| Functions | Helper functions | Not supported |
+| Loops | `for i = 1, 10 do ... end` | Not supported |
+| Conditionals | `DEBUG and {...} or {}` | Not supported |
 
 ---
 
@@ -45,228 +61,143 @@ A **blueprint** is a Lua-defined template for creating entities. Think of it as 
 
 ### Blueprint as Entity Template
 
-A blueprint is NOT an entity itself - it's a **template** for creating entities. When you call `blueprints->create("player", x, y)`, the system:
+A blueprint is NOT an entity itself - it's a **template** for creating entities. When you call `blueprints->create("Player", x, y)`, the system:
 
-1. Looks up the "player" blueprint definition
-2. Creates a new entity in the ECS
-3. Adds all components specified in the blueprint
-4. Creates a physics body if `physics = {...}` is defined
-5. Sets the entity's position to (x, y)
+1. Looks up the "Player" blueprint definition
+2. Resolves inheritance chain (if `inherits` is specified)
+3. Creates a new entity in the ECS
+4. Adds a Transform2D component at position (x, y)
+5. Adds all components specified in the blueprint
+6. Creates a physics body if `physics = {...}` is defined
+7. Returns the entity handle
 
-### Inheritance with `inherits`
+### The Blueprints Table
 
-Blueprints can inherit from other blueprints using the `inherits` field:
+Blueprint files must return a table with blueprint definitions:
 
 ```lua
+-- Simple format: Return the Blueprints table directly
 Blueprints = {
-    BaseEnemy = {
-        components = {
-            DebugRect = { size = {32, 32}, fillColor = {255, 0, 0} }
-        },
-        physics = { type = "dynamic", fixedRotation = true }
-    },
+    Player = { ... },
+    Enemy = { ... },
+    Platform = { ... }
+}
 
-    FastEnemy = {
-        inherits = "BaseEnemy",  -- Extends BaseEnemy
-        components = {
-            DebugRect = {
-                fillColor = {255, 255, 0}  -- Override color to yellow
-            }
-        }
-    }
+return Blueprints
+```
+
+Or use a return statement:
+
+```lua
+-- Alternative: Return table directly
+return {
+    Player = { ... },
+    Enemy = { ... }
 }
 ```
 
-When `FastEnemy` is instantiated:
-- It gets all of `BaseEnemy`'s components and physics
-- Child properties **override** parent properties (color becomes yellow)
-- Properties not overridden are inherited (size remains {32, 32})
+### Blueprint Structure
 
-### Component Definitions
-
-Components are defined in the `components = {...}` table. Each component has:
-- **Name**: The component type (e.g., "DebugRect", "DebugCircle")
-- **Properties**: A table of property values (e.g., `size = {64, 64}`)
-
-The BlueprintFactory looks up registered component creators and calls them with the properties.
-
-### Property Overrides at Creation Time
-
-You can override blueprint properties when creating an entity:
-
-```lua
--- In C++:
-PropertyMap overrides;
-overrides["DebugRect.fillColor.r"] = 255;
-overrides["DebugRect.fillColor.g"] = 0;
-Entity e = blueprints->create("player", x, y, overrides);
-```
-
-This allows runtime customization without modifying the blueprint file.
+Each blueprint entry has:
+- **name**: Blueprint identifier (table key)
+- **inherits**: Optional parent blueprint name
+- **components**: Table of component definitions
+- **physics**: Optional physics body configuration
+- **metadata**: Optional custom properties
 
 ---
 
 ## Lua Blueprint Format
 
-### Basic Structure
+### Basic Blueprint Structure
 
 ```lua
+-- data/blueprints/entities.lua
 Blueprints = {
-    -- Blueprint name as key
-    MyEntity = {
-        -- Optional: inherit from another blueprint
-        inherits = "ParentBlueprint",
+    Player = {
+        -- Optional: Inherit from another blueprint
+        inherits = "BaseCharacter",
 
-        -- Components to add to the entity
+        -- Component definitions
         components = {
-            ComponentName = {
-                property1 = value1,
-                property2 = value2
+            DebugRect = {
+                size = {32, 48},
+                fillColor = {50, 200, 100, 255},
+                layer = 10
             }
         },
 
-        -- Optional: physics body configuration
+        -- Optional: Physics body configuration
         physics = {
-            type = "dynamic",  -- "static", "dynamic", "kinematic"
-            size = {width, height},
-            density = 1.0,
-            friction = 0.5,
-            restitution = 0.0,
+            type = "dynamic",
+            size = {28, 44},
             fixedRotation = true,
-            sensor = false,
-            linearDamping = 0.0,
-            collisionLayer = "Player"
+            density = 1.0,
+            friction = 0.3
         },
 
-        -- Optional: custom metadata (not processed by engine)
+        -- Optional: Custom metadata
         metadata = {
-            score = 100,
-            description = "A collectible coin"
+            displayName = "Player Character",
+            health = 100,
+            speed = 200
+        }
+    },
+
+    Enemy = {
+        components = {
+            DebugCircle = {
+                radius = 16,
+                fillColor = {255, 100, 100, 255}
+            }
+        },
+
+        physics = {
+            type = "dynamic",
+            size = {32, 32}
         }
     }
 }
+
+return Blueprints
 ```
 
 ### Minimal Blueprint
 
-The simplest blueprint just creates an entity with a Transform2D:
+The simplest blueprint creates an entity with just a Transform2D:
 
 ```lua
 Blueprints = {
-    Empty = {
+    EmptyEntity = {
         components = {}
     }
 }
 ```
 
-### Blueprint with Visual Component
+### Blueprint with Debug Rendering
 
 ```lua
 Blueprints = {
-    RedBox = {
+    Box = {
         components = {
             DebugRect = {
                 size = {64, 64},
-                fillColor = {255, 0, 0, 255},      -- RGBA
-                outlineColor = {0, 0, 0, 255},     -- Black outline
-                outlineWidth = 2,
+                fillColor = {128, 128, 128, 255},
+                outlineColor = {0, 0, 0, 255},
+                outlineWidth = 2.0,
                 layer = 10,
                 filled = true
             }
         }
-    }
-}
-```
-
-### Blueprint with Physics
-
-```lua
-Blueprints = {
-    DynamicBox = {
-        components = {
-            DebugRect = {
-                size = {32, 32},
-                fillColor = {128, 128, 128, 255}
-            }
-        },
-        physics = {
-            type = "dynamic",
-            size = {32, 32},           -- Physics body size
-            density = 1.0,             -- Mass per unit area
-            friction = 0.5,            -- Surface friction
-            restitution = 0.2,         -- Bounciness (0-1)
-            fixedRotation = true,      -- Prevent rotation
-            linearDamping = 0.0,       -- Air resistance
-            sensor = false,            -- Trigger vs solid
-            collisionLayer = "Player"  -- Named collision group
-        }
-    }
-}
-```
-
-### Blueprint with Inheritance
-
-```lua
-Blueprints = {
-    -- Base blueprint
-    BasePlatform = {
-        components = {
-            DebugRect = {
-                size = {100, 20},
-                fillColor = {100, 100, 120, 255}
-            }
-        },
-        physics = {
-            type = "static",
-            friction = 0.5
-        }
     },
 
-    -- Child blueprint (extends BasePlatform)
-    IcePlatform = {
-        inherits = "BasePlatform",
+    Ball = {
         components = {
-            DebugRect = {
-                fillColor = {200, 220, 255, 255}  -- Override color to light blue
+            DebugCircle = {
+                radius = 32,
+                fillColor = {0, 255, 0, 255},
+                segments = 32
             }
-        },
-        physics = {
-            friction = 0.0  -- Override friction (slippery ice)
-        }
-    }
-}
-```
-
-### Lua Features: Variables, Math, Functions
-
-Blueprints are Lua code, so you can use all Lua features:
-
-```lua
--- Define constants
-local PLAYER_SIZE = {32, 48}
-local PLAYER_COLOR = {50, 200, 100, 255}
-local GROUND_LAYER = "Ground"
-
--- Use math
-local JUMP_FORCE = 800
-local DOUBLE_JUMP_FORCE = JUMP_FORCE * 0.8
-
-Blueprints = {
-    Player = {
-        components = {
-            DebugRect = {
-                size = PLAYER_SIZE,
-                fillColor = PLAYER_COLOR
-            }
-        },
-        physics = {
-            type = "dynamic",
-            size = PLAYER_SIZE,
-            collisionLayer = GROUND_LAYER
-        },
-        metadata = {
-            jumpForce = JUMP_FORCE,
-            doubleJumpForce = DOUBLE_JUMP_FORCE
         }
     }
 }
@@ -280,31 +211,28 @@ Blueprints = {
 
 #### `bool loadBlueprints(const std::string& luaSource)`
 
-Load blueprint definitions from Lua source code.
+Load blueprint definitions from Lua source code. The source must define a `Blueprints` table or return one.
 
-**Returns**: `true` if parsing succeeded, `false` if Lua syntax error or missing `Blueprints` table.
+**Returns**: `true` if parsing succeeded, `false` if Lua syntax error or no blueprint table found.
 
 **Example:**
 ```cpp
+// Load from string (testing)
 std::string luaCode = R"(
     Blueprints = {
         TestEntity = {
-            components = {
-                DebugRect = { size = {32, 32} }
-            }
+            components = {}
         }
     }
 )";
 
 if (!blueprints->loadBlueprints(luaCode)) {
-    // Handle error
+    logger->error("Failed to load blueprints");
 }
-```
 
-**Typical Usage Pattern:**
-```cpp
-// Load from asset system
-AssetHandle handle = assets->registerAsset(AssetType::Lua, ":assets:/blueprints/entities.lua");
+// Load from asset system (production)
+AssetHandle handle = assets->registerAsset(AssetType::Data,
+    ":assets:/blueprints/entities.lua");
 assets->loadAsset(handle);
 const LuaData* data = assets->getAsset<LuaData>(handle);
 
@@ -312,6 +240,8 @@ if (!blueprints->loadBlueprints(data->source)) {
     logger->error("Failed to load blueprints");
 }
 ```
+
+**Lua is sandboxed**: Dangerous functions like `os`, `io`, `loadfile`, `dofile`, `load`, `require`, and `package` are removed for security.
 
 #### `void reloadBlueprints()`
 
@@ -324,6 +254,27 @@ blueprints->loadBlueprints(luaSource);
 
 // Later, after file changes detected
 blueprints->reloadBlueprints();  // Re-parses same source
+```
+
+**Hot Reload Integration:**
+```cpp
+// Enable hot reload
+assets->enableHotReload(true);
+
+// Subscribe to blueprint file changes
+AssetHandle bpHandle = assets->registerAsset(AssetType::Lua,
+    ":assets:/blueprints/entities.lua");
+
+assets->subscribe(bpHandle, [this](AssetHandle h, AssetType t) {
+    const LuaData* data = assets->getAsset<LuaData>(h);
+    blueprints->loadBlueprints(data->source);
+    logger->info("Blueprints reloaded from disk");
+});
+
+// In your update loop
+void update(float dt) {
+    assets->update();  // Process hot reload notifications
+}
 ```
 
 #### `void clearBlueprints()`
@@ -344,8 +295,10 @@ Check if a blueprint with the given name exists.
 
 **Example:**
 ```cpp
-if (blueprints->hasBlueprint("player")) {
-    Entity e = blueprints->create("player", 100.0f, 200.0f);
+if (blueprints->hasBlueprint("Player")) {
+    Entity e = blueprints->create("Player", 100.0f, 200.0f);
+} else {
+    logger->error("Player blueprint not found!");
 }
 ```
 
@@ -357,21 +310,47 @@ Get all registered blueprint names.
 ```cpp
 auto names = blueprints->getBlueprintNames();
 for (const auto& name : names) {
-    logger->info("Blueprint: {}", name);
+    logger->info("Available blueprint: {}", name);
+}
+```
+
+**Debug UI Usage:**
+```cpp
+void DebugMenu::renderBlueprintList() {
+    auto names = blueprints->getBlueprintNames();
+    for (const auto& name : names) {
+        if (ImGui::Selectable(name.c_str())) {
+            selectedBlueprint_ = name;
+        }
+    }
+
+    if (ImGui::Button("Spawn Selected")) {
+        auto [mouseX, mouseY] = input->getMousePosition();
+        auto [worldX, worldY] = camera->screenToWorld(mouseX, mouseY);
+        blueprints->create(selectedBlueprint_, worldX, worldY);
+    }
 }
 ```
 
 #### `std::optional<BlueprintDef> getBlueprint(const std::string& name) const`
 
-Get a blueprint definition for inspection (includes resolved inheritance).
+Get a blueprint definition for inspection. The returned definition has inheritance fully resolved.
 
 **Example:**
 ```cpp
-auto def = blueprints->getBlueprint("player");
+auto def = blueprints->getBlueprint("Player");
 if (def) {
-    logger->info("Player blueprint has {} components", def->components.size());
+    logger->info("Player has {} components", def->components.size());
+
     if (def->physics) {
-        logger->info("Player has physics: {}", def->physics->bodyType);
+        logger->info("Physics type: {}", def->physics->bodyType);
+    }
+
+    // Access metadata
+    auto it = def->metadata.find("displayName");
+    if (it != def->metadata.end()) {
+        std::string name = std::any_cast<std::string>(it->second);
+        logger->info("Display name: {}", name);
     }
 }
 ```
@@ -384,20 +363,35 @@ Create an entity from a blueprint at position (x, y).
 
 **Example:**
 ```cpp
-Entity player = blueprints->create("player", 100.0f, 200.0f);
+// Create player at spawn point
+Entity player = blueprints->create("Player", 100.0f, 200.0f);
+
+// Create enemy
+Entity enemy = blueprints->create("Enemy", 500.0f, 300.0f);
+
+// Returns entt::null if blueprint not found
+if (player == entt::null) {
+    logger->error("Failed to create player");
+}
 ```
 
 #### `Entity create(const std::string& blueprintName, float x, float y, float width, float height)`
 
-Create an entity with explicit size (useful for platforms that vary in size).
+Create an entity with explicit size. Useful for platforms that vary in size.
 
 **Example:**
 ```cpp
-// Create a platform 200 units wide, 20 units tall
-Entity platform = blueprints->create("platform", 50.0f, 100.0f, 200.0f, 20.0f);
+// Create ground platform - 1000 units wide, 40 units tall
+Entity ground = blueprints->create("Platform", 0.0f, 0.0f, 1000.0f, 40.0f);
+
+// Create smaller floating platform
+Entity floater = blueprints->create("Platform", 500.0f, 300.0f, 200.0f, 20.0f);
+
+// Create tall wall
+Entity wall = blueprints->create("Platform", 0.0f, 40.0f, 20.0f, 500.0f);
 ```
 
-**Note:** The provided size overrides the blueprint's physics size if physics is defined.
+**Note:** If the blueprint has physics defined, the provided size will be used for the physics body instead of the blueprint's physics size.
 
 #### `Entity create(const std::string& blueprintName, float x, float y, const PropertyMap& overrides)`
 
@@ -405,12 +399,22 @@ Create an entity with property overrides.
 
 **Example:**
 ```cpp
-PropertyMap overrides;
-overrides["DebugRect.fillColor.r"] = 255;
-overrides["DebugRect.fillColor.g"] = 0;
-overrides["DebugRect.fillColor.b"] = 0;
+// Create a red variant of an entity
+PropertyMap redVariant;
+redVariant["DebugRect.fillColor.r"] = 255.0;
+redVariant["DebugRect.fillColor.g"] = 0.0;
+redVariant["DebugRect.fillColor.b"] = 0.0;
 
-Entity redBox = blueprints->create("box", 100.0f, 200.0f, overrides);
+Entity redBox = blueprints->create("Box", x, y, redVariant);
+```
+
+**Nested Property Override Syntax:**
+```cpp
+// Override format: "ComponentName.property" or "ComponentName.nested.property"
+PropertyMap overrides;
+overrides["DebugRect.fillColor.r"] = 255.0;           // Nested property
+overrides["DebugCircle.radius"] = 50.0;               // Direct property
+overrides["DebugRect.size"] = std::vector<double>{100, 50};  // Array property
 ```
 
 #### `Entity create(const std::string& blueprintName, float x, float y, float width, float height, const PropertyMap& overrides)`
@@ -419,10 +423,11 @@ Create an entity with both size and property overrides.
 
 **Example:**
 ```cpp
-PropertyMap overrides;
-overrides["DebugRect.fillColor"] = Color{255, 255, 0, 255};
+// Create a large, bright box
+PropertyMap brightBox;
+brightBox["DebugRect.fillColor"] = std::vector<double>{255, 255, 0, 255};
 
-Entity yellowPlatform = blueprints->create("platform", 0.0f, 0.0f, 300.0f, 30.0f, overrides);
+Entity bigBox = blueprints->create("Box", x, y, 100.0f, 100.0f, brightBox);
 ```
 
 ### Component Registration
@@ -438,32 +443,60 @@ using ComponentCreator = std::function<void(Entity, IEntitySystem&, const Proper
 
 **Example:**
 ```cpp
+// Define game-specific component
 struct Health {
     int current;
-    int max;
+    int maximum;
+    float invincibilityTime;
 };
 
+// Register component creator
 blueprints->registerComponent("Health",
     [](Entity e, IEntitySystem& entities, const PropertyMap& props) {
-        int max = 100;
-        auto it = props.find("max");
-        if (it != props.end()) {
-            max = static_cast<int>(std::any_cast<double>(it->second));
-        }
+        Health h{};
 
-        entities.emplace<Health>(e, Health{max, max});
+        // Extract properties with helpers
+        auto getDouble = [&](const std::string& key, double def) {
+            auto it = props.find(key);
+            if (it == props.end()) return def;
+            return std::any_cast<double>(it->second);
+        };
+
+        h.maximum = static_cast<int>(getDouble("maxHealth", 100.0));
+        h.current = h.maximum;
+        h.invincibilityTime = static_cast<float>(getDouble("invincibilityTime", 0.5));
+
+        entities.emplace<Health>(e, h);
     });
 ```
 
-Now you can use it in blueprints:
+**Now use in blueprints:**
 ```lua
 Blueprints = {
     Player = {
         components = {
-            Health = { max = 100 }
+            Health = {
+                maxHealth = 100,
+                invincibilityTime = 1.0
+            }
         }
     }
 }
+```
+
+**Helper for Simple Components:**
+```cpp
+template<typename T>
+void registerSimpleComponent(IBlueprintFactory& factory, const std::string& name) {
+    factory.registerComponent(name,
+        [](Entity e, IEntitySystem& entities, const PropertyMap& props) {
+            entities.emplace<T>(e);
+        });
+}
+
+// Register tag components
+registerSimpleComponent<PlayerTag>(*blueprints, "PlayerTag");
+registerSimpleComponent<EnemyTag>(*blueprints, "EnemyTag");
 ```
 
 #### `bool isComponentRegistered(const std::string& name) const`
@@ -479,145 +512,121 @@ if (!blueprints->isComponentRegistered("Health")) {
 
 ---
 
-## Component Types
+## Built-in Components
 
-The BlueprintFactory includes several built-in component types for rapid prototyping.
+The BlueprintFactory includes built-in support for debug rendering components:
+
+### Transform2D (Always Added)
+
+Transform2D is automatically added to every entity created from a blueprint. You don't need to specify it.
+
+```cpp
+// Automatically added with x, y from create() call
+Transform2D {
+    .x = x,
+    .y = y,
+    .rotation = 0.0f,
+    .scaleX = 1.0f,
+    .scaleY = 1.0f
+}
+```
 
 ### DebugRect
 
-A filled or outlined rectangle for 2D rendering.
+Rectangular debug shape for visualization and prototyping.
 
-**Properties:**
-```lua
-DebugRect = {
-    size = {width, height},          -- Vec2 or {width, height}
-    width = 64,                      -- Alternative: individual values
-    height = 32,
-    fillColor = {r, g, b, a},       -- Color as array or nested table
-    outlineColor = {r, g, b, a},    -- Outline color (default: transparent)
-    outlineWidth = 2.0,             -- Outline thickness (default: 0)
-    layer = 10,                      -- Render layer (default: 0)
-    filled = true                    -- Whether to fill (default: true)
-}
-```
-
-**Example:**
 ```lua
 components = {
     DebugRect = {
-        size = {64, 64},
-        fillColor = {255, 128, 0, 200},
+        -- Size (required)
+        size = {64, 64},              -- {width, height}
+        -- OR:
+        width = 64,
+        height = 64,
+
+        -- Colors (optional)
+        fillColor = {255, 0, 0, 255},     -- {r, g, b, a}
         outlineColor = {0, 0, 0, 255},
-        outlineWidth = 2,
-        layer = 15
+
+        -- Rendering (optional)
+        outlineWidth = 2.0,
+        layer = 10,
+        filled = true
     }
 }
 ```
+
+**Properties:**
+- `size`: Array `{width, height}` or separate `width` and `height`
+- `fillColor`: Array `{r, g, b, a}` or nested `{r = 255, g = 0, b = 0, a = 255}`
+- `outlineColor`: Same format as fillColor
+- `outlineWidth`: Float, thickness of outline in pixels
+- `layer`: Integer, render layer (higher = drawn on top)
+- `filled`: Boolean, whether to fill the rectangle
 
 ### DebugCircle
 
-A filled or outlined circle for 2D rendering.
+Circular debug shape for visualization and prototyping.
 
-**Properties:**
-```lua
-DebugCircle = {
-    radius = 32,                     -- Circle radius
-    fillColor = {r, g, b, a},       -- Fill color
-    outlineColor = {r, g, b, a},    -- Outline color
-    outlineWidth = 2.0,             -- Outline thickness
-    layer = 10,                      -- Render layer
-    filled = true,                   -- Whether to fill
-    segments = 32                    -- Number of segments (smoothness)
-}
-```
-
-**Example:**
 ```lua
 components = {
     DebugCircle = {
-        radius = 16,
-        fillColor = {255, 215, 0, 255},  -- Gold
-        outlineColor = {200, 170, 0, 255},
-        outlineWidth = 2,
-        segments = 24
+        radius = 32,
+        fillColor = {0, 255, 0, 255},
+        outlineColor = {0, 0, 0, 255},
+        outlineWidth = 2.0,
+        layer = 10,
+        filled = true,
+        segments = 32  -- Number of line segments (smoothness)
     }
 }
 ```
+
+**Properties:**
+- `radius`: Float, circle radius
+- `fillColor`: Color (see DebugRect)
+- `outlineColor`: Color
+- `outlineWidth`: Float
+- `layer`: Integer render layer
+- `filled`: Boolean
+- `segments`: Integer, circle smoothness (default 32)
 
 ### DebugLine
 
-A line segment from the entity's position to an offset.
+Line segment for debug visualization.
 
-**Properties:**
-```lua
-DebugLine = {
-    endOffset = {x, y},             -- End point relative to entity position
-    color = {r, g, b, a},           -- Line color
-    thickness = 1.0,                -- Line thickness
-    layer = 0                        -- Render layer
-}
-```
-
-**Example:**
 ```lua
 components = {
     DebugLine = {
-        endOffset = {100, 50},
-        color = {255, 0, 0, 255},
-        thickness = 3.0
+        endOffset = {100, 50},  -- {x, y} offset from entity position
+        color = {255, 255, 255, 255},
+        thickness = 2.0,
+        layer = 5
     }
 }
 ```
 
-### Tag Components (Placeholder)
-
-The system includes placeholder registrations for common tag components:
-
-- `PlayerTag`
-- `EnemyTag`
-- `PlatformTag`
-
-These do nothing by default. Games should register their own implementations:
-
-```cpp
-struct PlayerTag {};
-
-blueprints->registerComponent("PlayerTag",
-    [](Entity e, IEntitySystem& entities, const PropertyMap& props) {
-        entities.emplace<PlayerTag>(e);
-    });
-```
-
-### Custom Components
-
-See [Component Registration](#component-registration) for how to register your own component types.
+**Properties:**
+- `endOffset`: Array `{x, y}`, end point relative to entity position
+- `color`: Line color
+- `thickness`: Float, line thickness
+- `layer`: Integer render layer
 
 ---
 
-## Inheritance System
+## Blueprint Inheritance
 
-### How Inheritance Works
+Blueprints support inheritance using the `inherits` field. This allows you to create base blueprints and extend them.
 
-When a blueprint declares `inherits = "ParentName"`, the BlueprintFactory:
-
-1. **Recursively resolves** the parent blueprint (parents can inherit too)
-2. **Deep copies** the parent's definition
-3. **Merges** the child's components onto the parent:
-   - Components with the same name have their properties merged
-   - Child properties override parent properties
-   - New components in child are added
-4. **Overwrites** physics if child defines it (no merge, full replace)
-5. **Merges** metadata (child metadata overwrites parent metadata)
-
-### Single-Level Inheritance
+### Basic Inheritance
 
 ```lua
 Blueprints = {
-    BaseEnemy = {
+    BaseCharacter = {
         components = {
             DebugRect = {
                 size = {32, 32},
-                fillColor = {255, 0, 0, 255}
+                fillColor = {128, 128, 128, 255}
             }
         },
         physics = {
@@ -626,27 +635,33 @@ Blueprints = {
         }
     },
 
-    FastEnemy = {
-        inherits = "BaseEnemy",
+    Player = {
+        inherits = "BaseCharacter",
+
         components = {
             DebugRect = {
-                fillColor = {255, 255, 0, 255}  -- Override to yellow
+                fillColor = {50, 200, 100, 255}  -- Override color
+                -- size is inherited as {32, 32}
             }
-        },
-        metadata = {
-            speed = 200
+        }
+        -- physics is inherited completely
+    },
+
+    Enemy = {
+        inherits = "BaseCharacter",
+
+        components = {
+            DebugRect = {
+                fillColor = {255, 100, 100, 255}  -- Override color
+            }
         }
     }
 }
 ```
 
-**Result when creating "FastEnemy":**
-- Size: {32, 32} (inherited from BaseEnemy)
-- Color: {255, 255, 0, 255} (overridden to yellow)
-- Physics: dynamic with fixedRotation (inherited)
-- Metadata: speed = 200 (new)
-
 ### Multi-Level Inheritance
+
+Blueprints can inherit from blueprints that themselves inherit:
 
 ```lua
 Blueprints = {
@@ -664,6 +679,7 @@ Blueprints = {
         components = {
             DebugRect = {
                 size = {32, 32}  -- Override size
+                -- fillColor inherited
             }
         }
     },
@@ -672,286 +688,456 @@ Blueprints = {
         inherits = "Middle",
         components = {
             DebugRect = {
-                fillColor = {0, 255, 0, 255}  -- Override color to green
+                fillColor = {0, 255, 0, 255}  -- Override color
+                -- size inherited as {32, 32} from Middle
             }
         }
     }
 }
 ```
 
-**Result when creating "Final":**
-- Size: {32, 32} (from Middle, which overrode Base)
-- Color: {0, 255, 0, 255} (from Final)
-
 ### Property Merging Rules
 
-**Nested Properties:**
+1. **Component-level**: Child components override parent components by name
+2. **Property-level**: Child properties override parent properties by name
+3. **Nested properties**: Recursively merged (child overrides parent)
+4. **Physics**: Child physics completely replaces parent physics (not merged)
+5. **Metadata**: Child metadata merged with parent metadata
 
 ```lua
 -- Parent
-DebugRect = {
-    fillColor = {128, 128, 128, 255}
+BaseEntity = {
+    components = {
+        DebugRect = {
+            size = {32, 32},
+            fillColor = {128, 128, 128, 255},
+            layer = 10
+        }
+    },
+    metadata = {
+        category = "base",
+        health = 100
+    }
 }
 
 -- Child
-DebugRect = {
-    fillColor = {255, 0, 0}  -- Only r, g, b (no alpha)
+DerivedEntity = {
+    inherits = "BaseEntity",
+    components = {
+        DebugRect = {
+            fillColor = {255, 0, 0, 255}
+            -- size inherited: {32, 32}
+            -- layer inherited: 10
+        }
+    },
+    metadata = {
+        health = 150  -- Override
+        -- category inherited: "base"
+    }
 }
-
--- Result: {255, 0, 0, 255}
--- Child's r, g, b override parent, but alpha stays 255
 ```
-
-**Physics Replacement:**
-
-```lua
--- Parent
-physics = {
-    type = "dynamic",
-    density = 1.0,
-    friction = 0.5
-}
-
--- Child
-physics = {
-    type = "static"
-}
-
--- Result: ONLY type = "static"
--- Parent's density and friction are LOST
-```
-
-Physics tables are **replaced, not merged**. If you need to preserve parent physics properties, copy them in the child.
-
-### Inheritance Best Practices
-
-1. **Create Abstract Bases**: Define shared properties in base blueprints
-   ```lua
-   BaseEnemy = { /* common properties */ },
-   Slime = { inherits = "BaseEnemy", /* slime specifics */ },
-   Goblin = { inherits = "BaseEnemy", /* goblin specifics */ }
-   ```
-
-2. **Override Minimally**: Only override what needs to change
-   ```lua
-   -- Good: Only override color
-   FastEnemy = {
-       inherits = "BaseEnemy",
-       components = { DebugRect = { fillColor = {...} } }
-   }
-
-   -- Bad: Copy entire component definition
-   FastEnemy = {
-       inherits = "BaseEnemy",
-       components = { DebugRect = { size = {...}, fillColor = {...}, layer = ... } }
-   }
-   ```
-
-3. **Physics is Special**: Remember physics is replaced, not merged
-   ```lua
-   -- If parent has physics and you want to keep it, don't define physics in child
-   -- If you need different physics, you must redefine everything
-   ```
-
-4. **Use Metadata for Variants**: Store variant data in metadata
-   ```lua
-   BaseEnemy = {
-       metadata = { speed = 100, damage = 10 }
-   },
-   FastEnemy = {
-       inherits = "BaseEnemy",
-       metadata = { speed = 200 }  -- Override speed, damage stays 10
-   }
-   ```
 
 ---
 
-## Best Practices
+## Property Overrides
 
-### Blueprint Organization
+You can override blueprint properties at entity creation time using the `PropertyMap` parameter.
 
-**File Structure:**
+### Override Syntax
 
+Property overrides use dot notation: `"ComponentName.property"` or `"ComponentName.nested.property"`.
+
+```cpp
+PropertyMap overrides;
+
+// Simple property
+overrides["DebugRect.layer"] = 20.0;
+
+// Nested property
+overrides["DebugRect.fillColor.r"] = 255.0;
+overrides["DebugRect.fillColor.g"] = 0.0;
+overrides["DebugRect.fillColor.b"] = 0.0;
+
+// Array property
+overrides["DebugRect.size"] = std::vector<double>{100, 50};
+
+Entity entity = blueprints->create("Box", x, y, overrides);
 ```
-assets/
-  blueprints/
-    entities.lua           # Main blueprint file
-    player.lua             # Player-specific blueprints
-    enemies/
-      base.lua             # Base enemy blueprint
-      slime.lua            # Slime enemy
-      goblin.lua           # Goblin enemy
-    items/
-      collectibles.lua     # Coins, gems, power-ups
+
+### Color Override Example
+
+```cpp
+// Create red, blue, and green variants of the same blueprint
+PropertyMap redVariant;
+redVariant["DebugCircle.fillColor.r"] = 255.0;
+redVariant["DebugCircle.fillColor.g"] = 0.0;
+redVariant["DebugCircle.fillColor.b"] = 0.0;
+
+PropertyMap blueVariant;
+blueVariant["DebugCircle.fillColor.r"] = 0.0;
+blueVariant["DebugCircle.fillColor.g"] = 0.0;
+blueVariant["DebugCircle.fillColor.b"] = 255.0;
+
+Entity redBall = blueprints->create("Ball", 100, 200, redVariant);
+Entity blueBall = blueprints->create("Ball", 200, 200, blueVariant);
 ```
 
-**Single File for Small Games:**
+### Size Override Example
+
+```cpp
+// Create boxes of different sizes from same blueprint
+PropertyMap smallBox;
+smallBox["DebugRect.size"] = std::vector<double>{16, 16};
+
+PropertyMap largeBox;
+largeBox["DebugRect.size"] = std::vector<double>{128, 128};
+
+Entity small = blueprints->create("Box", 100, 200, smallBox);
+Entity large = blueprints->create("Box", 300, 200, largeBox);
+```
+
+---
+
+## Physics Definitions
+
+Blueprints can include physics body definitions. When a physics body is created, the BlueprintFactory coordinates with the physics system.
+
+### Physics Structure
 
 ```lua
--- assets/blueprints/entities.lua
-Blueprints = {
-    player = { ... },
-    platform = { ... },
-    coin = { ... },
-    enemy = { ... }
+physics = {
+    -- Body type (required)
+    type = "dynamic",  -- "static", "dynamic", "kinematic"
+
+    -- Size (optional - can be set at creation time)
+    size = {32, 48},   -- {width, height}
+
+    -- Material properties
+    density = 1.0,
+    friction = 0.3,
+    restitution = 0.0,  -- Bounciness (0-1)
+
+    -- Behavior flags
+    fixedRotation = true,
+    sensor = false,     -- Trigger vs solid collision
+    linearDamping = 0.0,
+
+    -- Collision filtering
+    collisionLayer = "player"  -- Named collision layer
 }
 ```
 
-**Multiple Files for Large Games:**
+### Physics Body Types
+
+| Type | Description | Use For |
+|------|-------------|---------|
+| `"static"` | Immovable, infinite mass | Walls, floors, platforms |
+| `"dynamic"` | Fully simulated, affected by forces | Player, enemies, projectiles |
+| `"kinematic"` | Movable, but not affected by forces | Moving platforms, doors |
+
+### Size Handling
+
+The physics body size is determined in this order:
+
+1. **Explicit size at creation time** (if using 4-parameter `create()`)
+2. **Blueprint physics.size** (if specified)
+3. **DebugRect component size** (if present)
+4. **Default size** (32x32)
 
 ```lua
--- assets/blueprints/entities.lua
-local player = dofile("assets/blueprints/player.lua")
-local enemies = dofile("assets/blueprints/enemies.lua")
-
+-- Example: Platform blueprint with flexible size
 Blueprints = {
-    player = player,
-    slime = enemies.slime,
-    goblin = enemies.goblin
-}
-```
-
-### Reusable Base Blueprints
-
-Create abstract base blueprints that aren't used directly but serve as templates:
-
-```lua
-Blueprints = {
-    -- Abstract base (not used directly)
-    _BasePlatform = {
+    Platform = {
         components = {
             DebugRect = {
-                size = {100, 20},
-                layer = 0
+                size = {100, 20},  -- Default visual size
+                fillColor = {100, 100, 120, 255}
             }
         },
         physics = {
             type = "static",
             friction = 0.5
+            -- No size specified, will use DebugRect size or creation size
         }
-    },
+    }
+}
+```
 
-    -- Concrete variants
-    NormalPlatform = {
-        inherits = "_BasePlatform",
-        components = {
-            DebugRect = { fillColor = {100, 100, 120, 255} }
-        }
-    },
+```cpp
+// Create platforms of different sizes
+Entity ground = blueprints->create("Platform", 0, 0, 1000, 40);
+Entity floater = blueprints->create("Platform", 500, 300, 200, 20);
+```
 
-    IcePlatform = {
-        inherits = "_BasePlatform",
+### Physics Without Physics System
+
+If the BlueprintFactory is constructed without a physics system pointer, physics definitions are silently ignored:
+
+```cpp
+// No physics system
+auto factory = std::make_unique<BlueprintFactory>(*entities, nullptr);
+
+// This works, but physics definition is ignored
+Entity e = factory->create("HasPhysics", 0, 0);
+```
+
+### Size Syncing
+
+When a physics body is created, the BlueprintFactory automatically syncs DebugRect and DebugCircle sizes to match the physics body:
+
+```lua
+Blueprints = {
+    Box = {
         components = {
-            DebugRect = { fillColor = {200, 220, 255, 255} }
+            DebugRect = {
+                size = {10, 10},  -- Small initial size
+                fillColor = {255, 0, 0, 255}
+            }
         },
         physics = {
-            friction = 0.0  -- Slippery
+            type = "static",
+            size = {100, 200}  -- Larger physics size
         }
     }
 }
 ```
 
-### Hot Reload Workflow
+After creation, the DebugRect size will be updated to `{100, 200}` to match the physics body.
 
-**Setup:**
+---
+
+## Component Registration
+
+To use custom components in blueprints, you must register them first.
+
+### Registration Pattern
 
 ```cpp
-// Enable hot reload on asset system
-assets->enableHotReload(true);
+void Game::registerComponents() {
+    // Helper lambdas for property extraction
+    auto getDouble = [](const PropertyMap& props, const std::string& key, double def) {
+        auto it = props.find(key);
+        if (it == props.end()) return def;
+        if (auto* d = std::any_cast<double>(&it->second)) return *d;
+        if (auto* i = std::any_cast<int>(&it->second)) return static_cast<double>(*i);
+        return def;
+    };
 
-// Subscribe to blueprint file changes
-AssetHandle blueprintHandle = assets->registerAsset(AssetType::Lua, ":assets:/blueprints/entities.lua");
-assets->subscribe(blueprintHandle, [this](AssetHandle h, AssetType t) {
-    // File changed, reload blueprints
-    const LuaData* data = assets->getAsset<LuaData>(h);
-    blueprints->loadBlueprints(data->source);
-    logger->info("Blueprints reloaded");
-});
+    auto getBool = [](const PropertyMap& props, const std::string& key, bool def) {
+        auto it = props.find(key);
+        if (it == props.end()) return def;
+        if (auto* b = std::any_cast<bool>(&it->second)) return *b;
+        return def;
+    };
+
+    // Register Health component
+    blueprints->registerComponent("Health",
+        [=](Entity e, IEntitySystem& entities, const PropertyMap& props) {
+            Health h;
+            h.maximum = static_cast<int>(getDouble(props, "maxHealth", 100.0));
+            h.current = h.maximum;
+            h.invincibilityTime = static_cast<float>(getDouble(props, "invincibilityTime", 0.5));
+
+            entities.emplace<Health>(e, h);
+        });
+
+    // Register Velocity component
+    blueprints->registerComponent("Velocity",
+        [=](Entity e, IEntitySystem& entities, const PropertyMap& props) {
+            Velocity v;
+            v.x = static_cast<float>(getDouble(props, "x", 0.0));
+            v.y = static_cast<float>(getDouble(props, "y", 0.0));
+
+            entities.emplace<Velocity>(e, v);
+        });
+}
 ```
 
-**Workflow:**
-1. Edit `entities.lua` in your text editor
-2. Save the file
-3. Asset system detects change via efsw
-4. Callback fires, reloading blueprints
-5. New entities use updated definitions
+### Property Extraction Helpers
 
-**Note:** Hot reload does NOT modify existing entities. It only affects newly created entities.
+```cpp
+// Reusable property extraction functions
+namespace BlueprintHelpers {
 
-### Separation of Concerns
+double getDouble(const PropertyMap& props, const std::string& key, double def) {
+    auto it = props.find(key);
+    if (it == props.end()) return def;
+    if (auto* d = std::any_cast<double>(&it->second)) return *d;
+    if (auto* i = std::any_cast<int>(&it->second)) return static_cast<double>(*i);
+    return def;
+}
 
-**Blueprint = What, Not How**
+bool getBool(const PropertyMap& props, const std::string& key, bool def) {
+    auto it = props.find(key);
+    if (it == props.end()) return def;
+    if (auto* b = std::any_cast<bool>(&it->second)) return *b;
+    return def;
+}
 
-Blueprints describe **what** an entity is (its components and properties), not **how** it behaves.
+std::string getString(const PropertyMap& props, const std::string& key, const std::string& def) {
+    auto it = props.find(key);
+    if (it == props.end()) return def;
+    if (auto* s = std::any_cast<std::string>(&it->second)) return *s;
+    return def;
+}
+
+}  // namespace BlueprintHelpers
+```
+
+---
+
+## Best Practices
+
+### 1. Organize Blueprint Files
+
+```
+data/blueprints/
+├── entities.lua       # Main entity blueprints
+├── _base.lua          # Base/shared blueprints
+├── player.lua         # Player-specific blueprints
+├── enemies/
+│   ├── slime.lua
+│   └── goblin.lua
+└── items/
+    ├── coins.lua
+    └── powerups.lua
+```
+
+### 2. Use Inheritance for Variants
 
 ```lua
--- Good: Describes entity structure
-Player = {
-    components = {
-        DebugRect = { size = {32, 48} }
+-- Base enemy
+Blueprints = {
+    BaseEnemy = {
+        components = {
+            DebugRect = {
+                size = {32, 32},
+                layer = 10
+            }
+        },
+        physics = {
+            type = "dynamic",
+            fixedRotation = true
+        }
     },
-    metadata = {
-        speed = 400,
-        jumpForce = 800
+
+    -- Fast enemy
+    SlimeEnemy = {
+        inherits = "BaseEnemy",
+        components = {
+            DebugRect = {
+                fillColor = {0, 255, 0, 255}
+            }
+        },
+        metadata = {
+            speed = 100,
+            health = 30
+        }
+    },
+
+    -- Slow, tanky enemy
+    GoblinEnemy = {
+        inherits = "BaseEnemy",
+        components = {
+            DebugRect = {
+                fillColor = {255, 0, 0, 255},
+                size = {40, 40}  -- Larger
+            }
+        },
+        metadata = {
+            speed = 50,
+            health = 100
+        }
     }
 }
 ```
 
-**Behavior = Systems**
+### 3. Use Metadata for Game Logic
 
-Entity behavior is implemented in C++ systems or Lua scripts, not in blueprints.
+Store gameplay properties in metadata, not components:
+
+```lua
+Blueprints = {
+    Player = {
+        components = { ... },
+
+        metadata = {
+            displayName = "Player",
+            maxHealth = 100,
+            moveSpeed = 200,
+            jumpForce = 450,
+            abilities = {"dash", "wallJump"}
+        }
+    }
+}
+```
 
 ```cpp
-// Game logic in a system
-void PlayerMovementSystem::update(float dt) {
-    for (auto entity : entities.view<PlayerTag, Transform2D>()) {
-        auto& transform = entities.get<Transform2D>(entity);
-
-        if (input->isActionPressed("move_right")) {
-            transform.x += playerSpeed * dt;
-        }
+// Read metadata in game code
+auto def = blueprints->getBlueprint("Player");
+if (def) {
+    auto it = def->metadata.find("moveSpeed");
+    if (it != def->metadata.end()) {
+        float speed = std::any_cast<double>(it->second);
+        // Use speed...
     }
 }
 ```
 
-### Color Palette Constants
+### 4. Register All Components at Startup
 
-Define color palettes at the top of your blueprint file:
+```cpp
+void Game::initialize() {
+    // Register ALL custom components before loading blueprints
+    registerComponents();
 
-```lua
-local Colors = {
-    Player = {50, 200, 100, 255},
-    PlayerOutline = {30, 150, 70, 255},
-    Platform = {100, 100, 120, 255},
-    Coin = {255, 215, 0, 255}
-}
-
-Blueprints = {
-    player = {
-        components = {
-            DebugRect = { fillColor = Colors.Player }
-        }
-    }
+    // Now load blueprints
+    AssetHandle handle = assets->registerAsset(AssetType::Data,
+        ":assets:/blueprints/entities.lua");
+    assets->loadAsset(handle);
+    const LuaData* data = assets->getAsset<LuaData>(handle);
+    blueprints->loadBlueprints(data->source);
 }
 ```
 
-### Render Layer Constants
+### 5. Use Hot Reload During Development
 
-Define layers as named constants:
+```cpp
+#if defined(BESTOW_DEBUG)
+    assets->enableHotReload(true);
 
-```lua
-local Layers = {
-    Background = -100,
-    Platforms = 0,
-    Items = 20,
-    Player = 40,
-    UI = 100
-}
+    assets->subscribeToType(AssetType::Lua, [this](AssetHandle h, AssetType) {
+        const LuaData* data = assets->getAsset<LuaData>(h);
+        blueprints->loadBlueprints(data->source);
+        logger->info("Blueprints reloaded");
+    });
+#endif
+```
 
-Blueprints = {
-    player = {
-        components = {
-            DebugRect = { layer = Layers.Player }
+### 6. Validate Blueprints on Load
+
+```cpp
+void validateBlueprints() {
+    auto names = blueprints->getBlueprintNames();
+
+    for (const auto& name : names) {
+        auto def = blueprints->getBlueprint(name);
+        if (!def) {
+            logger->error("Failed to get blueprint: {}", name);
+            continue;
+        }
+
+        // Check for required components
+        bool hasVisual = false;
+        for (const auto& comp : def->components) {
+            if (comp.name == "DebugRect" || comp.name == "DebugCircle") {
+                hasVisual = true;
+                break;
+            }
+        }
+
+        if (!hasVisual) {
+            logger->warn("Blueprint '{}' has no visual component", name);
         }
     }
 }
@@ -961,349 +1147,219 @@ Blueprints = {
 
 ## Complete Examples
 
-### Example 1: Simple Platformer Entities
+### Example 1: Platformer Game
 
 ```lua
--- assets/blueprints/entities.lua
-
-local Colors = {
-    Player = {50, 200, 100, 255},
-    Platform = {100, 100, 120, 255},
-    Coin = {255, 215, 0, 255}
-}
-
-local Layers = {
-    Platforms = 0,
-    Items = 20,
-    Player = 40
-}
-
+-- data/blueprints/entities.lua
 Blueprints = {
-    -- Player character
-    player = {
+    -- Base character template
+    BaseCharacter = {
         components = {
             DebugRect = {
                 size = {32, 48},
-                fillColor = Colors.Player,
-                outlineColor = {30, 150, 70, 255},
-                outlineWidth = 2,
-                layer = Layers.Player
+                outlineColor = {0, 0, 0, 255},
+                outlineWidth = 1.0,
+                layer = 10
             }
         },
         physics = {
             type = "dynamic",
-            size = {32, 48},
             fixedRotation = true,
             density = 1.0,
-            friction = 0.0,
-            collisionLayer = "Player"
+            friction = 0.0
         }
     },
 
-    -- Static platform (size specified at creation time)
-    platform = {
+    -- Player character
+    Player = {
+        inherits = "BaseCharacter",
         components = {
             DebugRect = {
-                fillColor = Colors.Platform,
-                outlineColor = {60, 60, 80, 255},
-                outlineWidth = 1,
-                layer = Layers.Platforms
+                fillColor = {50, 200, 100, 255}
+            }
+        },
+        physics = {
+            size = {28, 44}
+        },
+        metadata = {
+            health = 100,
+            moveSpeed = 200,
+            jumpForce = 450
+        }
+    },
+
+    -- Enemy
+    Enemy = {
+        inherits = "BaseCharacter",
+        components = {
+            DebugRect = {
+                fillColor = {255, 100, 100, 255},
+                size = {28, 28}
+            }
+        },
+        physics = {
+            size = {24, 24}
+        },
+        metadata = {
+            health = 30,
+            moveSpeed = 50
+        }
+    },
+
+    -- Static platform
+    Platform = {
+        components = {
+            DebugRect = {
+                size = {100, 20},
+                fillColor = {100, 100, 120, 255}
             }
         },
         physics = {
             type = "static",
-            friction = 0.5,
-            collisionLayer = "Ground"
+            friction = 0.5
         }
     },
 
     -- Collectible coin
-    coin = {
+    Coin = {
         components = {
             DebugCircle = {
                 radius = 12,
-                fillColor = Colors.Coin,
-                outlineColor = {200, 170, 0, 255},
-                outlineWidth = 2,
-                layer = Layers.Items
+                fillColor = {255, 215, 0, 255}
             }
         },
         physics = {
             type = "static",
             size = {24, 24},
-            sensor = true,
-            collisionLayer = "Pickup"
+            sensor = true
         }
+    }
+}
+
+return Blueprints
+```
+
+### Example 2: Creating Entities in Code
+
+```cpp
+void Game::spawnLevel() {
+    auto& sys = engine_->systems();
+
+    // Create ground
+    Entity ground = sys.blueprints->create("Platform", 0, 550, 1280, 50);
+
+    // Create floating platforms
+    sys.blueprints->create("Platform", 200, 400, 150, 20);
+    sys.blueprints->create("Platform", 500, 300, 150, 20);
+    sys.blueprints->create("Platform", 800, 400, 150, 20);
+
+    // Create player
+    player_ = sys.blueprints->create("Player", 100, 500);
+
+    // Create enemies
+    sys.blueprints->create("Enemy", 400, 350);
+    sys.blueprints->create("Enemy", 700, 350);
+
+    // Create coins
+    for (int i = 0; i < 10; i++) {
+        float x = 100 + i * 50;
+        sys.blueprints->create("Coin", x, 200);
     }
 }
 ```
 
-**Usage in C++:**
+### Example 3: Enemy Variants with Overrides
 
 ```cpp
-// Create player at spawn point
-Entity player = blueprints->create("player", 100.0f, 500.0f);
+void spawnEnemies() {
+    // Normal enemy
+    blueprints->create("Enemy", 400, 350);
 
-// Create ground platform (300 units wide, 20 units tall)
-Entity ground = blueprints->create("platform", 0.0f, 0.0f, 300.0f, 20.0f);
+    // Large boss enemy
+    PropertyMap bossOverrides;
+    bossOverrides["DebugRect.size"] = std::vector<double>{64, 64};
+    bossOverrides["DebugRect.fillColor.r"] = 200.0;
+    bossOverrides["DebugRect.fillColor.g"] = 0.0;
+    bossOverrides["DebugRect.fillColor.b"] = 0.0;
 
-// Create coins at various positions
-for (int i = 0; i < 10; i++) {
-    float x = 50.0f + i * 40.0f;
-    Entity coin = blueprints->create("coin", x, 200.0f);
+    Entity boss = blueprints->create("Enemy", 1000, 300, bossOverrides);
+
+    // Store boss-specific data
+    auto def = blueprints->getBlueprint("Enemy");
+    int bossHealth = std::any_cast<double>(def->metadata["health"]) * 5;
+    entities->emplace<BossTag>(boss, bossHealth);
 }
 ```
 
-### Example 2: Enemies with Inheritance
+### Example 4: Hot Reload Workflow
 
-```lua
--- assets/blueprints/enemies.lua
+```cpp
+class Game {
+public:
+    void initialize() {
+        // Enable hot reload
+        sys.assets->enableHotReload(true);
 
-local Colors = {
-    BaseEnemy = {255, 100, 100, 255},
-    FastEnemy = {255, 255, 100, 255},
-    TankEnemy = {150, 50, 50, 255}
-}
+        // Load initial blueprints
+        blueprintHandle_ = sys.assets->registerAsset(AssetType::Lua,
+            ":assets:/blueprints/entities.lua");
+        sys.assets->loadAsset(blueprintHandle_);
+        loadBlueprints();
 
-Blueprints = {
-    -- Base enemy template (not used directly)
-    _BaseEnemy = {
-        components = {
-            DebugRect = {
-                size = {32, 32},
-                fillColor = Colors.BaseEnemy,
-                layer = 30
-            }
-        },
-        physics = {
-            type = "dynamic",
-            size = {32, 32},
-            fixedRotation = true,
-            density = 1.0,
-            friction = 0.3,
-            collisionLayer = "Enemy"
-        },
-        metadata = {
-            health = 50,
-            damage = 10,
-            speed = 100
-        }
-    },
+        // Subscribe to changes
+        sys.assets->subscribe(blueprintHandle_,
+            [this](AssetHandle h, AssetType) {
+                loadBlueprints();
+                onBlueprintsReloaded();
+            });
+    }
 
-    -- Fast enemy variant
-    fast_enemy = {
-        inherits = "_BaseEnemy",
-        components = {
-            DebugRect = {
-                size = {24, 24},  -- Smaller
-                fillColor = Colors.FastEnemy
-            }
-        },
-        metadata = {
-            health = 30,   -- Less health
-            speed = 200    -- Faster
-        }
-    },
+    void update(float dt) {
+        // Process hot reload notifications
+        sys.assets->update();
+    }
 
-    -- Tank enemy variant
-    tank_enemy = {
-        inherits = "_BaseEnemy",
-        components = {
-            DebugRect = {
-                size = {48, 48},  -- Bigger
-                fillColor = Colors.TankEnemy
-            }
-        },
-        metadata = {
-            health = 150,  -- More health
-            speed = 50     // Slower
+private:
+    void loadBlueprints() {
+        const LuaData* data = sys.assets->getAsset<LuaData>(blueprintHandle_);
+        if (!sys.blueprints->loadBlueprints(data->source)) {
+            logger->error("Failed to load blueprints");
+        } else {
+            logger->info("Blueprints loaded successfully");
         }
     }
-}
-```
 
-**Usage in C++:**
-
-```cpp
-// Spawn different enemy types
-Entity fast = blueprints->create("fast_enemy", 200.0f, 300.0f);
-Entity tank = blueprints->create("tank_enemy", 400.0f, 300.0f);
-
-// Read metadata for game logic
-auto fastDef = blueprints->getBlueprint("fast_enemy");
-if (fastDef && !fastDef->metadata.empty()) {
-    auto speedIt = fastDef->metadata.find("speed");
-    if (speedIt != fastDef->metadata.end()) {
-        double speed = std::any_cast<double>(speedIt->second);
-        // Use speed value...
+    void onBlueprintsReloaded() {
+        logger->info("Blueprints reloaded! New entities will use updated definitions.");
+        // Optionally: Recreate entities, refresh debug UI, etc.
     }
-}
-```
 
-### Example 3: Multi-Size Platforms
-
-```lua
--- assets/blueprints/platforms.lua
-
-local PLATFORM_COLOR = {100, 100, 120, 255}
-local PLATFORM_OUTLINE = {60, 60, 80, 255}
-
-Blueprints = {
-    -- Base platform (size specified at creation)
-    platform = {
-        components = {
-            DebugRect = {
-                fillColor = PLATFORM_COLOR,
-                outlineColor = PLATFORM_OUTLINE,
-                outlineWidth = 1
-            }
-        },
-        physics = {
-            type = "static",
-            friction = 0.5,
-            collisionLayer = "Ground"
-        }
-    },
-
-    -- Pre-sized small platform
-    small_platform = {
-        inherits = "platform",
-        components = {
-            DebugRect = { size = {64, 16} }
-        },
-        physics = {
-            size = {64, 16}
-        }
-    },
-
-    -- Pre-sized large platform
-    large_platform = {
-        inherits = "platform",
-        components = {
-            DebugRect = { size = {256, 32} }
-        },
-        physics = {
-            size = {256, 32}
-        }
-    }
-}
-```
-
-**Usage in C++:**
-
-```cpp
-// Method 1: Create with explicit size
-Entity customPlatform = blueprints->create("platform", 100.0f, 200.0f, 150.0f, 20.0f);
-
-// Method 2: Use pre-sized variants
-Entity small = blueprints->create("small_platform", 300.0f, 150.0f);
-Entity large = blueprints->create("large_platform", 500.0f, 100.0f);
-```
-
-### Example 4: Property Overrides
-
-```lua
--- Blueprint with customizable properties
-Blueprints = {
-    box = {
-        components = {
-            DebugRect = {
-                size = {32, 32},
-                fillColor = {128, 128, 128, 255}
-            }
-        }
-    }
-}
-```
-
-**Usage in C++:**
-
-```cpp
-// Create default gray box
-Entity grayBox = blueprints->create("box", 0.0f, 0.0f);
-
-// Create red box with property override
-PropertyMap redOverride;
-redOverride["DebugRect.fillColor.r"] = 255;
-redOverride["DebugRect.fillColor.g"] = 0;
-redOverride["DebugRect.fillColor.b"] = 0;
-Entity redBox = blueprints->create("box", 100.0f, 0.0f, redOverride);
-
-// Create large blue box
-PropertyMap blueOverride;
-blueOverride["DebugRect.fillColor"] = std::vector<double>{0, 0, 255, 255};
-Entity blueBox = blueprints->create("box", 200.0f, 0.0f, 64.0f, 64.0f, blueOverride);
-```
-
-### Example 5: Custom Component Registration
-
-**Define custom component:**
-
-```cpp
-// Game-specific health component
-struct Health {
-    int current;
-    int max;
+    AssetHandle blueprintHandle_;
 };
-```
-
-**Register with BlueprintFactory:**
-
-```cpp
-blueprints->registerComponent("Health",
-    [](Entity e, IEntitySystem& entities, const PropertyMap& props) {
-        int max = 100;  // Default
-
-        auto it = props.find("max");
-        if (it != props.end()) {
-            if (auto* d = std::any_cast<double>(&it->second)) {
-                max = static_cast<int>(*d);
-            }
-        }
-
-        entities.emplace<Health>(e, Health{max, max});
-    });
-```
-
-**Use in blueprints:**
-
-```lua
-Blueprints = {
-    player = {
-        components = {
-            Health = { max = 100 },
-            DebugRect = { size = {32, 48} }
-        }
-    },
-
-    boss = {
-        components = {
-            Health = { max = 500 },
-            DebugRect = { size = {64, 64} }
-        }
-    }
-}
 ```
 
 ---
 
 ## Summary
 
-The Blueprints System is Bestow's cornerstone for **data-driven game development**. By defining entities in Lua:
+The Blueprints System is Bestow's cornerstone for **data-driven entity creation**. Key takeaways:
 
-- **Rapid Iteration**: Change blueprints and see results instantly via hot reload
-- **No C++ Required**: Game designers can create complex entities without engine code
-- **Reusability**: Define once, instantiate many times
-- **Inheritance**: Build hierarchies of entity types with minimal duplication
-- **Flexibility**: Override properties at creation time for variants
+- **Blueprints are templates**, not entities - they define what to create, not the entity itself
+- **Load from Lua** - Define entities in `Blueprints` table or return table from script
+- **Inheritance support** - Build hierarchies with `inherits` field
+- **Property overrides** - Customize entities at spawn time with `PropertyMap`
+- **Built-in debug components** - DebugRect, DebugCircle, DebugLine for prototyping
+- **Physics integration** - Define physics bodies directly in blueprints
+- **Component registration** - Extend with game-specific components
+- **Hot reload ready** - Change Lua files and see results instantly
 
 **Remember:**
-- Blueprints are **templates**, not entities
-- Use `inherits` to build entity hierarchies
-- Register custom components for game-specific data
-- Keep blueprints focused on **structure**, not **behavior**
-- Leverage Lua features (variables, math, functions) to reduce duplication
+- Always register custom components before loading blueprints
+- Use AssetSystem for loading blueprint files (enables hot reload)
+- Use inheritance to reduce duplication
+- Store gameplay properties in metadata
+- Validate blueprints after loading in debug builds
 
 For more examples, see:
-- `/Users/jaaaacob/Documents/GameDev/jframe/build/macos-debug/template/assets/blueprints/entities.lua`
-- `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/BlueprintFactoryTests.cpp`
+- Unit tests: `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/BlueprintFactoryTests.cpp`
+- Example blueprints: `/Users/jaaaacob/Documents/GameDev/jframe/build/macos-debug/examples/*/data/blueprints/`

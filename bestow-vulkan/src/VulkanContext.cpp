@@ -1064,6 +1064,137 @@ Result<void, VulkanError> VulkanContext::uploadToBuffer(VulkanBufferHandle handl
     return {};
 }
 
+Result<void, VulkanError> VulkanContext::uploadToImage(VulkanImageHandle handle, const void* data, std::size_t size) {
+    return uploadToImageLayer(handle, data, size, 0);
+}
+
+Result<void, VulkanError> VulkanContext::uploadToImageLayer(VulkanImageHandle handle, const void* data, std::size_t size, std::uint32_t layer) {
+    auto it = images_.find(handle);
+    if (it == images_.end()) {
+        return std::unexpected(VulkanError::ImageCreationFailed);
+    }
+
+    auto& imageRes = it->second;
+    const auto& def = imageRes.def;
+
+    // Create staging buffer
+    VkBufferCreateInfo stagingInfo{};
+    stagingInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    stagingInfo.size = size;
+    stagingInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    stagingInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+    VmaAllocationCreateInfo stagingAllocInfo{};
+    stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+    stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+    VkBuffer stagingBuffer;
+    VmaAllocation stagingAllocation;
+    VmaAllocationInfo stagingAllocResult;
+
+    if (vmaCreateBuffer(allocator_, &stagingInfo, &stagingAllocInfo,
+                        &stagingBuffer, &stagingAllocation, &stagingAllocResult) != VK_SUCCESS) {
+        return std::unexpected(VulkanError::BufferCreationFailed);
+    }
+
+    // Copy data to staging buffer
+    std::memcpy(stagingAllocResult.pMappedData, data, size);
+
+    // Create one-time command buffer
+    VkCommandBufferAllocateInfo cmdAllocInfo{};
+    cmdAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmdAllocInfo.commandPool = commandPool_;
+    cmdAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmdAllocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer cmdBuffer;
+    vkAllocateCommandBuffers(device_, &cmdAllocInfo, &cmdBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    vkBeginCommandBuffer(cmdBuffer, &beginInfo);
+
+    // Transition image to transfer destination layout
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = imageRes.image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = def.mipLevels;
+    barrier.subresourceRange.baseArrayLayer = layer;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+    vkCmdPipelineBarrier(cmdBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    // Copy buffer to image
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = layer;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {def.width, def.height, def.depth};
+
+    vkCmdCopyBufferToImage(cmdBuffer, stagingBuffer, imageRes.image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    // Transition to shader read layout
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    vkCmdPipelineBarrier(cmdBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &barrier);
+
+    vkEndCommandBuffer(cmdBuffer);
+
+    // Submit and wait
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &cmdBuffer;
+
+    vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphicsQueue_);
+
+    vkFreeCommandBuffers(device_, commandPool_, 1, &cmdBuffer);
+    vmaDestroyBuffer(allocator_, stagingBuffer, stagingAllocation);
+
+    return {};
+}
+
+VkImageView VulkanContext::getImageView(VulkanImageHandle handle) const {
+    auto it = images_.find(handle);
+    if (it != images_.end()) {
+        return it->second.view;
+    }
+    return VK_NULL_HANDLE;
+}
+
+VkSampler VulkanContext::getImageSampler(VulkanImageHandle handle) const {
+    auto it = images_.find(handle);
+    if (it != images_.end()) {
+        return it->second.sampler;
+    }
+    return VK_NULL_HANDLE;
+}
+
 Result<VulkanImageHandle, VulkanError> VulkanContext::createImage(const VulkanImageDef& def) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1073,11 +1204,19 @@ Result<VulkanImageHandle, VulkanError> VulkanContext::createImage(const VulkanIm
     imageInfo.extent.height = def.height;
     imageInfo.extent.depth = def.depth;
     imageInfo.mipLevels = def.mipLevels;
-    imageInfo.arrayLayers = def.arrayLayers;
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    // Handle cubemap: must have 6 array layers and cube compatible flag
+    if (def.isCubemap) {
+        imageInfo.arrayLayers = 6;
+        imageInfo.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+    } else {
+        imageInfo.arrayLayers = def.arrayLayers;
+        imageInfo.flags = 0;
+    }
 
     // Map usage flags
     imageInfo.usage = 0;
@@ -1125,17 +1264,27 @@ Result<VulkanImageHandle, VulkanError> VulkanContext::createImage(const VulkanIm
         aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
     }
 
+    // Determine image view type
+    VkImageViewType viewType;
+    if (def.isCubemap) {
+        viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+    } else if (imageInfo.arrayLayers > 1) {
+        viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+    } else {
+        viewType = VK_IMAGE_VIEW_TYPE_2D;
+    }
+
     // Create image view
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = resource.image;
-    viewInfo.viewType = def.arrayLayers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.viewType = viewType;
     viewInfo.format = def.format;
     viewInfo.subresourceRange.aspectMask = aspectMask;
     viewInfo.subresourceRange.baseMipLevel = 0;
     viewInfo.subresourceRange.levelCount = def.mipLevels;
     viewInfo.subresourceRange.baseArrayLayer = 0;
-    viewInfo.subresourceRange.layerCount = def.arrayLayers;
+    viewInfo.subresourceRange.layerCount = imageInfo.arrayLayers;
 
     if (vkCreateImageView(device_, &viewInfo, nullptr, &resource.view) != VK_SUCCESS) {
         vmaDestroyImage(allocator_, resource.image, resource.allocation);

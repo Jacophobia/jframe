@@ -87,10 +87,10 @@ START: I need to store some data
 │   ├─► YES: Does every entity of this type need it?
 │   │   │
 │   │   ├─► YES: Add to blueprint as property
-│   │   │   └─► Access via entities_->get<T>(entity)
+│   │   │   └─► Access via entities->get<T>(entity)
 │   │   │
 │   │   └─► NO: Add component at runtime when needed
-│   │       └─► entities_->emplace<T>(entity, ...)
+│   │       └─► entities->emplace<T>(entity, ...)
 │   │
 │   └─► NO: Is it global game state?
 │       │
@@ -109,7 +109,7 @@ START: I need to store some data
 │   ├─► YES: Can it change at runtime?
 │   │   │
 │   │   ├─► YES: Use ConfigSystem with hot reload
-│   │   │   └─► config_->getFloat("player.speed")
+│   │   │   └─► config->get<float>("player.speed")
 │   │   │
 │   │   └─► NO: Use constexpr in code or Lua config
 │   │
@@ -124,11 +124,11 @@ START: I need to store some data
 
 | Data Type | Storage | Access Pattern |
 |-----------|---------|----------------|
-| Entity properties | Component | `entities_->get<T>()` |
-| Entity tags | Tag component | `entities_->has<T>()` |
+| Entity properties | Component | `entities->get<T>()` |
+| Entity tags | Tag component | `entities->allOf<T>()` |
 | Global game state | Game class member | Direct access |
-| Persistent progress | SaveSystem | `save_->save()/load()` |
-| Tunable values | ConfigSystem | `config_->getFloat()` |
+| Persistent progress | SaveSystem | `save->save()/load()` |
+| Tunable values | ConfigSystem | `config->get<float>()` |
 | Per-level state | Level manager | Reset on level change |
 
 ---
@@ -145,26 +145,31 @@ START: I need to load a file
 │   │   ├─► YES: OK - SaveSystem is the only exception
 │   │   │
 │   │   └─► NO: WRONG! Use AssetSystem instead
-│   │       └─► Never use std::ifstream, lua.script_file(), etc.
+│   │       └─► Never use std::ifstream, lua.safe_script_file(), etc.
 │   │
 │   └─► NO: Good, continue...
 │
 ├─► Is it needed immediately at startup?
 │   │
 │   ├─► YES: Use synchronous loading
-│   │   └─► assets_->loadAsset(handle)
+│   │   └─► assets->loadAsset(handle)
 │   │
 │   └─► NO: Can the game continue without it?
 │       │
 │       ├─► YES: Use async loading
-│       │   └─► assets_->loadAssetAsync(handle, callback)
+│       │   └─► assets->loadAssetAsync(handle, callback)
 │       │
 │       └─► NO: Load sync or show loading screen
 │
 ├─► Will I need hot reload during development?
 │   │
 │   ├─► YES: Subscribe to changes
-│   │   └─► assets_->subscribe(handle, callback)
+│   │   │
+│   │   ├─► For specific asset:
+│   │   │   └─► assets->subscribe(handle, callback)
+│   │   │
+│   │   └─► For asset type (all shaders, all textures):
+│   │       └─► assets->subscribeToType(AssetType::Texture, callback)
 │   │
 │   └─► NO: Just load and use
 │
@@ -176,27 +181,45 @@ START: I need to load a file
     ├─► Font → AssetType::Font → FontData
     ├─► Lua/JSON data → AssetType::Data → DataAsset
     ├─► 3D Mesh → AssetType::Mesh → MeshData
-    └─► Material → AssetType::Material → MaterialData
+    ├─► 3D Model → AssetType::Model → ModelData
+    ├─► Material → AssetType::Material → MaterialData
+    ├─► Cubemap → AssetType::Cubemap → CubemapData
+    └─► NavMesh → AssetType::NavMesh → NavMeshData
 ```
 
 ### Asset Loading Patterns
 
 ```cpp
 // Pattern 1: Sync load at startup
-AssetHandle tex = assets_->registerAsset(AssetType::Texture, "textures/player.png");
-assets_->loadAsset(tex);  // Blocks until loaded
+AssetHandle tex = assets->registerAsset(AssetType::Texture, "textures/player.png");
+assets->loadAsset(tex);  // Blocks until loaded
 
 // Pattern 2: Async load with callback
-assets_->loadAssetAsync(tex, [this](AssetHandle h, AssetState state) {
+assets->loadAssetAsync(tex, [this](AssetHandle h, AssetState state) {
     if (state == AssetState::Loaded) {
         onTextureReady(h);
     }
 });
 
-// Pattern 3: Hot reload subscription
-assets_->subscribe(tex, [this](AssetHandle h, AssetType t) {
+// Pattern 3: Hot reload subscription (specific asset)
+SubscriptionId subId = assets->subscribe(tex, [this](AssetHandle h, AssetType t) {
     refreshSprite(h);  // Called when file changes
 });
+
+// Pattern 4: Hot reload subscription (all of type)
+SubscriptionId typeSubId = assets->subscribeToType(AssetType::Shader,
+    [this](AssetHandle h, AssetType t) {
+        recompileShader(h);  // Called when ANY shader changes
+    }
+);
+
+// Important: Call update() in your game loop
+void update() {
+    assets->update();  // Processes async loads and hot reload notifications
+}
+
+// Clean up subscriptions
+assets->unsubscribe(subId);
 ```
 
 ---
@@ -211,42 +234,52 @@ START: System A needs to notify/call System B
 │   ├─► YES: Do multiple systems need to know?
 │   │   │
 │   │   ├─► YES: Use EventSystem
-│   │   │   └─► events_->emit(EventType, data)
+│   │   │   │
+│   │   │   ├─► Immediate dispatch:
+│   │   │   │   └─► events->publish(Events::PlayerDied, data)
+│   │   │   │
+│   │   │   └─► Deferred dispatch (processed later):
+│   │   │       └─► events->queue(Events::Checkpoint, data)
+│   │   │           └─► events->processQueue() in update loop
 │   │   │
 │   │   └─► NO: Is it performance-critical?
 │   │       │
 │   │       ├─► YES: Use direct interface call
-│   │       │   └─► systemB_->doSomething()
+│   │       │   └─► systemB->doSomething()
 │   │       │
 │   │       └─► NO: Use EventSystem (better decoupling)
 │   │
 │   └─► NO: Is it a request/response pattern?
 │       │
 │       ├─► YES: Use direct interface call with return value
-│       │   └─► auto result = systemB_->query()
+│       │   └─► auto result = systemB->query()
 │       │
-│       └─► NO: Is it deferred (process later)?
-│           └─► Use events_->emitDeferred() + processDeferred()
+│       └─► NO: Use EventSystem for async notifications
 │
 ├─► Does the receiver need to unsubscribe later?
 │   │
 │   ├─► YES: Store SubscriptionId, call unsubscribe() in cleanup
+│   │   │
+│   │   │   SubscriptionId id = events->subscribe(Events::Collision, callback);
+│   │   │   // Later...
+│   │   │   events->unsubscribe(id);
 │   │
 │   └─► NO: Anonymous subscription is fine
 │
-└─► Is it a collision/physics event?
-    └─► Use built-in physics events (CollisionBegin, etc.)
+└─► Is it a built-in physics/asset/state event?
+    └─► Use predefined event constants in Events namespace
 ```
 
 ### Communication Patterns
 
 | Scenario | Pattern | Code |
 |----------|---------|------|
-| Player died (many listeners) | Event | `events_->emit(Events::PlayerDied, {})` |
-| Get player position | Direct call | `physics_->getPosition(player)` |
+| Player died (many listeners) | Event | `events->publish(Events::PlayerDeath, {})` |
+| Get player position | Direct call | `physics->getPosition(player)` |
 | Asset loaded notification | Event | Subscribe to `Events::AssetLoaded` |
 | UI button clicked | Event | Custom event type |
-| Physics collision | Built-in event | Subscribe to `Events::CollisionBegin` |
+| Physics collision | Built-in event | Subscribe to `Events::Collision` |
+| Config changed | Built-in event | Subscribe to `Events::ConfigChanged` |
 
 ---
 
@@ -257,31 +290,43 @@ START: I need to respond to player input
 │
 ├─► Is it movement (continuous)?
 │   │
-│   ├─► YES: Use isKeyHeld() or isActionHeld()
-│   │   └─► Check every frame in update()
+│   ├─► YES: Use action mapping (recommended)
+│   │   │
+│   │   │   // Setup once
+│   │   │   input->registerMapping({
+│   │   │       .binding = {.deviceType = Keyboard, .keyCode = 44},  // Comma
+│   │   │       .action = "move_up"
+│   │   │   });
+│   │   │
+│   │   │   // Check every frame
+│   │   │   if (input->isActionActive("move_up")) { moveUp(); }
+│   │   │
+│   │   └─► Supports rebinding, multiple devices, analog values
 │   │
 │   └─► NO: Is it a one-shot action (jump, attack)?
 │       │
-│       ├─► YES: Use isKeyJustPressed() or isActionJustPressed()
+│       ├─► YES: Use wasActionJustPressed()
 │       │   └─► Only triggers once per press
 │       │
 │       └─► NO: Is it a release trigger?
-│           └─► Use isKeyJustReleased()
+│           └─► Use wasActionJustReleased()
 │
 ├─► Should it support multiple input devices?
 │   │
-│   ├─► YES: Use action mapping
+│   ├─► YES: Use action mapping (required)
 │   │   │
-│   │   │   // Setup
-│   │   │   input_->bindAction("jump", Key::Space);
-│   │   │   input_->bindAction("jump", GamepadButton::A);
-│   │   │
-│   │   │   // Usage
-│   │   │   if (input_->isActionJustPressed("jump")) { ... }
+│   │   │   input->registerMapping({
+│   │   │       .binding = {.deviceType = Keyboard, .keyCode = 32},
+│   │   │       .action = "jump"
+│   │   │   });
+│   │   │   input->registerMapping({
+│   │   │       .binding = {.deviceType = Gamepad, .buttonCode = 0},
+│   │   │       .action = "jump"
+│   │   │   });
 │   │   │
 │   │   └─► Player can rebind via UI
 │   │
-│   └─► NO: Use direct key checks (prototyping only)
+│   └─► NO: Raw input is OK for prototyping (not recommended)
 │
 ├─► Is it for UI/menus?
 │   │
@@ -290,7 +335,7 @@ START: I need to respond to player input
 │   │
 │   └─► NO: Is it mouse-based (clicking in world)?
 │       └─► Convert screen to world coordinates
-│           └─► camera_->screenToWorld(mouseX, mouseY)
+│           └─► camera->screenToWorld(mousePos)
 │
 └─► Does it need input buffering?
     │
@@ -303,18 +348,61 @@ START: I need to respond to player input
 ### Input Patterns
 
 ```cpp
-// Dvorak-friendly movement (,AOE)
-if (input_->isKeyHeld(Key::Comma)) moveUp();    // Dvorak W
-if (input_->isKeyHeld(Key::A)) moveLeft();
-if (input_->isKeyHeld(Key::O)) moveDown();      // Dvorak S
-if (input_->isKeyHeld(Key::E)) moveRight();     // Dvorak D
+// Dvorak-friendly movement (,AOE) - Direct input (prototyping only)
+// NOTE: Prefer action mapping for production
+Vec2 getMovementInput() {
+    Vec2 movement{0, 0};
+    // Using raw mouse button state since no key enum exists yet
+    if (input->isMouseButtonDown(0)) movement.y -= 1;  // Up
+    // Would use Key enum when available
+    return movement;
+}
 
-// Action-based (recommended)
-if (input_->isActionJustPressed("jump")) jump();
-if (input_->isActionHeld("fire")) continuousFire();
+// Action-based (RECOMMENDED for production)
+void setupInputActions() {
+    // Dvorak movement: ,AOE
+    input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 44},
+        .action = "move_up"
+    });
+    input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 30},
+        .action = "move_left"
+    });
+    input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 24},
+        .action = "move_down"
+    });
+    input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 18},
+        .action = "move_right"
+    });
+
+    // Gamepad support
+    input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Gamepad, .buttonCode = 0},
+        .action = "jump"
+    });
+}
+
+void handleInput() {
+    // Movement (continuous)
+    if (input->isActionActive("move_up")) moveUp();
+
+    // Jump (one-shot)
+    if (input->wasActionJustPressed("jump")) jump();
+
+    // Analog stick
+    float moveX = input->getActionValue("move_right") -
+                  input->getActionValue("move_left");
+}
 
 // Mouse in world
-auto [wx, wy] = camera_->screenToWorld(input_->getMouseX(), input_->getMouseY());
+Vec2 mousePos = input->getMousePosition();
+Vec2 worldPos = camera->screenToWorld(mousePos);
+if (input->isMouseButtonDown(0)) {  // Left click
+    shootAt(worldPos);
+}
 ```
 
 ---
@@ -326,7 +414,7 @@ START: I need to create a new entity type
 │
 ├─► Is it defined by data (position, size, sprite)?
 │   │
-│   ├─► YES: Create a blueprint in Lua
+│   ├─► YES: Create a blueprint in Lua (PREFERRED)
 │   │   │
 │   │   │   -- data/blueprints/my_entity.lua
 │   │   │   return {
@@ -335,7 +423,7 @@ START: I need to create a new entity type
 │   │   │       physics = { type = "dynamic" }
 │   │   │   }
 │   │   │
-│   │   └─► Spawn with: blueprints_->createEntity("my_entity")
+│   │   └─► Spawn with: blueprints->createEntity("my_entity")
 │   │
 │   └─► NO: Does it share properties with existing entities?
 │       │
@@ -355,7 +443,7 @@ START: I need to create a new entity type
 │   ├─► YES: Is the behavior simple (patrol, follow)?
 │   │   │
 │   │   ├─► YES: Use AI system with behavior tree
-│   │   │   └─► ai_->attachBehaviorTree(entity, "patrol")
+│   │   │   └─► ai->attachBehaviorTree(entity, "patrol")
 │   │   │
 │   │   └─► NO: Create a game system to handle it
 │   │       └─► Iterate entities with specific components
@@ -377,7 +465,7 @@ START: I need to create a new entity type
 │
 └─► Does it need to be saved/loaded?
     │
-    ├─► YES: Implement ISaveable or save entity state
+    ├─► YES: Save entity state in SaveData
     │
     └─► NO: Recreate from level/blueprint on load
 ```
@@ -386,21 +474,20 @@ START: I need to create a new entity type
 
 ```cpp
 // From blueprint (preferred)
-Entity player = blueprints_->createEntity("player");
+Entity player = blueprints->createEntity("player");
 
-// From blueprint with position
-Entity enemy = blueprints_->createEntityAt("enemy", 500, 300);
+// Manual creation (rare - when blueprints not available)
+Entity e = entities->createEntity();
+entities->emplace<Transform2D>(e, 100.0f, 200.0f);
+entities->emplace<Velocity>(e, 0.0f, 0.0f);
 
-// From blueprint with overrides
-Entity boss = blueprints_->createEntity("enemy", {
-    {"health", 500},
-    {"scale", 2.0f}
-});
-
-// Manual creation (rare)
-Entity e = entities_->createEntity();
-entities_->emplace<Transform2D>(e, 100, 200);
-entities_->emplace<EnemyTag>(e);
+// Iterate entities with specific components
+auto view = entities->view<Transform2D, Velocity>();
+for (auto entity : view) {
+    auto& transform = entities->get<Transform2D>(entity);
+    auto& velocity = entities->get<Velocity>(entity);
+    // Update logic...
+}
 ```
 
 ---
@@ -418,35 +505,30 @@ START: Two entities collided
 │   └─► NO: Is it a trigger/sensor (detection only)?
 │       └─► Use sensor in physics definition
 │           │
-│           │   physics = {
-│           │       shape = { ... },
-│           │       isSensor = true  -- No physical response
-│           │   }
+│           │   physics->setSensor(entity, true)
 │           │
 │           └─► Subscribe to trigger events
 │
 ├─► What should happen on collision?
 │   │
 │   ├─► Damage: Apply damage via GAS or direct health modification
-│   │   └─► gas_->applyEffect(target, "damage_effect")
+│   │   └─► gas->applyEffect(target, "damage_effect")
 │   │
 │   ├─► Collect: Destroy collectible, add to inventory
-│   │   └─► entities_->destroyEntity(collectible)
+│   │   └─► entities->destroyEntity(collectible)
 │   │
 │   ├─► Trigger: Activate something (door, checkpoint)
-│   │   └─► events_->emit(GameEvents::CheckpointReached, {})
+│   │   └─► events->publish(Events::Checkpoint, {})
 │   │
 │   └─► Push: Apply force/impulse
-│       └─► physics_->applyImpulse(entity, force)
+│       └─► physics->applyImpulse(entity, force)
 │
 ├─► Do I need to filter collisions?
 │   │
 │   ├─► YES: Use collision layers/masks
 │   │   │
-│   │   │   physics = {
-│   │   │       collisionLayer = Layers.Player,
-│   │   │       collisionMask = Layers.Enemy | Layers.Ground
-│   │   │   }
+│   │   │   physics->setCollisionLayer(entity, Layers::Player);
+│   │   │   physics->setCollisionMask(entity, Layers::Enemy | Layers::Ground);
 │   │   │
 │   │   └─► Only collides with specified layers
 │   │
@@ -456,37 +538,55 @@ START: Two entities collided
     │
     ├─► Subscribe to collision events
     │   │
-    │   │   events_->subscribe(Events::CollisionBegin, [](auto& data) {
-    │   │       auto& c = std::get<CollisionEvent>(data);
-    │   │       handleCollision(c.entityA, c.entityB);
+    │   │   events->subscribe(Events::Collision, [](const EventData& data) {
+    │   │       // Handle collision
     │   │   });
     │   │
-    │   └─► Check entity types in handler
+    │   └─► Check entity types in handler using components
     │
     └─► Use component queries to identify entities
-        └─► entities_->has<PlayerTag>(entity)
+        └─► entities->allOf<PlayerTag>(entity)
 ```
 
 ### Collision Patterns
 
 ```cpp
 // Collision handler
-events_->subscribe(Events::CollisionBegin, [this](const EventData& data) {
-    auto& c = std::get<CollisionEvent>(data);
+void setupCollisionHandling() {
+    events->subscribe(Events::Collision, [this](const EventData& data) {
+        // Extract collision info from EventData variant
+        // Implementation depends on event data structure
 
-    // Player hit enemy
-    if (entities_->has<PlayerTag>(c.entityA) &&
-        entities_->has<EnemyTag>(c.entityB)) {
-        damagePlayer(c.entityA);
-    }
+        // Example pattern:
+        Entity entityA = /* extract from data */;
+        Entity entityB = /* extract from data */;
 
-    // Player collected coin
-    if (entities_->has<PlayerTag>(c.entityA) &&
-        entities_->has<CoinTag>(c.entityB)) {
-        collectCoin(c.entityB);
-        entities_->destroyEntity(c.entityB);
-    }
-});
+        // Player hit enemy
+        if (entities->allOf<PlayerTag>(entityA) &&
+            entities->allOf<EnemyTag>(entityB)) {
+            damagePlayer(entityA);
+        }
+
+        // Player collected coin
+        if (entities->allOf<PlayerTag>(entityA) &&
+            entities->allOf<CoinTag>(entityB)) {
+            collectCoin(entityB);
+            entities->destroyEntity(entityB);
+        }
+    });
+}
+
+// Raycast for ground detection
+auto hit = physics->raycast(
+    playerPos,                          // Origin
+    {0, 1},                             // Direction (down)
+    50.0f,                              // Max distance
+    CollisionMask::Ground               // What to hit
+);
+
+if (hit && hit->distance < 5.0f) {
+    isGrounded = true;
+}
 ```
 
 ---
@@ -503,7 +603,7 @@ START: I have a value that might need tuning
 │   │
 │   └─► NO: Will it change during development?
 │       │
-│       ├─► YES: Put in Lua config
+│       ├─► YES: Put in Lua config (RECOMMENDED)
 │       │   │
 │       │   │   -- data/config/physics.lua
 │       │   │   return {
@@ -532,7 +632,7 @@ START: I have a value that might need tuning
 ├─► Is it user-changeable (settings)?
 │   │
 │   ├─► YES: Use SaveSystem for persistence
-│   │   └─► save_->save(SETTINGS_SLOT, userSettings)
+│   │   └─► save->save(SETTINGS_SLOT, userSettings)
 │   │
 │   └─► NO: Use ConfigSystem (read-only from Lua)
 │
@@ -565,9 +665,9 @@ return {
 ```
 
 ```cpp
-// Access in code
-float speed = config_->getFloat("player.speed");
-float gravity = config_->getFloat("physics.gravity");
+// Access in code (when ConfigSystem available)
+float speed = config->get<float>("player.speed");
+float gravity = config->get<float>("physics.gravity");
 ```
 
 ---
@@ -600,7 +700,7 @@ START: I need to display something
 │           │   └─► layer = RenderLayers.Background
 │           │
 │           └─► NO: Is it debug visualization?
-│               └─► Use graphics_->drawDebug*() methods
+│               └─► Use graphics->drawDebug*() methods
 │
 ├─► What render layer should it use?
 │   │
@@ -684,12 +784,12 @@ START: I need to persist data
 │   │   │       }
 │   │   │   };
 │   │   │
-│   │   └─► save_->save(slot, saveData)
+│   │   └─► save->save(slot, saveData)
 │   │
 │   └─► NO: Is it user settings (volume, controls)?
 │       │
 │       ├─► YES: Save to settings slot
-│       │   └─► save_->save(SETTINGS_SLOT, settings)
+│       │   └─► save->save(SETTINGS_SLOT, settings)
 │       │
 │       └─► NO: Is it auto-save (checkpoint)?
 │           └─► Save to AUTO_SAVE slot automatically
@@ -720,9 +820,9 @@ START: I need to persist data
 │
 └─► How do I handle save corruption?
     │
-    ├─► Check load result for errors
+    ├─► Use std::expected return type
     │   │
-    │   │   auto result = save_->load<SaveData>(slot);
+    │   │   auto result = save->load<SaveData>(slot);
     │   │   if (!result) {
     │   │       handleLoadError(result.error());
     │   │   }
@@ -743,7 +843,7 @@ void Game::saveGame(uint32_t slot) {
         .inventory = inventory_
     };
 
-    auto result = save_->save(slot, data);
+    auto result = save->save(slot, data);
     if (!result) {
         showError("Failed to save game");
     }
@@ -751,7 +851,7 @@ void Game::saveGame(uint32_t slot) {
 
 // Load game
 void Game::loadGame(uint32_t slot) {
-    auto result = save_->load<SaveData>(slot);
+    auto result = save->load<SaveData>(slot);
     if (result) {
         currentLevel_ = result->level;
         score_ = result->score;
@@ -784,7 +884,7 @@ START: I need to create a UI element
 │   │   │   </body>
 │   │   │   </rml>
 │   │   │
-│   │   └─► Load with ui_->loadDocument("ui/main_menu.rml")
+│   │   └─► Load with ui->loadDocument("ui/main_menu.rml")
 │   │
 │   └─► NO: Is it an overlay (HUD, notifications)?
 │       │
@@ -816,10 +916,10 @@ START: I need to create a UI element
 │
 ├─► How should I handle events?
 │   │
-│   ├─► Bind in C++ after loading
+│   ├─► Bind in C++ after loading (when UI system available)
 │   │   │
-│   │   │   auto btn = ui_->getElementById(doc, "start-btn");
-│   │   │   ui_->bindEvent(btn, "click", [this]() {
+│   │   │   auto btn = ui->getElementById(doc, "start-btn");
+│   │   │   ui->bindEvent(btn, "click", [this]() {
 │   │   │       startGame();
 │   │   │   });
 │   │   │
@@ -829,37 +929,37 @@ START: I need to create a UI element
 │
 └─► How should I update dynamic content?
     │
-    ├─► Simple text: ui_->setInnerText(element, value)
-    ├─► Attributes: ui_->setAttribute(element, "width", value)
-    ├─► Classes: ui_->addClass/removeClass(element, "active")
+    ├─► Simple text: ui->setInnerText(element, value)
+    ├─► Attributes: ui->setAttribute(element, "width", value)
+    ├─► Classes: ui->addClass/removeClass(element, "active")
     └─► Complex: Use data binding model
 ```
 
 ### UI Patterns
 
 ```cpp
-// Load and setup menu
+// Load and setup menu (when UI system available)
 void Game::showMainMenu() {
-    menuDoc_ = ui_->loadDocument("ui/main_menu.rml");
+    menuDoc_ = ui->loadDocument("ui/main_menu.rml");
 
-    ui_->bindEvent(ui_->getElementById(menuDoc_, "play-btn"), "click", [this]() {
-        ui_->hideDocument(menuDoc_);
+    ui->bindEvent(ui->getElementById(menuDoc_, "play-btn"), "click", [this]() {
+        ui->hideDocument(menuDoc_);
         startGame();
     });
 
-    ui_->bindEvent(ui_->getElementById(menuDoc_, "quit-btn"), "click", [this]() {
+    ui->bindEvent(ui->getElementById(menuDoc_, "quit-btn"), "click", [this]() {
         shouldQuit_ = true;
     });
 
-    ui_->showDocument(menuDoc_);
+    ui->showDocument(menuDoc_);
 }
 
 // Update HUD
 void Game::updateHUD() {
-    ui_->setInnerText(hudDoc_, "#score", std::to_string(score_));
+    ui->setInnerText(hudDoc_, "#score", std::to_string(score_));
 
     float healthPercent = (float)health_ / maxHealth_ * 100;
-    ui_->setAttribute(hudDoc_, "#health-bar", "style",
+    ui->setAttribute(hudDoc_, "#health-bar", "style",
         "width: " + std::to_string(healthPercent) + "%");
 }
 ```
@@ -877,8 +977,8 @@ START: I need an entity to have AI behavior
 │   │   │
 │   │   ├─► Use built-in AI steering behaviors
 │   │   │   │
-│   │   │   │   ai_->setNavigationTarget(entity, targetPos);
-│   │   │   │   ai_->setPatrolPath(entity, waypoints);
+│   │   │   │   ai->setNavigationTarget(entity, targetPos);
+│   │   │   │   ai->setPatrolPath(entity, waypoints);
 │   │   │   │
 │   │   │   └─► AI system handles movement
 │   │   │
@@ -887,7 +987,7 @@ START: I need an entity to have AI behavior
 │   ├─► Medium (state-based: idle → chase → attack)
 │   │   │
 │   │   ├─► Use behavior tree
-│   │   │   └─► ai_->attachBehaviorTree(entity, "enemy_ai")
+│   │   │   └─► ai->attachBehaviorTree(entity, "enemy_ai")
 │   │   │
 │   │   └─► Or explicit state machine
 │   │
@@ -899,10 +999,10 @@ START: I need an entity to have AI behavior
 │   ├─► YES: Use navigation system
 │   │   │
 │   │   │   // Load navmesh for level
-│   │   │   ai_->loadNavMesh("levels/level1_nav.bin");
+│   │   │   ai->loadNavMesh("levels/level1_nav.bin");
 │   │   │
 │   │   │   // Find path
-│   │   │   auto path = ai_->findPath(entity, targetPos);
+│   │   │   auto path = ai->findPath(entity, targetPos);
 │   │   │
 │   │   └─► AI follows path automatically
 │   │
@@ -912,8 +1012,8 @@ START: I need an entity to have AI behavior
 │   │
 │   ├─► YES: Use blackboard for behavior tree
 │   │   │
-│   │   │   ai_->setBlackboardValue(entity, "target", playerEntity);
-│   │   │   ai_->setBlackboardValue(entity, "alert_level", 0.5f);
+│   │   │   ai->setBlackboardValue(entity, "target", playerEntity);
+│   │   │   ai->setBlackboardValue(entity, "alert_level", 0.5f);
 │   │   │
 │   │   └─► Behavior tree nodes read/write blackboard
 │   │
@@ -921,10 +1021,11 @@ START: I need an entity to have AI behavior
 │
 └─► Does it need spatial awareness?
     │
-    ├─► YES: Use AI queries
+    ├─► YES: Use physics queries or AI queries
     │   │
-    │   │   auto nearby = ai_->findEntitiesInRadius(pos, radius);
-    │   │   bool canSee = ai_->hasLineOfSight(entity, target);
+    │   │   auto nearby = physics->queryCircle(pos, radius);
+    │   │   // Check line of sight with raycast
+    │   │   auto hit = physics->raycast(aiPos, direction, range);
     │   │
     │   └─► Make decisions based on awareness
     │
@@ -934,8 +1035,8 @@ START: I need an entity to have AI behavior
 ### AI Patterns
 
 ```cpp
-// Simple patrol
-ai_->setPatrolPath(enemy, {
+// Simple patrol (when AI system available)
+ai->setPatrolPath(enemy, {
     {100, 200}, {300, 200}, {300, 400}, {100, 400}
 });
 
@@ -943,14 +1044,16 @@ ai_->setPatrolPath(enemy, {
 void EnemyAI::update(float dt) {
     switch (state_) {
         case State::Patrol:
-            if (ai_->hasLineOfSight(entity_, player_)) {
+            // Check line of sight with raycast
+            auto hit = physics->raycast(position, toPlayer, viewRange);
+            if (hit && hit->entity == player) {
                 state_ = State::Chase;
             }
             break;
 
         case State::Chase:
-            ai_->setNavigationTarget(entity_, playerPos);
-            if (distance < attackRange_) {
+            moveTowards(playerPos);
+            if (distance < attackRange) {
                 state_ = State::Attack;
             }
             break;
@@ -972,9 +1075,9 @@ START: An operation might fail
 │
 ├─► Is it a system operation (load, save, network)?
 │   │
-│   ├─► YES: Check std::expected return value
+│   ├─► YES: Use std::expected return value
 │   │   │
-│   │   │   auto result = save_->load<Data>(slot);
+│   │   │   auto result = save->load<Data>(slot);
 │   │   │   if (!result) {
 │   │   │       // Handle error
 │   │   │       auto error = result.error();
@@ -987,17 +1090,17 @@ START: An operation might fail
 │       ├─► YES: Validate early, fail fast
 │       │   │
 │       │   │   if (slot >= MAX_SLOTS) {
-│       │   │       spdlog::error("Invalid slot: {}", slot);
+│       │   │       // Log error
 │       │   │       return;
 │       │   │   }
 │       │   │
-│       │   └─► Log and return/throw early
+│       │   └─► Log and return early
 │       │
 │       └─► NO: Is it recoverable?
 │           │
 │           ├─► YES: Use fallback behavior
 │           │   │
-│           │   │   auto texture = assets_->getAsset<TextureData>(handle);
+│           │   │   auto texture = assets->getAsset<TextureData>(handle);
 │           │   │   if (!texture) {
 │           │   │       texture = getDefaultTexture();  // Fallback
 │           │   │   }
@@ -1012,7 +1115,6 @@ START: An operation might fail
 │   │   └─► "Failed to load save file"
 │   │
 │   └─► NO: Log for debugging only
-│       └─► spdlog::error("Internal error: {}", msg)
 │
 └─► Should this crash in debug builds?
     │
@@ -1029,26 +1131,17 @@ START: An operation might fail
 
 ```cpp
 // System operation with expected
-auto result = save_->load<SaveData>(slot);
+auto result = save->load<SaveData>(slot);
 if (result) {
     loadFromSave(*result);
 } else {
-    switch (result.error()) {
-        case SaveError::FileNotFound:
-            startNewGame();
-            break;
-        case SaveError::CorruptedFile:
-            showError("Save file corrupted");
-            break;
-        default:
-            spdlog::error("Unknown save error");
-    }
+    // Handle error based on error code
+    handleSaveError(result.error());
 }
 
 // Validation
 void setHealth(int value) {
     if (value < 0 || value > maxHealth_) {
-        spdlog::warn("Health out of range: {}", value);
         value = std::clamp(value, 0, maxHealth_);
     }
     health_ = value;
@@ -1056,7 +1149,7 @@ void setHealth(int value) {
 
 // Fallback
 const TextureData* getTexture(AssetHandle handle) {
-    if (auto tex = assets_->getAsset<TextureData>(handle)) {
+    if (auto tex = assets->getAsset<TextureData>(handle)) {
         return tex;
     }
     return &defaultTexture_;  // Never return null
@@ -1075,7 +1168,7 @@ START: Something is slow
 │   ├─► YES: Are assets loaded synchronously?
 │   │   │
 │   │   ├─► YES: Switch to async loading
-│   │   │   └─► assets_->loadAssetAsync(handle, callback)
+│   │   │   └─► assets->loadAssetAsync(handle, callback)
 │   │   │
 │   │   └─► NO: Are too many assets loading at once?
 │   │       └─► Stagger loads, use loading screen
@@ -1086,11 +1179,11 @@ START: Something is slow
 │       │   │
 │       │   ├─► YES: Use batching
 │       │   │   │
-│       │   │   │   graphics_->beginBatch();
+│       │   │   │   graphics->beginBatch();
 │       │   │   │   for (auto& sprite : sprites) {
-│       │   │   │       graphics_->drawSpriteBatched(sprite);
+│       │   │   │       graphics->drawSpriteBatched(sprite);
 │       │   │   │   }
-│       │   │   │   graphics_->endBatch();
+│       │   │   │   graphics->endBatch();
 │       │   │   │
 │       │   │   └─► Single draw call for many sprites
 │       │   │
@@ -1111,7 +1204,11 @@ START: Something is slow
 │               ├─► YES: Are you iterating all entities?
 │               │   │
 │               │   ├─► YES: Use view<>() with specific components
-│               │   │   └─► Only iterates relevant entities
+│               │   │   │
+│               │   │   │   auto view = entities->view<Transform2D, Velocity>();
+│               │   │   │   // Only iterates relevant entities
+│               │   │   │
+│               │   │   └─► Much faster than checking all entities
 │               │   │
 │               │   └─► NO: Cache expensive calculations
 │               │
@@ -1136,19 +1233,23 @@ START: Something is slow
 ### Performance Patterns
 
 ```cpp
-// Batched rendering
+// Batched rendering (when batching API available)
 void renderSprites() {
-    graphics_->beginBatch();
-    for (auto [entity, sprite, transform] : entities_->view<Sprite, Transform2D>()) {
-        graphics_->drawSpriteBatched(sprite, transform);
+    graphics->beginBatch();
+    auto view = entities->view<Sprite, Transform2D>();
+    for (auto entity : view) {
+        auto& sprite = entities->get<Sprite>(entity);
+        auto& transform = entities->get<Transform2D>(entity);
+        graphics->drawSpriteBatched(sprite, transform);
     }
-    graphics_->endBatch();  // Single draw call
+    graphics->endBatch();  // Single draw call
 }
 
 // Efficient entity iteration
 void updateEnemies(float dt) {
     // Only iterates entities with BOTH EnemyTag AND Transform2D
-    for (auto entity : entities_->view<EnemyTag, Transform2D>()) {
+    auto view = entities->view<EnemyTag, Transform2D>();
+    for (auto entity : view) {
         // Process enemy...
     }
 }
@@ -1182,14 +1283,14 @@ class BulletPool {
 | Where does data go? | Entity-specific → Component, Global → Game class, Persistent → SaveSystem |
 | Where does config go? | Lua file in `data/config/` |
 | How to load files? | Always through AssetSystem (except SaveSystem) |
-| How to communicate? | Events for broadcast, direct calls for queries |
+| How to communicate? | Events for broadcast (publish/queue), direct calls for queries |
 | How to create entities? | Blueprints in Lua, spawn from C++ |
 | How to handle collisions? | Subscribe to collision events, check component tags |
 | How to render? | Add sprite to blueprint, graphics system auto-renders |
-| How to save? | Create SaveData struct, use SaveSystem |
-| How to do UI? | RML documents + RCSS styles |
+| How to save? | Create SaveData struct with serialize(), use SaveSystem |
+| How to do UI? | RML documents + RCSS styles (when UI system available) |
 | How to do AI? | Behavior trees or state machines |
-| How to handle errors? | Check std::expected, use fallbacks, log for debug |
+| How to handle errors? | Use std::expected, fallbacks, logging |
 | How to optimize? | Profile first, batch draws, cache queries, pool objects |
 
 ---
@@ -1200,7 +1301,24 @@ class BulletPool {
 - [ ] Am I using the correct system? (Assets, Config, Events, etc.)
 - [ ] Am I following Bestow conventions? (Interfaces, DI, ECS)
 - [ ] Does this need hot reload support?
-- [ ] How will errors be handled?
+- [ ] How will errors be handled? (std::expected)
 - [ ] Is this testable?
 - [ ] Is this performant? (No premature optimization, but don't be wasteful)
 - [ ] Will a designer be able to tune this? (Put values in Lua if yes)
+- [ ] Am I depending only on interfaces, not implementations?
+- [ ] Am I using AssetSystem for all file I/O (except SaveSystem)?
+
+---
+
+## Key Architectural Rules
+
+1. **Contract-Based**: Depend only on `ISystemName` interfaces, never implementations
+2. **AssetSystem Gateway**: ALL file reading goes through AssetSystem (except SaveSystem)
+3. **Lua-First**: Game data, config, blueprints, levels in Lua; C++ for performance/engine
+4. **EventSystem Decoupling**: Use events for cross-system notifications
+5. **ECS Composition**: Components are data, systems are logic, entities are IDs
+6. **std::expected**: No exceptions, return expected<T, E> for failable operations
+7. **Dependency Injection**: Systems receive dependencies via constructor (Kangaru DI)
+8. **Hot Reload**: Subscribe to asset changes for live editing
+9. **Dvorak-Friendly**: Default to ,AOE for movement
+10. **Vulkan-First**: Vulkan is primary, OpenGL is fallback

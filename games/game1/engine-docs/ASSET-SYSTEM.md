@@ -1,4 +1,4 @@
-# Bestow Asset System Guide
+# Asset System Guide
 
 ## Table of Contents
 
@@ -7,8 +7,10 @@
 3. [API Reference](#api-reference)
 4. [Hot Reload](#hot-reload)
 5. [Asset Types](#asset-types)
-6. [Best Practices](#best-practices)
-7. [Code Examples](#code-examples)
+6. [Shader System](#shader-system)
+7. [3D Asset Loading](#3d-asset-loading)
+8. [Best Practices](#best-practices)
+9. [Code Examples](#code-examples)
 
 ---
 
@@ -104,7 +106,7 @@ enum class AssetState {
 
 The Asset System supports special path prefixes:
 
-- **`:assets:/`** - Resolves to the game's asset directory (e.g., `game1/assets/`)
+- **`:assets:/`** - Resolves to the game's asset directory (e.g., `game1/data/`)
 - **`:library:/`** - Resolves to the engine's asset library (e.g., `bestow-assets/library/`)
 - **Relative/absolute paths** - Used as-is
 
@@ -220,7 +222,7 @@ assets->loadAssetAsync(sound, [this](AssetHandle h, AssetState state) {
         // Handle error
         AssetMetadata meta = assets->getAssetMetadata(h);
         if (meta.errorMessage) {
-            spdlog::error("Failed to load asset: {}", *meta.errorMessage);
+            logError("Failed to load asset: {}", *meta.errorMessage);
         }
     }
 });
@@ -280,14 +282,14 @@ Returns full metadata including error messages.
 
 ```cpp
 AssetMetadata meta = assets->getAssetMetadata(handle);
-spdlog::info("Asset: {} - State: {} - Size: {} bytes",
+logInfo("Asset: {} - State: {} - Size: {} bytes",
     meta.sourcePath.string(),
     static_cast<int>(meta.state),
     meta.sizeBytes
 );
 
 if (meta.state == AssetState::Failed && meta.errorMessage) {
-    spdlog::error("Error: {}", *meta.errorMessage);
+    logError("Error: {}", *meta.errorMessage);
 }
 ```
 
@@ -402,7 +404,15 @@ Enables or disables hot reload. When enabled, the Asset System automatically wat
 
 #### `void checkForReloads()`
 
-Manually checks for file changes (deprecated - prefer automatic watching via `enableHotReload()`).
+Manually triggers a check for file changes. Normally you don't need to call this - `update()` handles it automatically.
+
+#### `void reloadAsset(AssetHandle handle)`
+
+Manually forces an asset to reload from disk.
+
+```cpp
+assets->reloadAsset(shaderHandle);
+```
 
 ### Subscriptions
 
@@ -415,10 +425,11 @@ Subscribes to changes for a **specific asset**.
 ```cpp
 using AssetChangeCallback = std::function<void(AssetHandle, AssetType)>;
 
-AssetHandle shader = assets->loadShader(":library:/shaders/toon.frag");
+AssetHandle shader = assets->registerAsset(AssetType::Shader, ":library:/shaders/toon.frag");
+assets->loadAsset(shader);
 
 SubscriptionId subId = assets->subscribe(shader, [this](AssetHandle h, AssetType t) {
-    spdlog::info("Shader reloaded: {}", h.uuid);
+    logInfo("Shader reloaded: {}", h.uuid);
 
     // Recompile and re-upload to GPU
     shaderSystem->recompileShader(h);
@@ -436,7 +447,7 @@ Subscribes to changes for **all assets of a type**.
 SubscriptionId texSubId = assets->subscribeToType(
     AssetType::Texture,
     [this](AssetHandle h, AssetType t) {
-        spdlog::info("Texture {} reloaded", h.uuid);
+        logInfo("Texture {} reloaded", h.uuid);
         graphicsSystem->reloadTexture(h);
     }
 );
@@ -465,19 +476,6 @@ private:
     SubscriptionId subscriptionId_ = InvalidSubscriptionId;
 };
 ```
-
-### Manual Reload
-
-#### `void reloadAsset(AssetHandle handle)`
-
-Manually triggers a reload of an asset (re-reads from disk).
-
-```cpp
-// Force reload even if file hasn't changed
-assets->reloadAsset(handle);
-```
-
-**Note:** Subscribers will be notified when the reload completes.
 
 ---
 
@@ -590,22 +588,16 @@ struct ShaderData {
 **Usage:**
 ```cpp
 // Load GLSL source
-AssetHandle shader = assets->loadShader(":library:/shaders/toon.frag");
+AssetHandle shader = assets->registerAsset(AssetType::Shader, ":library:/shaders/toon.frag");
+assets->loadAsset(shader);
 
-const ShaderData* data = assets->getShaderData(shader);
+const ShaderData* data = assets->getAsset<ShaderData>(shader);
 if (data) {
-    spdlog::info("Loaded shader: {} (stage: {})",
+    logInfo("Loaded shader: {} (stage: {})",
         data->path, static_cast<int>(data->stage));
 
-    // Use GLSL source for OpenGL
+    // Use GLSL source for OpenGL or Vulkan
     graphicsSystem->compileShader(data->glslSource);
-
-    // Or compile to SPIR-V for Vulkan
-    if (!data->compiled) {
-        assets->compileShaderAsync(shader, [](AssetHandle h, AssetState s) {
-            // SPIR-V bytecode now available
-        });
-    }
 }
 ```
 
@@ -661,9 +653,10 @@ struct MeshData {
 
 **Usage:**
 ```cpp
-AssetHandle mesh = assets->loadMesh("models/character.obj");
+AssetHandle mesh = assets->registerAsset(AssetType::Mesh, "models/character.obj");
+assets->loadAsset(mesh);
 
-const MeshData* data = assets->getMeshData(mesh);
+const MeshData* data = assets->getAsset<MeshData>(mesh);
 if (data) {
     // Upload to GPU
     graphicsSystem->createMeshBuffer(mesh, data->vertices, data->indices);
@@ -694,9 +687,10 @@ struct ModelData {
 
 **Usage:**
 ```cpp
-AssetHandle model = assets->loadModel("models/character.gltf");
+AssetHandle model = assets->registerAsset(AssetType::Model, "models/character.gltf");
+assets->loadAsset(model);
 
-const ModelData* data = assets->getModelData(model);
+const ModelData* data = assets->getAsset<ModelData>(model);
 if (data) {
     // Load all meshes and materials
     for (const MeshData& mesh : data->meshes) {
@@ -708,6 +702,37 @@ if (data) {
         animationSystem->playAnimation(data->animations[0]);
     }
 }
+```
+
+### MaterialData
+
+PBR material properties and texture references.
+
+```cpp
+struct MaterialData {
+    std::string name;
+
+    // PBR properties
+    float baseColorFactor[4];
+    float metallicFactor;
+    float roughnessFactor;
+    float normalScale;
+    float occlusionStrength;
+    float emissiveFactor[3];
+    float alphaCutoff;
+
+    // Texture references
+    MaterialTextureRef baseColorTexture;
+    MaterialTextureRef metallicRoughnessTexture;
+    MaterialTextureRef normalTexture;
+    MaterialTextureRef occlusionTexture;
+    MaterialTextureRef emissiveTexture;
+
+    // Render state
+    bool doubleSided;
+    bool transparent;
+    bool unlit;
+};
 ```
 
 ### CubemapData
@@ -725,18 +750,15 @@ struct CubemapData {
 
 **Usage:**
 ```cpp
-// Load from 6 separate images
-AssetHandle cubemap = assets->loadCubemap(
-    "skybox/right.jpg",  // +X
-    "skybox/left.jpg",   // -X
-    "skybox/top.jpg",    // +Y
-    "skybox/bottom.jpg", // -Y
-    "skybox/front.jpg",  // +Z
-    "skybox/back.jpg"    // -Z
-);
+// Load cubemap (single file or 6-face configuration)
+AssetHandle cubemap = assets->registerAsset(AssetType::Cubemap, "skybox/environment.hdr");
+assets->loadAsset(cubemap);
 
-// Or from single equirectangular HDR image
-AssetHandle hdrCubemap = assets->loadCubemap("skybox/environment.hdr");
+const CubemapData* data = assets->getAsset<CubemapData>(cubemap);
+if (data) {
+    // Upload to GPU for skybox rendering
+    graphicsSystem->createCubemap(cubemap, data);
+}
 ```
 
 ### NavMeshData
@@ -760,6 +782,223 @@ const NavMeshData* data = assets->getAsset<NavMeshData>(navmesh);
 if (data) {
     // Pass to AI system for pathfinding
     aiSystem->loadNavMesh(data->fileData.data(), data->fileSize);
+}
+```
+
+---
+
+## Shader System
+
+The Asset System provides specialized support for shader loading and compilation.
+
+### Loading Shaders
+
+#### `AssetHandle loadShader(const std::filesystem::path& path)`
+
+Convenience method that combines `registerAsset()` + `loadAsset()` for shaders.
+
+```cpp
+// Register and load in one call
+AssetHandle shader = assets->loadShader(":library:/shaders/pbr.frag");
+
+const ShaderData* data = assets->getAsset<ShaderData>(shader);
+if (data) {
+    logInfo("Loaded shader: {}", data->path);
+    logInfo("GLSL source length: {}", data->glslSource.length());
+}
+```
+
+**Stage inference:** The shader stage is automatically inferred from the file extension:
+- `.vert` → `ShaderData::Stage::Vertex`
+- `.frag` → `ShaderData::Stage::Fragment`
+- `.geom` → `ShaderData::Stage::Geometry`
+- `.comp` → `ShaderData::Stage::Compute`
+- `.tesc` → `ShaderData::Stage::TessControl`
+- `.tese` → `ShaderData::Stage::TessEval`
+
+### Accessing Shader Data
+
+#### `const ShaderData* getShaderData(AssetHandle handle) const`
+
+Type-safe accessor for shader data (equivalent to `getAsset<ShaderData>(handle)`).
+
+```cpp
+const ShaderData* shader = assets->getShaderData(handle);
+if (shader) {
+    // Access GLSL source
+    std::string_view source = shader->glslSource;
+
+    // Check if compiled to SPIR-V
+    if (shader->compiled) {
+        const auto& bytecode = shader->spirvBytecode;
+        logInfo("SPIR-V bytecode size: {} bytes", bytecode.size() * 4);
+    } else if (!shader->compileError.empty()) {
+        logError("Shader compilation failed: {}", shader->compileError);
+    }
+}
+```
+
+### SPIR-V Compilation
+
+#### `void compileShaderAsync(AssetHandle handle, AssetLoadCallback callback = nullptr)`
+
+Compiles a loaded GLSL shader to SPIR-V bytecode asynchronously. Requires `shaderc` library.
+
+```cpp
+AssetHandle shader = assets->loadShader("shaders/custom.frag");
+
+assets->compileShaderAsync(shader, [this](AssetHandle h, AssetState state) {
+    const ShaderData* data = assets->getShaderData(h);
+
+    if (state == AssetState::Loaded && data->compiled) {
+        logInfo("Shader compiled successfully!");
+
+        // Use SPIR-V bytecode for Vulkan
+        vulkanRenderer->createShaderModule(h, data->spirvBytecode);
+    } else if (data && !data->compileError.empty()) {
+        logError("Shader compilation failed:\n{}", data->compileError);
+    }
+});
+```
+
+#### `bool isShaderCompilationSupported() const`
+
+Returns `true` if SPIR-V compilation is available (shaderc library linked).
+
+```cpp
+if (assets->isShaderCompilationSupported()) {
+    // Can use compileShaderAsync()
+    assets->compileShaderAsync(shader);
+} else {
+    logWarn("SPIR-V compilation not supported, using GLSL source only");
+}
+```
+
+---
+
+## 3D Asset Loading
+
+The Asset System provides convenient methods for loading 3D assets.
+
+### Loading Meshes
+
+#### `AssetHandle loadMesh(const std::filesystem::path& path)`
+
+Convenience method that combines `registerAsset()` + `loadAsset()` for meshes.
+
+```cpp
+AssetHandle mesh = assets->loadMesh("models/statue.obj");
+
+const MeshData* data = assets->getMeshData(mesh);
+if (data) {
+    logInfo("Loaded mesh: {} vertices, {} indices",
+        data->vertices.size(), data->indices.size());
+}
+```
+
+#### `const MeshData* getMeshData(AssetHandle handle) const`
+
+Type-safe accessor for mesh data.
+
+```cpp
+const MeshData* mesh = assets->getMeshData(handle);
+if (mesh) {
+    for (const SubMeshData& submesh : mesh->subMeshes) {
+        logInfo("Submesh: {} ({} indices)", submesh.name, submesh.indexCount);
+    }
+}
+```
+
+### Loading Models
+
+#### `AssetHandle loadModel(const std::filesystem::path& path)`
+
+Loads a complete model with meshes, materials, and hierarchy.
+
+```cpp
+AssetHandle model = assets->loadModel("models/character.gltf");
+
+const ModelData* data = assets->getModelData(model);
+if (data) {
+    logInfo("Loaded model: {} with {} meshes, {} materials",
+        data->name, data->meshes.size(), data->materials.size());
+
+    // Access scene hierarchy
+    for (const ModelData::Node& node : data->nodes) {
+        logInfo("Node: {} (mesh index: {})", node.name, node.meshIndex);
+    }
+}
+```
+
+#### `const ModelData* getModelData(AssetHandle handle) const`
+
+Type-safe accessor for model data.
+
+### Loading Cubemaps
+
+#### `AssetHandle loadCubemap(const std::filesystem::path& path)`
+
+Loads a cubemap from a single equirectangular HDR image.
+
+```cpp
+AssetHandle skybox = assets->loadCubemap("skybox/sunset.hdr");
+
+const CubemapData* data = assets->getCubemapData(skybox);
+if (data) {
+    logInfo("Loaded cubemap: {}x{} per face", data->faceWidth, data->faceHeight);
+}
+```
+
+#### `AssetHandle loadCubemap(posX, negX, posY, negY, posZ, negZ)`
+
+Loads a cubemap from 6 separate face images.
+
+```cpp
+AssetHandle skybox = assets->loadCubemap(
+    "skybox/right.png",  // +X
+    "skybox/left.png",   // -X
+    "skybox/top.png",    // +Y
+    "skybox/bottom.png", // -Y
+    "skybox/front.png",  // +Z
+    "skybox/back.png"    // -Z
+);
+```
+
+#### `const CubemapData* getCubemapData(AssetHandle handle) const`
+
+Type-safe accessor for cubemap data.
+
+```cpp
+const CubemapData* cubemap = assets->getCubemapData(handle);
+if (cubemap) {
+    // Access individual faces
+    for (size_t i = 0; i < 6; ++i) {
+        const auto& facePixels = cubemap->facePixels[i];
+        logInfo("Face {} size: {} bytes", i, facePixels.size());
+    }
+}
+```
+
+### Loading Materials
+
+#### `const MaterialData* getMaterialData(AssetHandle handle) const`
+
+Type-safe accessor for material data.
+
+```cpp
+AssetHandle material = assets->registerAsset(AssetType::Material, "materials/metal.lua");
+assets->loadAsset(material);
+
+const MaterialData* data = assets->getMaterialData(material);
+if (data) {
+    logInfo("Material: {}", data->name);
+    logInfo("Metallic: {}, Roughness: {}", data->metallicFactor, data->roughnessFactor);
+
+    // Access texture references
+    if (!data->baseColorTexture.path.empty()) {
+        AssetHandle colorTex = data->baseColorTexture.handle;
+        // Load and use the texture
+    }
 }
 ```
 
@@ -853,7 +1092,7 @@ assets->loadAssetAsync(handle, [this](AssetHandle h, AssetState state) {
     } else {
         // Failure path
         AssetMetadata meta = assets->getAssetMetadata(h);
-        spdlog::error("Failed to load asset: {}",
+        logError("Failed to load asset: {}",
             meta.errorMessage.value_or("Unknown error"));
 
         // Load fallback asset
@@ -990,8 +1229,6 @@ private:
 ### Example 1: Loading a Texture
 
 ```cpp
-#include <bestow/bestow.h>
-
 void Game::loadPlayerTexture(IAssetSystem* assets, IGraphicsSystem* graphics) {
     // 1. Register the asset
     AssetHandle textureHandle = assets->registerAsset(
@@ -1008,7 +1245,7 @@ void Game::loadPlayerTexture(IAssetSystem* assets, IGraphicsSystem* graphics) {
         const TextureData* texture = assets->getAsset<TextureData>(textureHandle);
 
         if (texture) {
-            spdlog::info("Loaded texture: {}x{} with {} channels",
+            logInfo("Loaded texture: {}x{} with {} channels",
                 texture->width, texture->height, texture->channels);
 
             // 5. Upload to GPU via Graphics System
@@ -1023,7 +1260,7 @@ void Game::loadPlayerTexture(IAssetSystem* assets, IGraphicsSystem* graphics) {
     } else {
         // Handle failure
         AssetMetadata meta = assets->getAssetMetadata(textureHandle);
-        spdlog::error("Failed to load texture: {}",
+        logError("Failed to load texture: {}",
             meta.errorMessage.value_or("Unknown error"));
     }
 }
@@ -1045,9 +1282,9 @@ public:
                 loadedAssets_++;
 
                 if (state == AssetState::Loaded) {
-                    spdlog::info("Loaded asset {} of {}", loadedAssets_, totalAssets_);
+                    logInfo("Loaded asset {} of {}", loadedAssets_, totalAssets_);
                 } else {
-                    spdlog::warn("Failed to load asset {} of {}", loadedAssets_, totalAssets_);
+                    logWarn("Failed to load asset {} of {}", loadedAssets_, totalAssets_);
                 }
 
                 if (loadedAssets_ == totalAssets_) {
@@ -1063,7 +1300,7 @@ public:
 
 private:
     void onAllAssetsLoaded() {
-        spdlog::info("All level assets loaded!");
+        logInfo("All level assets loaded!");
         // Transition to gameplay
     }
 
@@ -1088,12 +1325,12 @@ public:
             shaderSubId_ = assets_->subscribeToType(
                 AssetType::Shader,
                 [this](AssetHandle h, AssetType t) {
-                    spdlog::info("Shader {} changed, recompiling...", h.uuid);
+                    logInfo("Shader {} changed, recompiling...", h.uuid);
                     recompileShader(h);
                 }
             );
 
-            spdlog::info("Shader hot reload enabled");
+            logInfo("Shader hot reload enabled");
         #endif
     }
 
@@ -1107,27 +1344,15 @@ public:
 
     void recompileShader(AssetHandle handle) {
         // Get updated shader source
-        const ShaderData* shader = assets_->getShaderData(handle);
+        const ShaderData* shader = assets_->getAsset<ShaderData>(handle);
         if (!shader) return;
 
-        // Recompile GLSL to SPIR-V
-        assets_->compileShaderAsync(handle, [this](AssetHandle h, AssetState state) {
-            if (state == AssetState::Loaded) {
-                spdlog::info("Shader recompiled successfully");
-
-                // Re-upload to GPU
-                const ShaderData* updated = assets_->getShaderData(h);
-                uploadToGPU(h, updated->spirvBytecode);
-            } else {
-                // Show compilation errors
-                const ShaderData* failed = assets_->getShaderData(h);
-                spdlog::error("Shader compilation failed: {}", failed->compileError);
-            }
-        });
+        // Re-upload to GPU
+        uploadToGPU(handle, shader);
     }
 
 private:
-    void uploadToGPU(AssetHandle handle, const std::vector<uint32_t>& spirv) {
+    void uploadToGPU(AssetHandle handle, const ShaderData* shaderData) {
         // Vulkan/OpenGL shader upload logic
     }
 
@@ -1136,48 +1361,48 @@ private:
 };
 ```
 
-### Example 4: Loading JSON Configuration
+### Example 4: Loading a 3D Model
 
 ```cpp
-struct GameConfig {
-    int maxHealth = 100;
-    float moveSpeed = 200.0f;
-    std::string playerName = "Player";
-};
+void Game::loadCharacterModel(IAssetSystem* assets) {
+    // Load model with meshes and materials
+    AssetHandle model = assets->loadModel(":assets:/models/character.gltf");
 
-GameConfig loadGameConfig(IAssetSystem* assets) {
-    AssetHandle configHandle = assets->registerAsset(
-        AssetType::Data,
-        ":assets:/config/game.json"
-    );
-
-    assets->loadAsset(configHandle);
-
-    const DataAsset* data = assets->getAsset<DataAsset>(configHandle);
-
-    GameConfig config;
-
-    if (data && data->isJson) {
-        // Parse JSON using nlohmann::json
-        const auto& json = std::any_cast<const nlohmann::json&>(data->jsonData);
-
-        if (json.contains("player")) {
-            config.maxHealth = json["player"].value("maxHealth", 100);
-            config.moveSpeed = json["player"].value("moveSpeed", 200.0f);
-            config.playerName = json["player"].value("name", "Player");
-        }
-
-        spdlog::info("Loaded config: maxHealth={}, moveSpeed={}, name={}",
-            config.maxHealth, config.moveSpeed, config.playerName);
-    } else {
-        spdlog::warn("Failed to load config, using defaults");
+    const ModelData* data = assets->getModelData(model);
+    if (!data) {
+        logError("Failed to load character model");
+        return;
     }
 
-    return config;
+    logInfo("Loaded model: {} with {} meshes", data->name, data->meshes.size());
+
+    // Upload all meshes to GPU
+    for (const MeshData& mesh : data->meshes) {
+        graphics->uploadMesh(mesh);
+    }
+
+    // Load material textures
+    for (const MaterialData& material : data->materials) {
+        if (!material.baseColorTexture.path.empty()) {
+            AssetHandle texHandle = assets->registerAsset(
+                AssetType::Texture,
+                material.baseColorTexture.path
+            );
+            assets->loadAssetAsync(texHandle);
+        }
+    }
+
+    // Setup animations
+    if (!data->animations.empty()) {
+        logInfo("Found {} animations", data->animations.size());
+        for (const ModelData::Animation& anim : data->animations) {
+            logInfo("Animation: {} ({:.2f}s)", anim.name, anim.duration);
+        }
+    }
 }
 ```
 
-### Example 5: Loading Sounds for Audio System
+### Example 5: Loading and Playing Sounds
 
 ```cpp
 class AudioSystem {
@@ -1205,9 +1430,9 @@ public:
 
                     if (result == FMOD_OK) {
                         sounds_[name] = {h, fmodSound};
-                        spdlog::info("Loaded sound: {}", name);
+                        logInfo("Loaded sound: {}", name);
                     } else {
-                        spdlog::error("Failed to create FMOD sound: {}", name);
+                        logError("Failed to create FMOD sound: {}", name);
                     }
                 }
             }
@@ -1234,113 +1459,46 @@ private:
 };
 ```
 
-### Example 6: Complete Game Initialization
+### Example 6: Shader Compilation with Error Handling
 
 ```cpp
-class Game {
-public:
-    void initialize() {
-        // Get systems via dependency injection
-        assets_ = engine_.getSystem<IAssetSystem>();
-        graphics_ = engine_.getSystem<IGraphicsSystem>();
-        audio_ = engine_.getSystem<IAudioSystem>();
+void GraphicsSystem::loadAndCompileShader(IAssetSystem* assets, const std::string& path) {
+    // Load shader source
+    AssetHandle shader = assets->loadShader(path);
 
-        // Enable hot reload for development
-        #if defined(BESTOW_DEV_TOOLS)
-            assets_->enableHotReload(true);
-            setupHotReloadCallbacks();
-        #endif
+    if (!assets->isShaderCompilationSupported()) {
+        logWarn("SPIR-V compilation not supported, using GLSL only");
 
-        // Load critical assets synchronously
-        loadCriticalAssets();
-
-        // Load remaining assets asynchronously
-        loadOptionalAssets();
-    }
-
-    void update() {
-        // MUST be called every frame
-        assets_->update();
-
-        // Rest of game loop...
-    }
-
-private:
-    void loadCriticalAssets() {
-        spdlog::info("Loading critical assets...");
-
-        // Player texture
-        playerTexture_ = assets_->registerAsset(
-            AssetType::Texture, ":assets:/textures/player.png"
-        );
-        assets_->loadAsset(playerTexture_);
-
-        // UI font
-        uiFont_ = assets_->registerAsset(
-            AssetType::Font, ":assets:/fonts/main.ttf"
-        );
-        assets_->loadAsset(uiFont_);
-
-        // Jump sound
-        jumpSound_ = assets_->registerAsset(
-            AssetType::Sound, ":assets:/sounds/jump.wav"
-        );
-        assets_->loadAsset(jumpSound_);
-
-        spdlog::info("Critical assets loaded");
-    }
-
-    void loadOptionalAssets() {
-        spdlog::info("Loading optional assets...");
-
-        // Background music (streamed)
-        bgMusic_ = assets_->registerAsset(
-            AssetType::Music, ":assets:/music/theme.ogg"
-        );
-        assets_->loadAssetAsync(bgMusic_, [this](AssetHandle h, AssetState s) {
-            if (s == AssetState::Loaded) {
-                audio_->playMusic(h, true);  // Loop
-            }
-        });
-
-        // Level textures
-        for (int i = 0; i < 10; ++i) {
-            std::string path = std::format(":assets:/textures/tile_{}.png", i);
-            AssetHandle h = assets_->registerAsset(AssetType::Texture, path);
-            assets_->loadAssetAsync(h);
+        // Use GLSL source directly
+        const ShaderData* data = assets->getShaderData(shader);
+        if (data) {
+            compileGLSL(data->glslSource);
         }
+        return;
     }
 
-    void setupHotReloadCallbacks() {
-        // Reload textures on change
-        textureSubId_ = assets_->subscribeToType(
-            AssetType::Texture,
-            [this](AssetHandle h, AssetType t) {
-                graphics_->reloadTexture(h);
+    // Compile to SPIR-V asynchronously
+    assets->compileShaderAsync(shader, [this, path](AssetHandle h, AssetState state) {
+        const ShaderData* data = assets_->getShaderData(h);
+        if (!data) return;
+
+        if (state == AssetState::Loaded && data->compiled) {
+            logInfo("Shader compiled: {}", path);
+            logInfo("SPIR-V size: {} bytes", data->spirvBytecode.size() * 4);
+
+            // Create Vulkan shader module
+            createVulkanShaderModule(h, data->spirvBytecode);
+        } else {
+            logError("Shader compilation failed: {}", path);
+            if (!data->compileError.empty()) {
+                logError("Compilation errors:\n{}", data->compileError);
             }
-        );
 
-        // Reload sounds on change
-        soundSubId_ = assets_->subscribeToType(
-            AssetType::Sound,
-            [this](AssetHandle h, AssetType t) {
-                audio_->reloadSound(h);
-            }
-        );
-    }
-
-    IAssetSystem* assets_;
-    IGraphicsSystem* graphics_;
-    IAudioSystem* audio_;
-
-    AssetHandle playerTexture_;
-    AssetHandle uiFont_;
-    AssetHandle jumpSound_;
-    AssetHandle bgMusic_;
-
-    SubscriptionId textureSubId_ = InvalidSubscriptionId;
-    SubscriptionId soundSubId_ = InvalidSubscriptionId;
-};
+            // Fall back to GLSL for OpenGL
+            compileGLSL(data->glslSource);
+        }
+    });
+}
 ```
 
 ---
@@ -1356,6 +1514,8 @@ The Asset System is the **centralized file I/O gateway** for Bestow. Key takeawa
 5. **Subscribe to asset changes** to react to hot reloads
 6. **Store handles, not pointers** - handles survive reloads, pointers do not
 7. **Always check for load failures** and handle gracefully
+8. **Use specialized methods** - `loadShader()`, `loadMesh()`, `loadModel()`, `loadCubemap()` for convenience
+9. **Compile shaders to SPIR-V** asynchronously when targeting Vulkan
 
 For more information, see:
 - `/bestow-contract/src/bestow.assets.cppm` - Interface definition

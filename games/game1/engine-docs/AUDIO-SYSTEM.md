@@ -19,21 +19,27 @@
 
 The Bestow Audio System is a high-level audio engine built on top of FMOD Core API. It provides:
 
-- **Channel-based audio** for music, ambience, UI, and voice
-- **Positional 3D audio** with distance attenuation and doppler effects
-- **Channel groups** for flexible mixing and volume control
-- **Master volume** and global pause/resume controls
-- **Asset system integration** for hot-reload support
-- **Stub mode** for testing without FMOD (graceful degradation)
+- **Channel-based audio** for music, ambience, UI, and voice (managed playback)
+- **Positional 3D audio** with distance attenuation (fire-and-forget sound effects)
+- **Master volume** and global pause/resume/stop controls
+- **Channel groups** for categorical volume control
+- **Asset system integration** for loading sounds
+- **3D listener** for spatial audio positioning
 
-### FMOD Features Used
+### Key Concepts
 
-- 512 simultaneous channels (configurable)
-- Full 3D audio with listener positioning
-- Volume, pitch, and seek controls
-- Looping and one-shot playback
-- Distance-based attenuation
-- Velocity-based doppler shift
+**Channels** (Managed Playback):
+- Pre-defined channels: Music (0), Ambience (1), UI (2), Voice (3)
+- One sound per channel at a time
+- Full control: pause, resume, seek, volume, pitch
+- Can be assigned to channel groups for categorical volume control
+- Use for: background music, UI sounds, narration, ambient loops
+
+**Positional Sounds** (3D Sound Effects):
+- Play many simultaneously
+- Automatic 3D spatialization based on distance and listener position
+- Fire-and-forget (or track with returned handle)
+- Use for: footsteps, gunshots, explosions, entity sounds
 
 ---
 
@@ -43,140 +49,148 @@ The Bestow Audio System is a high-level audio engine built on top of FMOD Core A
 
 The audio system provides two playback models:
 
-#### Channel-Based Audio (Managed)
+#### Channel-Based Audio (Managed Playback)
 
 **Best for:** Background music, UI sounds, narration, ambient loops
 
 ```cpp
-// Named channels for different purposes
-Channels::Music      // Background music tracks
-Channels::Ambience   // Ambient soundscapes
-Channels::UI         // Button clicks, menu sounds
-Channels::Voice      // Dialogue and narration
+// Pre-defined channels (use these constants)
+Channels::Music      // Channel 0 - Background music tracks
+Channels::Ambience   // Channel 1 - Ambient soundscapes
+Channels::UI         // Channel 2 - Button clicks, menu sounds
+Channels::Voice      // Channel 3 - Dialogue and narration
+```
+
+**Example:**
+```cpp
+ChannelSound music{
+    .asset = musicAsset,
+    .volume = 0.7f,
+    .looping = true
+};
+audio->playOnChannel(Channels::Music, music);
 ```
 
 Characteristics:
-- **One sound per channel** - Playing a new sound replaces the current one
-- **Persistent control** - Pause, resume, seek, and adjust volume after playback starts
+- **One sound per channel** - Playing a new sound on a channel stops the previous sound
+- **Persistent control** - Pause, resume, seek, volume, pitch can be changed after playback starts
 - **Global control** - Affected by `pauseAll()`, `resumeAll()`, `stopAll()`
-- **Channel groups** - Can be assigned to groups for batch volume control
+- **Query state** - Check if playing, paused, position, etc. via `getChannelState()`
 
-#### Positional Audio (Fire-and-Forget)
+#### Positional Audio (3D Sound Effects)
 
 **Best for:** Sound effects tied to game entities, footsteps, gunshots, explosions
 
 ```cpp
-PositionalSound sound{
-    .asset = footstepAsset,
-    .position = playerPosition,
-    .minDistance = 5.0f,    // Full volume within this radius
-    .maxDistance = 50.0f    // Silent beyond this radius
+PositionalSound explosion{
+    .asset = explosionAsset,
+    .position = Vec3{100.0f, 50.0f, 0.0f},
+    .volume = 1.0f,
+    .minDistance = 10.0f,   // Full volume within this radius
+    .maxDistance = 200.0f   // Silent beyond this radius
 };
-SoundHandle handle = audio->playPositional(sound);
+SoundHandle handle = audio->playPositional(explosion);
 ```
 
 Characteristics:
 - **Multiple simultaneous sounds** - Can play many at once
-- **3D spatialization** - Volume/pan based on distance and direction from listener
+- **3D spatialization** - Volume and panning based on distance and direction from listener
 - **Fire-and-forget** - Typically plays once and cleans up automatically
-- **Optional tracking** - Can update position or stop early using the returned handle
-
-### Channel Groups
-
-Channel groups allow you to control multiple channels together:
-
-```cpp
-// Create a group and set volume
-audio->setGroupVolume("sfx", 0.8f);
-
-// Assign channels to the group
-audio->assignChannelToGroup(Channels::UI, "sfx");
-audio->assignChannelToGroup(42, "sfx");  // Custom channel ID
-
-// All channels in "sfx" group now play at 80% volume
-```
-
-Use cases:
-- Settings menu with separate Music/SFX/Voice sliders
-- Mute all combat sounds during cutscenes
-- Ducking (lowering music volume during dialogue)
+- **Optional tracking** - Update position with `updatePositionalPosition(handle, newPos)`
+- **Check state** - Query if still playing with `isPositionalPlaying(handle)`
 
 ### 3D Audio Listener
 
-The listener represents the player's "ears" in the game world:
+The listener represents the player's "ears" in the game world. Update it every frame:
 
 ```cpp
 AudioListener listener{
-    .position = cameraPosition,
-    .forward = cameraForward,    // Where the camera faces
-    .up = Vec3{0.0f, 1.0f, 0.0f},
-    .velocity = playerVelocity   // For doppler effect
+    .position = cameraPosition,      // Where the listener is
+    .forward = cameraForward,        // Which direction they're facing
+    .up = Vec3{0.0f, 1.0f, 0.0f},   // Up direction (usually Y-up)
+    .velocity = cameraVelocity       // Optional: for Doppler effect
 };
 audio->setListener(listener);
 ```
 
-Update the listener every frame for proper 3D audio spatialization.
+The listener position determines how positional sounds are heard (volume, panning, distance attenuation).
 
 ---
 
 ## Getting Started
 
-### Initialization
+### Basic Usage
+
+The audio system is injected via dependency injection. Here's a minimal example:
 
 ```cpp
-import bestow.audio;
-import bestow.audio.impl;
+import std;
+import bestow;
+import bestow.core;
 
-// Get the audio system (through dependency injection)
-class MyGame : public IApplication {
+class MyGame : public bestow::core::Application {
 public:
-    MyGame(IAudioSystem& audio, IAssetSystem& assets)
-        : audio_(&audio), assets_(&assets) {}
+    bool initialize(bestow::core::Engine& engine) override {
+        engine_ = &engine;
+        auto& sys = engine.systems();
 
-    void run() override {
-        // Initialize audio system
-        if (!audio_->initialize()) {
-            std::cerr << "Failed to initialize audio system" << std::endl;
-            return;
-        }
+        // Load a sound asset
+        AssetHandle musicAsset = sys.assets->registerAsset(
+            AssetType::Sound,
+            ":assets:/music/theme.ogg"
+        );
+        sys.assets->loadAsset(musicAsset);
 
-        // Game loop...
+        // Play background music on the Music channel
+        ChannelSound music{
+            .asset = musicAsset,
+            .volume = 0.7f,
+            .looping = true
+        };
+        sys.audio->playOnChannel(Channels::Music, music);
+
+        return true;
+    }
+
+    void updateFixed(DeltaTime dt) override {
+        auto& sys = engine_->systems();
+
+        // IMPORTANT: Call update() every frame for FMOD to process
+        sys.audio->update(dt);
+
+        handleInput();
+        // ... other updates
+    }
+
+    void shutdown() override {
+        auto& sys = engine_->systems();
+        sys.audio->stopAll();
     }
 
 private:
-    IAudioSystem* audio_;
-    IAssetSystem* assets_;
+    bestow::core::Engine* engine_ = nullptr;
 };
 ```
 
-### Update Loop
+### Important Notes
 
-Call `update()` every frame to process FMOD events and clean up finished sounds:
-
-```cpp
-void update(float deltaTime) {
-    audio_->update(deltaTime);  // CRITICAL - must call every frame
-}
-```
-
-What `update()` does:
-- Processes FMOD's internal systems (3D audio, virtual channels, etc.)
-- Updates channel states (playing, paused, position, volume)
-- Cleans up finished positional sounds
-- Handles fade-outs and transitions
-
-### Shutdown
-
-```cpp
-void shutdown() {
-    audio_->stopAll();      // Stop all playing sounds
-    audio_->shutdown();     // Release FMOD resources
-}
-```
+- **Call `update(dt)` every frame** - The audio system requires regular updates for FMOD to process events
+- **Use AssetSystem for loading** - Always load sounds through `IAssetSystem`
+- **Call `stopAll()` on exit** - Clean up playing sounds before shutdown
 
 ---
 
 ## API Reference
+
+### Lifecycle
+
+```cpp
+bool initialize();
+void shutdown();
+void update(DeltaTime dt);
+```
+
+**IMPORTANT:** Call `update(dt)` every frame in your game loop. This processes FMOD events, updates streaming, and handles internal bookkeeping.
 
 ### Channel-Based Audio
 
@@ -191,26 +205,29 @@ Plays a sound on the specified channel. If another sound is already playing on t
 **Parameters:**
 ```cpp
 struct ChannelSound {
-    AssetHandle asset;              // Sound asset from AssetSystem
-    Volume volume = 1.0f;           // 0.0 = silent, 1.0 = full, >1.0 = amplified
-    float pitch = 1.0f;             // 1.0 = normal, 2.0 = double speed, 0.5 = half speed
-    bool looping = false;           // true = loop forever, false = play once
-    float fadeInTime = 0.0f;        // Fade-in duration in seconds (TODO: not yet implemented)
-    std::optional<float> startTime; // Start playback at this time offset (seconds)
+    AssetHandle asset;         // Sound asset from AssetSystem
+    Volume volume = 1.0f;      // 0.0 = silent, 1.0 = full, >1.0 = amplified
+    float pitch = 1.0f;        // 1.0 = normal, 2.0 = double speed, 0.5 = half speed
+    bool looping = false;      // true = loop forever, false = play once
+    float fadeInTime = 0.0f;   // Seconds to fade in from silence
+    std::optional<float> startTime;  // Optional: Start at specific time offset
 };
 ```
 
 **Example:**
 ```cpp
-AssetHandle musicAsset = assets->registerAsset(AssetType::Sound, ":assets:/music/battle_theme.ogg");
-assets->loadAsset(musicAsset);
+AssetHandle musicAsset = sys.assets->registerAsset(
+    AssetType::Sound, ":assets:/music/battle_theme.ogg"
+);
+sys.assets->loadAsset(musicAsset);
 
 ChannelSound music{
     .asset = musicAsset,
     .volume = 0.7f,
-    .looping = true
+    .looping = true,
+    .fadeInTime = 2.0f  // Fade in over 2 seconds
 };
-audio->playOnChannel(Channels::Music, music);
+sys.audio->playOnChannel(Channels::Music, music);
 ```
 
 #### Stop Channel
@@ -219,16 +236,16 @@ audio->playOnChannel(Channels::Music, music);
 void stopChannel(Channel channel, float fadeOutTime = 0.0f);
 ```
 
-Stops playback on the specified channel.
+Stops playback on the specified channel. Optionally fades out over the specified time.
 
 **Parameters:**
-- `channel` - The channel to stop
-- `fadeOutTime` - Duration of fade-out in seconds (TODO: not yet implemented - currently stops immediately)
+- `channel` - The channel to stop (Channels::Music, etc.)
+- `fadeOutTime` - Seconds to fade out (default: 0.0 = immediate stop)
 
 **Example:**
 ```cpp
-audio->stopChannel(Channels::Music);            // Immediate stop
-audio->stopChannel(Channels::Music, 1.5f);      // TODO: 1.5s fade-out (not yet implemented)
+sys.audio->stopChannel(Channels::Music);              // Stop immediately
+sys.audio->stopChannel(Channels::Music, 3.0f);        // Fade out over 3 seconds
 ```
 
 #### Pause/Resume Channel
@@ -242,9 +259,9 @@ Pauses or resumes a specific channel without stopping it. Playback position is p
 
 **Example:**
 ```cpp
-audio->pauseChannel(Channels::Music);   // Pause music
+sys.audio->pauseChannel(Channels::Music);   // Pause music
 // ... later ...
-audio->resumeChannel(Channels::Music);  // Resume from where it paused
+sys.audio->resumeChannel(Channels::Music);  // Resume from where it paused
 ```
 
 #### Channel Volume
@@ -260,7 +277,7 @@ Sets the volume of a specific channel. Can be changed while playing.
 
 **Example:**
 ```cpp
-audio->setChannelVolume(Channels::Music, 0.5f);  // 50% volume
+sys.audio->setChannelVolume(Channels::Music, 0.5f);  // 50% volume
 ```
 
 #### Channel Pitch
@@ -276,8 +293,8 @@ Changes playback speed and pitch. Affects both tempo and frequency.
 
 **Example:**
 ```cpp
-audio->setChannelPitch(Channels::Voice, 0.8f);  // Slow, deep voice
-audio->setChannelPitch(Channels::Voice, 1.5f);  // Fast, high voice
+sys.audio->setChannelPitch(Channels::Voice, 0.8f);  // Slow, deep voice
+sys.audio->setChannelPitch(Channels::Voice, 1.5f);  // Fast, high voice
 ```
 
 #### Seek Channel
@@ -293,8 +310,8 @@ Jumps to a specific time position in the playing sound.
 
 **Example:**
 ```cpp
-audio->seekChannel(Channels::Music, 30.0f);  // Jump to 30 seconds
-audio->seekChannel(Channels::Music, 0.0f);   // Rewind to start
+sys.audio->seekChannel(Channels::Music, 30.0f);  // Jump to 30 seconds
+sys.audio->seekChannel(Channels::Music, 0.0f);   // Rewind to start
 ```
 
 #### Channel State
@@ -306,11 +323,11 @@ bool isChannelPlaying(Channel channel) const;
 
 Query the current state of a channel.
 
-**ChannelState:**
+**ChannelState struct:**
 ```cpp
 struct ChannelState {
-    bool isPlaying = false;  // True if sound is playing
-    bool isPaused = false;   // True if paused
+    bool isPlaying = false;  // Currently playing (not paused/stopped)
+    bool isPaused = false;   // Currently paused
     float position = 0.0f;   // Current playback position (seconds)
     float length = 0.0f;     // Total sound length (seconds)
     Volume volume = 1.0f;    // Current volume
@@ -319,10 +336,16 @@ struct ChannelState {
 
 **Example:**
 ```cpp
-if (audio->isChannelPlaying(Channels::Music)) {
-    ChannelState state = audio->getChannelState(Channels::Music);
+// Simple check
+if (sys.audio->isChannelPlaying(Channels::Music)) {
+    std::cout << "Music is playing\n";
+}
+
+// Detailed state
+auto state = sys.audio->getChannelState(Channels::Music);
+if (state.isPlaying) {
     float progress = state.position / state.length;
-    std::cout << "Music is " << (progress * 100) << "% complete\n";
+    std::cout << "Music: " << (progress * 100.0f) << "% complete\n";
 }
 ```
 
@@ -339,14 +362,14 @@ Plays a 3D positioned sound in the game world. Returns a handle for tracking.
 **Parameters:**
 ```cpp
 struct PositionalSound {
-    AssetHandle asset;              // Sound asset
-    Vec3 position{0.0f};            // World position of sound source
-    Volume volume = 1.0f;           // Base volume before distance attenuation
-    float pitch = 1.0f;             // Pitch multiplier
-    float minDistance = 1.0f;       // Full volume within this radius
-    float maxDistance = 100.0f;     // Silent beyond this radius
-    std::optional<Vec3> velocity;   // Movement for doppler effect
-    std::function<void()> onComplete; // TODO: Callback when finished (not yet implemented)
+    AssetHandle asset;          // Sound asset
+    Vec3 position{0.0f};        // World position of sound source
+    Volume volume = 1.0f;       // Base volume before distance attenuation
+    float pitch = 1.0f;         // Pitch multiplier
+    float minDistance = 1.0f;   // Full volume within this radius
+    float maxDistance = 100.0f; // Silent beyond this radius
+    std::optional<Vec3> velocity; // Optional: for Doppler effect
+    std::function<void()> onComplete; // Optional: Callback when finished
 };
 ```
 
@@ -359,7 +382,7 @@ PositionalSound explosion{
     .minDistance = 10.0f,
     .maxDistance = 200.0f
 };
-SoundHandle handle = audio->playPositional(explosion);
+SoundHandle handle = sys.audio->playPositional(explosion);
 ```
 
 #### Stop Positional Sound
@@ -372,9 +395,9 @@ Stops a specific positional sound before it finishes naturally.
 
 **Example:**
 ```cpp
-SoundHandle loopingEngine = audio->playPositional(engineSound);
+SoundHandle loopingEngine = sys.audio->playPositional(engineSound);
 // ... later ...
-audio->stopPositional(loopingEngine);  // Stop the engine sound
+sys.audio->stopPositional(loopingEngine);  // Stop the engine sound
 ```
 
 #### Update Position
@@ -390,7 +413,7 @@ Updates the world position of a playing positional sound. Use this for sounds at
 // In your update loop
 void updateMovingEntity(Entity entity) {
     Vec3 newPos = getEntityPosition(entity);
-    audio->updatePositionalPosition(entitySoundHandle, newPos);
+    sys.audio->updatePositionalPosition(entitySoundHandle, newPos);
 }
 ```
 
@@ -400,12 +423,14 @@ void updateMovingEntity(Entity entity) {
 bool isPositionalPlaying(SoundHandle handle) const;
 ```
 
-Returns true if the sound is still playing.
+Checks if a positional sound is still playing.
 
 **Example:**
 ```cpp
-if (!audio->isPositionalPlaying(soundHandle)) {
-    std::cout << "Sound finished playing\n";
+if (sys.audio->isPositionalPlaying(footstepHandle)) {
+    // Footstep sound is still playing, don't play another yet
+} else {
+    // Safe to play next footstep
 }
 ```
 
@@ -418,29 +443,28 @@ void setListener(const AudioListener& listener);
 AudioListener getListener() const;
 ```
 
-Sets the listener's position and orientation. This should match your camera or player position.
+Sets the listener's position and orientation. This should match your camera or player position. Update every frame for proper 3D audio spatialization.
 
 **Parameters:**
 ```cpp
 struct AudioListener {
-    Vec3 position{0.0f};            // Listener position in world space
+    Vec3 position{0.0f};             // Listener position in world space
     Vec3 forward{0.0f, 0.0f, -1.0f}; // Forward direction (normalized)
-    Vec3 up{0.0f, 1.0f, 0.0f};      // Up direction (normalized)
-    Vec3 velocity{0.0f};            // Movement velocity for doppler
+    Vec3 up{0.0f, 1.0f, 0.0f};       // Up direction (normalized)
+    Vec3 velocity{0.0f};             // Optional: for Doppler effect
 };
 ```
 
 **Example:**
 ```cpp
-// Update listener every frame
-void updateAudio(const Camera& camera, const Player& player) {
+// Update listener every frame to match camera/player
+void updateAudio(const Camera& camera) {
     AudioListener listener{
         .position = camera.position,
         .forward = camera.forward,
-        .up = camera.up,
-        .velocity = player.velocity
+        .up = camera.up
     };
-    audio->setListener(listener);
+    sys.audio->setListener(listener);
 }
 ```
 
@@ -457,12 +481,12 @@ Controls the global volume multiplier for all audio.
 
 **Example:**
 ```cpp
-audio->setMasterVolume(0.0f);   // Mute everything
-audio->setMasterVolume(0.5f);   // 50% volume
-audio->setMasterVolume(1.0f);   // Full volume
+sys.audio->setMasterVolume(0.0f);   // Mute everything
+sys.audio->setMasterVolume(0.5f);   // 50% volume
+sys.audio->setMasterVolume(1.0f);   // Full volume
 ```
 
-#### Pause/Resume All
+#### Pause/Resume/Stop All
 
 ```cpp
 void pauseAll();
@@ -470,25 +494,27 @@ void resumeAll();
 void stopAll();
 ```
 
-Global controls affecting all active sounds.
+Global controls affecting all active sounds (both channels and positional).
 
 **Example:**
 ```cpp
 void togglePause() {
-    if (isPaused) {
-        audio->resumeAll();
+    if (isPaused_) {
+        sys.audio->resumeAll();
     } else {
-        audio->pauseAll();
+        sys.audio->pauseAll();
     }
-    isPaused = !isPaused;
+    isPaused_ = !isPaused_;
 }
 
 void returnToMainMenu() {
-    audio->stopAll();  // Stop everything (music, SFX, etc.)
+    sys.audio->stopAll();  // Stop everything (music, SFX, etc.)
 }
 ```
 
 ### Channel Groups
+
+Channel groups allow you to control volume for categories of sounds (e.g., "Music", "SFX", "Voice").
 
 #### Set Group Volume
 
@@ -496,13 +522,14 @@ void returnToMainMenu() {
 void setGroupVolume(const std::string& group, Volume volume);
 ```
 
-Creates a channel group (if it doesn't exist) and sets its volume. All channels in this group will be affected.
+Sets the volume for all channels assigned to a group.
 
 **Example:**
 ```cpp
-audio->setGroupVolume("sfx", 0.8f);     // 80% volume for SFX
-audio->setGroupVolume("music", 0.6f);   // 60% volume for music
-audio->setGroupVolume("voice", 1.0f);   // 100% volume for dialogue
+// Create groups and set volumes
+sys.audio->setGroupVolume("Music", 0.7f);
+sys.audio->setGroupVolume("SFX", 0.9f);
+sys.audio->setGroupVolume("Voice", 1.0f);
 ```
 
 #### Assign Channel to Group
@@ -511,19 +538,18 @@ audio->setGroupVolume("voice", 1.0f);   // 100% volume for dialogue
 void assignChannelToGroup(Channel channel, const std::string& group);
 ```
 
-Assigns a channel to a group. The channel will inherit the group's volume multiplier.
+Assigns a channel to a group for categorical volume control.
 
 **Example:**
 ```cpp
-// Set up groups
-audio->setGroupVolume("sfx", 0.7f);
+// Organize channels into groups
+sys.audio->assignChannelToGroup(Channels::Music, "Music");
+sys.audio->assignChannelToGroup(Channels::Ambience, "Music");
+sys.audio->assignChannelToGroup(Channels::UI, "SFX");
+sys.audio->assignChannelToGroup(Channels::Voice, "Voice");
 
-// Assign channels
-audio->assignChannelToGroup(Channels::UI, "sfx");
-audio->assignChannelToGroup(42, "sfx");  // Custom channel for footsteps
-
-// Now changing group volume affects all assigned channels
-audio->setGroupVolume("sfx", 0.3f);  // Both UI and channel 42 are now quieter
+// Now volume controls affect entire categories
+sys.audio->setGroupVolume("Music", 0.5f);  // Affects both Music and Ambience channels
 ```
 
 ---
@@ -548,32 +574,32 @@ The audio system integrates with Bestow's AssetSystem for loading and hot-reload
 
 ```cpp
 // Register the asset
-AssetHandle soundAsset = assets->registerAsset(
+AssetHandle soundAsset = sys.assets->registerAsset(
     AssetType::Sound,
     ":assets:/audio/jump.wav"
 );
 
 // Load it (sync or async)
-assets->loadAsset(soundAsset);
+sys.assets->loadAsset(soundAsset);
 
 // Use it
 ChannelSound sound{.asset = soundAsset};
-audio->playOnChannel(Channels::UI, sound);
+sys.audio->playOnChannel(Channels::UI, sound);
 ```
 
 #### Async Loading
 
 ```cpp
-AssetHandle musicAsset = assets->registerAsset(
+AssetHandle musicAsset = sys.assets->registerAsset(
     AssetType::Sound,
     ":assets:/music/battle_theme.ogg"
 );
 
-assets->loadAssetAsync(musicAsset, [this](AssetHandle handle, AssetState state) {
+sys.assets->loadAssetAsync(musicAsset, [this](AssetHandle handle, AssetState state) {
     if (state == AssetState::Loaded) {
         std::cout << "Music loaded! Ready to play.\n";
         ChannelSound music{.asset = handle, .looping = true};
-        audio->playOnChannel(Channels::Music, music);
+        sys.audio->playOnChannel(Channels::Music, music);
     }
 });
 ```
@@ -582,42 +608,15 @@ assets->loadAssetAsync(musicAsset, [this](AssetHandle handle, AssetState state) 
 
 ```cpp
 // Subscribe to asset changes
-SubscriptionId subId = assets->subscribe(soundAsset, [this](AssetHandle handle, AssetType type) {
+SubscriptionId subId = sys.assets->subscribe(soundAsset, [this](AssetHandle handle, AssetType type) {
     std::cout << "Sound was reloaded from disk!\n";
     // Audio system automatically invalidates cache
     // Next playback will use the new audio data
 });
 
 // Enable hot reload monitoring
-assets->enableHotReload(true);
+sys.assets->enableHotReload(true);
 ```
-
-### Preloading vs Streaming
-
-#### Preload (Default)
-
-Best for short sounds (SFX, UI):
-
-```cpp
-// Sound is fully loaded into memory
-AssetHandle sfxAsset = assets->registerAsset(AssetType::Sound, ":assets:/sfx/explosion.wav");
-assets->loadAsset(sfxAsset);
-```
-
-**Pros:** Instant playback, no disk I/O during gameplay
-**Cons:** Uses more memory
-
-#### Streaming (TODO)
-
-Best for long music tracks:
-
-```cpp
-// TODO: Streaming is not yet implemented
-// For now, all sounds are preloaded
-```
-
-**Pros:** Lower memory usage
-**Cons:** Disk I/O during playback (may cause hitches on slow storage)
 
 ### Asset Paths
 
@@ -665,42 +664,20 @@ FMOD automatically handles stereo panning based on sound position relative to th
 - Sound to the right → Louder in right channel
 - Sound directly ahead/behind → Equal in both channels
 
-### Doppler Effect
-
-Enable doppler shift by setting the listener and sound velocities:
-
-```cpp
-// Set listener velocity (player movement)
-AudioListener listener{
-    .position = playerPosition,
-    .forward = playerForward,
-    .velocity = playerVelocity  // e.g., Vec3{10.0f, 0.0f, 0.0f}
-};
-audio->setListener(listener);
-
-// Set sound velocity (moving car)
-PositionalSound carEngine{
-    .asset = engineAsset,
-    .position = carPosition,
-    .velocity = carVelocity  // e.g., Vec3{-20.0f, 0.0f, 0.0f}
-};
-```
-
-Sound pitch will shift based on relative velocity (higher pitch when approaching, lower when receding).
-
 ### Listener Orientation
 
-The listener's `forward` and `up` vectors affect which sounds you hear clearly:
+The listener's `forward` and `up` vectors determine the orientation for 3D audio spatialization:
 
 ```cpp
 AudioListener listener{
     .position = Vec3{0.0f, 0.0f, 0.0f},
     .forward = Vec3{1.0f, 0.0f, 0.0f},   // Facing right
-    .up = Vec3{0.0f, 1.0f, 0.0f}         // Standard up
+    .up = Vec3{0.0f, 1.0f, 0.0f}         // Standard up (Y-up)
 };
+sys.audio->setListener(listener);
 ```
 
-Sounds in front of the listener may be emphasized over sounds behind (depending on FMOD 3D settings).
+**Important:** Update the listener every frame to match your camera or player position for accurate 3D audio.
 
 ---
 
@@ -743,56 +720,34 @@ class AudioManager {
 public:
     void loadAllSounds(IAssetSystem& assets) {
         // UI sounds
-        uiClick = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/ui/button_click.wav");
-        uiHover = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/ui/menu_hover.wav");
+        uiClick_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/ui/button_click.wav");
+        uiHover_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/ui/menu_hover.wav");
 
         // Player sounds
-        playerJump = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/player/jump.wav");
-        playerLand = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/player/land.wav");
+        playerJump_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/player/jump.wav");
+        playerLand_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/sfx/player/land.wav");
 
         // Music
-        menuTheme = assets.registerAsset(AssetType::Sound, ":assets:/audio/music/menu_theme.ogg");
-        battleTheme = assets.registerAsset(AssetType::Sound, ":assets:/audio/music/battle_theme.ogg");
+        menuTheme_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/music/menu_theme.ogg");
+        battleTheme_ = assets.registerAsset(AssetType::Sound, ":assets:/audio/music/battle_theme.ogg");
 
         // Load critical sounds immediately
-        assets.loadAsset(uiClick);
-        assets.loadAsset(playerJump);
+        assets.loadAsset(uiClick_);
+        assets.loadAsset(playerJump_);
 
         // Load music asynchronously
-        assets.loadAssetAsync(menuTheme, onMusicLoaded);
+        assets.loadAssetAsync(menuTheme_, [](AssetHandle, AssetState) {});
     }
 
-    AssetHandle uiClick, uiHover;
-    AssetHandle playerJump, playerLand;
-    AssetHandle menuTheme, battleTheme;
+    AssetHandle uiClick() const { return uiClick_; }
+    AssetHandle playerJump() const { return playerJump_; }
+    // ... getters for other sounds
+
+private:
+    AssetHandle uiClick_, uiHover_;
+    AssetHandle playerJump_, playerLand_;
+    AssetHandle menuTheme_, battleTheme_;
 };
-```
-
-### Memory Management
-
-#### Sound Caching
-
-The audio system automatically caches loaded sounds for reuse:
-
-```cpp
-// First play loads from AssetSystem into FMOD
-audio->playOnChannel(Channels::UI, ChannelSound{.asset = clickSound});
-
-// Second play reuses cached FMOD sound (no reload)
-audio->playOnChannel(Channels::UI, ChannelSound{.asset = clickSound});
-```
-
-The cache is cleared when:
-- Audio system shuts down
-- `invalidateSoundCache()` is called (e.g., after hot reload)
-
-#### Unloading Sounds
-
-To free memory, unload sounds through the AssetSystem:
-
-```cpp
-assets->unloadAsset(soundAsset);  // Frees file data
-audio->invalidateSoundCache();    // Frees FMOD sound objects
 ```
 
 ### Audio Mixing
@@ -802,17 +757,16 @@ audio->invalidateSoundCache();    // Frees FMOD sound objects
 Audio volumes are multiplicative:
 
 ```
-Final Volume = Master × Group × Channel × Distance Attenuation
+Final Volume = Master × Group × Channel × Distance Attenuation (for positional)
 ```
 
 **Example:**
 ```cpp
-audio->setMasterVolume(0.8f);        // 80% master
-audio->setGroupVolume("sfx", 0.5f);  // 50% group
-audio->assignChannelToGroup(Channels::UI, "sfx");
-audio->setChannelVolume(Channels::UI, 0.6f);  // 60% channel
+sys.audio->setMasterVolume(0.8f);                   // 80% master
+sys.audio->setGroupVolume("Music", 0.75f);          // 75% group
+sys.audio->setChannelVolume(Channels::Music, 0.6f); // 60% channel
 
-// Final volume: 0.8 × 0.5 × 0.6 = 0.24 (24%)
+// Music plays at: 0.8 × 0.75 × 0.6 = 0.36 (36% volume)
 ```
 
 #### Ducking Music During Dialogue
@@ -820,31 +774,34 @@ audio->setChannelVolume(Channels::UI, 0.6f);  // 60% channel
 ```cpp
 void startDialogue(AssetHandle voiceAsset) {
     // Lower music volume
-    audio->setChannelVolume(Channels::Music, 0.3f);
+    sys.audio->setChannelVolume(Channels::Music, 0.3f);
 
     // Play dialogue
-    audio->playOnChannel(Channels::Voice, ChannelSound{.asset = voiceAsset});
+    sys.audio->playOnChannel(Channels::Voice, ChannelSound{.asset = voiceAsset});
 }
 
 void endDialogue() {
     // Restore music volume
-    audio->setChannelVolume(Channels::Music, 1.0f);
+    sys.audio->setChannelVolume(Channels::Music, 1.0f);
 }
 ```
 
-#### Crossfading Music
+#### Smooth Music Transitions
 
 ```cpp
-void crossfadeMusic(AssetHandle newMusic, float duration) {
-    // TODO: Fade-out is not yet implemented
-    // Current workaround: immediate switch
+void changeMusic(AssetHandle newMusic) {
+    // Fade out current music
+    sys.audio->stopChannel(Channels::Music, 2.0f);  // 2 second fade out
 
-    audio->stopChannel(Channels::Music);
-    audio->playOnChannel(Channels::Music, ChannelSound{
+    // Wait for fade out to complete (in practice, use a timer)
+    // Then play new music with fade in
+    ChannelSound music{
         .asset = newMusic,
+        .volume = 0.7f,
         .looping = true,
-        .fadeInTime = duration  // TODO: Not yet implemented
-    });
+        .fadeInTime = 2.0f  // 2 second fade in
+    };
+    sys.audio->playOnChannel(Channels::Music, music);
 }
 ```
 
@@ -857,13 +814,13 @@ FMOD has a channel limit (512 by default). Prioritize important sounds:
 ```cpp
 // Don't do this:
 for (int i = 0; i < 1000; i++) {
-    audio->playPositional(bulletSound);  // Will hit channel limit!
+    sys.audio->playPositional(bulletSound);  // Will hit channel limit!
 }
 
 // Do this instead:
-if (activeSounds < 100) {  // Custom limit
-    audio->playPositional(bulletSound);
-    activeSounds++;
+if (activeSounds_ < 100) {  // Custom limit
+    sys.audio->playPositional(bulletSound);
+    activeSounds_++;
 }
 ```
 
@@ -873,11 +830,11 @@ Don't play sounds that are too far away:
 
 ```cpp
 void playEntitySound(Vec3 entityPos, AssetHandle sound) {
-    Vec3 listenerPos = audio->getListener().position;
+    Vec3 listenerPos = sys.audio->getListener().position;
     float distance = glm::length(entityPos - listenerPos);
 
     if (distance < 150.0f) {  // Max audible distance
-        audio->playPositional(PositionalSound{
+        sys.audio->playPositional(PositionalSound{
             .asset = sound,
             .position = entityPos,
             .maxDistance = 100.0f
@@ -892,11 +849,11 @@ Only update positional sound positions when they move significantly:
 
 ```cpp
 void updateMovingSound(SoundHandle handle, Vec3 newPos) {
-    float distMoved = glm::length(newPos - lastSoundPosition);
+    float distMoved = glm::length(newPos - lastSoundPosition_);
 
     if (distMoved > 1.0f) {  // Update every 1 unit of movement
-        audio->updatePositionalPosition(handle, newPos);
-        lastSoundPosition = newPos;
+        sys.audio->updatePositionalPosition(handle, newPos);
+        lastSoundPosition_ = newPos;
     }
 }
 ```
@@ -936,22 +893,28 @@ public:
         ChannelSound music{
             .asset = menuMusic_,
             .volume = 0.7f,
-            .looping = true
+            .looping = true,
+            .fadeInTime = 1.5f
         };
         audio_->playOnChannel(Channels::Music, music);
     }
 
     void playGameMusic() {
+        // Fade out menu music
+        audio_->stopChannel(Channels::Music, 2.0f);
+
+        // Play game music after delay
         ChannelSound music{
             .asset = gameMusic_,
             .volume = 0.6f,
-            .looping = true
+            .looping = true,
+            .fadeInTime = 2.0f
         };
         audio_->playOnChannel(Channels::Music, music);
     }
 
     void stopMusic() {
-        audio_->stopChannel(Channels::Music);
+        audio_->stopChannel(Channels::Music, 1.0f);  // Fade out over 1 second
     }
 
 private:
@@ -1006,77 +969,7 @@ private:
 };
 ```
 
-### Example 3: Music Crossfade with State Machine
-
-```cpp
-enum class MusicState {
-    Menu,
-    Exploration,
-    Combat,
-    Victory
-};
-
-class AdaptiveMusicSystem {
-public:
-    AdaptiveMusicSystem(IAudioSystem& audio, IAssetSystem& assets)
-        : audio_(&audio), assets_(&assets) {}
-
-    void init() {
-        // Load all music tracks
-        tracks_[MusicState::Menu] = loadMusic("menu_theme.ogg");
-        tracks_[MusicState::Exploration] = loadMusic("exploration.ogg");
-        tracks_[MusicState::Combat] = loadMusic("combat.ogg");
-        tracks_[MusicState::Victory] = loadMusic("victory.ogg");
-
-        // Start with menu music
-        transitionTo(MusicState::Menu);
-    }
-
-    void transitionTo(MusicState newState) {
-        if (currentState_ == newState) return;
-
-        currentState_ = newState;
-
-        // TODO: Proper crossfade when implemented
-        // For now: immediate transition
-        ChannelSound music{
-            .asset = tracks_[newState],
-            .volume = 0.7f,
-            .looping = true
-        };
-        audio_->playOnChannel(Channels::Music, music);
-    }
-
-    void update(float deltaTime) {
-        // Example: Auto-transition based on game state
-        if (isInCombat() && currentState_ != MusicState::Combat) {
-            transitionTo(MusicState::Combat);
-        } else if (!isInCombat() && currentState_ == MusicState::Combat) {
-            transitionTo(MusicState::Exploration);
-        }
-    }
-
-private:
-    AssetHandle loadMusic(const std::string& filename) {
-        std::string path = ":assets:/music/" + filename;
-        AssetHandle asset = assets_->registerAsset(AssetType::Sound, path);
-        assets_->loadAsset(asset);
-        return asset;
-    }
-
-    bool isInCombat() {
-        // Game-specific logic
-        return false;
-    }
-
-    IAudioSystem* audio_;
-    IAssetSystem* assets_;
-    MusicState currentState_ = MusicState::Menu;
-    std::map<MusicState, AssetHandle> tracks_;
-};
-```
-
-### Example 4: 3D Ambient Soundscape
+### Example 3: 3D Ambient Soundscape
 
 ```cpp
 class AmbientSoundManager {
@@ -1153,7 +1046,7 @@ private:
 };
 ```
 
-### Example 5: UI Sound Manager
+### Example 4: UI Sound Manager with Channel Groups
 
 ```cpp
 class UISoundManager {
@@ -1171,9 +1064,9 @@ public:
         assets_->loadAsset(hoverSound_);
         assets_->loadAsset(errorSound_);
 
-        // Create UI group for volume control
-        audio_->setGroupVolume("ui", 0.7f);
-        audio_->assignChannelToGroup(Channels::UI, "ui");
+        // Set up channel group for UI sounds
+        audio_->assignChannelToGroup(Channels::UI, "UI");
+        audio_->setGroupVolume("UI", 0.7f);
     }
 
     void playClick() {
@@ -1192,7 +1085,7 @@ public:
     }
 
     void setUIVolume(float volume) {
-        audio_->setGroupVolume("ui", volume);
+        audio_->setGroupVolume("UI", volume);
     }
 
 private:
@@ -1202,64 +1095,63 @@ private:
 };
 ```
 
-### Example 6: Complete Game Integration
+### Example 5: Complete Game Integration
 
 ```cpp
-class MyPlatformerGame : public IApplication {
+class MyPlatformerGame : public bestow::core::Application {
 public:
-    MyPlatformerGame(IAudioSystem& audio, IAssetSystem& assets, IEntitySystem& entities)
-        : audio_(&audio), assets_(&assets), entities_(&entities) {}
-
-    void run() override {
-        // Initialize audio
-        if (!audio_->initialize()) {
-            std::cerr << "Failed to initialize audio\n";
-            return;
-        }
+    bool initialize(bestow::core::Engine& engine) override {
+        engine_ = &engine;
+        auto& sys = engine.systems();
 
         // Load sounds
-        jumpSound_ = assets_->registerAsset(AssetType::Sound, ":assets:/sfx/jump.wav");
-        coinSound_ = assets_->registerAsset(AssetType::Sound, ":assets:/sfx/coin.wav");
-        musicAsset_ = assets_->registerAsset(AssetType::Sound, ":assets:/music/level1.ogg");
+        jumpSound_ = sys.assets->registerAsset(AssetType::Sound, ":assets:/sfx/jump.wav");
+        coinSound_ = sys.assets->registerAsset(AssetType::Sound, ":assets:/sfx/coin.wav");
+        musicAsset_ = sys.assets->registerAsset(AssetType::Sound, ":assets:/music/level1.ogg");
 
-        assets_->loadAsset(jumpSound_);
-        assets_->loadAsset(coinSound_);
-        assets_->loadAsset(musicAsset_);
+        sys.assets->loadAsset(jumpSound_);
+        sys.assets->loadAsset(coinSound_);
+        sys.assets->loadAsset(musicAsset_);
+
+        // Set up channel groups
+        sys.audio->assignChannelToGroup(Channels::Music, "Music");
+        sys.audio->assignChannelToGroup(Channels::Ambience, "Music");
+        sys.audio->setGroupVolume("Music", 0.7f);
 
         // Start background music
-        ChannelSound music{.asset = musicAsset_, .volume = 0.6f, .looping = true};
-        audio_->playOnChannel(Channels::Music, music);
+        ChannelSound music{
+            .asset = musicAsset_,
+            .volume = 0.6f,
+            .looping = true,
+            .fadeInTime = 2.0f
+        };
+        sys.audio->playOnChannel(Channels::Music, music);
 
-        // Game loop
-        while (running_) {
-            float deltaTime = calculateDeltaTime();
-            update(deltaTime);
-            render();
-        }
-
-        // Cleanup
-        audio_->stopAll();
-        audio_->shutdown();
+        return true;
     }
 
-    void update(float deltaTime) {
-        // CRITICAL: Update audio system every frame
-        audio_->update(deltaTime);
+    void updateFixed(DeltaTime dt) override {
+        auto& sys = engine_->systems();
 
-        // Update listener position (follow player)
+        // CRITICAL: Update audio system every frame
+        sys.audio->update(dt);
+
+        // Update listener position every frame (follow player)
         Vec3 playerPos = getPlayerPosition();
         AudioListener listener{
             .position = playerPos,
             .forward = Vec3{0.0f, 0.0f, -1.0f},
             .up = Vec3{0.0f, 1.0f, 0.0f}
         };
-        audio_->setListener(listener);
+        sys.audio->setListener(listener);
 
         // Handle game events
         processGameEvents();
     }
 
     void onPlayerJump(Vec3 position) {
+        auto& sys = engine_->systems();
+
         PositionalSound jump{
             .asset = jumpSound_,
             .position = position,
@@ -1267,10 +1159,12 @@ public:
             .minDistance = 5.0f,
             .maxDistance = 50.0f
         };
-        audio_->playPositional(jump);
+        sys.audio->playPositional(jump);
     }
 
     void onCoinCollected(Vec3 coinPosition) {
+        auto& sys = engine_->systems();
+
         PositionalSound coin{
             .asset = coinSound_,
             .position = coinPosition,
@@ -1278,16 +1172,23 @@ public:
             .minDistance = 3.0f,
             .maxDistance = 30.0f
         };
-        audio_->playPositional(coin);
+        sys.audio->playPositional(coin);
     }
 
     void onPauseToggle() {
+        auto& sys = engine_->systems();
+
         if (paused_) {
-            audio_->resumeAll();
+            sys.audio->resumeAll();
         } else {
-            audio_->pauseAll();
+            sys.audio->pauseAll();
         }
         paused_ = !paused_;
+    }
+
+    void shutdown() override {
+        auto& sys = engine_->systems();
+        sys.audio->stopAll();
     }
 
 private:
@@ -1300,24 +1201,10 @@ private:
         // Process game logic and trigger audio events
     }
 
-    float calculateDeltaTime() {
-        // Calculate time since last frame
-        return 0.016f;  // ~60 FPS
-    }
-
-    void render() {
-        // Render game
-    }
-
-    IAudioSystem* audio_;
-    IAssetSystem* assets_;
-    IEntitySystem* entities_;
-
+    bestow::core::Engine* engine_ = nullptr;
     AssetHandle jumpSound_;
     AssetHandle coinSound_;
     AssetHandle musicAsset_;
-
-    bool running_ = true;
     bool paused_ = false;
 };
 ```
@@ -1343,29 +1230,33 @@ Related Bestow systems:
 
 #### No Sound Playing
 
-1. Check FMOD initialization: `audio->initialize()` returned true?
+1. Check `update()` is called: Audio system requires `update(dt)` every frame
 2. Check asset loading: `assets->getAsset<SoundData>(handle)` returns valid data?
-3. Check volume: Is master/group/channel volume > 0?
-4. Check FMOD: Is FMOD installed and linked correctly?
-
-#### Sounds Stop Abruptly
-
-1. Call `audio->update()` every frame (required!)
-2. Check if channel limit (512) is reached
-3. Check if sounds are being stopped externally
+3. Check volume: Is master volume > 0? Is channel/group volume > 0?
+4. Check asset path: Is the file in the correct location?
+5. Check FMOD: Is FMOD properly installed and linked?
 
 #### 3D Audio Not Working
 
 1. Ensure listener is set: `audio->setListener(...)`
-2. Update listener position every frame
-3. Check min/max distance values are reasonable
+2. Update listener position every frame in your update loop
+3. Check min/max distance values are reasonable (not too small/large)
 4. Verify sound is played with `playPositional()`, not `playOnChannel()`
+5. Check listener is in range of the sound (within maxDistance)
 
-#### Memory Leaks
+#### Channel Playback Issues
 
-1. Call `audio->shutdown()` on exit
-2. Unload unused assets: `assets->unloadAsset(handle)`
-3. Stop all sounds before shutdown: `audio->stopAll()`
+1. Only one sound per channel - new sounds replace old ones
+2. Check you're using the correct channel constant (Channels::Music, etc.)
+3. Verify asset is loaded before calling `playOnChannel()`
+4. Use `isChannelPlaying()` to check current state
+
+#### Memory Issues
+
+1. Unload unused assets: `assets->unloadAsset(handle)`
+2. Stop all sounds before shutdown: `audio->stopAll()`
+3. Keep sound files reasonably sized (compress music to OGG)
+4. Limit simultaneous positional sounds (FMOD has 512 channel limit)
 
 ---
 

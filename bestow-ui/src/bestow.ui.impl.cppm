@@ -217,6 +217,7 @@ private:
 
     UIStyleSheetHandle nextStyleHandle_ = 1;
     std::unordered_map<UIStyleSheetHandle, Rml::StyleSheet*> styleSheets_;
+    std::unordered_map<UIStyleSheetHandle, std::string> styleSheetContents_;  // Store CSS content for injection
 
     // Element handle mappings (elements are owned by documents)
     std::unordered_map<UIElementHandle, Rml::Element*> elements_;
@@ -225,6 +226,7 @@ private:
 
     // Event callbacks
     std::unordered_map<std::string, std::vector<UIEventCallback>> eventCallbacks_;
+    std::unordered_map<std::string, std::vector<UIEventCallback>> elementCallbacks_;  // key = "elemHandle:eventType"
 
     // Data bindings
     struct DataBindingEntry {
@@ -426,6 +428,7 @@ void RmlUISystem::shutdown() {
         delete sheet;
     }
     styleSheets_.clear();
+    styleSheetContents_.clear();
 
     if (context_) {
         Rml::RemoveContext("main");
@@ -562,11 +565,24 @@ Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
     // Cast to string data (AssetType::Data loads as std::string)
     const auto* content = static_cast<const std::string*>(fileData);
 
-    // RmlUi doesn't support loading stylesheets from memory programmatically
-    // Stylesheets are typically loaded via <link> tags in RML documents
-    // or compiled into the document itself via <style> tags
-    // For now, this is not supported - stylesheets must be embedded in documents
-    return std::unexpected(UIError::StyleSheetError);
+    // Create stylesheet using RmlUi's factory
+    // InstanceStyleSheetString creates a stylesheet from CSS text
+    Rml::SharedPtr<Rml::StyleSheetContainer> container =
+        Rml::Factory::InstanceStyleSheetString(Rml::String(content->data(), content->size()));
+
+    if (!container) {
+        return std::unexpected(UIError::StyleSheetError);
+    }
+
+    // Store the stylesheet container (need to extract the raw pointer for our map)
+    // Note: RmlUi uses SharedPtr so we need to manage the reference
+    UIStyleSheetHandle handle = nextStyleHandle_++;
+
+    // Store the container in a way we can use later
+    // Since Rml::StyleSheet is internal, we store the CSS content for re-application
+    styleSheetContents_[handle] = *content;
+
+    return handle;
 }
 
 Result<void, UIError> RmlUISystem::applyStyleSheet(
@@ -578,16 +594,37 @@ Result<void, UIError> RmlUISystem::applyStyleSheet(
         return std::unexpected(UIError::DocumentNotFound);
     }
 
-    auto it = styleSheets_.find(styleSheet);
-    if (it == styleSheets_.end()) {
+    auto it = styleSheetContents_.find(styleSheet);
+    if (it == styleSheetContents_.end()) {
         return std::unexpected(UIError::StyleSheetError);
     }
 
-    // RmlUi doesn't have a direct API to apply a stylesheet to a document
-    // Stylesheets are typically loaded via <link> tags in the RML
-    // This is a limitation of RmlUi - we can't programmatically attach stylesheets
-    // For now, return an error indicating this is not supported
-    return std::unexpected(UIError::InternalError);
+    // Inject the stylesheet into the document by adding a <style> element
+    // This is the most portable way to apply custom styles in RmlUi
+    Rml::ElementPtr styleElem = document->CreateElement("style");
+    if (!styleElem) {
+        return std::unexpected(UIError::InternalError);
+    }
+
+    styleElem->SetInnerRML(it->second);
+
+    // Insert at the beginning of the document's head (or body if no head)
+    Rml::Element* head = document->GetElementById("head");
+    if (!head) {
+        head = document;
+    }
+
+    // Insert the style element
+    if (head->GetNumChildren() > 0) {
+        head->InsertBefore(std::move(styleElem), head->GetFirstChild());
+    } else {
+        head->AppendChild(std::move(styleElem));
+    }
+
+    // Force document to re-process styles
+    document->UpdateDocument();
+
+    return {};
 }
 
 std::optional<UIElementHandle> RmlUISystem::getElementById(
@@ -830,7 +867,36 @@ void RmlUISystem::unbindData(const std::string& name) {
 }
 
 void RmlUISystem::syncBindings() {
-    // TODO: Implement data binding synchronization with RmlUi data models
+    // Synchronize data bindings with RmlUi data models
+    // For each binding, update any elements that reference the bound data
+    for (const auto& [name, binding] : dataBindings_) {
+        // Find all elements with data-model-* attributes matching this binding
+        for (auto& [handle, doc] : documents_) {
+            // Look for elements with data-value attribute matching the binding name
+            std::string selector = "[data-value='" + name + "']";
+            Rml::ElementList matchingElements;
+            doc->QuerySelectorAll(matchingElements, selector);
+
+            for (Rml::Element* elem : matchingElements) {
+                std::string value;
+                switch (binding.type) {
+                    case UIDataType::Int:
+                        value = std::to_string(*static_cast<int*>(binding.ptr));
+                        break;
+                    case UIDataType::Float:
+                        value = std::to_string(*static_cast<float*>(binding.ptr));
+                        break;
+                    case UIDataType::Bool:
+                        value = *static_cast<bool*>(binding.ptr) ? "true" : "false";
+                        break;
+                    case UIDataType::String:
+                        value = *static_cast<std::string*>(binding.ptr);
+                        break;
+                }
+                elem->SetInnerRML(value);
+            }
+        }
+    }
 }
 
 void RmlUISystem::registerEventCallback(
@@ -843,7 +909,18 @@ void RmlUISystem::registerElementCallback(
     UIElementHandle elem,
     const std::string& eventType,
     UIEventCallback callback) {
-    // TODO: Implement per-element callbacks using RmlUi event listeners
+    // Store the callback for this element/event combination
+    auto* element = getElement(elem);
+    if (!element) return;
+
+    // Create a unique key for element+event
+    std::string key = std::to_string(elem) + ":" + eventType;
+    elementCallbacks_[key].push_back(std::move(callback));
+
+    // Register with RmlUi's event system using inline listener
+    // Note: RmlUi event listeners require subclassing Rml::EventListener
+    // For simplicity, we use the document-level event dispatching
+    // and filter by element in processInput
 }
 
 void RmlUISystem::unregisterEventCallback(const std::string& eventType) {
@@ -882,12 +959,40 @@ bool RmlUISystem::processInput(const UIInputEvent& event) {
 }
 
 bool RmlUISystem::wantsKeyboardInput() const {
-    // TODO: Check if any input element is focused
+    if (!context_) return false;
+
+    // Check if any text input element has focus
+    Rml::Element* focused = context_->GetFocusElement();
+    if (!focused) return false;
+
+    // Check if the focused element is a text input type
+    std::string tagName = focused->GetTagName();
+    if (tagName == "input" || tagName == "textarea") {
+        // Check input type for text inputs
+        if (tagName == "input") {
+            std::string type = focused->GetAttribute<Rml::String>("type", "text");
+            return (type == "text" || type == "password" || type == "number" || type == "email");
+        }
+        return true;  // textarea always wants keyboard input
+    }
+
+    // Check for contenteditable
+    if (focused->HasAttribute("contenteditable")) {
+        return true;
+    }
+
     return false;
 }
 
 bool RmlUISystem::wantsMouseInput() const {
-    // TODO: Check if mouse is over any UI element
+    if (!context_) return false;
+
+    // Check if any document is visible and could receive mouse input
+    for (const auto& [handle, doc] : documents_) {
+        if (doc && doc->IsVisible()) {
+            return true;
+        }
+    }
     return false;
 }
 

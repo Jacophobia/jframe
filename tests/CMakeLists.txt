@@ -26,6 +26,7 @@ add_executable(bestow-tests
     unit/CameraSystemTests.cpp
     unit/GASSystemTests.cpp
     unit/BlueprintFactoryTests.cpp
+    unit/UISystemTests.cpp
 )
 target_use_std_module(bestow-tests)
 
@@ -48,6 +49,7 @@ target_link_libraries(bestow-tests
         bestow-camera
         bestow-gas
         bestow-blueprints
+        bestow-ui
         GTest::gtest
         GTest::gtest_main
 )

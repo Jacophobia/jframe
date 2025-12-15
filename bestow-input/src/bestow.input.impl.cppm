@@ -51,6 +51,23 @@ public:
     Vec2 getMouseDelta() const override;
     bool isMouseButtonDown(int button) const override;
 
+    // Modifier keys
+    ModifierKey getModifierState() const override;
+    bool isModifierPressed(ModifierKey mod) const override;
+    bool isShiftPressed() const override;
+    bool isCtrlPressed() const override;
+    bool isAltPressed() const override;
+    bool isSuperPressed() const override;
+
+    // Direct keyboard state
+    bool isKeyDown(int keyCode) const override;
+    bool wasKeyJustPressed(int keyCode) const override;
+    bool wasKeyJustReleased(int keyCode) const override;
+
+    // Direct mouse button state
+    bool wasMouseButtonJustPressed(int button) const override;
+    bool wasMouseButtonJustReleased(int button) const override;
+
     // Scroll wheel
     Vec2 getScrollDelta() const override;
 
@@ -84,6 +101,12 @@ private:
     Vec2 mousePosition_{0, 0};
     Vec2 prevMousePosition_{0, 0};
     bool mouseButtons_[8] = {};
+    bool prevMouseButtons_[8] = {};
+
+    // Track key states for just pressed/released detection
+    // Using a map since GLFW key codes are sparse (GLFW_KEY_SPACE=32 to GLFW_KEY_LAST=348)
+    std::unordered_map<int, bool> keyStates_;
+    std::unordered_map<int, bool> prevKeyStates_;
 
     std::array<SDL_GameController*, 4> controllers_{};
     bool isListening_ = false;
@@ -91,6 +114,9 @@ private:
 
     // Scroll wheel
     Vec2 scrollDelta_{0, 0};
+
+    // Modifier keys
+    ModifierKey currentModifiers_ = ModifierKey::None;
 
     // Text input
     bool textInputEnabled_ = false;
@@ -100,6 +126,9 @@ private:
 
     // Injected dependencies
     IAssetSystem* pIAssetSystem_ = nullptr;
+
+    // Helper to update modifier state from GLFW
+    void updateModifierState();
 };
 
 // Service definition - must be after class is complete

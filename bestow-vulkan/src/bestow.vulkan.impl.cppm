@@ -73,6 +73,22 @@ public:
     Result<void, VulkanError> uploadToBuffer(VulkanBufferHandle handle, const void* data, std::size_t size, std::size_t offset = 0);
 
     //======================================================================
+    // Image Operations
+    //======================================================================
+
+    // Upload 2D texture data to an image (layer 0)
+    Result<void, VulkanError> uploadToImage(VulkanImageHandle handle, const void* data, std::size_t size);
+
+    // Upload data to a specific layer of an image (for cubemaps: layer 0-5 = +X, -X, +Y, -Y, +Z, -Z)
+    Result<void, VulkanError> uploadToImageLayer(VulkanImageHandle handle, const void* data, std::size_t size, std::uint32_t layer);
+
+    // Get image view for binding to descriptor sets
+    VkImageView getImageView(VulkanImageHandle handle) const;
+
+    // Get sampler for binding to descriptor sets
+    VkSampler getImageSampler(VulkanImageHandle handle) const;
+
+    //======================================================================
     // Command Recording
     //======================================================================
 
@@ -333,6 +349,12 @@ private:
     Color clearColor_ = Color::black();
     bool viewportCullingEnabled_ = false;
     bool isFullscreen_ = false;
+
+    // Windowed state (for restoring after exiting fullscreen)
+    int windowedPosX_ = 100;
+    int windowedPosY_ = 100;
+    int windowedWidth_ = 800;
+    int windowedHeight_ = 600;
 
     // Sprite batching
     struct SpriteVertex {
@@ -723,6 +745,12 @@ private:
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
 
+    // Windowed state (for restoring after exiting fullscreen)
+    int windowedPosX_ = 100;
+    int windowedPosY_ = 100;
+    int windowedWidth_ = 800;
+    int windowedHeight_ = 600;
+
     // Lighting state
     DirectionalLight directionalLight_;
     bool hasDirectionalLight_ = false;
@@ -735,6 +763,8 @@ private:
     // Environment
     Skybox skybox_;
     bool hasSkybox_ = false;
+    CubemapData skyboxCubemapData_;  // Store cubemap pixel data
+    VulkanImageHandle skyboxCubemapImage_ = 0;  // GPU cubemap texture
     EnvironmentMap environmentMap_;
     bool hasEnvironmentMap_ = false;
     Fog fog_;

@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 #include <kangaru/kangaru.hpp>
+#include <GLFW/glfw3.h>
 
 import bestow.input;
 import bestow.input.impl;
@@ -639,6 +640,235 @@ TEST_F(InputSystemTest, ScrollDeltaIsZeroWithoutInput) {
     Vec2 scroll = inputSystem_->getScrollDelta();
     EXPECT_EQ(scroll.x, 0.0f);
     EXPECT_EQ(scroll.y, 0.0f);
+}
+
+//======================================================================
+// Keyboard State Query Tests
+//======================================================================
+
+TEST_F(InputSystemTest, IsKeyDownReturnsFalseForUnpressedKeys) {
+    // Without a window, all keys should be unpressed
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_ESCAPE));
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_ENTER));
+}
+
+TEST_F(InputSystemTest, IsKeyDownWithInvalidKeyCode) {
+    // Test with invalid key codes
+    EXPECT_FALSE(inputSystem_->isKeyDown(-1));
+    EXPECT_FALSE(inputSystem_->isKeyDown(0));
+    EXPECT_FALSE(inputSystem_->isKeyDown(10000));
+}
+
+TEST_F(InputSystemTest, WasKeyJustPressedReturnsFalseInitially) {
+    // Without any key presses, should always return false
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_A));
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_ESCAPE));
+}
+
+TEST_F(InputSystemTest, WasKeyJustPressedWithInvalidKeyCode) {
+    // Test with invalid key codes
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(-1));
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(0));
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(10000));
+}
+
+TEST_F(InputSystemTest, WasKeyJustReleasedReturnsFalseInitially) {
+    // Without any key releases, should always return false
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_A));
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_ESCAPE));
+}
+
+TEST_F(InputSystemTest, WasKeyJustReleasedWithInvalidKeyCode) {
+    // Test with invalid key codes
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(-1));
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(0));
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(10000));
+}
+
+TEST_F(InputSystemTest, KeyStateConsistencyBetweenFrames) {
+    // Without window, states should remain consistent across updates
+    inputSystem_->update();
+
+    bool isDown1 = inputSystem_->isKeyDown(GLFW_KEY_SPACE);
+    bool justPressed1 = inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE);
+    bool justReleased1 = inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE);
+
+    inputSystem_->update();
+
+    bool isDown2 = inputSystem_->isKeyDown(GLFW_KEY_SPACE);
+    bool justPressed2 = inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE);
+    bool justReleased2 = inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE);
+
+    // States should be consistent (all false without window)
+    EXPECT_EQ(isDown1, isDown2);
+    EXPECT_EQ(justPressed1, justPressed2);
+    EXPECT_EQ(justReleased1, justReleased2);
+}
+
+TEST_F(InputSystemTest, MultipleKeyStateQueries) {
+    // Test that multiple queries for different keys work
+    std::vector<int> keyCodes = {
+        GLFW_KEY_A, GLFW_KEY_B, GLFW_KEY_C, GLFW_KEY_D,
+        GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_SPACE, GLFW_KEY_ENTER
+    };
+
+    for (int keyCode : keyCodes) {
+        EXPECT_FALSE(inputSystem_->isKeyDown(keyCode));
+        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(keyCode));
+        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(keyCode));
+    }
+}
+
+TEST_F(InputSystemTest, KeyStatePersistsAcrossMultipleUpdates) {
+    // Verify state tracking persists correctly across multiple frames
+    for (int i = 0; i < 10; ++i) {
+        inputSystem_->update();
+
+        // Without window, keys should always be unpressed
+        EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
+        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
+        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
+    }
+}
+
+//======================================================================
+// Mouse Button State Query Tests
+//======================================================================
+
+TEST_F(InputSystemTest, WasMouseButtonJustPressedReturnsFalseInitially) {
+    // Without any button presses, should always return false
+    for (int button = 0; button < 8; ++button) {
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
+    }
+}
+
+TEST_F(InputSystemTest, WasMouseButtonJustPressedWithInvalidButton) {
+    // Test boundary conditions
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(-1));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(8));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(100));
+}
+
+TEST_F(InputSystemTest, WasMouseButtonJustReleasedReturnsFalseInitially) {
+    // Without any button releases, should always return false
+    for (int button = 0; button < 8; ++button) {
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
+    }
+}
+
+TEST_F(InputSystemTest, WasMouseButtonJustReleasedWithInvalidButton) {
+    // Test boundary conditions
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(-1));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(8));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(100));
+}
+
+TEST_F(InputSystemTest, MouseButtonStateConsistencyBetweenFrames) {
+    // Without window, button states should remain consistent across updates
+    inputSystem_->update();
+
+    bool isDown1 = inputSystem_->isMouseButtonDown(0);
+    bool justPressed1 = inputSystem_->wasMouseButtonJustPressed(0);
+    bool justReleased1 = inputSystem_->wasMouseButtonJustReleased(0);
+
+    inputSystem_->update();
+
+    bool isDown2 = inputSystem_->isMouseButtonDown(0);
+    bool justPressed2 = inputSystem_->wasMouseButtonJustPressed(0);
+    bool justReleased2 = inputSystem_->wasMouseButtonJustReleased(0);
+
+    // States should be consistent (all false without window)
+    EXPECT_EQ(isDown1, isDown2);
+    EXPECT_EQ(justPressed1, justPressed2);
+    EXPECT_EQ(justReleased1, justReleased2);
+}
+
+TEST_F(InputSystemTest, AllMouseButtonsStateQuery) {
+    // Test all 8 mouse buttons
+    for (int button = 0; button < 8; ++button) {
+        EXPECT_FALSE(inputSystem_->isMouseButtonDown(button));
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
+    }
+}
+
+TEST_F(InputSystemTest, MouseButtonStatePersistsAcrossMultipleUpdates) {
+    // Verify button state tracking persists correctly across multiple frames
+    for (int i = 0; i < 10; ++i) {
+        inputSystem_->update();
+
+        // Without window, all buttons should be unpressed
+        for (int button = 0; button < 8; ++button) {
+            EXPECT_FALSE(inputSystem_->isMouseButtonDown(button));
+            EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
+            EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
+        }
+    }
+}
+
+TEST_F(InputSystemTest, MouseButtonIndependentStates) {
+    // Verify each button has independent state
+    // Without window, all should be false, but we're testing they're tracked independently
+    inputSystem_->update();
+
+    std::vector<bool> isDownStates;
+    std::vector<bool> justPressedStates;
+    std::vector<bool> justReleasedStates;
+
+    for (int button = 0; button < 8; ++button) {
+        isDownStates.push_back(inputSystem_->isMouseButtonDown(button));
+        justPressedStates.push_back(inputSystem_->wasMouseButtonJustPressed(button));
+        justReleasedStates.push_back(inputSystem_->wasMouseButtonJustReleased(button));
+    }
+
+    // All should be false, but verify we can query each independently
+    for (size_t i = 0; i < 8; ++i) {
+        EXPECT_FALSE(isDownStates[i]);
+        EXPECT_FALSE(justPressedStates[i]);
+        EXPECT_FALSE(justReleasedStates[i]);
+    }
+}
+
+//======================================================================
+// Combined Keyboard and Mouse State Tests
+//======================================================================
+
+TEST_F(InputSystemTest, KeyAndMouseStateUpdateTogether) {
+    // Verify keyboard and mouse states update together in same frame
+    inputSystem_->update();
+
+    // Check both keyboard and mouse
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->isMouseButtonDown(0));
+
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(0));
+
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(0));
+}
+
+TEST_F(InputSystemTest, StateQueryDoesNotModifyState) {
+    // Querying state should not modify it
+    inputSystem_->update();
+
+    // Query multiple times
+    for (int i = 0; i < 5; ++i) {
+        EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
+        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_A));
+        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_A));
+        EXPECT_FALSE(inputSystem_->isMouseButtonDown(1));
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(1));
+        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(1));
+    }
+
+    // State should still be consistent after multiple queries
+    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
+    EXPECT_FALSE(inputSystem_->isMouseButtonDown(1));
 }
 
 //======================================================================

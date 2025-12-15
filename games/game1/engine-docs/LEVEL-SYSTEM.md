@@ -16,6 +16,28 @@ The Level System provides Lua-based level definitions with support for entity sp
 
 ## Overview
 
+### Accessing the Level System
+
+The Level System is accessed through the Engine's system container. In your game code:
+
+```cpp
+void Game::initialize(bestow::core::Engine& engine) {
+    engine_ = &engine;
+    auto& sys = engine.systems();
+
+    // Access Level System through sys.levels
+    AssetHandle levelAsset = sys.assets->registerAsset(AssetType::Level, ":assets:/levels/level1.lua");
+    auto result = sys.levels->loadLevel(levelAsset);
+
+    if (result.has_value()) {
+        LevelId levelId = result.value();
+        sys.levels->setActiveLevel(levelId);
+    }
+}
+```
+
+**Important:** Always access systems through `engine.systems()` rather than storing raw system pointers. This follows the contract-based architecture.
+
 ### Philosophy: Lua-First Design
 
 The Level System follows Bestow's Lua-first design philosophy:
@@ -157,14 +179,14 @@ return {
 
   -- Spawn points (optional)
   spawnPoints = {
-    default = { x = 100, y = 500, rotation = 0 },
+    default = { x = 100, y = 500 },
     checkpoint1 = { x = 500, y = 400 }
   },
 
   -- Entity definitions (optional)
   entities = {
-    { type = "player", x = 100, y = 500 },
-    { type = "enemy", x = 400, y = 500, hostile = true }
+    { type = "platform", x = 0, y = 900, width = 1920, height = 50 },
+    { type = "enemy", x = 400, y = 500, patrolRange = 100 }
   }
 }
 ```
@@ -185,16 +207,15 @@ Spawn points are named locations in the level. Each spawn point is a table with:
 |-------|------|----------|---------|-------------|
 | `x` | number | Yes | - | X position in world space |
 | `y` | number | Yes | - | Y position in world space |
-| `rotation` | number | No | 0 | Rotation in degrees |
 
 **Example**:
 
 ```lua
 spawnPoints = {
-  default = { x = 100, y = 500, rotation = 0 },
+  default = { x = 100, y = 500 },
   checkpoint1 = { x = 500, y = 400 },
-  boss_room = { x = 1800, y = 600, rotation = 180 },
-  secret_area = { x = 200, y = 100, rotation = 90 }
+  boss_room = { x = 1800, y = 600 },
+  secret_area = { x = 200, y = 100 }
 }
 ```
 
@@ -213,9 +234,6 @@ Entity definitions are tables in the `entities` array. Each entity has:
 **Transform fields** (optional):
 - `x` - X position (default: 0)
 - `y` - Y position (default: 0)
-- `rotation` - Rotation in degrees (default: 0)
-- `scaleX` - Horizontal scale (default: 1.0)
-- `scaleY` - Vertical scale (default: 1.0)
 
 **Custom properties** (optional):
 - Any other fields become custom properties
@@ -227,7 +245,7 @@ Entity definitions are tables in the `entities` array. Each entity has:
 ```lua
 entities = {
   -- Minimal entity
-  { type = "player", x = 100, y = 500 },
+  { type = "platform", x = 0, y = 900, width = 1920, height = 50 },
 
   -- Entity with custom properties
   {
@@ -237,18 +255,6 @@ entities = {
     patrolRange = 100,
     speed = 50,
     hostile = true
-  },
-
-  -- Entity with transform properties
-  {
-    type = "rotating_platform",
-    x = 600,
-    y = 300,
-    rotation = 45,
-    scaleX = 2.0,
-    scaleY = 1.5,
-    width = 100,
-    height = 20
   }
 }
 ```
@@ -606,7 +612,7 @@ Returns a spawn point by name.
 - `name` - Name of the spawn point
 
 **Returns**:
-- `std::optional<Transform2D>` containing spawn position/rotation, or `std::nullopt` if not found
+- `std::optional<Transform2D>` containing spawn position, or `std::nullopt` if not found
 
 **Usage**:
 
@@ -615,7 +621,6 @@ if (auto spawn = levels->getSpawnPoint(levelId, "checkpoint1")) {
     // Position player at spawn point
     player.x = spawn->x;
     player.y = spawn->y;
-    player.rotation = spawn->rotation;
 }
 ```
 
@@ -731,9 +736,9 @@ Custom properties are stored as `std::any`. Use `std::any_cast<T>()` to extract 
 void applyProperty(Entity entity, const std::string& key, const std::any& value) {
     try {
         // Try as double (all Lua numbers)
-        if (key == "speed") {
-            double speed = std::any_cast<double>(value);
-            entities->emplace<Speed>(entity, static_cast<float>(speed));
+        if (key == "patrolRange" || key == "speed") {
+            double numValue = std::any_cast<double>(value);
+            // Use the numeric value...
         }
         // Try as bool
         else if (key == "hostile") {
@@ -755,11 +760,11 @@ void applyProperty(Entity entity, const std::string& key, const std::any& value)
 
 If using the Blueprint System, entity types can correspond to blueprints:
 
-```cpp
-// Lua level file
+```lua
+-- Lua level file
 entities = {
-  { type = "player", x = 100, y = 500 },
-  { type = "enemy_slime", x = 400, y = 500 }
+  { type = "platform", x = 0, y = 900, width = 1920, height = 50 },
+  { type = "enemy", x = 400, y = 500, patrolRange = 100 }
 }
 ```
 
@@ -775,6 +780,11 @@ for (const auto& def : entityDefs) {
 
     // Override transform from level
     entities->emplace<Transform>(entity, def.transform);
+
+    // Apply custom properties
+    for (const auto& [key, value] : def.properties) {
+        applyProperty(entity, key, value);
+    }
 }
 ```
 
@@ -960,34 +970,65 @@ levels->transition(transition);
 
 1. Enable hot reload in AssetSystem
 2. Edit level Lua file
-3. Level automatically reloads
+3. Level automatically reloads on next `update()`
 4. Re-spawn entities
 
 ```cpp
-// Enable hot reload for development
-assets->enableHotReload(true);
+void Game::initialize(bestow::core::Engine& engine) {
+    auto& sys = engine.systems();
 
-// Subscribe to level asset changes
-SubscriptionId subId = assets->subscribeToType(AssetType::Level, [this](AssetHandle handle, AssetType type) {
-    // Find level by asset handle
-    for (const auto& meta : levels->getLoadedLevels()) {
-        if (meta.assetHandle == handle) {
-            // Level changed - reload it
-            reloadLevel(meta.id);
-            break;
+    // Enable hot reload for development
+    sys.assets->enableHotReload(true);
+
+    // Subscribe to level asset changes
+    levelReloadSubId_ = sys.assets->subscribeToType(AssetType::Level,
+        [this](AssetHandle handle, AssetType type) {
+            auto& sys = engine_->systems();
+
+            // Find level by asset handle
+            for (const auto& meta : sys.levels->getLoadedLevels()) {
+                if (meta.assetHandle == handle) {
+                    // Level changed - reload it
+                    reloadLevel(meta.id);
+                    break;
+                }
+            }
         }
-    }
-});
+    );
+}
+
+void Game::updateFixed(DeltaTime dt) {
+    auto& sys = engine_->systems();
+
+    // Process asset hot reload notifications
+    sys.assets->update();
+
+    // Process level transitions
+    sys.levels->update(dt);
+
+    // ... rest of update
+}
 
 void Game::reloadLevel(LevelId levelId) {
+    auto& sys = engine_->systems();
+
     // Destroy existing entities
-    auto entities = levels->getLevelEntities(levelId);
+    auto entities = sys.levels->getLevelEntities(levelId);
     for (Entity entity : entities) {
-        entitySystem->destroyEntity(entity);
+        sys.entities->destroyEntity(entity);
     }
 
-    // Re-spawn entities
+    // Re-spawn entities from updated level data
     spawnLevelEntities(levelId);
+}
+
+void Game::shutdown() {
+    auto& sys = engine_->systems();
+
+    // Clean up subscriptions
+    if (levelReloadSubId_) {
+        sys.assets->unsubscribe(levelReloadSubId_);
+    }
 }
 ```
 
@@ -995,31 +1036,53 @@ void Game::reloadLevel(LevelId levelId) {
 
 **Check load results**:
 
+The `loadLevel()` method returns `Result<LevelId, std::error_code>`, which is an alias for `std::expected`. Always check the result before using it:
+
 ```cpp
-auto result = levels->loadLevel(levelAsset);
+auto& sys = engine_->systems();
+auto result = sys.levels->loadLevel(levelAsset);
+
 if (!result.has_value()) {
     std::error_code error = result.error();
-    std::cerr << "Failed to load level: " << error.message() << "\n";
+    logError("Failed to load level: " + std::string(error.message()));
     // Fallback to default level or show error screen
     return;
+}
+
+// Success - extract the LevelId
+LevelId levelId = result.value();
+```
+
+**Alternative using operator* and operator bool**:
+
+```cpp
+if (result) {
+    LevelId levelId = *result;
+    // Use levelId
+} else {
+    logError("Load failed: " + std::string(result.error().message()));
 }
 ```
 
 **Validate spawn points**:
 
 ```cpp
-auto spawn = levels->getSpawnPoint(levelId, spawnPointName);
+auto& sys = engine_->systems();
+auto spawn = sys.levels->getSpawnPoint(levelId, spawnPointName);
+
 if (!spawn.has_value()) {
     // Fallback to default spawn
-    spawn = levels->getSpawnPoint(levelId, "default");
+    spawn = sys.levels->getSpawnPoint(levelId, "default");
     if (!spawn.has_value()) {
         // Use hardcoded fallback
         spawn = Transform2D{100.0f, 500.0f, 0.0f};
     }
 }
 
-player.x = spawn->x;
-player.y = spawn->y;
+// Position player
+auto& transform = sys.entities->get<Transform>(playerEntity_);
+transform.x = spawn->x;
+transform.y = spawn->y;
 ```
 
 ---
@@ -1055,7 +1118,7 @@ return {
     default = { x = 100, y = PLAYER_SPAWN_Y },
     checkpoint1 = { x = 800, y = 400 },
     checkpoint2 = { x = 1600, y = 300 },
-    boss_entrance = { x = 2400, y = PLAYER_SPAWN_Y, rotation = 180 }
+    boss_entrance = { x = 2400, y = PLAYER_SPAWN_Y }
   },
 
   -- Entity definitions
@@ -1069,9 +1132,9 @@ return {
     createPlatform(1100, 500, 200, 40),
 
     -- Enemies
-    { type = "enemy_slime", x = 400, y = 950, patrolRange = 150 },
-    { type = "enemy_slime", x = 900, y = 950, patrolRange = 200 },
-    { type = "enemy_bat", x = 1200, y = 400, patrolRange = 300 },
+    { type = "enemy", x = 400, y = 950, patrolRange = 150 },
+    { type = "enemy", x = 900, y = 950, patrolRange = 200 },
+    { type = "enemy", x = 1200, y = 400, patrolRange = 300 },
 
     -- Collectibles
     { type = "coin", x = 350, y = 750, value = 1 },
@@ -1087,28 +1150,28 @@ return {
 ### Example 2: Loading and Activating a Level
 
 ```cpp
-#include <iostream>
-
 void Game::loadAndStartLevel(const std::string& levelPath) {
-    // Register level asset
-    AssetHandle levelAsset = assets->registerAsset(AssetType::Level, levelPath);
+    auto& sys = engine_->systems();
 
-    // Load level
-    auto result = levels->loadLevel(levelAsset);
+    // Register level asset
+    AssetHandle levelAsset = sys.assets->registerAsset(AssetType::Level, levelPath);
+
+    // Load level - returns Result<LevelId, std::error_code>
+    auto result = sys.levels->loadLevel(levelAsset);
     if (!result.has_value()) {
-        std::cerr << "Failed to load level: " << result.error().message() << "\n";
+        logError("Failed to load level: " + std::string(result.error().message()));
         return;
     }
 
     LevelId levelId = result.value();
 
     // Print level metadata
-    LevelMetadata meta = levels->getLevelMetadata(levelId);
-    std::cout << "Loaded: " << meta.levelName << "\n";
-    std::cout << "Size: " << meta.width << "x" << meta.height << "\n";
+    LevelMetadata meta = sys.levels->getLevelMetadata(levelId);
+    logInfo("Loaded: " + meta.levelName);
+    logInfo("Size: " + std::to_string(meta.width) + "x" + std::to_string(meta.height));
 
     // Set as active
-    levels->setActiveLevel(levelId);
+    sys.levels->setActiveLevel(levelId);
 
     // Spawn entities
     spawnLevelEntities(levelId);
@@ -1122,23 +1185,26 @@ void Game::loadAndStartLevel(const std::string& levelPath) {
 
 ```cpp
 void Game::spawnLevelEntities(LevelId levelId) {
-    auto entityDefs = levels->getEntityDefs(levelId);
+    auto& sys = engine_->systems();
+    auto entityDefs = sys.levels->getEntityDefs(levelId);
 
-    std::cout << "Spawning " << entityDefs.size() << " entities...\n";
+    logInfo("Spawning " + std::to_string(entityDefs.size()) + " entities...");
 
     for (const auto& def : entityDefs) {
         // Create entity
-        Entity entity = entities->createEntity();
+        Entity entity = sys.entities->createEntity();
 
         // Apply transform
-        entities->emplace<Transform>(entity, def.transform);
+        sys.entities->emplace<Transform>(entity, def.transform);
 
         // Apply blueprint if available
-        if (blueprints->hasBlueprint(def.type)) {
-            blueprints->applyBlueprint(entity, def.type);
-            std::cout << "  - Spawned " << def.type << " at (" << def.transform.x << ", " << def.transform.y << ")\n";
+        if (sys.blueprints->hasBlueprint(def.type)) {
+            sys.blueprints->applyBlueprint(entity, def.type);
+            logInfo("  - Spawned " + def.type + " at (" +
+                    std::to_string(def.transform.x) + ", " +
+                    std::to_string(def.transform.y) + ")");
         } else {
-            std::cout << "  - Warning: No blueprint for type '" << def.type << "'\n";
+            logWarning("  - No blueprint for type '" + def.type + "'");
         }
 
         // Apply custom properties
@@ -1147,6 +1213,8 @@ void Game::spawnLevelEntities(LevelId levelId) {
 }
 
 void Game::applyCustomProperties(Entity entity, const std::unordered_map<std::string, std::any>& props) {
+    auto& sys = engine_->systems();
+
     for (const auto& [key, value] : props) {
         try {
             // Handle numeric properties
@@ -1154,11 +1222,11 @@ void Game::applyCustomProperties(Entity entity, const std::unordered_map<std::st
                 double numValue = std::any_cast<double>(value);
 
                 if (key == "patrolRange") {
-                    entities->emplace<PatrolRange>(entity, static_cast<float>(numValue));
+                    sys.entities->emplace<PatrolRange>(entity, static_cast<float>(numValue));
                 } else if (key == "speed") {
-                    entities->emplace<Speed>(entity, static_cast<float>(numValue));
+                    sys.entities->emplace<Speed>(entity, static_cast<float>(numValue));
                 } else if (key == "value") {
-                    entities->emplace<Value>(entity, static_cast<int>(numValue));
+                    sys.entities->emplace<Value>(entity, static_cast<int>(numValue));
                 }
             }
             // Handle boolean properties
@@ -1166,7 +1234,7 @@ void Game::applyCustomProperties(Entity entity, const std::unordered_map<std::st
                 bool boolValue = std::any_cast<bool>(value);
 
                 if (key == "hostile") {
-                    entities->emplace<Hostile>(entity, boolValue);
+                    sys.entities->emplace<Hostile>(entity, boolValue);
                 }
             }
             // Handle string properties
@@ -1174,11 +1242,11 @@ void Game::applyCustomProperties(Entity entity, const std::unordered_map<std::st
                 std::string strValue = std::any_cast<std::string>(value);
 
                 if (key == "targetLevel") {
-                    entities->emplace<LevelExit>(entity, strValue);
+                    sys.entities->emplace<LevelExit>(entity, strValue);
                 }
             }
         } catch (const std::bad_any_cast& e) {
-            std::cerr << "Failed to cast property '" << key << "'\n";
+            logError("Failed to cast property '" + key + "'");
         }
     }
 }
@@ -1188,23 +1256,25 @@ void Game::applyCustomProperties(Entity entity, const std::unordered_map<std::st
 
 ```cpp
 void Game::positionPlayerAtSpawn(LevelId levelId, const std::string& spawnName) {
-    auto spawn = levels->getSpawnPoint(levelId, spawnName);
+    auto& sys = engine_->systems();
+    auto spawn = sys.levels->getSpawnPoint(levelId, spawnName);
 
     if (!spawn.has_value()) {
-        std::cerr << "Spawn point '" << spawnName << "' not found, using 'default'\n";
-        spawn = levels->getSpawnPoint(levelId, "default");
+        logWarning("Spawn point '" + spawnName + "' not found, using 'default'");
+        spawn = sys.levels->getSpawnPoint(levelId, "default");
     }
 
     if (spawn.has_value()) {
         // Position player
-        auto& transform = entities->get<Transform>(playerEntity);
+        auto& transform = sys.entities->get<Transform>(playerEntity_);
         transform.x = spawn->x;
         transform.y = spawn->y;
-        transform.rotation = spawn->rotation;
 
-        std::cout << "Player spawned at " << spawnName << " (" << spawn->x << ", " << spawn->y << ")\n";
+        logInfo("Player spawned at " + spawnName + " (" +
+                std::to_string(spawn->x) + ", " +
+                std::to_string(spawn->y) + ")");
     } else {
-        std::cerr << "No valid spawn point found!\n";
+        logError("No valid spawn point found!");
     }
 }
 ```
@@ -1213,19 +1283,21 @@ void Game::positionPlayerAtSpawn(LevelId levelId, const std::string& spawnName) 
 
 ```cpp
 void Game::transitionToNextLevel(const std::string& nextLevelPath, const std::string& spawnPoint) {
+    auto& sys = engine_->systems();
+
     // Get current level
-    auto currentLevel = levels->getActiveLevel();
+    auto currentLevel = sys.levels->getActiveLevel();
     if (!currentLevel.has_value()) {
-        std::cerr << "No active level to transition from\n";
+        logError("No active level to transition from");
         return;
     }
 
     // Register and load next level
-    AssetHandle nextAsset = assets->registerAsset(AssetType::Level, nextLevelPath);
-    auto result = levels->loadLevel(nextAsset);
+    AssetHandle nextAsset = sys.assets->registerAsset(AssetType::Level, nextLevelPath);
+    auto result = sys.levels->loadLevel(nextAsset);
 
     if (!result.has_value()) {
-        std::cerr << "Failed to load next level\n";
+        logError("Failed to load next level: " + std::string(result.error().message()));
         return;
     }
 
@@ -1239,20 +1311,22 @@ void Game::transitionToNextLevel(const std::string& nextLevelPath, const std::st
         .unloadPrevious = true  // Unload old level
     };
 
-    levels->transition(transition);
+    sys.levels->transition(transition);
 
     // Transition executes on next update()
     // After transition, spawn entities and position player
 }
 
-void Game::update(float dt) {
+void Game::updateFixed(DeltaTime dt) {
+    auto& sys = engine_->systems();
+
     // Update level system (processes transitions)
-    levels->update(dt);
+    sys.levels->update(dt);
 
     // Check if level changed
-    auto currentLevel = levels->getActiveLevel();
-    if (currentLevel != lastActiveLevel) {
-        std::cout << "Level changed!\n";
+    auto currentLevel = sys.levels->getActiveLevel();
+    if (currentLevel != lastActiveLevel_) {
+        logInfo("Level changed!");
 
         // Spawn entities for new level
         spawnLevelEntities(currentLevel.value());
@@ -1260,7 +1334,7 @@ void Game::update(float dt) {
         // Position player at spawn point (if transition specified one)
         // Game code needs to track the spawn point from the transition
 
-        lastActiveLevel = currentLevel;
+        lastActiveLevel_ = currentLevel;
     }
 
     // ... rest of game update
@@ -1270,46 +1344,49 @@ void Game::update(float dt) {
 ### Example 6: Level Streaming (Pre-loading)
 
 ```cpp
-void Game::updateLevelStreaming(float dt) {
-    auto currentLevel = levels->getActiveLevel();
+void Game::updateLevelStreaming(DeltaTime dt) {
+    auto& sys = engine_->systems();
+    auto currentLevel = sys.levels->getActiveLevel();
     if (!currentLevel.has_value()) return;
 
     // Get player position
-    auto& playerTransform = entities->get<Transform>(playerEntity);
+    auto& playerTransform = sys.entities->get<Transform>(playerEntity_);
 
     // Get level metadata
-    LevelMetadata meta = levels->getLevelMetadata(currentLevel.value());
+    LevelMetadata meta = sys.levels->getLevelMetadata(currentLevel.value());
 
     // Check if player is approaching level exit
     float distanceToExit = meta.width - playerTransform.x;
 
-    if (distanceToExit < 500.0f && !nextLevelPreloaded) {
-        std::cout << "Pre-loading next level...\n";
+    if (distanceToExit < 500.0f && !nextLevelPreloaded_) {
+        logInfo("Pre-loading next level...");
 
         // Load next level in background
-        AssetHandle nextAsset = assets->registerAsset(AssetType::Level, nextLevelPath);
-        auto result = levels->loadLevel(nextAsset);
+        AssetHandle nextAsset = sys.assets->registerAsset(AssetType::Level, nextLevelPath_);
+        auto result = sys.levels->loadLevel(nextAsset);
 
         if (result.has_value()) {
-            nextLevelId = result.value();
-            nextLevelPreloaded = true;
-            std::cout << "Next level pre-loaded\n";
+            nextLevelId_ = result.value();
+            nextLevelPreloaded_ = true;
+            logInfo("Next level pre-loaded");
+        } else {
+            logError("Failed to pre-load next level: " + std::string(result.error().message()));
         }
     }
 
     // Trigger transition when player reaches exit
-    if (distanceToExit < 50.0f && nextLevelPreloaded) {
-        std::cout << "Transitioning to next level...\n";
+    if (distanceToExit < 50.0f && nextLevelPreloaded_) {
+        logInfo("Transitioning to next level...");
 
         LevelTransition transition{
             .fromLevel = currentLevel.value(),
-            .toLevel = nextLevelId,
+            .toLevel = nextLevelId_,
             .spawnPoint = "default",
             .unloadPrevious = true
         };
 
-        levels->transition(transition);
-        nextLevelPreloaded = false;  // Reset flag
+        sys.levels->transition(transition);
+        nextLevelPreloaded_ = false;  // Reset flag
     }
 }
 ```
@@ -1318,49 +1395,56 @@ void Game::updateLevelStreaming(float dt) {
 
 ```cpp
 void Game::debugPrintLevel(LevelId levelId) {
+    auto& sys = engine_->systems();
+
     // Print metadata
-    LevelMetadata meta = levels->getLevelMetadata(levelId);
-    std::cout << "=== Level Debug Info ===\n";
-    std::cout << "Name: " << meta.levelName << "\n";
-    std::cout << "Size: " << meta.width << "x" << meta.height << "\n";
-    std::cout << "State: " << static_cast<int>(meta.state) << "\n";
+    LevelMetadata meta = sys.levels->getLevelMetadata(levelId);
+    logInfo("=== Level Debug Info ===");
+    logInfo("Name: " + meta.levelName);
+    logInfo("Size: " + std::to_string(meta.width) + "x" + std::to_string(meta.height));
+    logInfo("State: " + std::to_string(static_cast<int>(meta.state)));
 
     // Print spawn points
-    auto spawnNames = levels->getSpawnPointNames(levelId);
-    std::cout << "\nSpawn Points (" << spawnNames.size() << "):\n";
+    auto spawnNames = sys.levels->getSpawnPointNames(levelId);
+    logInfo("\nSpawn Points (" + std::to_string(spawnNames.size()) + "):");
     for (const auto& name : spawnNames) {
-        auto spawn = levels->getSpawnPoint(levelId, name);
+        auto spawn = sys.levels->getSpawnPoint(levelId, name);
         if (spawn.has_value()) {
-            std::cout << "  - " << name << ": (" << spawn->x << ", " << spawn->y << ") rot=" << spawn->rotation << "\n";
+            logInfo("  - " + name + ": (" +
+                    std::to_string(spawn->x) + ", " +
+                    std::to_string(spawn->y) + ")");
         }
     }
 
     // Print entity definitions
-    auto entityDefs = levels->getEntityDefs(levelId);
-    std::cout << "\nEntity Definitions (" << entityDefs.size() << "):\n";
+    auto entityDefs = sys.levels->getEntityDefs(levelId);
+    logInfo("\nEntity Definitions (" + std::to_string(entityDefs.size()) + "):");
     for (size_t i = 0; i < entityDefs.size(); ++i) {
         const auto& def = entityDefs[i];
-        std::cout << "  [" << i << "] " << def.type << " at (" << def.transform.x << ", " << def.transform.y << ")\n";
+        logInfo("  [" + std::to_string(i) + "] " + def.type + " at (" +
+                std::to_string(def.transform.x) + ", " +
+                std::to_string(def.transform.y) + ")");
 
         // Print custom properties
         if (!def.properties.empty()) {
-            std::cout << "      Properties:\n";
+            logInfo("      Properties:");
             for (const auto& [key, value] : def.properties) {
-                std::cout << "        " << key << " = ";
+                std::string valueStr;
 
                 if (value.type() == typeid(double)) {
-                    std::cout << std::any_cast<double>(value);
+                    valueStr = std::to_string(std::any_cast<double>(value));
                 } else if (value.type() == typeid(bool)) {
-                    std::cout << (std::any_cast<bool>(value) ? "true" : "false");
+                    valueStr = std::any_cast<bool>(value) ? "true" : "false";
                 } else if (value.type() == typeid(std::string)) {
-                    std::cout << "\"" << std::any_cast<std::string>(value) << "\"";
+                    valueStr = "\"" + std::any_cast<std::string>(value) + "\"";
                 }
-                std::cout << "\n";
+
+                logInfo("        " + key + " = " + valueStr);
             }
         }
     }
 
-    std::cout << "========================\n";
+    logInfo("========================");
 }
 ```
 

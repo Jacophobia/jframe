@@ -1,63 +1,89 @@
 # Bestow Physics System Developer Guide
 
-A comprehensive guide to using physics in Bestow games.
+A practical guide to using 2D physics in your Bestow game.
 
 ## Table of Contents
 1. [Overview](#overview)
-2. [Core Concepts](#core-concepts)
-3. [2D Physics (Box2D)](#2d-physics-box2d)
-4. [3D Physics (Jolt)](#3d-physics-jolt)
-5. [Collision Detection](#collision-detection)
-6. [Best Practices](#best-practices)
-7. [Common Patterns](#common-patterns)
-8. [Code Examples](#code-examples)
+2. [Quick Start](#quick-start)
+3. [Creating Physics Bodies](#creating-physics-bodies)
+4. [Body Properties](#body-properties)
+5. [Forces and Impulses](#forces-and-impulses)
+6. [Collision Filtering](#collision-filtering)
+7. [Spatial Queries](#spatial-queries)
+8. [Ground Detection](#ground-detection)
+9. [Collision Callbacks](#collision-callbacks)
+10. [Best Practices](#best-practices)
+11. [Common Patterns](#common-patterns)
 
 ---
 
 ## Overview
 
-Bestow provides two physics systems for different game types:
+Bestow's 2D physics system is powered by **Box2D 3.0** and provides:
 
-| System | Backend | Use Case |
-|--------|---------|----------|
-| **2D Physics** | Box2D 3.0 | Platformers, top-down games, 2D arcade games |
-| **3D Physics** | Jolt Physics | 3D games, first-person, third-person, racing |
-
-Both systems follow the same architectural pattern:
-- **Contract-based**: Use `IPhysicsSystem` and `IPhysics3DSystem` interfaces
 - **Entity-centric**: Physics bodies are attached to entities
-- **Event-driven**: Collision and trigger callbacks for game logic
-- **High performance**: Optimized C++ backends with sub-stepping
+- **Box shapes**: Rectangular collision volumes (default)
+- **Collision filtering**: 16-bit layer system for controlling what collides
+- **Spatial queries**: AABB, circle, and raycasting
+- **Ground detection**: Built-in platformer ground checks
+- **Callbacks**: Collision and sensor (trigger) events
 
-### Units and Coordinate System
+### Units and Scale
 
-#### 2D Physics
-- **Units**: Pixels (internally converted to meters at 100 pixels/meter)
+- **Units**: Pixels (your game logic uses pixels directly)
+- **Internal conversion**: 100 pixels = 1 meter for Box2D
 - **Coordinate System**: Y-down screen coordinates (positive Y = down)
-- **Gravity**: Default `{0.0f, 980.0f}` (9.8 m/s² × 100 pixels/meter)
-- **Angles**: Radians (0 = right, increases counter-clockwise)
+- **Gravity**: Default `{0, 980}` pixels/s² (9.8 m/s² × 100)
+- **Rotation**: Radians (0 = right, increases counter-clockwise)
 
-#### 3D Physics
-- **Units**: Meters (standard physics units)
-- **Coordinate System**: Y-up (positive Y = up)
-- **Gravity**: Default `{0.0f, -9.8f, 0.0f}`
-- **Angles**: Radians and quaternions
+**Why 100 pixels/meter?** Box2D works best with objects between 0.1-10 meters. A 32px sprite becomes 0.32m in Box2D's world, which is perfect for stability.
 
 ---
 
-## Core Concepts
+## Quick Start
+
+Here's a complete example of creating a player with physics:
+
+```cpp
+import bestow;
+
+// Create entity
+Entity player = entities->createEntity();
+
+// Define physics body
+PhysicsBodyDef playerDef{
+    .type = BodyType::Dynamic,           // Affected by gravity and forces
+    .transform = {.x = 100, .y = 200},   // Starting position (pixels)
+    .size = {32.0f, 40.0f},              // Width x Height (pixels)
+    .fixedRotation = true,               // Don't rotate (good for characters)
+    .linearDamping = 0.0f,               // No air resistance
+    .density = 1.0f,                     // Standard density
+    .friction = 0.3f,                    // Surface friction
+    .restitution = 0.0f                  // No bouncing
+};
+
+// Create the physics body
+physics->createBody(player, playerDef);
+
+// Set collision filtering
+physics->setCollisionLayer(player, CollisionLayers::Player);
+physics->setCollisionMask(player, 0xFFFF);  // Collide with everything
+
+// Apply jump impulse
+if (isGrounded) {
+    physics->applyImpulse(player, {0, -10000});  // Negative Y = up
+}
+```
+
+That's it! Your entity now has physics.
+
+---
+
+## Creating Physics Bodies
 
 ### Body Types
 
-All physics systems support three body types:
-
-```cpp
-enum class BodyType {
-    Static,      // Immovable objects (walls, floors, platforms)
-    Kinematic,   // Script-controlled movement (moving platforms, doors)
-    Dynamic      // Gravity and force-driven (player, enemies, projectiles)
-};
-```
+There are three body types in Bestow physics:
 
 | Type | Movement | Collision | Use Cases |
 |------|----------|-----------|-----------|
@@ -65,299 +91,345 @@ enum class BodyType {
 | **Kinematic** | Set velocity directly | Collides with Dynamic | Moving platforms, elevators, doors |
 | **Dynamic** | Physics-driven (forces, gravity) | Collides with all types | Player, enemies, physics objects |
 
-### Shapes (2D)
+### PhysicsBodyDef Structure
 
-2D physics uses Box2D's shape system:
-- **Box**: Rectangle defined by width/height (most common)
-- **Circle**: Defined by radius
-- **Polygon**: Custom convex polygons
-- **Chain**: For terrain edges
-- **Edge**: Single line segment
-
-Bestow's 2D system currently uses **box shapes** by default:
+All physics bodies are created using `PhysicsBodyDef`:
 
 ```cpp
-PhysicsBodyDef def{
-    .type = BodyType::Dynamic,
-    .size = {32.0f, 40.0f}  // Width × Height in pixels
+struct PhysicsBodyDef {
+    BodyType type = BodyType::Dynamic;  // Static, Kinematic, or Dynamic
+    Transform2D transform;               // Initial position {x, y}
+    Vec2 size = {32.0f, 32.0f};         // Width and height (pixels)
+    bool fixedRotation = true;           // Prevent rotation?
+    float linearDamping = 0.0f;          // Velocity damping (0 = none)
+    float angularDamping = 0.0f;         // Rotational damping
+    float density = 1.0f;                // Mass per unit area
+    float friction = 0.3f;               // Surface friction (0-1)
+    float restitution = 0.0f;            // Bounciness (0-1)
+    bool isSensor = false;               // Trigger vs solid collision
 };
 ```
 
-### Shapes (3D)
+### Material Properties Explained
 
-3D physics uses Jolt's comprehensive shape library:
-- **Box**: Rectangular prism (half-extents)
-- **Sphere**: Defined by radius
-- **Capsule**: Cylinder with hemisphere ends (ideal for characters)
-- **Cylinder**: Standard cylinder
-- **ConvexHull**: Convex mesh
-- **Mesh**: Arbitrary triangle mesh (static only)
-- **HeightField**: Terrain from height data
-- **Compound**: Multiple shapes combined
-
-### Fixtures and Material Properties
-
-Physics bodies have material properties that affect collision response:
-
-```cpp
-PhysicsBodyDef def{
-    .density = 1.0f,        // Mass per unit area/volume
-    .friction = 0.3f,       // Surface friction (0 = ice, 1 = rubber)
-    .restitution = 0.0f     // Bounciness (0 = no bounce, 1 = perfectly elastic)
-};
-```
-
-**Friction** controls sliding:
-- `0.0` = Ice (no friction)
+**Friction** controls how surfaces slide against each other:
+- `0.0` = Ice (no friction, very slippery)
 - `0.3` = Default (slight friction)
 - `0.6` = Wood on wood
-- `1.0` = Rubber (high friction)
+- `1.0` = Rubber (high friction, sticky)
 
-**Restitution** controls bouncing:
-- `0.0` = Inelastic (no bounce)
+**Restitution** controls how much objects bounce:
+- `0.0` = Inelastic (no bounce, lands flat)
 - `0.3` = Basketball
 - `0.7` = Tennis ball
-- `1.0` = Perfect bounce (infinite)
+- `1.0` = Perfect bounce (bounces forever)
 
-### Sensors (Triggers)
+**Density** affects mass:
+- Higher density = heavier object = harder to move
+- Mass is calculated as: `density × area`
+- Default `1.0` is good for most objects
 
-Sensors detect overlap without physical collision response:
+**Linear Damping** slows down movement over time:
+- `0.0` = No damping (like space - never slows down)
+- `0.1` = Slight air resistance
+- `0.5` = Heavy air resistance (underwater)
 
-```cpp
-PhysicsBodyDef def{
-    .type = BodyType::Static,
-    .isSensor = true  // Detects overlap, no collision response
-};
-physics->createBody(entity, def);
+### Examples
 
-// Listen for sensor events
-physics->setTriggerEnterCallback([](const TriggerEvent& event) {
-    // event.entityA = sensor body
-    // event.entityB = visiting body
-});
-```
-
-**Use cases**:
-- Level boundaries (kill zones, goal areas)
-- Item pickups (coins, power-ups)
-- Detection zones (enemy sight range, proximity triggers)
-- Checkpoints
-
----
-
-## 2D Physics (Box2D)
-
-### Getting the Physics System
+#### Dynamic Player Character
 
 ```cpp
-import bestow;
-
-class Game : public IApplication {
-public:
-    Game(IPhysicsSystem& physics, IEntitySystem& entities)
-        : physics_(&physics), entities_(&entities) {}
-
-private:
-    IPhysicsSystem* physics_;
-    IEntitySystem* entities_;
-};
-```
-
-### Creating Physics Bodies
-
-#### Basic Dynamic Body
-
-```cpp
-Entity player = entities_->createEntity();
-
-PhysicsBodyDef def{
+PhysicsBodyDef playerDef{
     .type = BodyType::Dynamic,
-    .transform = {.x = 100.0f, .y = 200.0f},
+    .transform = {.x = 100, .y = 200},
     .size = {32.0f, 40.0f},      // 32px wide, 40px tall
-    .fixedRotation = true,        // Prevent rotation (for characters)
+    .fixedRotation = true,        // Don't rotate
     .friction = 0.3f,
-    .restitution = 0.0f
+    .restitution = 0.0f          // Don't bounce
 };
-
-physics_->createBody(player, def);
+physics->createBody(player, playerDef);
 ```
 
 #### Static Ground Platform
 
 ```cpp
-Entity ground = entities_->createEntity();
-
-PhysicsBodyDef def{
+PhysicsBodyDef groundDef{
     .type = BodyType::Static,
-    .transform = {.x = 400.0f, .y = 500.0f},
-    .size = {800.0f, 32.0f}  // Wide platform
+    .transform = {.x = 400, .y = 500},
+    .size = {800.0f, 32.0f}      // Wide platform
 };
-
-physics_->createBody(ground, def);
-physics_->setCollisionLayer(ground, CollisionLayers::Ground);
+physics->createBody(ground, groundDef);
+physics->setCollisionLayer(ground, CollisionLayers::Ground);
 ```
 
 #### Kinematic Moving Platform
 
 ```cpp
-Entity platform = entities_->createEntity();
-
-PhysicsBodyDef def{
+PhysicsBodyDef platformDef{
     .type = BodyType::Kinematic,
-    .transform = {.x = 200.0f, .y = 300.0f},
+    .transform = {.x = 200, .y = 300},
     .size = {100.0f, 16.0f}
 };
+physics->createBody(platform, platformDef);
+physics->setCollisionLayer(platform, CollisionLayers::Ground);
 
-physics_->createBody(platform, def);
-
-// In update loop:
-void update(DeltaTime dt) {
-    // Move platform by setting velocity
-    Vec2 velocity = {50.0f * sin(time), 0.0f};  // Oscillate left-right
-    physics_->setVelocity(platform, velocity);
+// In update loop, move by setting velocity:
+void update(float dt) {
+    Vec2 velocity = {50.0f * sin(time), 0.0f};  // Oscillate
+    physics->setVelocity(platform, velocity);
 }
 ```
 
-### Body Properties
-
-#### Position and Rotation
+#### Sensor (Trigger)
 
 ```cpp
-// Get/Set position
-Vec2 pos = physics_->getPosition(entity);
-physics_->setPosition(entity, {100.0f, 200.0f});
-
-// Get/Set rotation (radians)
-float angle = physics_->getRotation(entity);
-physics_->setRotation(entity, 1.57f);  // 90 degrees
+PhysicsBodyDef sensorDef{
+    .type = BodyType::Static,
+    .transform = {.x = 500, .y = 300},
+    .size = {64.0f, 64.0f},
+    .isSensor = true             // No collision, just detection
+};
+physics->createBody(trigger, sensorDef);
 ```
 
-#### Velocity
+Sensors are perfect for:
+- Collectible items (coins, power-ups)
+- Goal zones (level exit, checkpoint)
+- Damage zones (lava, spikes)
+- Detection triggers (enemy awareness)
+
+---
+
+## Body Properties
+
+Once you've created a physics body, you can query and modify its properties.
+
+### Position and Rotation
 
 ```cpp
-// Get/Set linear velocity
-Vec2 velocity = physics_->getVelocity(entity);
-physics_->setVelocity(entity, {100.0f, 0.0f});  // Move right
+// Get position (pixels)
+Vec2 pos = physics->getPosition(entity);
+// pos.x and pos.y are in pixels
 
-// Get/Set angular velocity (radians/sec)
-float angularVel = physics_->getAngularVelocity(entity);
-physics_->setAngularVelocity(entity, 2.0f);  // Spin
+// Set position (pixels)
+physics->setPosition(entity, {100.0f, 200.0f});
+
+// Get rotation (radians)
+float angle = physics->getRotation(entity);
+
+// Set rotation (radians)
+physics->setRotation(entity, 1.57f);  // 90 degrees
+
+// Get body size
+Vec2 size = physics->getBodySize(entity);
 ```
 
-#### Body Type Changes
+### Velocity
 
 ```cpp
-// Change body type at runtime
-physics_->setBodyType(entity, BodyType::Kinematic);
+// Get linear velocity (pixels/second)
+Vec2 velocity = physics->getVelocity(entity);
 
-BodyType type = physics_->getBodyType(entity);
+// Set linear velocity (pixels/second)
+physics->setVelocity(entity, {100.0f, 0.0f});  // Move right at 100 px/s
+
+// Get/Set angular velocity (radians/second)
+float angularVel = physics->getAngularVelocity(entity);
+physics->setAngularVelocity(entity, 2.0f);     // Spin
 ```
 
-### Applying Forces and Impulses
+### Body Type Changes
 
-#### Forces (Gradual Acceleration)
-
-Forces are applied over time and integrated by the physics engine:
+You can change a body's type at runtime:
 
 ```cpp
-// Apply force at center of mass
-Vec2 force = {1000.0f, 0.0f};
-physics_->applyForce(entity, force);
+// Change to kinematic (script-controlled)
+physics->setBodyType(entity, BodyType::Kinematic);
 
-// Apply force at a point (causes rotation)
+// Change to dynamic (physics-driven)
+physics->setBodyType(entity, BodyType::Dynamic);
+
+// Query current type
+BodyType type = physics->getBodyType(entity);
+```
+
+### Body Management
+
+```cpp
+// Check if entity has a physics body
+if (physics->hasBody(entity)) {
+    // Do physics stuff
+}
+
+// Destroy physics body
+physics->destroyBody(entity);
+```
+
+---
+
+## Forces and Impulses
+
+There are two ways to move physics bodies: **forces** (gradual) and **impulses** (instant).
+
+### Forces (Gradual Acceleration)
+
+Forces are applied continuously and integrated over time:
+
+```cpp
+// Apply force at center (default)
+physics->applyForce(entity, {1000.0f, 0.0f});
+
+// Apply force at a specific point (causes rotation)
 Vec2 force = {500.0f, 0.0f};
-Vec2 point = {0.0f, 10.0f};  // Offset from center
-physics_->applyForce(entity, force, point);
+Vec2 point = {10.0f, 20.0f};  // World coordinates
+physics->applyForce(entity, force, point);
 
 // Apply torque (rotational force)
-physics_->applyTorque(entity, 100.0f);
+physics->applyTorque(entity, 100.0f);
 ```
 
-**Use forces for**:
-- Continuous acceleration (jet engines, thrusters)
+**Use forces for:**
+- Continuous acceleration (thrusters, engines)
 - Wind effects
 - Magnetic/gravity fields
+- Gradual pushing/pulling
 
-#### Impulses (Instant Velocity Change)
+### Impulses (Instant Velocity Change)
 
-Impulses instantly change velocity:
+Impulses instantly modify velocity (perfect for one-time events):
 
 ```cpp
-// Apply impulse at center
-Vec2 impulse = {500.0f, -300.0f};
-physics_->applyImpulse(entity, impulse);
+// Apply impulse at center (most common)
+physics->applyImpulse(entity, {0, -10000});  // Jump!
 
-// Apply impulse at point
-Vec2 impulse = {200.0f, 0.0f};
-Vec2 point = {0.0f, 5.0f};
-physics_->applyImpulse(entity, impulse, point);
+// Apply impulse at specific point
+Vec2 impulse = {500.0f, 0.0f};
+Vec2 point = {10.0f, 20.0f};  // World coordinates
+physics->applyImpulse(entity, impulse, point);
 ```
 
-**Use impulses for**:
-- Jumping (instant upward velocity)
+**Use impulses for:**
+- Jumping (instant upward kick)
 - Explosions
-- Instant direction changes
 - Knockback effects
+- Instant direction changes
 
-### Collision Filtering
-
-Collision layers and masks control what collides with what:
+**Example: Platformer Jump**
 
 ```cpp
-// Common layer definitions (bestow.physics)
-namespace CollisionLayers {
-    inline constexpr CollisionLayer Player      = 0x0001;
-    inline constexpr CollisionLayer Enemy       = 0x0002;
-    inline constexpr CollisionLayer Projectile  = 0x0004;
-    inline constexpr CollisionLayer Terrain     = 0x0008;
-    inline constexpr CollisionLayer Trigger     = 0x0010;
-    inline constexpr CollisionLayer Collectible = 0x0020;
-    inline constexpr CollisionLayer Ground      = 0x0040;
+void jump() {
+    auto grounded = physics->checkGrounded(player);
+    if (grounded.grounded) {
+        // Apply upward impulse (negative Y = up)
+        physics->applyImpulse(player, {0, -10000});
+    }
 }
+```
 
-// Set collision layer (what I am)
-physics_->setCollisionLayer(player, CollisionLayers::Player);
+---
 
-// Set collision mask (what I collide with)
+## Collision Filtering
+
+Collision filtering uses a 16-bit layer system to control what collides with what.
+
+### How It Works
+
+Every body has two properties:
+- **Collision Layer** (16-bit): What category I am
+- **Collision Mask** (16-bit): What categories I collide with
+
+Bodies only collide if: `(bodyA.mask & bodyB.layer) && (bodyB.mask & bodyA.layer)`
+
+### Predefined Layers
+
+```cpp
+namespace CollisionLayers {
+    constexpr CollisionLayer Player      = 0x0001;  // Bit 0
+    constexpr CollisionLayer Enemy       = 0x0002;  // Bit 1
+    constexpr CollisionLayer Projectile  = 0x0004;  // Bit 2
+    constexpr CollisionLayer Terrain     = 0x0008;  // Bit 3
+    constexpr CollisionLayer Trigger     = 0x0010;  // Bit 4
+    constexpr CollisionLayer Collectible = 0x0020;  // Bit 5
+    constexpr CollisionLayer Ground      = 0x0040;  // Bit 6
+}
+```
+
+### Setting Layers and Masks
+
+```cpp
+// Set what category this body is (layer)
+physics->setCollisionLayer(player, CollisionLayers::Player);
+
+// Set what categories this body collides with (mask)
+physics->setCollisionMask(player, 0xFFFF);  // Collide with everything
+
+// Or be selective:
 CollisionMask mask = CollisionLayers::Enemy |
                      CollisionLayers::Terrain |
                      CollisionLayers::Ground;
-physics_->setCollisionMask(player, mask);
+physics->setCollisionMask(player, mask);  // Doesn't collide with projectiles
+
+// Get current layer (for debugging)
+CollisionLayer layer = physics->getCollisionLayer(entity);
 ```
 
-**Example: Player projectile that doesn't hit player**:
+### Example: Player Projectile
+
+Make a projectile that hits enemies but not the player who shot it:
 
 ```cpp
-Entity projectile = entities_->createEntity();
-PhysicsBodyDef def{.type = BodyType::Dynamic, .size = {8.0f, 8.0f}};
-physics_->createBody(projectile, def);
+// Create projectile body
+PhysicsBodyDef def{
+    .type = BodyType::Dynamic,
+    .size = {8.0f, 8.0f},
+    .isSensor = false  // Solid collision
+};
+physics->createBody(projectile, def);
 
-// Set as projectile layer
-physics_->setCollisionLayer(projectile, CollisionLayers::Projectile);
+// I am a projectile
+physics->setCollisionLayer(projectile, CollisionLayers::Projectile);
 
-// Only collide with enemies and terrain (not player or other projectiles)
+// I collide with enemies and terrain only (NOT player or other projectiles)
 CollisionMask mask = CollisionLayers::Enemy | CollisionLayers::Terrain;
-physics_->setCollisionMask(projectile, mask);
+physics->setCollisionMask(projectile, mask);
 ```
 
-### Spatial Queries
+### Sensor (Trigger) Mode
 
-#### AABB Query (Rectangle)
+Make a body detect overlap without physical collision:
 
-Find all bodies in a rectangular region:
+```cpp
+// Make body a sensor (trigger)
+physics->setSensor(entity, true);
+
+// Or set in PhysicsBodyDef:
+PhysicsBodyDef def{.isSensor = true};
+```
+
+---
+
+## Spatial Queries
+
+Spatial queries let you find physics bodies in an area.
+
+### AABB Query (Rectangular Area)
+
+Find all bodies within a rectangular region:
 
 ```cpp
 Vec2 min = {100.0f, 100.0f};
 Vec2 max = {200.0f, 200.0f};
 
-std::vector<Entity> entities = physics_->queryAABB(min, max);
+std::vector<Entity> entities = physics->queryAABB(min, max);
 
 for (Entity e : entities) {
-    // Process each entity in region
+    // Do something with entities in box
 }
 ```
 
-#### Circle Query (Radius)
+**Use cases:** Area-of-effect attacks, spawn zones, region triggers
+
+### Circle Query (Radial Area)
 
 Find all bodies within a radius:
 
@@ -365,24 +437,21 @@ Find all bodies within a radius:
 Vec2 center = {200.0f, 300.0f};
 float radius = 50.0f;
 
-std::vector<Entity> entities = physics_->queryCircle(center, radius);
+std::vector<Entity> entities = physics->queryCircle(center, radius);
 ```
 
-**Use cases**:
-- Area-of-effect damage
-- Enemy detection radius
-- Proximity-based spawning
+**Use cases:** Explosion damage, enemy detection radius, proximity checks
 
-#### Raycasting
+### Raycasting
 
-Cast a ray and find the first hit:
+Cast a ray and find what it hits:
 
 ```cpp
 Vec2 origin = {100.0f, 100.0f};
-Vec2 direction = {1.0f, 0.0f};  // Normalized direction
+Vec2 direction = {1.0f, 0.0f};  // Must be normalized!
 float maxDistance = 500.0f;
 
-std::optional<RaycastHit> hit = physics_->raycast(origin, direction, maxDistance);
+auto hit = physics->raycast(origin, direction, maxDistance);
 
 if (hit) {
     Entity hitEntity = hit->entity;
@@ -390,527 +459,126 @@ if (hit) {
     Vec2 hitNormal = hit->normal;
     float distance = hit->distance;
 
-    // Process hit
+    // Hit something!
 }
 ```
 
-**Find all hits along ray**:
+**Find all hits along the ray:**
 
 ```cpp
-std::vector<RaycastHit> hits = physics_->raycastAll(origin, direction, maxDistance);
+std::vector<RaycastHit> hits = physics->raycastAll(origin, direction, maxDistance);
+// Sorted by distance (closest first)
 
-for (const RaycastHit& hit : hits) {
-    // Process each hit (sorted by distance)
+for (const auto& hit : hits) {
+    // Process each hit
 }
 ```
 
-**Raycast with collision filtering**:
+**Raycast with collision filtering:**
 
 ```cpp
-// Only hit enemies
+// Only hit enemies (ignore terrain, players, etc.)
 CollisionMask mask = CollisionLayers::Enemy;
-auto hit = physics_->raycast(origin, direction, maxDistance, mask);
+auto hit = physics->raycast(origin, direction, maxDistance, mask);
 ```
 
-**Use cases**:
-- Line-of-sight checks
-- Shooting/projectiles
-- Ground detection
-- Laser beams
+**Use cases:** Line-of-sight, shooting, laser beams, ground detection
 
-### Ground Detection
+---
 
-Bestow provides a specialized ground check for platformers:
+## Ground Detection
+
+For platformers, Bestow provides a dedicated ground check system:
+
+### Basic Usage
 
 ```cpp
 GroundCheckParams params{
-    .rayDistance = 5.0f,           // How far below to check (pixels)
-    .slopeToleranceDeg = 60.0f,    // Max slope angle to consider "ground"
+    .rayDistance = 5.0f,        // How far below body to check (pixels)
+    .slopeToleranceDeg = 60.0f, // Max slope angle considered "ground"
     .groundMask = CollisionLayers::Ground | CollisionLayers::Terrain
 };
 
-GroundCheckResult result = physics_->checkGrounded(playerEntity, params);
+GroundCheckResult result = physics->checkGrounded(player, params);
 
 if (result.grounded) {
-    Entity groundEntity = result.groundEntity;  // What we're standing on
-    Vec2 contactPoint = result.contactPoint;
-    Vec2 surfaceNormal = result.surfaceNormal;
+    // Player is standing on something!
+    Entity groundEntity = result.groundEntity;  // What we're on
+    Vec2 contactPoint = result.contactPoint;    // Where we touch
+    Vec2 surfaceNormal = result.surfaceNormal;  // Surface direction
     float slopeAngle = result.slopeAngle;       // Degrees from horizontal
-
-    // Player is on ground - allow jumping
 }
 ```
 
-**How it works**:
-1. Casts a ray downward from the body's center
-2. Ray length = body half-height + rayDistance
-3. Checks if hit entity's layer is in groundMask
-4. Validates slope angle against slopeToleranceDeg
-5. Returns detailed ground contact information
+### How It Works
 
-**Use in platformer movement**:
+1. Casts a ray downward from the body's center
+2. Ray length = `body_half_height + rayDistance`
+3. Checks if hit entity's layer is in `groundMask`
+4. Validates slope angle ≤ `slopeToleranceDeg`
+5. Returns detailed ground contact info
+
+### Platformer Movement Example
 
 ```cpp
-void updatePlayerMovement(Entity player, DeltaTime dt) {
-    auto grounded = physics_->checkGrounded(player);
+void updatePlayer(Entity player, float dt) {
+    // Check if on ground
+    auto grounded = physics->checkGrounded(player);
 
-    if (grounded.grounded && input->isKeyPressed(Key::Space)) {
-        // Jump
-        physics_->applyImpulse(player, {0.0f, -500.0f});
+    if (grounded.grounded && input->isKeyJustPressed(Key::Space)) {
+        // Jump!
+        physics->applyImpulse(player, {0, -10000});
     }
 
     // Move horizontally
-    Vec2 velocity = physics_->getVelocity(player);
-    float moveSpeed = grounded.grounded ? 200.0f : 100.0f;  // Slower in air
-    velocity.x = input->getAxis(Axis::Horizontal) * moveSpeed;
-    physics_->setVelocity(player, velocity);
-}
-```
-
-### World Settings
-
-```cpp
-// Set gravity (pixels/s²)
-physics_->setGravity({0.0f, 980.0f});  // Standard Earth gravity (Y-down)
-physics_->setGravity({0.0f, 0.0f});    // Zero gravity (space game)
-physics_->setGravity({0.0f, -500.0f}); // Low gravity (moon)
-
-Vec2 gravity = physics_->getGravity();
-```
-
-### Updating Physics
-
-Physics must be updated each frame:
-
-```cpp
-void update(DeltaTime dt) {
-    // Update physics simulation
-    physics_->update(dt);
-
-    // Physics has updated body positions
-    // Sync with rendering if needed
-}
-```
-
-**Fixed timestep recommended**:
-
-```cpp
-class Game {
-    float accumulator_ = 0.0f;
-    const float FIXED_DT = 1.0f / 60.0f;  // 60 FPS physics
-
-    void update(DeltaTime dt) {
-        accumulator_ += dt;
-
-        while (accumulator_ >= FIXED_DT) {
-            physics_->update(FIXED_DT);
-            accumulator_ -= FIXED_DT;
-        }
-    }
-};
-```
-
----
-
-## 3D Physics (Jolt)
-
-### Getting the 3D Physics System
-
-```cpp
-import bestow;
-
-class Game3D : public IApplication {
-public:
-    Game3D(IPhysics3DSystem& physics, IEntitySystem& entities)
-        : physics_(&physics), entities_(&entities) {}
-
-private:
-    IPhysics3DSystem* physics_;
-    IEntitySystem* entities_;
-};
-```
-
-### Creating 3D Bodies
-
-#### Dynamic Box
-
-```cpp
-Entity crate = entities_->createEntity();
-
-PhysicsBodyDef3D def{
-    .type = BodyType3D::Dynamic,
-    .transform = {.position = {0.0f, 5.0f, 0.0f}},
-    .shapeType = ShapeType3D::Box,
-    .shapeHalfExtents = {0.5f, 0.5f, 0.5f},  // 1m × 1m × 1m box
-    .density = 1000.0f,
-    .friction = 0.5f,
-    .restitution = 0.3f
-};
-
-physics_->createBody(crate, def);
-```
-
-#### Static Ground Plane
-
-```cpp
-Entity ground = entities_->createEntity();
-
-PhysicsBodyDef3D def{
-    .type = BodyType3D::Static,
-    .transform = {.position = {0.0f, 0.0f, 0.0f}},
-    .shapeType = ShapeType3D::Box,
-    .shapeHalfExtents = {50.0f, 0.1f, 50.0f}  // Large thin box
-};
-
-physics_->createBody(ground, def);
-```
-
-#### Character Capsule
-
-```cpp
-Entity character = entities_->createEntity();
-
-PhysicsBodyDef3D def{
-    .type = BodyType3D::Dynamic,
-    .transform = {.position = {0.0f, 2.0f, 0.0f}},
-    .shapeType = ShapeType3D::Capsule,
-    .shapeRadius = 0.3f,
-    .shapeHalfHeight = 0.9f,  // Total height = 2.4m (0.9*2 + 0.3*2)
-    .friction = 0.0f,          // No friction for smooth movement
-    .linearDamping = 0.05f,
-    .angularDamping = 1.0f,
-    .gravityFactor = 1.0f
-};
-
-physics_->createBody(character, def);
-```
-
-### 3D Body Properties
-
-```cpp
-// Position
-auto result = physics_->getPosition(entity);
-if (result) {
-    Vec3 pos = result.value();
-}
-physics_->setPosition(entity, {10.0f, 5.0f, -20.0f});
-
-// Rotation (quaternion)
-auto rotResult = physics_->getRotation(entity);
-if (rotResult) {
-    Quat rotation = rotResult.value();
-}
-physics_->setRotation(entity, {1.0f, 0.0f, 0.0f, 0.0f});  // Identity
-
-// Velocity
-physics_->setLinearVelocity(entity, {5.0f, 0.0f, 0.0f});
-auto velResult = physics_->getLinearVelocity(entity);
-
-physics_->setAngularVelocity(entity, {0.0f, 1.0f, 0.0f});
-```
-
-### 3D Forces and Impulses
-
-```cpp
-// Apply force at center
-physics_->applyForce(entity, {100.0f, 0.0f, 0.0f});
-
-// Apply force at point
-physics_->applyForceAtPoint(entity, {50.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
-
-// Apply torque
-physics_->applyTorque(entity, {0.0f, 10.0f, 0.0f});
-
-// Impulses
-physics_->applyImpulse(entity, {5.0f, 10.0f, 0.0f});
-physics_->applyImpulseAtPoint(entity, {3.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f});
-physics_->applyAngularImpulse(entity, {0.0f, 2.0f, 0.0f});
-```
-
-### 3D Raycasting
-
-```cpp
-Vec3 origin = {0.0f, 10.0f, 0.0f};
-Vec3 direction = {0.0f, -1.0f, 0.0f};  // Down
-float maxDistance = 20.0f;
-
-QueryFilter3D filter{
-    .layerMask = CollisionLayers3D::Static | CollisionLayers3D::Dynamic,
-    .ignoreSensors = true
-};
-
-auto hit = physics_->raycast(origin, direction, maxDistance, filter);
-
-if (hit) {
-    Entity hitEntity = hit->entity;
-    Vec3 hitPoint = hit->point;
-    Vec3 hitNormal = hit->normal;
-    float distance = hit->distance;
-}
-```
-
-### Shape Casting (3D)
-
-More advanced than raycasting - casts a volume instead of a line:
-
-#### Sphere Cast
-
-```cpp
-Vec3 origin = {0.0f, 1.0f, 0.0f};
-float radius = 0.5f;
-Vec3 direction = {1.0f, 0.0f, 0.0f};
-float maxDistance = 10.0f;
-
-auto hit = physics_->sphereCast(origin, radius, direction, maxDistance);
-```
-
-#### Box Cast
-
-```cpp
-Vec3 origin = {0.0f, 1.0f, 0.0f};
-Vec3 halfExtents = {0.5f, 0.5f, 0.5f};
-Quat rotation = {1.0f, 0.0f, 0.0f, 0.0f};
-Vec3 direction = {0.0f, 0.0f, 1.0f};
-float maxDistance = 5.0f;
-
-auto hit = physics_->boxCast(origin, halfExtents, rotation, direction, maxDistance);
-```
-
-**Use cases**:
-- Character controller ground detection (sphere cast down)
-- Predictive collision (cast player shape forward)
-- Thick raycast for bullets
-
-### 3D Overlap Queries
-
-```cpp
-// Sphere overlap
-Vec3 center = {0.0f, 5.0f, 0.0f};
-float radius = 3.0f;
-auto entities = physics_->overlapSphere(center, radius);
-
-// Box overlap
-Vec3 center = {0.0f, 0.0f, 0.0f};
-Vec3 halfExtents = {2.0f, 2.0f, 2.0f};
-Quat rotation = {1.0f, 0.0f, 0.0f, 0.0f};
-auto entities = physics_->overlapBox(center, halfExtents, rotation);
-
-// AABB query
-Vec3 min = {-5.0f, 0.0f, -5.0f};
-Vec3 max = {5.0f, 10.0f, 5.0f};
-auto entities = physics_->queryAABB(min, max);
-```
-
-### Compound Shapes (Multi-Shape Bodies)
-
-Create complex collision shapes by combining primitives:
-
-```cpp
-Entity vehicle = entities_->createEntity();
-
-// Create compound shape definition
-CompoundShapeDef compoundDef;
-
-// Add main body box
-BoxShapeDef bodyBox;
-bodyBox.halfExtents = {1.0f, 0.5f, 2.0f};
-bodyBox.localPosition = {0.0f, 0.5f, 0.0f};
-compoundDef.boxes.push_back(bodyBox);
-
-// Add cabin box
-BoxShapeDef cabinBox;
-cabinBox.halfExtents = {0.8f, 0.3f, 0.8f};
-cabinBox.localPosition = {0.0f, 1.1f, 0.0f};
-compoundDef.boxes.push_back(cabinBox);
-
-Transform3D transform{.position = {0.0f, 1.0f, 0.0f}};
-physics_->createCompoundBody(vehicle, BodyType3D::Dynamic, transform, compoundDef);
-```
-
-### Character Controllers
-
-Specialized physics controller for character movement:
-
-```cpp
-CharacterControllerDef charDef{
-    .radius = 0.3f,
-    .height = 1.8f,
-    .stepHeight = 0.35f,
-    .maxSlopeAngle = 45.0f,
-    .mass = 80.0f,
-    .layer = CollisionLayers3D::Character
-};
-
-physics_->createCharacter(playerEntity, charDef);
-
-// Move character
-Vec3 desiredVelocity = {5.0f, 0.0f, 0.0f};
-physics_->moveCharacter(playerEntity, desiredVelocity, dt);
-
-// Check if grounded
-auto groundInfo = physics_->getCharacterGroundInfo(playerEntity);
-if (groundInfo && groundInfo->grounded) {
-    // Can jump
-}
-```
-
-### Constraints (Joints)
-
-Connect bodies with constraints:
-
-#### Fixed Constraint
-
-```cpp
-ConstraintDef3D fixedDef;
-fixedDef.type = ConstraintType3D::Fixed;
-fixedDef.bodyA = bodyA;
-fixedDef.bodyB = bodyB;
-
-auto constraintId = physics_->createConstraint(fixedDef);
-```
-
-#### Hinge (Door, Wheel)
-
-```cpp
-HingeConstraintDef hingeDef;
-hingeDef.bodyA = door;
-hingeDef.bodyB = frame;
-hingeDef.pivotA = {-0.5f, 0.0f, 0.0f};  // Left edge of door
-hingeDef.pivotB = {0.0f, 0.0f, 0.0f};
-hingeDef.axisA = {0.0f, 1.0f, 0.0f};    // Vertical axis
-hingeDef.axisB = {0.0f, 1.0f, 0.0f};
-hingeDef.hasLimits = true;
-hingeDef.minAngle = 0.0f;
-hingeDef.maxAngle = 1.57f;  // 90 degrees
-
-auto hinge = physics_->createConstraint(hingeDef);
-```
-
-#### Slider (Piston)
-
-```cpp
-SliderConstraintDef sliderDef;
-sliderDef.bodyA = piston;
-sliderDef.bodyB = cylinder;
-sliderDef.axisA = {0.0f, 1.0f, 0.0f};
-sliderDef.hasLimits = true;
-sliderDef.minDistance = 0.0f;
-sliderDef.maxDistance = 2.0f;
-
-auto slider = physics_->createConstraint(sliderDef);
-```
-
-### 3D Physics Update
-
-```cpp
-void update(DeltaTime dt) {
-    // Update physics (with substeps for stability)
-    int substeps = 2;
-    physics_->update(dt, substeps);
-
-    // Sync transforms to entities
-    std::vector<Entity> dynamicEntities = getDynamicEntities();
-    physics_->syncTransforms(dynamicEntities);
+    Vec2 vel = physics->getVelocity(player);
+    float moveSpeed = grounded.grounded ? 200.0f : 150.0f;  // Slower in air
+    vel.x = input->getAxis(Axis::Horizontal) * moveSpeed;
+    physics->setVelocity(player, vel);
 }
 ```
 
 ---
 
-## Collision Detection
+## Collision Callbacks
 
-### Collision Callbacks (2D)
+Subscribe to collision events to handle physics interactions:
+
+### Setting Up Callbacks
 
 ```cpp
-physics_->setCollisionCallback([this](const CollisionEvent& event) {
+physics->setCollisionCallback([this](const CollisionEvent& event) {
     Entity entityA = event.entityA;
     Entity entityB = event.entityB;
     Vec2 contactPoint = event.contactPoint;
     Vec2 normal = event.normal;
-    float impulse = event.impulse;
+    float impulse = event.impulse;  // Collision force
 
-    // Handle collision
+    // Handle the collision
     if (isPlayer(entityA) && isEnemy(entityB)) {
         damagePlayer(entityA);
     }
 });
 ```
 
-### Trigger Callbacks (2D)
-
-Sensors generate trigger events instead of collision events:
+### CollisionEvent Structure
 
 ```cpp
-// Set trigger enter callback
-physics_->setTriggerEnterCallback([this](const TriggerEvent& event) {
-    Entity sensor = event.entityA;
-    Entity visitor = event.entityB;
-
-    // Player entered checkpoint
-    if (isCheckpoint(sensor) && isPlayer(visitor)) {
-        activateCheckpoint(sensor);
-    }
-});
-
-// Set trigger exit callback
-physics_->setTriggerExitCallback([this](const TriggerEvent& event) {
-    Entity sensor = event.entityA;
-    Entity visitor = event.entityB;
-
-    // Player left danger zone
-    if (isDangerZone(sensor) && isPlayer(visitor)) {
-        deactivateDangerEffect();
-    }
-});
-```
-
-### 3D Collision Callbacks
-
-```cpp
-physics_->setCollisionCallback([](const CollisionEvent3D& event) {
-    Entity entityA = event.entityA;
-    Entity entityB = event.entityB;
-    // Handle 3D collision
-});
-
-physics_->setTriggerEnterCallback([](const TriggerEvent3D& event) {
-    // Handle trigger enter
-});
-
-physics_->setTriggerExitCallback([](const TriggerEvent3D& event) {
-    // Handle trigger exit
-});
-```
-
-### Contact Filtering
-
-Prevent specific objects from colliding using layers/masks:
-
-```cpp
-// Player doesn't collide with collectibles (but triggers sensor events)
-Entity coin = entities_->createEntity();
-PhysicsBodyDef coinDef{
-    .type = BodyType::Static,
-    .size = {16.0f, 16.0f},
-    .isSensor = true  // Trigger only
+struct CollisionEvent {
+    Entity entityA;      // First colliding entity
+    Entity entityB;      // Second colliding entity
+    Vec2 contactPoint;   // Where they touched (world coordinates, pixels)
+    Vec2 normal;         // Collision normal
+    float impulse;       // Impact force
 };
-physics_->createBody(coin, coinDef);
-physics_->setCollisionLayer(coin, CollisionLayers::Collectible);
-
-// Player setup
-physics_->setCollisionLayer(player, CollisionLayers::Player);
-CollisionMask playerMask = CollisionLayers::Enemy |
-                           CollisionLayers::Terrain |
-                           CollisionLayers::Ground;
-// Note: Collectibles NOT in mask - won't physically collide
-physics_->setCollisionMask(player, playerMask);
-
-// But triggers still work!
-physics_->setTriggerEnterCallback([](const TriggerEvent& event) {
-    if (isCoin(event.entityA)) {
-        collectCoin(event.entityA, event.entityB);
-    }
-});
 ```
+
+### Important Notes
+
+- **Callback is called for solid (non-sensor) collisions only**
+- Sensor collisions generate separate trigger events (Box2D implementation detail)
+- Use `isSensor = false` in PhysicsBodyDef for physical collisions
+- Use `isSensor = true` for triggers/pickups
 
 ---
 
@@ -918,28 +586,18 @@ physics_->setTriggerEnterCallback([](const TriggerEvent& event) {
 
 ### 1. Physics Scale and Units
 
-#### 2D Games
-- **Use pixels as the logical unit** (100 pixels = 1 meter internally)
-- **Keep objects between 1-100 meters** in Box2D units (100-10,000 pixels)
-- **Avoid tiny objects** (< 10 pixels) - they're unstable
-- **Avoid huge objects** (> 10,000 pixels) - they reduce precision
+**Keep objects between 10-1000 pixels** (0.1-10 meters in Box2D units):
 
 ```cpp
 // Good: 32×40 pixel character (0.32×0.4 meters)
 PhysicsBodyDef playerDef{.size = {32.0f, 40.0f}};
 
-// Bad: 2×3 pixel character (too small)
+// Bad: 2×3 pixel character (too small, unstable)
 PhysicsBodyDef tinyDef{.size = {2.0f, 3.0f}};
 
-// Bad: 50,000×1,000 pixel object (too large)
+// Bad: 50,000×1,000 pixel object (too large, precision loss)
 PhysicsBodyDef hugeDef{.size = {50000.0f, 1000.0f}};
 ```
-
-#### 3D Games
-- **Use meters** (real-world scale)
-- **Character: 1.5-2.0 meters tall**
-- **Objects: 0.1-10 meters** for best stability
-- **Avoid objects smaller than 0.01 meters or larger than 1000 meters**
 
 ### 2. Fixed Timestep Integration
 
@@ -948,340 +606,192 @@ Always use a fixed timestep for physics simulation:
 ```cpp
 class Game {
     float accumulator_ = 0.0f;
-    const float FIXED_DT = 1.0f / 60.0f;  // 60 FPS physics
-    const float MAX_ACCUMULATOR = 0.25f;  // Prevent spiral of death
+    const float FIXED_DT = 1.0f / 60.0f;  // 60 Hz physics
 
-    void update(DeltaTime dt) {
-        // Cap delta time to prevent huge jumps
-        dt = std::min(dt, MAX_ACCUMULATOR);
+    void update(float dt) {
         accumulator_ += dt;
 
-        // Fixed timestep updates
+        // Update physics in fixed steps
         while (accumulator_ >= FIXED_DT) {
-            physics_->update(FIXED_DT);
+            physics->update(FIXED_DT);
             accumulator_ -= FIXED_DT;
         }
+
+        // Update rendering, input, etc. with variable dt
     }
 };
 ```
 
 **Why fixed timestep?**
-- Deterministic physics (same input = same output)
-- Stable simulation (no jittering from variable dt)
-- Prevents tunneling at low frame rates
-- Better networked multiplayer synchronization
+- Deterministic (same inputs = same results)
+- Stable simulation (no frame rate jitter)
+- Prevents tunneling
+- Easier to debug
 
-### 3. Avoiding Tunneling
+### 3. Prevent Tunneling (Fast Objects Passing Through Walls)
 
-Tunneling occurs when fast objects pass through thin objects:
+Solutions:
 
-**Solutions**:
-
-#### Use Continuous Collision Detection (CCD)
+**a) Make walls thicker:**
 
 ```cpp
-// 3D: Enable CCD for fast-moving objects
-PhysicsBodyDef3D bulletDef{
-    .type = BodyType3D::Dynamic,
-    .motionQuality = MotionQuality::LinearCast  // Enable CCD
-};
+// Thin wall - bad
+PhysicsBodyDef wallDef{.size = {10.0f, 500.0f}};
+
+// Thick wall - good
+PhysicsBodyDef wallDef{.size = {32.0f, 500.0f}};
 ```
 
-#### Increase Sub-Steps
-
-```cpp
-// More substeps = smaller time slices = less tunneling
-physics_->update(dt, 4);  // 4 substeps per frame
-```
-
-#### Limit Maximum Velocity
+**b) Limit maximum velocity:**
 
 ```cpp
 void limitVelocity(Entity entity, float maxSpeed) {
-    Vec2 vel = physics_->getVelocity(entity);
+    Vec2 vel = physics->getVelocity(entity);
     float speed = std::sqrt(vel.x * vel.x + vel.y * vel.y);
 
     if (speed > maxSpeed) {
         vel = vel * (maxSpeed / speed);
-        physics_->setVelocity(entity, vel);
+        physics->setVelocity(entity, vel);
     }
 }
 ```
 
-#### Make Walls Thicker
+### 4. Use Sensors for Non-Physical Detection
+
+Don't use full physics bodies when you just need detection:
 
 ```cpp
-// Instead of thin walls:
-PhysicsBodyDef thinWall{.size = {10.0f, 500.0f}};  // 10px thick - BAD
-
-// Use thicker walls:
-PhysicsBodyDef thickWall{.size = {32.0f, 500.0f}};  // 32px thick - GOOD
-```
-
-### 4. Performance Considerations
-
-#### Minimize Body Count
-
-```cpp
-// Bad: Create 1000 individual bodies for a brick wall
-for (int i = 0; i < 1000; ++i) {
-    createBrick();  // 1000 physics bodies!
-}
-
-// Good: Create 1 static compound body
-Entity wall = entities_->createEntity();
-// ... create compound shape with all bricks
-```
-
-#### Use Appropriate Body Types
-
-```cpp
-// Bad: Static objects as Dynamic
-PhysicsBodyDef wallDef{
-    .type = BodyType::Dynamic  // Unnecessary computation
-};
-
-// Good: Static objects as Static
-PhysicsBodyDef wallDef{
-    .type = BodyType::Static   // No integration needed
-};
-```
-
-#### Disable Sleeping Carefully
-
-```cpp
-// Bodies automatically sleep when at rest
-// Only disable for objects that must always be active
-PhysicsBodyDef3D alwaysActiveDef{
-    .allowSleep = false  // Disable sleeping (use sparingly)
-};
-```
-
-#### Use Sensors for Non-Physical Detection
-
-```cpp
-// Bad: Full physics body for pickup detection
+// Bad: Full physics body for a coin
 PhysicsBodyDef coinDef{
-    .type = BodyType::Dynamic,  // Unnecessary physics
+    .type = BodyType::Dynamic,  // Unnecessary
     .density = 0.1f
 };
 
 // Good: Sensor for pickup detection
 PhysicsBodyDef coinDef{
     .type = BodyType::Static,
-    .isSensor = true  // No collision response, just detection
+    .isSensor = true  // Just detection, no collision response
 };
 ```
 
-### 5. Damping for Controlled Movement
+### 5. Use Collision Filtering Wisely
 
-Use damping to slow objects naturally:
+Don't let everything collide with everything:
 
 ```cpp
-PhysicsBodyDef playerDef{
-    .linearDamping = 0.1f,   // Reduces linear velocity over time
-    .angularDamping = 0.5f   // Reduces rotation over time
-};
+// Good: Use collision filtering
+physics->setCollisionLayer(player, CollisionLayers::Player);
+physics->setCollisionMask(player,
+    CollisionLayers::Enemy |
+    CollisionLayers::Terrain |
+    CollisionLayers::Ground);  // Ignore projectiles, collectibles
 ```
 
-**Linear damping** (for movement):
-- `0.0` = No damping (space, ice)
-- `0.1` = Slight damping (default)
-- `0.5` = Medium damping (water)
-- `1.0` = Heavy damping (thick liquid)
+### 6. Set Ground Layer on Platforms
 
-**Angular damping** (for rotation):
-- `0.0` = Spins forever
-- `0.5` = Gradual slowdown
-- `1.0` = Stops rotation quickly
-
-### 6. Material Combination
-
-When two bodies collide, Box2D/Jolt combines their materials:
+For ground detection to work, platforms need the Ground layer:
 
 ```cpp
-// Combined friction = sqrt(frictionA * frictionB)
-// Combined restitution = max(restitutionA, restitutionB)
+// Create platform
+PhysicsBodyDef platformDef{
+    .type = BodyType::Static,
+    .size = {200.0f, 32.0f}
+};
+physics->createBody(platform, platformDef);
 
-// Ice floor (low friction) + rubber ball (high friction)
-// Combined friction will be low (ice dominates)
-
-// Concrete floor (no bounce) + bouncy ball (high restitution)
-// Combined restitution will be high (ball bounces)
+// IMPORTANT: Mark as ground for checkGrounded() to detect it
+physics->setCollisionLayer(platform, CollisionLayers::Ground);
 ```
 
 ---
 
 ## Common Patterns
 
-### Platformer Physics
+### Platformer Character Controller
 
-Complete platformer character controller:
+Complete platformer movement with jumping and air control:
 
 ```cpp
 class PlatformerController {
 public:
-    PlatformerController(IPhysicsSystem* physics, IInputSystem* input)
-        : physics_(physics), input_(input) {}
-
-    void update(Entity player, DeltaTime dt) {
-        // Ground check
-        GroundCheckParams groundParams{
+    void update(Entity player, float dt) {
+        // Check if on ground
+        GroundCheckParams params{
             .rayDistance = 5.0f,
-            .slopeToleranceDeg = 50.0f,
-            .groundMask = CollisionLayers::Ground | CollisionLayers::Terrain
+            .slopeToleranceDeg = 60.0f,
+            .groundMask = CollisionLayers::Ground
         };
-        auto grounded = physics_->checkGrounded(player, groundParams);
+        auto grounded = physics->checkGrounded(player, params);
 
         // Get current velocity
-        Vec2 velocity = physics_->getVelocity(player);
+        Vec2 vel = physics->getVelocity(player);
 
-        // Horizontal movement
-        float moveInput = input_->getAxis(Axis::Horizontal);
+        // Horizontal input (Dvorak-friendly: A and E keys)
+        float moveInput = 0.0f;
+        if (input->isKeyHeld(Key::A)) moveInput -= 1.0f;  // Left
+        if (input->isKeyHeld(Key::E)) moveInput += 1.0f;  // Right
 
         if (grounded.grounded) {
             // On ground: direct control
-            velocity.x = moveInput * MOVE_SPEED;
+            vel.x = moveInput * moveSpeed;
 
-            // Jump
-            if (input_->isKeyPressed(Key::Space)) {
-                velocity.y = JUMP_VELOCITY;
+            // Jump (Dvorak: Space or Comma key)
+            if (input->isKeyJustPressed(Key::Space) ||
+                input->isKeyJustPressed(Key::Comma)) {
+                physics->applyImpulse(player, {0, jumpForce});
             }
         } else {
             // In air: reduced control
-            float airControl = 0.3f;
-            velocity.x += moveInput * MOVE_SPEED * airControl * dt;
-
-            // Clamp air speed
-            velocity.x = std::clamp(velocity.x, -MOVE_SPEED, MOVE_SPEED);
+            vel.x += moveInput * moveSpeed * airControl * dt;
+            vel.x = std::clamp(vel.x, -moveSpeed, moveSpeed);
         }
 
-        // Apply velocity
-        physics_->setVelocity(player, velocity);
+        physics->setVelocity(player, vel);
     }
 
 private:
-    IPhysicsSystem* physics_;
-    IInputSystem* input_;
-
-    const float MOVE_SPEED = 200.0f;
-    const float JUMP_VELOCITY = -500.0f;  // Negative = up (Y-down coords)
+    const float moveSpeed = 200.0f;
+    const float jumpForce = -10000.0f;  // Negative = up
+    const float airControl = 0.3f;
 };
 ```
 
 ### Top-Down Movement
 
-Character movement for top-down games:
+Character controller for top-down games (twin-stick, RPG, etc.):
 
 ```cpp
 class TopDownController {
 public:
-    void update(Entity character, DeltaTime dt) {
-        // Get input
-        Vec2 moveDir = {
-            input_->getAxis(Axis::Horizontal),
-            input_->getAxis(Axis::Vertical)
-        };
+    void update(Entity character, float dt) {
+        // Get input direction (Dvorak: ,AOE keys)
+        Vec2 moveDir = {0.0f, 0.0f};
+        if (input->isKeyHeld(Key::A)) moveDir.x -= 1.0f;  // Left
+        if (input->isKeyHeld(Key::E)) moveDir.x += 1.0f;  // Right
+        if (input->isKeyHeld(Key::Comma)) moveDir.y -= 1.0f;  // Up
+        if (input->isKeyHeld(Key::O)) moveDir.y += 1.0f;  // Down
 
         // Normalize diagonal movement
         float length = std::sqrt(moveDir.x * moveDir.x + moveDir.y * moveDir.y);
         if (length > 1.0f) {
-            moveDir = moveDir / length;
+            moveDir.x /= length;
+            moveDir.y /= length;
         }
 
-        // Set velocity directly (kinematic-style movement)
-        Vec2 velocity = moveDir * MOVE_SPEED;
-        physics_->setVelocity(character, velocity);
+        // Set velocity directly
+        Vec2 velocity = {moveDir.x * moveSpeed, moveDir.y * moveSpeed};
+        physics->setVelocity(character, velocity);
 
         // Optional: Face movement direction
         if (length > 0.1f) {
             float angle = std::atan2(moveDir.y, moveDir.x);
-            physics_->setRotation(character, angle);
+            physics->setRotation(character, angle);
         }
     }
 
 private:
-    const float MOVE_SPEED = 150.0f;
+    const float moveSpeed = 150.0f;
 };
-```
-
-### One-Way Platforms
-
-Platforms you can jump through from below:
-
-```cpp
-class OneWayPlatform {
-public:
-    void setup(Entity platform) {
-        // Create platform as sensor
-        PhysicsBodyDef def{
-            .type = BodyType::Static,
-            .size = {100.0f, 16.0f},
-            .isSensor = true  // Allows passing through
-        };
-        physics_->createBody(platform, def);
-        physics_->setCollisionLayer(platform, CollisionLayers::Ground);
-
-        // Track platform
-        oneWayPlatforms_.insert(platform);
-    }
-
-    void handleCollision(const CollisionEvent& event) {
-        // Detect player collision with one-way platform
-        Entity platform = isOneWayPlatform(event.entityA) ? event.entityA : event.entityB;
-        Entity player = isOneWayPlatform(event.entityA) ? event.entityB : event.entityA;
-
-        if (platform && player) {
-            Vec2 playerPos = physics_->getPosition(player);
-            Vec2 platformPos = physics_->getPosition(platform);
-            Vec2 playerVel = physics_->getVelocity(player);
-
-            // Only collide if:
-            // 1. Player is above platform
-            // 2. Player is moving down (or stationary)
-            bool abovePlatform = playerPos.y < platformPos.y;
-            bool movingDown = playerVel.y >= 0.0f;
-
-            if (abovePlatform && movingDown) {
-                // Enable collision (make platform solid)
-                physics_->setSensor(platform, false);
-            } else {
-                // Disable collision (let player pass through)
-                physics_->setSensor(platform, true);
-            }
-        }
-    }
-
-private:
-    std::set<Entity> oneWayPlatforms_;
-};
-```
-
-**Better approach: Use collision filtering with raycast**:
-
-```cpp
-void updateOneWayPlatform(Entity player, Entity platform) {
-    Vec2 playerPos = physics_->getPosition(player);
-    Vec2 platformPos = physics_->getPosition(platform);
-
-    // Player is above platform AND pressing down?
-    bool pressingDown = input_->isKeyPressed(Key::Down);
-    bool abovePlatform = playerPos.y < (platformPos.y - 10.0f);
-
-    if (pressingDown && !abovePlatform) {
-        // Temporarily disable collision
-        CollisionMask mask = physics_->getCollisionMask(player);
-        mask &= ~CollisionLayers::Ground;  // Remove Ground from mask
-        physics_->setCollisionMask(player, mask);
-
-        // Re-enable after 0.2 seconds
-        scheduledEvents_.push({0.2f, [this, player]() {
-            CollisionMask mask = physics_->getCollisionMask(player);
-            mask |= CollisionLayers::Ground;
-            physics_->setCollisionMask(player, mask);
-        }});
-    }
-}
 ```
 
 ### Moving Platforms
@@ -1291,462 +801,195 @@ Platforms that carry the player:
 ```cpp
 class MovingPlatform {
 public:
-    void createPlatform(Entity platform) {
+    void create(Entity platform, Vec2 start, Vec2 end, float speed) {
         PhysicsBodyDef def{
-            .type = BodyType::Kinematic,  // Move via velocity
-            .transform = {.x = 200.0f, .y = 300.0f},
+            .type = BodyType::Kinematic,  // Kinematic for script-controlled movement
+            .transform = {.x = start.x, .y = start.y},
             .size = {100.0f, 16.0f}
         };
-        physics_->createBody(platform, def);
-        physics_->setCollisionLayer(platform, CollisionLayers::Ground);
+        physics->createBody(platform, def);
+        physics->setCollisionLayer(platform, CollisionLayers::Ground);
 
-        // Store initial position for oscillation
-        platformData_[platform] = {.startPos = {200.0f, 300.0f}};
+        // Store movement data
+        data_[platform] = {start, end, speed};
+        movingToEnd_[platform] = true;
     }
 
-    void updatePlatform(Entity platform, DeltaTime dt) {
-        auto& data = platformData_[platform];
-        data.time += dt;
+    void update(float dt) {
+        for (auto& [entity, data] : data_) {
+            Vec2 pos = physics->getPosition(entity);
 
-        // Oscillate left-right
-        float offset = std::sin(data.time * 2.0f) * 100.0f;
-        Vec2 targetPos = data.startPos + Vec2{offset, 0.0f};
+            // Calculate target (ping-pong between start and end)
+            Vec2 target = movingToEnd_[entity] ? data.end : data.start;
+            Vec2 dir = {target.x - pos.x, target.y - pos.y};
+            float dist = std::sqrt(dir.x * dir.x + dir.y * dir.y);
 
-        // Calculate velocity to reach target
-        Vec2 currentPos = physics_->getPosition(platform);
-        Vec2 velocity = (targetPos - currentPos) / dt;
+            if (dist < 2.0f) {
+                // Reached target, switch direction
+                movingToEnd_[entity] = !movingToEnd_[entity];
+                continue;
+            }
 
-        physics_->setVelocity(platform, velocity);
-    }
+            // Normalize direction
+            dir.x /= dist;
+            dir.y /= dist;
 
-    void attachPlayerToPlatform(Entity player, Entity platform) {
-        // Store platform velocity to apply to player
-        Vec2 platformVel = physics_->getVelocity(platform);
-        Vec2 playerVel = physics_->getVelocity(player);
-
-        // Add platform velocity to player (player moves with platform)
-        playerVel.x += platformVel.x;
-        physics_->setVelocity(player, playerVel);
+            // Set velocity (kinematic bodies move by velocity)
+            Vec2 vel = {dir.x * data.speed, dir.y * data.speed};
+            physics->setVelocity(entity, vel);
+        }
     }
 
 private:
     struct PlatformData {
-        Vec2 startPos;
-        float time = 0.0f;
+        Vec2 start;
+        Vec2 end;
+        float speed;
     };
-    std::unordered_map<Entity, PlatformData> platformData_;
+    std::unordered_map<Entity, PlatformData> data_;
+    std::unordered_map<Entity, bool> movingToEnd_;
 };
 ```
 
 ### Projectile System
 
-Simple projectile physics:
+Simple projectile physics with collision:
 
 ```cpp
 class ProjectileSystem {
 public:
-    Entity createProjectile(Vec2 position, Vec2 direction, float speed) {
-        Entity projectile = entities_->createEntity();
+    Entity createProjectile(Vec2 pos, Vec2 direction, float speed) {
+        Entity projectile = entities->createEntity();
 
         PhysicsBodyDef def{
             .type = BodyType::Dynamic,
-            .transform = {.x = position.x, .y = position.y},
+            .transform = {.x = pos.x, .y = pos.y},
             .size = {8.0f, 8.0f},
             .density = 0.1f,
             .friction = 0.0f,
-            .restitution = 0.0f
+            .linearDamping = 0.0f  // No slowdown
         };
+        physics->createBody(projectile, def);
 
-        physics_->createBody(projectile, def);
-        physics_->setCollisionLayer(projectile, CollisionLayers::Projectile);
+        // Set collision filtering
+        physics->setCollisionLayer(projectile, CollisionLayers::Projectile);
+        physics->setCollisionMask(projectile,
+            CollisionLayers::Enemy | CollisionLayers::Terrain);
 
-        // Projectiles don't collide with each other or the shooter
-        CollisionMask mask = CollisionLayers::Enemy | CollisionLayers::Terrain;
-        physics_->setCollisionMask(projectile, mask);
-
-        // Set initial velocity
-        Vec2 velocity = direction * speed;
-        physics_->setVelocity(projectile, velocity);
-
-        // Disable gravity (straight projectile)
-        // Alternative: Use gravity for arcing projectiles
+        // Set velocity
+        Vec2 vel = {direction.x * speed, direction.y * speed};
+        physics->setVelocity(projectile, vel);
 
         return projectile;
     }
 
-    void handleProjectileHit(const CollisionEvent& event) {
-        Entity projectile = event.entityA;
-        Entity target = event.entityB;
+    void onCollision(const CollisionEvent& event) {
+        if (isProjectile(event.entityA)) {
+            // Projectile hit something
+            Entity target = event.entityB;
 
-        // Apply damage
-        if (auto* health = entities_->get<HealthComponent>(target)) {
-            health->takeDamage(projectileDamage_);
+            // Deal damage
+            if (entities->has<Health>(target)) {
+                auto& health = entities->get<Health>(target);
+                health.current -= 10;
+            }
+
+            // Destroy projectile
+            physics->destroyBody(event.entityA);
+            entities->destroyEntity(event.entityA);
         }
-
-        // Destroy projectile
-        physics_->destroyBody(projectile);
-        entities_->destroyEntity(projectile);
     }
-
-private:
-    float projectileDamage_ = 10.0f;
 };
 ```
 
 ### Explosion Force
 
-Apply radial force from an explosion:
+Apply radial force outward from a point:
 
 ```cpp
-void applyExplosionForce(Vec2 center, float radius, float force) {
-    // Query all entities in radius
-    std::vector<Entity> affected = physics_->queryCircle(center, radius);
+void applyExplosion(Vec2 center, float radius, float force) {
+    // Query all bodies in radius
+    std::vector<Entity> affected = physics->queryCircle(center, radius);
 
     for (Entity entity : affected) {
-        Vec2 entityPos = physics_->getPosition(entity);
-        Vec2 direction = entityPos - center;
+        Vec2 pos = physics->getPosition(entity);
+        Vec2 dir = {pos.x - center.x, pos.y - center.y};
 
-        float distance = std::sqrt(direction.x * direction.x + direction.y * direction.y);
-        if (distance < 0.001f) continue;  // Avoid division by zero
+        float distance = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+        if (distance < 0.001f) continue;
 
         // Normalize direction
-        direction = direction / distance;
+        dir.x /= distance;
+        dir.y /= distance;
 
-        // Calculate force (inverse square falloff)
+        // Calculate force with falloff (inverse square)
         float falloff = 1.0f - (distance / radius);
         float magnitude = force * falloff * falloff;
 
         // Apply impulse
-        Vec2 impulse = direction * magnitude;
-        physics_->applyImpulse(entity, impulse);
+        Vec2 impulse = {dir.x * magnitude, dir.y * magnitude};
+        physics->applyImpulse(entity, impulse);
     }
 }
 ```
 
-### Ragdoll Physics (3D)
+### Knockback Effect
 
-Create a simple ragdoll from connected bodies:
-
-```cpp
-class Ragdoll {
-public:
-    void createRagdoll(Vec3 position) {
-        // Create body parts
-        Entity torso = createBodyPart({0.3f, 0.5f, 0.2f}, position);
-        Entity head = createBodyPart({0.2f, 0.2f, 0.2f}, position + Vec3{0.0f, 0.7f, 0.0f});
-        Entity armL = createBodyPart({0.1f, 0.3f, 0.1f}, position + Vec3{-0.4f, 0.3f, 0.0f});
-        Entity armR = createBodyPart({0.1f, 0.3f, 0.1f}, position + Vec3{0.4f, 0.3f, 0.0f});
-        Entity legL = createBodyPart({0.15f, 0.4f, 0.15f}, position + Vec3{-0.2f, -0.9f, 0.0f});
-        Entity legR = createBodyPart({0.15f, 0.4f, 0.15f}, position + Vec3{0.2f, -0.9f, 0.0f});
-
-        // Connect with constraints
-        createHingeJoint(torso, head, {0.0f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f});
-        createHingeJoint(torso, armL, {-0.3f, 0.3f, 0.0f}, {1.0f, 0.0f, 0.0f});
-        createHingeJoint(torso, armR, {0.3f, 0.3f, 0.0f}, {1.0f, 0.0f, 0.0f});
-        createHingeJoint(torso, legL, {-0.2f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f});
-        createHingeJoint(torso, legR, {0.2f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f});
-    }
-
-private:
-    Entity createBodyPart(Vec3 halfExtents, Vec3 position) {
-        Entity part = entities_->createEntity();
-        PhysicsBodyDef3D def{
-            .type = BodyType3D::Dynamic,
-            .transform = {.position = position},
-            .shapeType = ShapeType3D::Box,
-            .shapeHalfExtents = halfExtents,
-            .density = 1000.0f
-        };
-        physics_->createBody(part, def);
-        return part;
-    }
-
-    void createHingeJoint(Entity bodyA, Entity bodyB, Vec3 pivot, Vec3 axis) {
-        HingeConstraintDef hingeDef;
-        hingeDef.bodyA = bodyA;
-        hingeDef.bodyB = bodyB;
-        hingeDef.pivotA = pivot;
-        hingeDef.pivotB = {0.0f, 0.0f, 0.0f};
-        hingeDef.axisA = axis;
-        hingeDef.axisB = axis;
-        hingeDef.hasLimits = true;
-        hingeDef.minAngle = -1.0f;
-        hingeDef.maxAngle = 1.0f;
-
-        physics_->createConstraint(hingeDef);
-    }
-};
-```
-
----
-
-## Code Examples
-
-### Complete 2D Platformer Example
+Apply knockback when hit:
 
 ```cpp
-import bestow;
-
-class PlatformerGame : public IApplication {
-public:
-    PlatformerGame(
-        IPhysicsSystem& physics,
-        IEntitySystem& entities,
-        IInputSystem& input
-    ) : physics_(&physics), entities_(&entities), input_(&input) {}
-
-    void initialize() override {
-        // Setup gravity
-        physics_->setGravity({0.0f, 980.0f});
-
-        // Create player
-        player_ = entities_->createEntity();
-        PhysicsBodyDef playerDef{
-            .type = BodyType::Dynamic,
-            .transform = {.x = 100.0f, .y = 100.0f},
-            .size = {32.0f, 40.0f},
-            .fixedRotation = true,
-            .friction = 0.3f,
-            .density = 1.0f
-        };
-        physics_->createBody(player_, playerDef);
-        physics_->setCollisionLayer(player_, CollisionLayers::Player);
-
-        // Create ground
-        Entity ground = entities_->createEntity();
-        PhysicsBodyDef groundDef{
-            .type = BodyType::Static,
-            .transform = {.x = 400.0f, .y = 550.0f},
-            .size = {800.0f, 100.0f}
-        };
-        physics_->createBody(ground, groundDef);
-        physics_->setCollisionLayer(ground, CollisionLayers::Ground);
-
-        // Create platforms
-        createPlatform({200.0f, 400.0f}, {150.0f, 20.0f});
-        createPlatform({500.0f, 300.0f}, {150.0f, 20.0f});
-        createPlatform({300.0f, 200.0f}, {150.0f, 20.0f});
-
-        // Setup collision callback
-        physics_->setCollisionCallback([this](const CollisionEvent& event) {
-            handleCollision(event);
-        });
+void applyKnockback(Entity entity, Vec2 direction, float force) {
+    // Normalize direction
+    float len = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+    if (len > 0.001f) {
+        direction.x /= len;
+        direction.y /= len;
     }
 
-    void update(DeltaTime dt) override {
-        handleInput(dt);
-        physics_->update(dt);
-    }
+    // Apply impulse
+    Vec2 impulse = {direction.x * force, direction.y * force};
+    physics->applyImpulse(entity, impulse);
+}
 
-private:
-    void createPlatform(Vec2 position, Vec2 size) {
-        Entity platform = entities_->createEntity();
-        PhysicsBodyDef def{
-            .type = BodyType::Static,
-            .transform = {.x = position.x, .y = position.y},
-            .size = size
-        };
-        physics_->createBody(platform, def);
-        physics_->setCollisionLayer(platform, CollisionLayers::Ground);
-    }
+// Usage in collision handler:
+void onPlayerHit(Entity player, Entity enemy) {
+    Vec2 playerPos = physics->getPosition(player);
+    Vec2 enemyPos = physics->getPosition(enemy);
 
-    void handleInput(DeltaTime dt) {
-        // Check if grounded
-        GroundCheckParams groundParams{
-            .rayDistance = 5.0f,
-            .slopeToleranceDeg = 50.0f,
-            .groundMask = CollisionLayers::Ground
-        };
-        auto grounded = physics_->checkGrounded(player_, groundParams);
+    // Calculate knockback direction (away from enemy)
+    Vec2 dir = {playerPos.x - enemyPos.x, playerPos.y - enemyPos.y};
 
-        // Get current velocity
-        Vec2 velocity = physics_->getVelocity(player_);
-
-        // Horizontal movement
-        float moveInput = 0.0f;
-        if (input_->isKeyDown(Key::Right)) moveInput += 1.0f;
-        if (input_->isKeyDown(Key::Left)) moveInput -= 1.0f;
-
-        if (grounded.grounded) {
-            // On ground: direct control
-            velocity.x = moveInput * MOVE_SPEED;
-
-            // Jump
-            if (input_->isKeyPressed(Key::Space)) {
-                velocity.y = JUMP_VELOCITY;
-            }
-        } else {
-            // In air: reduced control
-            velocity.x += moveInput * MOVE_SPEED * AIR_CONTROL * dt;
-            velocity.x = std::clamp(velocity.x, -MOVE_SPEED, MOVE_SPEED);
-        }
-
-        // Apply velocity
-        physics_->setVelocity(player_, velocity);
-    }
-
-    void handleCollision(const CollisionEvent& event) {
-        // Handle collisions
-    }
-
-    IPhysicsSystem* physics_;
-    IEntitySystem* entities_;
-    IInputSystem* input_;
-    Entity player_;
-
-    static constexpr float MOVE_SPEED = 200.0f;
-    static constexpr float JUMP_VELOCITY = -500.0f;
-    static constexpr float AIR_CONTROL = 0.3f;
-};
-```
-
-### Complete 3D First-Person Example
-
-```cpp
-import bestow;
-
-class FirstPersonGame : public IApplication {
-public:
-    FirstPersonGame(
-        IPhysics3DSystem& physics,
-        IEntitySystem& entities,
-        IInputSystem& input
-    ) : physics_(&physics), entities_(&entities), input_(&input) {}
-
-    void initialize() override {
-        // Setup gravity
-        physics_->setGravity({0.0f, -9.8f, 0.0f});
-
-        // Create character controller
-        player_ = entities_->createEntity();
-        CharacterControllerDef charDef{
-            .radius = 0.3f,
-            .height = 1.8f,
-            .stepHeight = 0.35f,
-            .maxSlopeAngle = 45.0f,
-            .mass = 80.0f,
-            .layer = CollisionLayers3D::Character
-        };
-        physics_->createCharacter(player_, charDef);
-        physics_->setCharacterPosition(player_, {0.0f, 2.0f, 0.0f});
-
-        // Create ground
-        Entity ground = entities_->createEntity();
-        PhysicsBodyDef3D groundDef{
-            .type = BodyType3D::Static,
-            .transform = {.position = {0.0f, 0.0f, 0.0f}},
-            .shapeType = ShapeType3D::Box,
-            .shapeHalfExtents = {50.0f, 0.5f, 50.0f}
-        };
-        physics_->createBody(ground, groundDef);
-
-        // Create some obstacles
-        for (int i = 0; i < 10; ++i) {
-            createCrate({
-                static_cast<float>(rand() % 20 - 10),
-                1.0f,
-                static_cast<float>(rand() % 20 - 10)
-            });
-        }
-    }
-
-    void update(DeltaTime dt) override {
-        handleMovement(dt);
-        handleLook(dt);
-        physics_->update(dt, 2);  // 2 substeps
-    }
-
-private:
-    void createCrate(Vec3 position) {
-        Entity crate = entities_->createEntity();
-        PhysicsBodyDef3D def{
-            .type = BodyType3D::Dynamic,
-            .transform = {.position = position},
-            .shapeType = ShapeType3D::Box,
-            .shapeHalfExtents = {0.5f, 0.5f, 0.5f},
-            .density = 1000.0f
-        };
-        physics_->createBody(crate, def);
-    }
-
-    void handleMovement(DeltaTime dt) {
-        // Get input
-        Vec3 moveDir = {0.0f, 0.0f, 0.0f};
-
-        if (input_->isKeyDown(Key::W)) moveDir.z -= 1.0f;
-        if (input_->isKeyDown(Key::S)) moveDir.z += 1.0f;
-        if (input_->isKeyDown(Key::A)) moveDir.x -= 1.0f;
-        if (input_->isKeyDown(Key::D)) moveDir.x += 1.0f;
-
-        // Normalize
-        float length = std::sqrt(moveDir.x * moveDir.x + moveDir.z * moveDir.z);
-        if (length > 0.001f) {
-            moveDir = moveDir / length;
-        }
-
-        // Apply camera rotation to movement
-        moveDir = rotateByYaw(moveDir, cameraYaw_);
-
-        // Get ground info
-        auto groundInfo = physics_->getCharacterGroundInfo(player_);
-
-        // Jump
-        Vec3 velocity = moveDir * MOVE_SPEED;
-        if (groundInfo && groundInfo->grounded && input_->isKeyPressed(Key::Space)) {
-            velocity.y = JUMP_VELOCITY;
-        }
-
-        // Move character
-        physics_->moveCharacter(player_, velocity, dt);
-    }
-
-    void handleLook(DeltaTime dt) {
-        // Mouse look
-        Vec2 mouseDelta = input_->getMouseDelta();
-        cameraYaw_ -= mouseDelta.x * LOOK_SENSITIVITY;
-        cameraPitch_ -= mouseDelta.y * LOOK_SENSITIVITY;
-        cameraPitch_ = std::clamp(cameraPitch_, -1.5f, 1.5f);
-    }
-
-    Vec3 rotateByYaw(Vec3 v, float yaw) {
-        float c = std::cos(yaw);
-        float s = std::sin(yaw);
-        return {v.x * c - v.z * s, v.y, v.x * s + v.z * c};
-    }
-
-    IPhysics3DSystem* physics_;
-    IEntitySystem* entities_;
-    IInputSystem* input_;
-    Entity player_;
-
-    float cameraYaw_ = 0.0f;
-    float cameraPitch_ = 0.0f;
-
-    static constexpr float MOVE_SPEED = 5.0f;
-    static constexpr float JUMP_VELOCITY = 5.0f;
-    static constexpr float LOOK_SENSITIVITY = 0.002f;
-};
+    applyKnockback(player, dir, 5000.0f);
+}
 ```
 
 ---
 
 ## Summary
 
-Bestow's physics systems provide:
+Bestow's 2D physics system provides everything you need for platformers, top-down games, and 2D arcade games:
 
-- **2D Physics (Box2D)**: Pixel-based, Y-down coordinates, perfect for platformers and 2D games
-- **3D Physics (Jolt)**: Meter-based, Y-up coordinates, full 3D simulation with characters and vehicles
-- **Unified API**: Similar patterns across 2D and 3D
-- **Performance**: Optimized backends with sub-stepping
-- **Flexibility**: Bodies, sensors, queries, raycasts, constraints
+- **Box2D 3.0** backend for robust 2D physics
+- **Pixel-based units** (100 pixels = 1 meter internally)
+- **Entity-centric** API that integrates with ECS
+- **Collision filtering** with 16-bit layers and masks
+- **Ground detection** built-in for platformers
+- **Spatial queries** (AABB, circle, raycast)
+- **Sensors/Triggers** for non-physical detection
+- **Callbacks** for collision events
 
-**Key Takeaways**:
-1. Use fixed timestep (60 Hz recommended)
-2. Keep objects within reasonable scale (0.1-10 meters)
-3. Use appropriate body types (Static/Kinematic/Dynamic)
-4. Enable CCD for fast-moving objects
-5. Use sensors for triggers, not collision response
-6. Filter collisions with layers/masks
-7. Apply damping for controlled movement
+**Key Takeaways:**
 
-For more examples, see the Bestow demos in `examples/` or the unit tests in `tests/unit/PhysicsSystemTests.cpp`.
+1. Use **fixed timestep** (60 Hz recommended)
+2. Keep objects **10-1000 pixels** for stability
+3. Use appropriate **body types** (Static/Kinematic/Dynamic)
+4. Apply **collision filtering** to reduce unnecessary checks
+5. Use **sensors** for triggers, not collision response
+6. Check **ground state** before jumping
+7. Apply **impulses** for instant velocity changes
+8. Apply **forces** for continuous acceleration
+9. Set **Ground layer** on platforms for `checkGrounded()` to work
+
+**For more details, see:**
+- Physics tests: `/tests/unit/PhysicsSystemTests.cpp`
+- Box2D documentation: https://box2d.org/documentation/

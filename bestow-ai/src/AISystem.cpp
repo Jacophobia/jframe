@@ -6,6 +6,7 @@ module;
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -14,6 +15,11 @@ module;
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
 #include <DetourStatus.h>
+
+#if defined(BESTOW_HAS_BTCPP)
+#include <behaviortree_cpp/bt_factory.h>
+#include <behaviortree_cpp/behavior_tree.h>
+#endif
 
 module bestow.ai.impl;
 
@@ -39,8 +45,143 @@ AISystem::~AISystem() {
 }
 
 bool AISystem::initialize() {
+#if defined(BESTOW_HAS_BTCPP)
+    initializeBehaviorTreeFactory();
+#endif
     return true;
 }
+
+#if defined(BESTOW_HAS_BTCPP)
+void AISystem::initializeBehaviorTreeFactory() {
+    // Register built-in condition nodes that access blackboard
+    btFactory_.registerSimpleCondition("HasTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end() && it->second.navigationTarget.has_value()) {
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleCondition("IsAtTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it == aiComponents_.end() || !it->second.navigationTarget.has_value() || !physicsSystem_) {
+            return BT::NodeStatus::FAILURE;
+        }
+        Entity entity = static_cast<Entity>(entityId);
+        Vec2 pos = physicsSystem_->getPosition(entity);
+        Vec2 target = it->second.navigationTarget.value();
+        float dx = target.x - pos.x;
+        float dy = target.y - pos.y;
+        float distSq = dx * dx + dy * dy;
+        float threshold = it->second.arrivalRadius;
+        if (distSq < threshold * threshold) {
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleCondition("HasLineOfSightToTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it == aiComponents_.end() || !it->second.navigationTarget.has_value() || !physicsSystem_) {
+            return BT::NodeStatus::FAILURE;
+        }
+        Entity entity = static_cast<Entity>(entityId);
+        Vec2 pos = physicsSystem_->getPosition(entity);
+        Vec2 target = it->second.navigationTarget.value();
+        if (hasLineOfSight(pos, target, 0xFFFF)) {
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    // Register built-in action nodes
+    btFactory_.registerSimpleAction("SeekTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end()) {
+            it->second.steeringBehavior = SteeringBehaviorType::Seek;
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleAction("FleeFromTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end()) {
+            it->second.steeringBehavior = SteeringBehaviorType::Flee;
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleAction("ArriveAtTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end()) {
+            it->second.steeringBehavior = SteeringBehaviorType::Arrive;
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleAction("StopMoving", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end()) {
+            it->second.steeringBehavior = SteeringBehaviorType::None;
+            Entity entity = static_cast<Entity>(entityId);
+            if (physicsSystem_) {
+                physicsSystem_->setVelocity(entity, {0.0f, 0.0f});
+            }
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+
+    btFactory_.registerSimpleAction("ClearTarget", [this](BT::TreeNode& node) {
+        auto entityId = node.config().blackboard->get<std::uint32_t>("entity_id");
+        auto it = aiComponents_.find(entityId);
+        if (it != aiComponents_.end()) {
+            it->second.navigationTarget = std::nullopt;
+            return BT::NodeStatus::SUCCESS;
+        }
+        return BT::NodeStatus::FAILURE;
+    });
+}
+
+void AISystem::tickBehaviorTree(Entity entity, AIComponent& ai, DeltaTime dt) {
+    if (!ai.btTree) return;
+
+    // Update the entity ID in the tree's blackboard
+    auto blackboard = ai.btTree->rootBlackboard();
+    blackboard->set("entity_id", static_cast<std::uint32_t>(entity));
+    blackboard->set("delta_time", static_cast<float>(dt));
+
+    // Copy our blackboard values to the BT blackboard
+    for (const auto& [key, value] : ai.blackboard) {
+        // Support common types
+        if (value.type() == typeid(int)) {
+            blackboard->set(key, std::any_cast<int>(value));
+        } else if (value.type() == typeid(float)) {
+            blackboard->set(key, std::any_cast<float>(value));
+        } else if (value.type() == typeid(double)) {
+            blackboard->set(key, std::any_cast<double>(value));
+        } else if (value.type() == typeid(bool)) {
+            blackboard->set(key, std::any_cast<bool>(value));
+        } else if (value.type() == typeid(std::string)) {
+            blackboard->set(key, std::any_cast<std::string>(value));
+        }
+        // Vec2 and other complex types would need special handling
+    }
+
+    // Tick the tree once
+    ai.btTree->tickOnce();
+}
+#endif
 
 void AISystem::update(DeltaTime dt) {
     for (auto& [entityId, ai] : aiComponents_) {
@@ -68,25 +209,151 @@ void AISystem::update(DeltaTime dt) {
             physicsSystem_->setVelocity(entity, {xVel, currentVel.y});
         }
 
-        // TODO(agent): Update behavior trees when BehaviorTree.CPP is integrated
-        // - Tick the behavior tree for this entity
-        // - Pass blackboard data to the tree execution context
-        // - Handle tree execution results
+#if defined(BESTOW_HAS_BTCPP)
+        // Tick behavior tree if attached
+        if (ai.btTree) {
+            tickBehaviorTree(entity, ai, dt);
+        }
+#endif
 
-        // TODO(agent): Update steering behaviors (seek, flee, arrive, etc.)
-        // - Calculate steering forces
-        // - Apply forces to entity velocity through physics system
-        // - Update navigation target based on current path waypoint
+        // Apply steering behaviors (seek, flee, arrive, etc.)
+        applySteeringBehavior(entity, ai, dt);
     }
 }
 
+// Steering behavior implementations
+Vec2 AISystem::calculateSeek(Vec2 position, Vec2 target, float maxSpeed) const {
+    float dx = target.x - position.x;
+    float dy = target.y - position.y;
+    float distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance < 0.0001f) {
+        return {0.0f, 0.0f};
+    }
+
+    // Normalize and scale to max speed
+    return {(dx / distance) * maxSpeed, (dy / distance) * maxSpeed};
+}
+
+Vec2 AISystem::calculateFlee(Vec2 position, Vec2 target, float maxSpeed) const {
+    float dx = position.x - target.x;  // Reversed direction
+    float dy = position.y - target.y;
+    float distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance < 0.0001f) {
+        return {0.0f, 0.0f};
+    }
+
+    // Normalize and scale to max speed
+    return {(dx / distance) * maxSpeed, (dy / distance) * maxSpeed};
+}
+
+Vec2 AISystem::calculateArrive(Vec2 position, Vec2 target, float maxSpeed, float arrivalRadius) const {
+    float dx = target.x - position.x;
+    float dy = target.y - position.y;
+    float distance = std::sqrt(dx * dx + dy * dy);
+
+    if (distance < 0.0001f) {
+        return {0.0f, 0.0f};
+    }
+
+    // Calculate speed based on distance (decelerate as we approach)
+    float speed = maxSpeed;
+    if (distance < arrivalRadius) {
+        speed = maxSpeed * (distance / arrivalRadius);
+    }
+
+    // Normalize and scale to computed speed
+    return {(dx / distance) * speed, (dy / distance) * speed};
+}
+
+void AISystem::applySteeringBehavior(Entity entity, AIComponent& ai, DeltaTime dt) {
+    if (!physicsSystem_ || ai.steeringBehavior == SteeringBehaviorType::None) {
+        return;
+    }
+
+    if (!ai.navigationTarget.has_value()) {
+        return;
+    }
+
+    Vec2 position = physicsSystem_->getPosition(entity);
+    Vec2 target = ai.navigationTarget.value();
+    Vec2 desiredVelocity{0.0f, 0.0f};
+
+    switch (ai.steeringBehavior) {
+        case SteeringBehaviorType::Seek:
+            desiredVelocity = calculateSeek(position, target, ai.maxSpeed);
+            break;
+        case SteeringBehaviorType::Flee:
+            desiredVelocity = calculateFlee(position, target, ai.maxSpeed);
+            break;
+        case SteeringBehaviorType::Arrive:
+            desiredVelocity = calculateArrive(position, target, ai.maxSpeed, ai.arrivalRadius);
+            break;
+        case SteeringBehaviorType::Pursue:
+        case SteeringBehaviorType::Evade:
+            // Pursue/Evade require target velocity - fall back to Seek/Flee for now
+            desiredVelocity = (ai.steeringBehavior == SteeringBehaviorType::Pursue)
+                ? calculateSeek(position, target, ai.maxSpeed)
+                : calculateFlee(position, target, ai.maxSpeed);
+            break;
+        default:
+            return;
+    }
+
+    // Apply acceleration limits
+    Vec2 currentVel = physicsSystem_->getVelocity(entity);
+    float dvx = desiredVelocity.x - currentVel.x;
+    float dvy = desiredVelocity.y - currentVel.y;
+    float dvMag = std::sqrt(dvx * dvx + dvy * dvy);
+
+    float maxDeltaV = ai.maxAcceleration * static_cast<float>(dt);
+    if (dvMag > maxDeltaV && dvMag > 0.0001f) {
+        dvx = (dvx / dvMag) * maxDeltaV;
+        dvy = (dvy / dvMag) * maxDeltaV;
+    }
+
+    Vec2 newVelocity{currentVel.x + dvx, currentVel.y + dvy};
+    physicsSystem_->setVelocity(entity, newVelocity);
+}
+
+void AISystem::setSteeringBehavior(Entity entity, SteeringBehaviorType behavior) {
+    aiComponents_[static_cast<std::uint32_t>(entity)].steeringBehavior = behavior;
+}
+
+void AISystem::setArrivalRadius(Entity entity, float radius) {
+    aiComponents_[static_cast<std::uint32_t>(entity)].arrivalRadius = radius;
+}
+
 void AISystem::attachBehaviorTree(Entity entity, AssetHandle treeAsset) {
-    aiComponents_[static_cast<std::uint32_t>(entity)].behaviorTree = treeAsset;
+    auto& ai = aiComponents_[static_cast<std::uint32_t>(entity)];
+    ai.behaviorTree = treeAsset;
+
+#if defined(BESTOW_HAS_BTCPP)
+    // Load the behavior tree from asset data
+    if (assetSystem_ && treeAsset.isValid()) {
+        const auto* btData = assetSystem_->getAsset<BehaviorTreeData>(treeAsset);
+        if (btData && !btData->rawText.empty()) {
+            try {
+                // Create tree from XML text
+                ai.btTree = std::make_unique<BT::Tree>(
+                    btFactory_.createTreeFromText(btData->rawText)
+                );
+            } catch (const std::exception& e) {
+                // Failed to create tree - log error but don't crash
+                ai.btTree = nullptr;
+            }
+        }
+    }
+#endif
 }
 
 void AISystem::detachBehaviorTree(Entity entity) {
     if (auto it = aiComponents_.find(static_cast<std::uint32_t>(entity)); it != aiComponents_.end()) {
         it->second.behaviorTree = AssetHandle::invalid();
+#if defined(BESTOW_HAS_BTCPP)
+        it->second.btTree = nullptr;
+#endif
     }
 }
 

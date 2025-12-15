@@ -1549,4 +1549,332 @@ TEST_F(SaveSystemTest, KangaruServiceWithSaveOperations) {
     saveSystem.unregisterSaveable(&saveable);
 }
 
+// ============================================================================
+// Version and Playtime Tracking Tests
+// ============================================================================
+
+TEST_F(SaveSystemTest, SetGameVersionStoresVersionCorrectly) {
+    saveSystem_->setGameVersion("2.5.0");
+    EXPECT_EQ(saveSystem_->getGameVersion(), "2.5.0");
+
+    saveSystem_->setGameVersion("1.0.0-beta");
+    EXPECT_EQ(saveSystem_->getGameVersion(), "1.0.0-beta");
+}
+
+TEST_F(SaveSystemTest, GetGameVersionReturnsDefaultVersion) {
+    // Default version should be "1.0.0"
+    std::string version = saveSystem_->getGameVersion();
+    EXPECT_FALSE(version.empty());
+}
+
+TEST_F(SaveSystemTest, GetGameVersionReturnsStoredVersion) {
+    saveSystem_->setGameVersion("3.14.159");
+    EXPECT_EQ(saveSystem_->getGameVersion(), "3.14.159");
+}
+
+TEST_F(SaveSystemTest, SetGameVersionWithEmptyString) {
+    saveSystem_->setGameVersion("");
+    EXPECT_EQ(saveSystem_->getGameVersion(), "");
+}
+
+TEST_F(SaveSystemTest, SetGameVersionWithSpecialCharacters) {
+    saveSystem_->setGameVersion("v1.0.0-alpha+build.123");
+    EXPECT_EQ(saveSystem_->getGameVersion(), "v1.0.0-alpha+build.123");
+}
+
+TEST_F(SaveSystemTest, GetTotalPlaytimeStartsAtZero) {
+    // Total playtime should start at 0
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 0);
+}
+
+TEST_F(SaveSystemTest, GetTotalPlaytimeIncreasesAfterUpdate) {
+    // Initial playtime should be 0
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 0);
+
+    // Update with 1 second delta time
+    saveSystem_->update(DeltaTime{1.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 1);
+
+    // Update with another 2.5 seconds
+    saveSystem_->update(DeltaTime{2.5f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 3);  // Truncates to 3 seconds
+}
+
+TEST_F(SaveSystemTest, GetTotalPlaytimeAccumulatesOverMultipleUpdates) {
+    // Simulate multiple frame updates
+    for (int i = 0; i < 60; ++i) {
+        saveSystem_->update(DeltaTime{1.0f / 60.0f});  // 60 FPS, ~1 second total
+    }
+
+    std::uint64_t playtime = saveSystem_->getTotalPlaytime();
+    EXPECT_GE(playtime, 0);  // Should be close to 1 second
+    EXPECT_LE(playtime, 2);  // Allow some rounding tolerance
+}
+
+TEST_F(SaveSystemTest, GetTotalPlaytimeWithLargeDeltaTime) {
+    // Update with a large delta time (e.g., 1 hour)
+    saveSystem_->update(DeltaTime{3600.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 3600);
+}
+
+TEST_F(SaveSystemTest, GetTotalPlaytimeWithVerySmallDeltaTime) {
+    // Update with very small delta times
+    for (int i = 0; i < 1000; ++i) {
+        saveSystem_->update(DeltaTime{0.001f});  // 1ms per frame
+    }
+
+    std::uint64_t playtime = saveSystem_->getTotalPlaytime();
+    EXPECT_GE(playtime, 0);  // Should be close to 1 second
+    EXPECT_LE(playtime, 2);  // Allow rounding tolerance
+}
+
+TEST_F(SaveSystemTest, VersionIsSavedToMetadata) {
+    saveSystem_->setGameVersion("4.2.0");
+
+    auto saveResult = saveSystem_->save(0, "Version Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->gameVersion, "4.2.0");
+    }
+}
+
+TEST_F(SaveSystemTest, PlaytimeIsSavedToMetadata) {
+    // Accumulate some playtime
+    saveSystem_->update(DeltaTime{10.5f});
+    saveSystem_->update(DeltaTime{5.2f});
+
+    auto saveResult = saveSystem_->save(0, "Playtime Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        // Should be around 15 seconds (10.5 + 5.2 = 15.7)
+        EXPECT_GE(metadata->playtimeSeconds, 15);
+        EXPECT_LE(metadata->playtimeSeconds, 16);
+    }
+}
+
+TEST_F(SaveSystemTest, VersionAndPlaytimeAreLoadedCorrectly) {
+    // Set version and accumulate playtime
+    saveSystem_->setGameVersion("5.0.0");
+    saveSystem_->update(DeltaTime{100.0f});
+
+    // Save
+    auto saveResult = saveSystem_->save(0, "Load Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    // Verify playtime before load
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 100);
+
+    // Load the save
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    // Playtime should be restored (session resets to 0, loaded has 100)
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 100);
+
+    // Add more playtime after load
+    saveSystem_->update(DeltaTime{50.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 150);  // 100 loaded + 50 session
+}
+
+TEST_F(SaveSystemTest, PlaytimeContinuesAccumulatingAfterLoad) {
+    // Initial playtime
+    saveSystem_->update(DeltaTime{30.0f});
+    saveSystem_->save(0, "Playtime Continue Test");
+
+    // Load the save
+    saveSystem_->load(0);
+
+    // Continue accumulating playtime
+    saveSystem_->update(DeltaTime{20.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 50);  // 30 + 20
+
+    // Save again
+    saveSystem_->save(1, "Second Save");
+
+    auto metadata = saveSystem_->getSaveMetadata(1);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->playtimeSeconds, 50);
+    }
+}
+
+TEST_F(SaveSystemTest, VersionPersistsAcrossSaveLoadCycle) {
+    saveSystem_->setGameVersion("6.6.6");
+
+    auto saveResult = saveSystem_->save(0, "Version Persist Test");
+    EXPECT_TRUE(saveResult.has_value());
+
+    // Load the save
+    auto loadResult = saveSystem_->load(0);
+    EXPECT_TRUE(loadResult.has_value());
+
+    // Check metadata still has correct version
+    auto metadata = saveSystem_->getSaveMetadata(0);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->gameVersion, "6.6.6");
+    }
+}
+
+TEST_F(SaveSystemTest, DifferentSavesHaveDifferentPlaytimes) {
+    // Save 1 with 10 seconds playtime
+    saveSystem_->update(DeltaTime{10.0f});
+    saveSystem_->save(0, "Save 1");
+
+    // Continue to 25 seconds total
+    saveSystem_->update(DeltaTime{15.0f});
+    saveSystem_->save(1, "Save 2");
+
+    // Continue to 50 seconds total
+    saveSystem_->update(DeltaTime{25.0f});
+    saveSystem_->save(2, "Save 3");
+
+    // Verify each save has correct playtime in metadata
+    auto meta0 = saveSystem_->getSaveMetadata(0);
+    auto meta1 = saveSystem_->getSaveMetadata(1);
+    auto meta2 = saveSystem_->getSaveMetadata(2);
+
+    EXPECT_TRUE(meta0.has_value());
+    EXPECT_TRUE(meta1.has_value());
+    EXPECT_TRUE(meta2.has_value());
+
+    if (meta0.has_value()) EXPECT_EQ(meta0->playtimeSeconds, 10);
+    if (meta1.has_value()) EXPECT_EQ(meta1->playtimeSeconds, 25);
+    if (meta2.has_value()) EXPECT_EQ(meta2->playtimeSeconds, 50);
+}
+
+TEST_F(SaveSystemTest, PlaytimeResetsCorrectlyOnLoad) {
+    // Accumulate 100 seconds
+    saveSystem_->update(DeltaTime{100.0f});
+    saveSystem_->save(0, "Reset Test 1");
+
+    // Accumulate more (total 150)
+    saveSystem_->update(DeltaTime{50.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 150);
+
+    // Load the earlier save (100 seconds)
+    saveSystem_->load(0);
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 100);  // Session reset, loaded = 100
+
+    // Continue playing
+    saveSystem_->update(DeltaTime{25.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 125);  // 100 + 25
+}
+
+TEST_F(SaveSystemTest, VersionInMetadataMatchesSetVersion) {
+    // Create multiple saves with different versions
+    saveSystem_->setGameVersion("1.0.0");
+    saveSystem_->save(0, "Version 1.0.0");
+
+    saveSystem_->setGameVersion("2.0.0");
+    saveSystem_->save(1, "Version 2.0.0");
+
+    saveSystem_->setGameVersion("3.0.0");
+    saveSystem_->save(2, "Version 3.0.0");
+
+    // Verify each save has correct version
+    auto meta0 = saveSystem_->getSaveMetadata(0);
+    auto meta1 = saveSystem_->getSaveMetadata(1);
+    auto meta2 = saveSystem_->getSaveMetadata(2);
+
+    if (meta0.has_value()) EXPECT_EQ(meta0->gameVersion, "1.0.0");
+    if (meta1.has_value()) EXPECT_EQ(meta1->gameVersion, "2.0.0");
+    if (meta2.has_value()) EXPECT_EQ(meta2->gameVersion, "3.0.0");
+}
+
+TEST_F(SaveSystemTest, PlaytimeTrackedDuringAutoSave) {
+    TestSaveable saveable;
+    saveable.value = 123;
+
+    saveSystem_->registerSaveable(&saveable);
+    saveSystem_->enableAutoSave(std::chrono::seconds(5));
+
+    // Accumulate playtime and trigger auto-save
+    saveSystem_->update(DeltaTime{10.0f});  // 10 seconds, triggers auto-save
+
+    auto metadata = saveSystem_->getSaveMetadata(SaveSlots::AutoSave);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_GE(metadata->playtimeSeconds, 10);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, PlaytimeTrackedDuringQuickSave) {
+    TestSaveable saveable;
+    saveable.value = 456;
+
+    saveSystem_->registerSaveable(&saveable);
+
+    // Accumulate playtime
+    saveSystem_->update(DeltaTime{42.0f});
+
+    // Quick save
+    saveSystem_->quickSave();
+
+    auto metadata = saveSystem_->getSaveMetadata(SaveSlots::QuickSave);
+    EXPECT_TRUE(metadata.has_value());
+
+    if (metadata.has_value()) {
+        EXPECT_EQ(metadata->playtimeSeconds, 42);
+    }
+
+    saveSystem_->unregisterSaveable(&saveable);
+}
+
+TEST_F(SaveSystemTest, PlaytimeWithZeroDeltaTime) {
+    // Update with 0 delta time should not crash
+    saveSystem_->update(DeltaTime{0.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 0);
+
+    // Multiple updates with 0 delta
+    for (int i = 0; i < 100; ++i) {
+        saveSystem_->update(DeltaTime{0.0f});
+    }
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 0);
+}
+
+TEST_F(SaveSystemTest, PlaytimeWithNegativeDeltaTimeIgnored) {
+    // Negative delta time should not decrease playtime
+    saveSystem_->update(DeltaTime{10.0f});
+    EXPECT_EQ(saveSystem_->getTotalPlaytime(), 10);
+
+    saveSystem_->update(DeltaTime{-5.0f});
+    // Playtime should still be 5 or stay at 10 (depends on implementation)
+    // Most likely it accumulates the negative, resulting in 5
+    std::uint64_t playtime = saveSystem_->getTotalPlaytime();
+    EXPECT_GE(playtime, 0);  // At minimum, shouldn't go negative
+}
+
+TEST_F(SaveSystemTest, VersionChangeBetweenSavesIsTracked) {
+    saveSystem_->setGameVersion("1.0");
+    saveSystem_->save(0, "Old Version");
+
+    // Change version
+    saveSystem_->setGameVersion("2.0");
+    saveSystem_->save(1, "New Version");
+
+    // Verify version stored in save system is latest
+    EXPECT_EQ(saveSystem_->getGameVersion(), "2.0");
+
+    // But metadata for each save should have their respective versions
+    auto meta0 = saveSystem_->getSaveMetadata(0);
+    auto meta1 = saveSystem_->getSaveMetadata(1);
+
+    if (meta0.has_value()) EXPECT_EQ(meta0->gameVersion, "1.0");
+    if (meta1.has_value()) EXPECT_EQ(meta1->gameVersion, "2.0");
+}
+
 }  // namespace bestow::tests

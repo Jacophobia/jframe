@@ -1,9 +1,8 @@
-# Bestow UI System Guide
+# UI System Developer Guide
 
 **Engine System**: `bestow.ui`
 **Implementation**: RmlUi (HTML/CSS-like)
-**Contract**: `/Users/jaaaacob/Documents/GameDev/jframe/bestow-contract/src/bestow.ui.cppm`
-**Implementation**: `/Users/jaaaacob/Documents/GameDev/jframe/bestow-ui/src/bestow.ui.impl.cppm`
+**Interface**: `/Users/jaaaacob/Documents/GameDev/jframe/bestow-contract/src/bestow.ui.cppm`
 
 ## Overview
 
@@ -18,21 +17,24 @@ RmlUi is a UI framework that uses:
 
 This gives you the power of web-style UI development with the performance of native C++.
 
+**Web developers:** If you know HTML/CSS, you already know 90% of RML/RCSS. The main differences are in the C++ integration and event handling.
+
 ### Key Features
 
 - **Declarative UI** - Define your UI in RML files (like HTML)
-- **Flexible Styling** - Style with RCSS (like CSS2/CSS3)
+- **Flexible Styling** - Style with RCSS (like CSS2)
 - **Data Binding** - Sync C++ variables with UI elements automatically
 - **Event System** - Handle clicks, hovers, focus, etc. with callbacks
 - **Dynamic Creation** - Create and modify UI elements at runtime
 - **Document Management** - Multiple UI screens (menus, HUD, pause, etc.)
-- **Asset Integration** - Loads through AssetSystem for hot reload support
+- **Font Loading** - Custom fonts via TTF support
+- **Input Processing** - Automatic input handling with consumption checking
 
 ---
 
 ## Core Concepts
 
-### 1. Documents
+### 1. Documents (UIDocumentHandle)
 
 A **document** is a complete UI screen (menu, HUD, dialog, etc.). Documents are loaded from `.rml` files and can be shown/hidden independently.
 
@@ -45,7 +47,9 @@ if (menuResult) {
 }
 ```
 
-### 2. Elements
+**Important:** Documents remain loaded in memory even when hidden. Use `hideDocument()` to hide temporarily, or `unloadDocument()` to free memory. Multiple documents can be visible simultaneously (they layer on top of each other).
+
+### 2. Elements (UIElementHandle)
 
 **Elements** are individual UI widgets (buttons, text, containers, etc.). Each element has:
 - **ID** - Unique identifier (like HTML `id`)
@@ -62,13 +66,11 @@ if (buttonHandle) {
 }
 ```
 
-### 3. Stylesheets (RCSS)
+### 3. Stylesheets (UIStyleSheetHandle)
 
-**RCSS** files define the visual appearance of your UI using CSS-like syntax. Styles are applied via:
-- Element tags (`button { ... }`)
-- IDs (`#play-button { ... }`)
-- Classes (`.menu-item { ... }`)
-- Pseudo-classes (`:hover`, `:active`, `:focus`)
+**RCSS** files define the visual appearance of your UI using CSS-like syntax. Styles are typically embedded in RML documents via `<link>` tags or `<style>` blocks.
+
+**Note:** The current RmlUi implementation requires stylesheets to be embedded in documents. Programmatic stylesheet loading (`loadStyleSheet()`, `applyStyleSheet()`) is not fully supported yet.
 
 ```rcss
 /* styles.rcss */
@@ -87,7 +89,7 @@ button:hover {
 
 ### 4. Data Binding
 
-**Data binding** synchronizes C++ variables with UI elements automatically. When you change the variable, the UI updates.
+**Data binding** synchronizes C++ variables with UI elements. When you change the variable and call `syncBindings()`, the UI updates.
 
 ```cpp
 int playerHealth = 100;
@@ -104,6 +106,8 @@ ui->bindData("score", &playerScore);
 playerHealth = 75;
 ui->syncBindings();  // UI now shows 75
 ```
+
+**Critical:** Data binding uses POINTERS to your variables. The variables must remain valid (not go out of scope) while bound. Use member variables or call `unbindData("name")` before destruction.
 
 ---
 
@@ -154,28 +158,6 @@ ui->syncBindings();  // UI now shows 75
 | `<select>` | Dropdown menu | `<select><option>Easy</option></select>` |
 | `<textarea>` | Multi-line text input | `<textarea rows="5"></textarea>` |
 
-### Layout Example
-
-```xml
-<body>
-    <!-- Vertical menu layout -->
-    <div id="main-menu" class="vertical-layout">
-        <img src="logo.png" class="logo"/>
-
-        <div class="button-group">
-            <button id="btn-play">Start Game</button>
-            <button id="btn-continue">Continue</button>
-            <button id="btn-settings">Settings</button>
-            <button id="btn-quit">Quit</button>
-        </div>
-
-        <div class="footer">
-            <span>Version 1.0.0</span>
-        </div>
-    </div>
-</body>
-```
-
 ---
 
 ## RCSS Stylesheets
@@ -209,126 +191,55 @@ button {
 /* Pseudo-class selectors */
 button:hover {
     background-color: #1976D2;
-    cursor: pointer;
 }
 
 button:active {
     background-color: #0D47A1;
 }
-
-.text-input:focus {
-    border-color: #FF9800;
-}
 ```
 
 ### Common RCSS Properties
 
-#### Layout & Positioning
-
-```rcss
-.container {
-    display: block;              /* block, inline, inline-block, flex, none */
-    position: absolute;          /* static, relative, absolute, fixed */
-    top: 50px;
-    left: 100px;
-    width: 300px;
-    height: 200px;
-    margin: 10px;                /* margin-top, margin-right, etc. */
-    padding: 15px;               /* padding-top, padding-right, etc. */
-}
-```
-
-#### Flexbox (CSS3)
-
-```rcss
-.flex-container {
-    display: flex;
-    flex-direction: row;         /* row, column, row-reverse, column-reverse */
-    justify-content: center;     /* flex-start, flex-end, center, space-between */
-    align-items: center;         /* flex-start, flex-end, center, stretch */
-    gap: 10px;                   /* Space between items */
-}
-
-.flex-item {
-    flex: 1;                     /* Grow to fill space */
-    flex-grow: 1;
-    flex-shrink: 0;
-    flex-basis: auto;
-}
-```
-
-#### Colors & Backgrounds
-
-```rcss
-.styled-box {
-    background-color: #FF5722;
-    background-color: rgba(255, 87, 34, 0.8);  /* With alpha */
-    color: white;
-    opacity: 0.9;
-}
-```
-
-#### Borders & Outlines
-
-```rcss
-.bordered {
-    border: 2px solid #333;
-    border-radius: 8px;          /* Rounded corners */
-    border-top-left-radius: 4px; /* Individual corners */
-}
-```
-
-#### Text Styling
-
-```rcss
-.text-style {
-    font-family: "Arial", sans-serif;
-    font-size: 18px;
-    font-weight: bold;           /* normal, bold, or 100-900 */
-    font-style: italic;          /* normal, italic */
-    text-align: center;          /* left, center, right, justify */
-    line-height: 1.5;
-    letter-spacing: 2px;
-    text-decoration: underline;  /* none, underline, line-through */
-}
-```
-
-#### Visibility
-
-```rcss
-.hidden {
-    visibility: hidden;          /* hidden, visible */
-    display: none;               /* Removes from layout */
-}
-```
-
-### Units
-
-| Unit | Description | Example |
-|------|-------------|---------|
-| `px` | Pixels (absolute) | `width: 200px;` |
-| `%` | Percentage of parent | `width: 50%;` |
-| `em` | Relative to font size | `margin: 1.5em;` |
-| `rem` | Relative to root font size | `padding: 2rem;` |
-| `dp` | Density-independent pixels | `font-size: 16dp;` |
-
-### Animations (Basic)
-
-```rcss
-/* Transitions */
-button {
-    background-color: #2196F3;
-    transition: background-color 0.3s ease;
-}
-
-button:hover {
-    background-color: #1976D2;
-}
-```
+| Property | Example | Description |
+|----------|---------|-------------|
+| `display` | `display: flex;` | Layout mode |
+| `position` | `position: absolute;` | Positioning scheme |
+| `width`, `height` | `width: 100px;` | Size |
+| `margin`, `padding` | `margin: 10px;` | Spacing |
+| `background-color` | `background-color: #FFF;` | Fill color |
+| `color` | `color: white;` | Text color |
+| `font-size` | `font-size: 16px;` | Text size |
+| `border` | `border: 2px solid #000;` | Border style |
+| `border-radius` | `border-radius: 8px;` | Rounded corners |
+| `opacity` | `opacity: 0.8;` | Transparency |
 
 ---
 
 ## API Reference
+
+### Handle Types
+
+```cpp
+using UIDocumentHandle = std::uint64_t;   // Identifies a loaded RML document
+using UIElementHandle = std::uint64_t;    // Identifies an element within a document
+using UIStyleSheetHandle = std::uint64_t; // Identifies a loaded stylesheet
+```
+
+### Error Types
+
+```cpp
+enum class UIError {
+    Success,
+    DocumentNotFound,    // Document handle is invalid
+    ElementNotFound,     // Element handle is invalid
+    InvalidDocument,     // RML document is malformed
+    ParseError,          // Failed to parse RML
+    StyleSheetError,     // Failed to load stylesheet
+    FontNotFound,        // Font file not found or invalid
+    TextureNotFound,     // Image referenced in RML not found
+    InternalError        // Internal RmlUi error
+};
+```
 
 ### Initialization
 
@@ -352,7 +263,7 @@ ui->setDPIScale(1.0f);  // For high-DPI displays
 ### Document Management
 
 ```cpp
-// Load document from file
+// Load document from file (goes through AssetSystem)
 auto docResult = ui->loadDocument("ui/main_menu.rml");
 if (docResult) {
     UIDocumentHandle menu = *docResult;
@@ -491,6 +402,8 @@ ui->syncBindings();  // UI updates to show new health
 ui->unbindData("health");
 ```
 
+**Note:** Data binding synchronization (`syncBindings()`) is currently a TODO in the implementation. Bound data is stored but not yet automatically synchronized with the UI.
+
 ### Event Handling
 
 ```cpp
@@ -524,14 +437,25 @@ if (playBtn) {
 ui->unregisterEventCallback("click");
 ```
 
+**Note:** Per-element callbacks (`registerElementCallback()`) are currently a TODO in the implementation. Use global callbacks and check the `data.targetId` to identify which element triggered the event.
+
 ### Input Processing
 
 ```cpp
+// Convert from IInputSystem to UIInputEvent
+UIInputEvent toUIInput(const InputEvent& gameEvent) {
+    UIInputEvent uiEvent;
+    uiEvent.type = UIInputType::MouseMove;  // or MouseDown, KeyDown, etc.
+    uiEvent.x = gameEvent.mouseX;
+    uiEvent.y = gameEvent.mouseY;
+    uiEvent.button = gameEvent.button;
+    uiEvent.keyCode = gameEvent.keyCode;
+    uiEvent.modifiers = gameEvent.modifiers;
+    return uiEvent;
+}
+
 // In your input handling code:
-UIInputEvent event;
-event.type = UIInputType::MouseMove;
-event.x = mouseX;
-event.y = mouseY;
+UIInputEvent event = toUIInput(gameEvent);
 
 // Process the event
 bool uiConsumed = ui->processInput(event);
@@ -550,12 +474,14 @@ if (ui->wantsMouseInput()) {
 }
 ```
 
+**Note:** `wantsKeyboardInput()` and `wantsMouseInput()` currently return `false` (TODO in implementation). You may need to track this manually by checking if text input elements are focused.
+
 ### Update & Render
 
 ```cpp
 // In your game loop:
 void update(DeltaTime dt) {
-    ui->update(dt);  // Update animations, transitions, etc.
+    ui->update(dt);  // Update RmlUi context
 }
 
 void render() {
@@ -569,7 +495,7 @@ void render() {
 ### Font Loading
 
 ```cpp
-// Load a font
+// Load a font (goes through AssetSystem)
 auto result = ui->loadFont("fonts/Roboto-Regular.ttf", "Roboto");
 if (!result) {
     // Handle error
@@ -588,6 +514,52 @@ ui->setDebugMode(true);
 // Get stats
 size_t elementCount = ui->getElementCount();
 std::cout << "Active UI elements: " << elementCount << std::endl;
+```
+
+### Input Event Types
+
+```cpp
+enum class UIInputType : std::uint8_t {
+    MouseMove,      // Mouse moved
+    MouseDown,      // Mouse button pressed
+    MouseUp,        // Mouse button released
+    MouseScroll,    // Mouse wheel scrolled
+    KeyDown,        // Keyboard key pressed
+    KeyUp,          // Keyboard key released
+    TextInput       // Text character input
+};
+
+struct UIInputEvent {
+    UIInputType type;
+    int x = 0;             // Mouse X position
+    int y = 0;             // Mouse Y position
+    int button = 0;        // Mouse button (0=left, 1=right, 2=middle)
+    int wheelDelta = 0;    // Mouse wheel delta
+    int keyCode = 0;       // Keyboard key code
+    int modifiers = 0;     // Shift, Ctrl, Alt flags
+    char32_t character = 0;// Unicode character for text input
+};
+```
+
+### UIVisibility Enum
+
+```cpp
+enum class UIVisibility : std::uint8_t {
+    Visible,    // Element visible and takes space
+    Hidden,     // Element hidden but takes space (layout preserved)
+    Collapsed   // Element hidden and takes no space (removed from layout)
+};
+```
+
+### UIRect Structure
+
+```cpp
+struct UIRect {
+    float x = 0.0f;        // X position (screen coordinates)
+    float y = 0.0f;        // Y position (screen coordinates)
+    float width = 0.0f;    // Width in pixels
+    float height = 0.0f;   // Height in pixels
+};
 ```
 
 ---
@@ -613,10 +585,6 @@ std::cout << "Active UI elements: " << elementCount << std::endl;
                 <button id="btn-continue" class="menu-button">Continue</button>
                 <button id="btn-settings" class="menu-button">Settings</button>
                 <button id="btn-quit" class="menu-button">Quit</button>
-            </div>
-
-            <div class="version-info">
-                <span>Version 1.0.0</span>
             </div>
         </div>
     </div>
@@ -648,18 +616,6 @@ body {
     gap: 20px;
 }
 
-.game-logo {
-    width: 400px;
-    height: 200px;
-    margin-bottom: 40px;
-}
-
-.button-list {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
 .menu-button {
     width: 300px;
     height: 60px;
@@ -669,24 +625,10 @@ body {
     font-weight: bold;
     border: 2px solid #1976D2;
     border-radius: 8px;
-    transition: background-color 0.3s ease;
 }
 
 .menu-button:hover {
     background-color: #1976D2;
-    cursor: pointer;
-}
-
-.menu-button:active {
-    background-color: #0D47A1;
-}
-
-.version-info {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    color: #888;
-    font-size: 12px;
 }
 ```
 
@@ -701,11 +643,7 @@ public:
         auto result = ui_->loadDocument("ui/main_menu.rml");
         if (result) {
             menuDoc_ = *result;
-
-            // Register event handlers
             setupEventHandlers();
-
-            // Show menu
             ui_->showDocument(menuDoc_);
         }
     }
@@ -716,27 +654,6 @@ public:
         if (newGameBtn) {
             ui_->registerElementCallback(*newGameBtn, "click", [this](const UIEventData&) {
                 startNewGame();
-            });
-        }
-
-        // Continue button
-        auto continueBtn = ui_->getElementById(menuDoc_, "btn-continue");
-        if (continueBtn) {
-            // Disable if no save exists
-            if (!hasSaveGame()) {
-                ui_->setElementVisible(*continueBtn, UIVisibility::Hidden);
-            } else {
-                ui_->registerElementCallback(*continueBtn, "click", [this](const UIEventData&) {
-                    continueGame();
-                });
-            }
-        }
-
-        // Settings button
-        auto settingsBtn = ui_->getElementById(menuDoc_, "btn-settings");
-        if (settingsBtn) {
-            ui_->registerElementCallback(*settingsBtn, "click", [this](const UIEventData&) {
-                openSettings();
             });
         }
 
@@ -754,10 +671,7 @@ private:
     UIDocumentHandle menuDoc_;
 
     void startNewGame() { /* ... */ }
-    void continueGame() { /* ... */ }
-    void openSettings() { /* ... */ }
     void quitGame() { /* ... */ }
-    bool hasSaveGame() { return true; }
 };
 ```
 
@@ -772,7 +686,6 @@ private:
 </head>
 <body>
     <div id="hud-container">
-        <!-- Top-left: Health and stats -->
         <div class="hud-panel" id="stats-panel">
             <div class="stat-item">
                 <span class="stat-label">Health:</span>
@@ -786,126 +699,10 @@ private:
                 <span class="stat-label">Score:</span>
                 <span id="score-text" class="stat-value">0</span>
             </div>
-
-            <div class="stat-item">
-                <span class="stat-label">Lives:</span>
-                <span id="lives-text" class="stat-value">3</span>
-            </div>
-        </div>
-
-        <!-- Top-right: Mini-map (placeholder) -->
-        <div class="hud-panel" id="minimap-panel">
-            <div class="minimap">
-                <!-- Minimap rendering goes here -->
-            </div>
-        </div>
-
-        <!-- Bottom-center: Action prompt -->
-        <div id="action-prompt">
-            <span id="action-text"></span>
         </div>
     </div>
 </body>
 </rml>
-```
-
-**ui/hud_styles.rcss:**
-```rcss
-body {
-    font-family: "Arial", sans-serif;
-    font-size: 14px;
-}
-
-#hud-container {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;  /* Let clicks pass through to game */
-}
-
-.hud-panel {
-    background-color: rgba(0, 0, 0, 0.7);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
-    padding: 15px;
-    pointer-events: auto;  /* Enable interaction for panels */
-}
-
-#stats-panel {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    width: 250px;
-}
-
-.stat-item {
-    display: flex;
-    align-items: center;
-    margin-bottom: 10px;
-    gap: 10px;
-}
-
-.stat-label {
-    color: #AAA;
-    font-size: 14px;
-    min-width: 60px;
-}
-
-.stat-value {
-    color: white;
-    font-size: 16px;
-    font-weight: bold;
-}
-
-.health-bar-container {
-    flex: 1;
-    height: 20px;
-    background-color: #333;
-    border: 1px solid #666;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.health-bar {
-    height: 100%;
-    background: linear-gradient(to bottom, #4CAF50, #2E7D32);
-    transition: width 0.3s ease;
-}
-
-#minimap-panel {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 200px;
-    height: 200px;
-}
-
-.minimap {
-    width: 100%;
-    height: 100%;
-    background-color: #222;
-}
-
-#action-prompt {
-    position: absolute;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.8);
-    padding: 10px 20px;
-    border-radius: 5px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-#action-prompt.visible {
-    opacity: 1;
-}
-
-#action-text {
-    color: white;
-    font-size: 16px;
-}
 ```
 
 **C++ Code:**
@@ -919,13 +716,10 @@ public:
         if (result) {
             hudDoc_ = *result;
 
-            // Get element handles
+            // Cache element handles
             healthBar_ = ui_->getElementById(hudDoc_, "health-bar");
             healthText_ = ui_->getElementById(hudDoc_, "health-text");
             scoreText_ = ui_->getElementById(hudDoc_, "score-text");
-            livesText_ = ui_->getElementById(hudDoc_, "lives-text");
-            actionText_ = ui_->getElementById(hudDoc_, "action-text");
-            actionPrompt_ = ui_->getElementById(hudDoc_, "action-prompt");
 
             ui_->showDocument(hudDoc_);
         }
@@ -939,35 +733,20 @@ public:
 
         // Change color based on health
         if (percentage < 25.0f) {
-            ui_->setElementStyle(*healthBar_, "background", "#F44336");  // Red
+            ui_->setElementStyle(*healthBar_, "background-color", "#F44336");  // Red
         } else if (percentage < 50.0f) {
-            ui_->setElementStyle(*healthBar_, "background", "#FF9800");  // Orange
+            ui_->setElementStyle(*healthBar_, "background-color", "#FF9800");  // Orange
         } else {
-            ui_->setElementStyle(*healthBar_, "background", "#4CAF50");  // Green
+            ui_->setElementStyle(*healthBar_, "background-color", "#4CAF50");  // Green
         }
 
-        ui_->setElementText(*healthText_, std::to_string(current) + "/" + std::to_string(max));
+        ui_->setElementText(*healthText_,
+            std::to_string(current) + "/" + std::to_string(max));
     }
 
     void updateScore(int score) {
         if (!scoreText_) return;
         ui_->setElementText(*scoreText_, std::to_string(score));
-    }
-
-    void updateLives(int lives) {
-        if (!livesText_) return;
-        ui_->setElementText(*livesText_, std::to_string(lives));
-    }
-
-    void showActionPrompt(const std::string& text) {
-        if (!actionText_ || !actionPrompt_) return;
-        ui_->setElementText(*actionText_, text);
-        ui_->addElementClass(*actionPrompt_, "visible");
-    }
-
-    void hideActionPrompt() {
-        if (!actionPrompt_) return;
-        ui_->removeElementClass(*actionPrompt_, "visible");
     }
 
 private:
@@ -976,264 +755,10 @@ private:
     std::optional<UIElementHandle> healthBar_;
     std::optional<UIElementHandle> healthText_;
     std::optional<UIElementHandle> scoreText_;
-    std::optional<UIElementHandle> livesText_;
-    std::optional<UIElementHandle> actionText_;
-    std::optional<UIElementHandle> actionPrompt_;
 };
 ```
 
-### 3. Inventory Screen
-
-**ui/inventory.rml:**
-```xml
-<rml>
-<head>
-    <link type="text/rcss" href="ui/inventory_styles.rcss"/>
-    <title>Inventory</title>
-</head>
-<body>
-    <div id="inventory-overlay">
-        <div class="inventory-container">
-            <div class="inventory-header">
-                <h2>Inventory</h2>
-                <button id="close-button" class="close-btn">×</button>
-            </div>
-
-            <div class="inventory-content">
-                <!-- Item grid -->
-                <div class="item-grid" id="item-grid">
-                    <!-- Items dynamically created here -->
-                </div>
-
-                <!-- Item details panel -->
-                <div class="item-details" id="item-details">
-                    <img id="detail-icon" class="detail-icon" src=""/>
-                    <h3 id="detail-name">Select an item</h3>
-                    <p id="detail-description">Click on an item to view details.</p>
-                    <div class="detail-actions">
-                        <button id="btn-use" class="action-btn">Use</button>
-                        <button id="btn-drop" class="action-btn">Drop</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
-</rml>
-```
-
-**ui/inventory_styles.rcss:**
-```rcss
-#inventory-overlay {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.8);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.inventory-container {
-    width: 80%;
-    height: 70%;
-    background-color: #2C2C2C;
-    border: 3px solid #555;
-    border-radius: 10px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-}
-
-.inventory-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #555;
-    padding-bottom: 10px;
-}
-
-.inventory-header h2 {
-    color: white;
-    font-size: 24px;
-    margin: 0;
-}
-
-.close-btn {
-    width: 40px;
-    height: 40px;
-    background-color: #F44336;
-    color: white;
-    font-size: 28px;
-    border: none;
-    border-radius: 50%;
-}
-
-.close-btn:hover {
-    background-color: #D32F2F;
-}
-
-.inventory-content {
-    display: flex;
-    gap: 20px;
-    flex: 1;
-    overflow: hidden;
-}
-
-.item-grid {
-    flex: 2;
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-    overflow-y: auto;
-    padding: 10px;
-}
-
-.item-slot {
-    aspect-ratio: 1;
-    background-color: #444;
-    border: 2px solid #666;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: border-color 0.2s ease;
-}
-
-.item-slot:hover {
-    border-color: #2196F3;
-}
-
-.item-slot.selected {
-    border-color: #4CAF50;
-}
-
-.item-slot img {
-    width: 80%;
-    height: 80%;
-    object-fit: contain;
-}
-
-.item-details {
-    flex: 1;
-    background-color: #333;
-    border: 2px solid #555;
-    border-radius: 8px;
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-}
-
-.detail-icon {
-    width: 100px;
-    height: 100px;
-    object-fit: contain;
-}
-
-.detail-name {
-    color: white;
-    font-size: 20px;
-    margin: 0;
-}
-
-.detail-description {
-    color: #AAA;
-    font-size: 14px;
-    text-align: center;
-    flex: 1;
-}
-
-.detail-actions {
-    display: flex;
-    gap: 10px;
-    width: 100%;
-}
-
-.action-btn {
-    flex: 1;
-    height: 40px;
-    background-color: #2196F3;
-    color: white;
-    border: none;
-    border-radius: 5px;
-    font-size: 16px;
-}
-
-.action-btn:hover {
-    background-color: #1976D2;
-}
-```
-
-**C++ Code:**
-```cpp
-struct InventoryItem {
-    std::string id;
-    std::string name;
-    std::string description;
-    std::string iconPath;
-};
-
-class InventoryUI {
-public:
-    void init(IUISystem* ui) {
-        ui_ = ui;
-
-        auto result = ui_->loadDocument("ui/inventory.rml");
-        if (result) {
-            invDoc_ = *result;
-
-            // Get element handles
-            itemGrid_ = ui_->getElementById(invDoc_, "item-grid");
-            closeBtn_ = ui_->getElementById(invDoc_, "close-button");
-
-            // Setup close button
-            if (closeBtn_) {
-                ui_->registerElementCallback(*closeBtn_, "click", [this](const UIEventData&) {
-                    hide();
-                });
-            }
-        }
-    }
-
-    void show(const std::vector<InventoryItem>& items) {
-        if (!itemGrid_) return;
-
-        // Clear existing items
-        ui_->setInnerRml(*itemGrid_, "");
-
-        // Create item slots
-        for (const auto& item : items) {
-            // Create item slot dynamically
-            std::string slotHtml = R"(
-                <div class="item-slot" id="item-)" + item.id + R"(">
-                    <img src=")" + item.iconPath + R"("/>
-                </div>
-            )";
-
-            // Append to grid (simplified - in reality you'd create elements properly)
-            // This is just an example
-        }
-
-        ui_->showDocument(invDoc_);
-    }
-
-    void hide() {
-        ui_->hideDocument(invDoc_);
-    }
-
-private:
-    IUISystem* ui_ = nullptr;
-    UIDocumentHandle invDoc_;
-    std::optional<UIElementHandle> itemGrid_;
-    std::optional<UIElementHandle> closeBtn_;
-};
-```
-
-### 4. Pause Menu
+### 3. Pause Menu
 
 **ui/pause_menu.rml:**
 ```xml
@@ -1283,27 +808,11 @@ public:
             });
         }
 
-        // Settings
-        auto settingsBtn = ui_->getElementById(pauseDoc_, "btn-settings");
-        if (settingsBtn) {
-            ui_->registerElementCallback(*settingsBtn, "click", [this](const UIEventData&) {
-                openSettings();
-            });
-        }
-
         // Main Menu
         auto mainMenuBtn = ui_->getElementById(pauseDoc_, "btn-main-menu");
         if (mainMenuBtn) {
             ui_->registerElementCallback(*mainMenuBtn, "click", [this](const UIEventData&) {
                 returnToMainMenu();
-            });
-        }
-
-        // Quit
-        auto quitBtn = ui_->getElementById(pauseDoc_, "btn-quit");
-        if (quitBtn) {
-            ui_->registerElementCallback(*quitBtn, "click", [this](const UIEventData&) {
-                quitGame();
             });
         }
     }
@@ -1321,9 +830,7 @@ private:
     UIDocumentHandle pauseDoc_;
 
     void resumeGame() { /* ... */ }
-    void openSettings() { /* ... */ }
     void returnToMainMenu() { /* ... */ }
-    void quitGame() { /* ... */ }
 };
 ```
 
@@ -1347,53 +854,25 @@ assets/
       main_menu.rml
       game_hud.rml
       pause_menu.rml
-      inventory.rml
     styles/
       common.rcss       # Shared styles
       menu_styles.rcss
       hud_styles.rcss
 ```
 
-### 2. Responsive Design
-
-Use percentages and flexbox for scalable UI:
-
-```rcss
-/* Flexible container */
-.container {
-    width: 80%;           /* Scale with window */
-    max-width: 1200px;    /* Cap maximum size */
-    margin: 0 auto;       /* Center */
-}
-
-/* Flexible grid */
-.item-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 10px;
-}
-
-/* Relative sizes */
-.button {
-    font-size: 1.2em;     /* Relative to parent */
-    padding: 0.5em 1em;   /* Scales with font size */
-}
-```
-
-### 3. Performance Considerations
+### 2. Performance Considerations
 
 **DO:**
 - Cache element handles instead of querying every frame
-- Use `setInnerRml()` sparingly (expensive)
-- Batch style updates when possible
 - Hide documents instead of destroying/recreating
 - Use `UIVisibility::Collapsed` for hidden elements that shouldn't take space
+- Load fonts and documents during initialization, not gameplay
 
 **DON'T:**
 - Query elements by ID/class every frame
 - Create/destroy elements in hot loops
-- Bind too many variables (bind only what's actually displayed)
 - Forget to unload unused documents
+- Use `setInnerRml()` unnecessarily (it's expensive)
 
 ```cpp
 // GOOD: Cache handles
@@ -1415,12 +894,12 @@ class MyUI {
 void update() {
     auto healthText = ui->getElementById(doc, "health-text");  // Slow!
     if (healthText) {
-        ui->setElementText(*healthText_, std::to_string(health));
+        ui->setElementText(*healthText, std::to_string(health));
     }
 }
 ```
 
-### 4. Input Handling
+### 3. Input Handling
 
 Always check if UI consumed input before passing to game:
 
@@ -1438,22 +917,9 @@ void handleInput(const InputEvent& event) {
     // UI didn't handle it, process in game
     game->handleInput(event);
 }
-
-// Check for input focus
-void update() {
-    if (ui->wantsKeyboardInput()) {
-        // Text input is focused, disable game keyboard controls
-        disableGameKeyboard();
-    }
-
-    if (ui->wantsMouseInput()) {
-        // Mouse is over UI, don't shoot on click
-        disableGameMouseActions();
-    }
-}
 ```
 
-### 5. State Management
+### 4. State Management
 
 Organize UI into logical screens:
 
@@ -1464,16 +930,12 @@ public:
         None,
         MainMenu,
         GameHUD,
-        PauseMenu,
-        Inventory,
-        Settings
+        PauseMenu
     };
 
     void showScreen(Screen screen) {
-        // Hide all screens
         hideAll();
 
-        // Show requested screen
         switch (screen) {
             case Screen::MainMenu:
                 ui->showDocument(mainMenuDoc_);
@@ -1484,7 +946,6 @@ public:
             case Screen::PauseMenu:
                 ui->showDocument(pauseDoc_);
                 break;
-            // ...
         }
 
         currentScreen_ = screen;
@@ -1494,57 +955,52 @@ public:
         ui->hideDocument(mainMenuDoc_);
         ui->hideDocument(hudDoc_);
         ui->hideDocument(pauseDoc_);
-        ui->hideDocument(inventoryDoc_);
-        ui->hideDocument(settingsDoc_);
     }
 
 private:
     Screen currentScreen_ = Screen::None;
-    // Document handles...
+    UIDocumentHandle mainMenuDoc_;
+    UIDocumentHandle hudDoc_;
+    UIDocumentHandle pauseDoc_;
 };
 ```
 
-### 6. Styling Best Practices
+---
 
-**Use CSS classes, not inline styles:**
+## Implementation Notes
 
-```rcss
-/* GOOD: Reusable classes */
-.button-primary {
-    background-color: #2196F3;
-    color: white;
-}
+The current RmlUi implementation has some features that are work-in-progress:
 
-.button-danger {
-    background-color: #F44336;
-    color: white;
-}
-```
+### TODO / Not Yet Implemented
 
+1. **Data binding synchronization** - `syncBindings()` stores bindings but doesn't sync to UI yet
+2. **Per-element callbacks** - `registerElementCallback()` needs RmlUi event listener integration
+3. **Input focus detection** - `wantsKeyboardInput()` and `wantsMouseInput()` always return false
+4. **Programmatic stylesheet loading** - `loadStyleSheet()` and `applyStyleSheet()` not supported by RmlUi's API (use `<link>` tags in RML instead)
+5. **Element ownership transfer** - `appendChild()` needs proper ownership handling
+
+### Workarounds
+
+**For stylesheets:** Embed them in RML documents:
 ```xml
-<!-- Use classes in RML -->
-<button class="button-primary">OK</button>
-<button class="button-danger">Delete</button>
+<head>
+    <link type="text/rcss" href="styles.rcss"/>
+    <!-- Or inline: -->
+    <style>
+        button { background-color: #2196F3; }
+    </style>
+</head>
 ```
 
-**Organize with CSS variables (if supported):**
-
-```rcss
-/* Define color scheme */
-:root {
-    --color-primary: #2196F3;
-    --color-secondary: #FFC107;
-    --color-danger: #F44336;
-    --spacing-small: 5px;
-    --spacing-medium: 10px;
-    --spacing-large: 20px;
-}
-
-/* Use throughout stylesheet */
-.button {
-    background-color: var(--color-primary);
-    padding: var(--spacing-medium);
-}
+**For per-element callbacks:** Use global callbacks and check `data.targetId`:
+```cpp
+ui->registerEventCallback("click", [](const UIEventData& data) {
+    if (data.targetId == "play-button") {
+        startGame();
+    } else if (data.targetId == "quit-button") {
+        quitGame();
+    }
+});
 ```
 
 ---
@@ -1562,36 +1018,35 @@ private:
 **2. Styles not applying**
 - Link stylesheet in `<head>` with `<link type="text/rcss" href="..."/>`
 - Check RCSS syntax (must be valid CSS)
-- Inspect element classes/IDs match selectors
+- Verify element classes/IDs match selectors
 - Enable debug mode to visualize elements
 
 **3. Events not firing**
 - Verify element handle is valid
 - Check event type string is correct ("click", not "onclick")
 - Ensure document is visible
-- Check if UI consumed the input event
+- Remember per-element callbacks are TODO - use global callbacks
 
 **4. Text not updating**
-- Call `syncBindings()` after changing bound variables
-- Verify element handle is still valid
+- Cache element handles during initialization
 - Check if element was destroyed/recreated
+- Verify handle is still valid
 
-**5. Layout issues**
-- Use flexbox for responsive layouts
-- Check for conflicting `position` properties
-- Verify parent container has size set
-- Enable debug mode to see element bounds
+**5. UI not rendering**
+- Ensure `ui->update(dt)` is called every frame
+- Ensure `ui->render()` is called after game rendering
+- Check that document is shown with `showDocument()`
+- Verify RmlUi was initialized by the graphics system
 
 ---
 
 ## Additional Resources
 
 ### RmlUi Official Documentation
-- [RmlUi Documentation](https://mikke89.github.io/RmlUiDoc/) - Official docs for RmlUi
-- [RCSS Reference](https://mikke89.github.io/RmlUiDoc/pages/rcss.html) - Complete RCSS property reference
-- [RML Element Index](https://mikke89.github.io/RmlUiDoc/pages/rml.html) - All supported HTML elements
-- [Window Template Tutorial](https://mikke89.github.io/RmlUiDoc/pages/tutorials/window_template.html) - Step-by-step tutorial
-- [Data Bindings Guide](https://mikke89.github.io/RmlUiDoc/pages/data_bindings/views_and_controllers.html) - Advanced data binding
+- [RmlUi Documentation](https://mikke89.github.io/RmlUiDoc/)
+- [RCSS Reference](https://mikke89.github.io/RmlUiDoc/pages/rcss.html)
+- [RML Element Index](https://mikke89.github.io/RmlUiDoc/pages/rml.html)
+- [Data Bindings Guide](https://mikke89.github.io/RmlUiDoc/pages/data_bindings.html)
 
 ### Bestow Documentation
 - Contract Interface: `/Users/jaaaacob/Documents/GameDev/jframe/bestow-contract/src/bestow.ui.cppm`
@@ -1608,7 +1063,6 @@ private:
 | `"dblclick"` | Element double-clicked |
 | `"mouseover"` | Mouse enters element |
 | `"mouseout"` | Mouse leaves element |
-| `"mousemove"` | Mouse moves within element |
 | `"focus"` | Element gains focus |
 | `"blur"` | Element loses focus |
 | `"change"` | Input value changed |
@@ -1621,33 +1075,19 @@ private:
 | `UIVisibility::Hidden` | Element hidden but takes space |
 | `UIVisibility::Collapsed` | Element hidden and takes no space |
 
-### Common RCSS Properties
-| Property | Example | Description |
-|----------|---------|-------------|
-| `display` | `display: flex;` | Layout mode |
-| `position` | `position: absolute;` | Positioning scheme |
-| `width`, `height` | `width: 100px;` | Size |
-| `margin`, `padding` | `margin: 10px;` | Spacing |
-| `background-color` | `background-color: #FFF;` | Fill color |
-| `color` | `color: white;` | Text color |
-| `font-size` | `font-size: 16px;` | Text size |
-| `border` | `border: 2px solid #000;` | Border style |
-| `border-radius` | `border-radius: 8px;` | Rounded corners |
-| `opacity` | `opacity: 0.8;` | Transparency |
-| `transition` | `transition: all 0.3s;` | Animated changes |
-
 ---
 
 ## Conclusion
 
-The Bestow UI System provides a powerful, web-style approach to game UI development. By combining RML documents for structure, RCSS stylesheets for presentation, and the C++ API for behavior, you can create professional, responsive user interfaces for your games.
+The Bestow UI System provides a powerful, web-style approach to game UI development. By combining RML documents for structure, RCSS stylesheets for presentation, and the C++ API for behavior, you can create professional user interfaces for your games.
 
 Key takeaways:
 - Structure your UI with RML (HTML-like)
 - Style with RCSS (CSS-like)
 - Handle events and updates in C++
-- Use data binding for automatic synchronization
 - Cache element handles for performance
 - Always check if UI consumed input before passing to game
+- Use document visibility management for screen transitions
+- Load all assets through AssetSystem (never direct file I/O)
 
 Happy UI building!

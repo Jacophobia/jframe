@@ -8,12 +8,27 @@ module;
 #include <DetourNavMeshQuery.h>
 #include <DetourStatus.h>
 
+#if defined(BESTOW_HAS_BTCPP)
+#include <behaviortree_cpp/bt_factory.h>
+#include <behaviortree_cpp/behavior_tree.h>
+#endif
+
 export module bestow.ai.impl;
 
 import std;
 import bestow.services;  // Re-exports all contracts including bestow.ai, bestow.types, etc.
 
 export namespace bestow {
+
+// Steering behavior types
+enum class SteeringBehaviorType {
+    None,
+    Seek,       // Move toward target at max speed
+    Flee,       // Move away from target at max speed
+    Arrive,     // Move toward target with deceleration
+    Pursue,     // Predict and intercept moving target
+    Evade       // Predict and avoid moving target
+};
 
 class AISystem : public IAISystem {
 public:
@@ -61,6 +76,10 @@ public:
     bool hasLineOfSight(Vec2 from, Vec2 to,
                         CollisionMask obstacleMask = 0xFFFF) const override;
 
+    // Extended steering behavior API
+    void setSteeringBehavior(Entity entity, SteeringBehaviorType behavior);
+    void setArrivalRadius(Entity entity, float radius);
+
 private:
     struct AIComponent {
         AssetHandle behaviorTree;
@@ -69,6 +88,11 @@ private:
         float maxSpeed = 100.0f;
         float maxAcceleration = 500.0f;
         std::optional<PatrolBehavior> patrol;
+        SteeringBehaviorType steeringBehavior = SteeringBehaviorType::None;
+        float arrivalRadius = 50.0f;  // Deceleration radius for Arrive behavior
+#if defined(BESTOW_HAS_BTCPP)
+        std::unique_ptr<BT::Tree> btTree;
+#endif
     };
 
     IPhysicsSystem* physicsSystem_;
@@ -80,6 +104,19 @@ private:
     // Detour navigation
     dtNavMesh* navMesh_ = nullptr;
     dtNavMeshQuery* navQuery_ = nullptr;
+
+#if defined(BESTOW_HAS_BTCPP)
+    // BehaviorTree.CPP factory
+    BT::BehaviorTreeFactory btFactory_;
+    void initializeBehaviorTreeFactory();
+    void tickBehaviorTree(Entity entity, AIComponent& ai, DeltaTime dt);
+#endif
+
+    // Steering behavior helpers
+    Vec2 calculateSeek(Vec2 position, Vec2 target, float maxSpeed) const;
+    Vec2 calculateFlee(Vec2 position, Vec2 target, float maxSpeed) const;
+    Vec2 calculateArrive(Vec2 position, Vec2 target, float maxSpeed, float arrivalRadius) const;
+    void applySteeringBehavior(Entity entity, AIComponent& ai, DeltaTime dt);
 };
 
 // Kangaru service definitions

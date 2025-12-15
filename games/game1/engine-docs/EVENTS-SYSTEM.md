@@ -10,7 +10,7 @@ The **Events System** provides a decoupled, type-safe mechanism for inter-system
 2. **Testability** - Easy to mock and test event-driven behavior
 3. **Flexibility** - Multiple subscribers can respond to the same event
 4. **Centralized Communication** - Single place to observe all system interactions
-5. **Thread-Safe Queuing** - Events can be safely queued from any thread
+5. **Deferred Processing** - Events can be queued and processed later for predictable timing
 
 ### When to Use Events vs Direct Calls
 
@@ -137,7 +137,7 @@ The Events System supports two dispatch modes:
 Events are delivered **immediately and synchronously** to all subscribers. Use this when:
 - The event must be processed right now
 - Subscribers need to react before the next line of code executes
-- You're already on the main thread and in a safe context
+- You're in a safe context (not inside another callback)
 
 ```cpp
 // Publish immediately - all callbacks execute NOW
@@ -150,11 +150,11 @@ events->publish(Events::EntityDied, EntityEventData{player});
 Events are **queued and processed later** during your main loop. Use this when:
 - You want to batch event processing
 - You're publishing from a callback and want to avoid reentrancy
-- You need thread-safe event publishing
-- You want predictable event processing timing
+- You want predictable event processing timing (once per frame)
+- You want to control exactly when events are processed
 
 ```cpp
-// Queue event - nothing happens yet (thread-safe)
+// Queue event - nothing happens yet
 events->queue(Events::AssetLoaded, assetData);
 
 // Later, in your main loop
@@ -165,6 +165,8 @@ void update(DeltaTime dt) {
 ```
 
 **Important:** Queued events are processed in **FIFO order** (first-in, first-out).
+
+**Note:** The current implementation of `queue()` is **not thread-safe**. Always queue events from the main thread. If you need to publish events from worker threads, consider using a thread-safe queue externally and processing it on the main thread.
 
 ---
 
@@ -247,6 +249,27 @@ Events::TriggerExit      // 2D trigger exited
 
 **Data Type:** `CollisionEvent` or `TriggerEvent`
 
+**CollisionEvent Structure:**
+```cpp
+struct CollisionEvent {
+    Entity entityA;
+    Entity entityB;
+    Vec2 contactPoint;
+    Vec2 normal;
+    float impulse;
+};
+```
+
+**TriggerEvent Structure:**
+```cpp
+struct TriggerEvent {
+    Entity entityA;
+    Entity entityB;
+    Vec2 contactPoint;
+};
+```
+
+**Example:**
 ```cpp
 events->subscribe(Events::Collision, [](const EventData& data) {
     auto& collision = std::get<CollisionEvent>(data);
@@ -267,6 +290,26 @@ Events::TriggerEnter3D   // 3D trigger entered
 Events::TriggerExit3D    // 3D trigger exited
 ```
 
+**CollisionEvent3D Structure:**
+```cpp
+struct CollisionEvent3D {
+    Entity entityA;
+    Entity entityB;
+    Vec3 contactPoint;
+    Vec3 contactNormal;
+    float impulse;
+    float penetrationDepth;
+};
+```
+
+**TriggerEvent3D Structure:**
+```cpp
+struct TriggerEvent3D {
+    Entity entityA;
+    Entity entityB;
+};
+```
+
 **Data Type:** `CollisionEvent3D` or `TriggerEvent3D`
 
 ### Level Events
@@ -275,6 +318,22 @@ Events::TriggerExit3D    // 3D trigger exited
 Events::LevelLoaded      // Level finished loading
 Events::LevelUnloaded    // Level unloaded
 Events::Checkpoint       // Checkpoint reached
+```
+
+**LevelEventData Structure:**
+```cpp
+struct LevelEventData {
+    LevelId levelId;
+    LevelEvent event;
+};
+```
+
+**EntityEventData Structure:**
+```cpp
+struct EntityEventData {
+    Entity entity;
+    std::optional<Entity> otherEntity;
+};
 ```
 
 **Data Type:** `LevelEventData` or `EntityEventData`
@@ -288,8 +347,19 @@ Events::ItemCollected    // Collectible item picked up
 Events::PlayerDeath      // Player entity died (game over)
 ```
 
+**DamageEventData Structure:**
+```cpp
+struct DamageEventData {
+    Entity target;
+    Entity source;
+    int amount;
+    Vec2 knockback;
+};
+```
+
 **Data Type:** `DamageEventData` or `EntityEventData`
 
+**Example:**
 ```cpp
 events->subscribe(Events::EntityDamaged, [](const EventData& data) {
     auto& damage = std::get<DamageEventData>(data);
@@ -313,8 +383,19 @@ Events::AssetReloaded    // Asset hot-reloaded (dev tools)
 Events::AssetError       // Asset loading failed
 ```
 
+**AssetEventData Structure:**
+```cpp
+struct AssetEventData {
+    AssetHandle handle;
+    AssetType type;
+    AssetState state;
+    std::string error;  // Empty if no error
+};
+```
+
 **Data Type:** `AssetEventData`
 
+**Example:**
 ```cpp
 events->subscribe(Events::AssetLoaded, [](const EventData& data) {
     auto& asset = std::get<AssetEventData>(data);
@@ -335,8 +416,17 @@ events->subscribe(Events::AssetLoaded, [](const EventData& data) {
 Events::ConfigChanged    // Configuration value changed
 ```
 
+**ConfigEventData Structure:**
+```cpp
+struct ConfigEventData {
+    std::string key;
+    std::string section;
+};
+```
+
 **Data Type:** `ConfigEventData`
 
+**Example:**
 ```cpp
 events->subscribe(Events::ConfigChanged, [this](const EventData& data) {
     auto& config = std::get<ConfigEventData>(data);
@@ -355,6 +445,15 @@ Events::ShaderReloaded   // Shader hot-reloaded (dev tools)
 Events::MaterialReloaded // Material hot-reloaded (dev tools)
 ```
 
+**ShaderReloadEventData Structure:**
+```cpp
+struct ShaderReloadEventData {
+    std::uint64_t handle;  // ShaderProgramHandle or MaterialHandle
+    bool success;
+    std::string error;
+};
+```
+
 **Data Type:** `ShaderReloadEventData`
 
 ### Game State Events
@@ -363,6 +462,14 @@ Events::MaterialReloaded // Material hot-reloaded (dev tools)
 Events::StateChanged     // Game state changed
 Events::StatePushed      // Game state pushed onto stack
 Events::StatePopped      // Game state popped from stack
+```
+
+**StateChangeEventData Structure:**
+```cpp
+struct StateChangeEventData {
+    std::string oldStateName;
+    std::string newStateName;
+};
 ```
 
 **Data Type:** `StateChangeEventData`
@@ -378,6 +485,14 @@ Events::GameLoaded       // Game loaded successfully
 
 ```cpp
 Events::FileChanged      // File changed on disk (hot reload)
+```
+
+**FileChangeEventData Structure:**
+```cpp
+struct FileChangeEventData {
+    std::string path;
+    std::string fileType;  // "shader", "config", "texture", etc.
+};
 ```
 
 **Data Type:** `FileChangeEventData`
@@ -632,22 +747,34 @@ events->publish("test", EntityEventData{});
 
 ### 5. Thread Safety
 
-**Publishing is NOT thread-safe**, but **queuing is thread-safe**:
+**Neither publishing nor queuing is currently thread-safe.** Always interact with the events system from the main thread only.
 
 ```cpp
-// UNSAFE - Don't publish from worker threads
+// UNSAFE - Don't call from worker threads
 std::thread worker([&events]() {
-    events->publish(Events::AssetLoaded, assetData);  // DANGER: Race condition
+    events->publish(Events::AssetLoaded, assetData);  // DANGER: Not thread-safe
+    events->queue(Events::AssetLoaded, assetData);    // DANGER: Not thread-safe
 });
 
-// SAFE - Queue from worker threads
-std::thread worker([&events]() {
-    events->queue(Events::AssetLoaded, assetData);  // SAFE: Thread-safe queue
+// SAFE - Use external thread-safe queue
+std::queue<EventData> workerQueue;
+std::mutex queueMutex;
+
+std::thread worker([&workerQueue, &queueMutex]() {
+    std::lock_guard<std::mutex> lock(queueMutex);
+    workerQueue.push(assetData);  // Thread-safe external queue
 });
 
-// Process queued events on main thread
+// Process on main thread
 void update(DeltaTime dt) {
-    events->processQueue();  // Always call from main thread
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        while (!workerQueue.empty()) {
+            events->queue(Events::AssetLoaded, workerQueue.front());
+            workerQueue.pop();
+        }
+    }
+    events->processQueue();
 }
 ```
 
@@ -678,7 +805,7 @@ public:
 
 ## Code Examples
 
-### Example 1: Subscribing to Collision Events
+### Example 1: Handling Collisions
 
 ```cpp
 class PlayerCollisionSystem {
@@ -711,17 +838,17 @@ private:
 
         // Check what the player collided with
         if (entities_->has<EnemyComponent>(other)) {
-            // Player hit enemy - take damage
-            events_->publish(Events::EntityDamaged, DamageEventData{
+            // Player hit enemy - queue damage event
+            events_->queue(Events::EntityDamaged, DamageEventData{
                 .target = player,
                 .source = other,
                 .amount = 10,
-                .knockback = collision.normal * -200.0f
+                .knockback = {collision.normal.x * -200.0f, collision.normal.y * -200.0f}
             });
         }
         else if (entities_->has<CollectibleComponent>(other)) {
             // Player collected item
-            events_->publish(Events::ItemCollected, EntityEventData{
+            events_->queue(Events::ItemCollected, EntityEventData{
                 .entity = other,
                 .otherEntity = player
             });
@@ -730,7 +857,7 @@ private:
 
     Entity findPlayer() {
         // Implementation to find player entity
-        // ...
+        return Entity{};  // Placeholder
     }
 
     IEventSystem* events_;
@@ -739,7 +866,68 @@ private:
 };
 ```
 
-### Example 2: Custom Game Events (Score System)
+### Example 2: Level Transitions
+
+```cpp
+class LevelTransitionSystem {
+public:
+    LevelTransitionSystem(IEventSystem& events, ILevelSystem& levels)
+        : events_(&events), levels_(&levels) {
+
+        // Subscribe to level events
+        levelLoadedSub_ = events_->subscribe(Events::LevelLoaded,
+            [this](const EventData& data) { onLevelLoaded(data); });
+
+        levelUnloadedSub_ = events_->subscribe(Events::LevelUnloaded,
+            [this](const EventData& data) { onLevelUnloaded(data); });
+    }
+
+    ~LevelTransitionSystem() {
+        events_->unsubscribe(levelLoadedSub_);
+        events_->unsubscribe(levelUnloadedSub_);
+    }
+
+    void transitionToLevel(LevelId newLevel) {
+        // Queue level transition
+        LevelTransition transition{
+            .fromLevel = currentLevel_,
+            .toLevel = newLevel,
+            .spawnPoint = "player_start",
+            .unloadPrevious = true
+        };
+
+        // Unload current level
+        if (currentLevel_ != 0) {
+            levels_->unloadLevel(currentLevel_);
+        }
+
+        // Load new level
+        levels_->loadLevel(newLevel);
+        currentLevel_ = newLevel;
+    }
+
+private:
+    void onLevelLoaded(const EventData& data) {
+        auto& levelData = std::get<LevelEventData>(data);
+        std::println("Level {} loaded successfully", levelData.levelId);
+
+        // Fade in, spawn player, etc.
+    }
+
+    void onLevelUnloaded(const EventData& data) {
+        auto& levelData = std::get<LevelEventData>(data);
+        std::println("Level {} unloaded", levelData.levelId);
+    }
+
+    IEventSystem* events_;
+    ILevelSystem* levels_;
+    LevelId currentLevel_ = 0;
+    SubscriptionId levelLoadedSub_;
+    SubscriptionId levelUnloadedSub_;
+};
+```
+
+### Example 3: Custom Game Events (Score System)
 
 ```cpp
 // Define custom event data
@@ -808,7 +996,7 @@ private:
 };
 ```
 
-### Example 3: Event-Driven UI Updates
+### Example 4: Event-Driven UI Updates
 
 ```cpp
 class GameUI {
@@ -895,7 +1083,7 @@ private:
 };
 ```
 
-### Example 4: Asset System Integration
+### Example 5: Asset System Integration
 
 ```cpp
 class TextureManager {
@@ -947,7 +1135,7 @@ private:
 };
 ```
 
-### Example 5: Boss Fight Phase System
+### Example 6: Boss Fight Phase System
 
 ```cpp
 // Custom event data

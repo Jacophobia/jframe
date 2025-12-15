@@ -1,19 +1,22 @@
-# Bestow AI System Guide
+# AI System Developer Guide
 
 ## Overview
 
 The Bestow AI System provides game AI capabilities including behavior trees, navigation meshes, pathfinding, and spatial queries. Built on industry-standard libraries (BehaviorTree.CPP and Recast/Detour), it integrates seamlessly with the physics system for steering behaviors and collision detection.
 
 **Key Features:**
-- **Behavior Trees**: Complex AI logic with blackboard data sharing
+- **Behavior Trees**: Complex AI logic with blackboard data sharing (per-entity `std::any` storage)
 - **NavMesh Pathfinding**: Recast/Detour-based navigation for 2D/2.5D games
-- **Steering Behaviors**: Built-in patrol, seek, and navigation following
-- **Spatial Queries**: Efficient entity searches using physics system
-- **Line of Sight**: Raycast-based visibility checks
+- **Patrol Behavior**: Built-in back-and-forth movement with automatic velocity updates
+- **Steering Behaviors**: Navigation target storage and movement parameters
+- **Spatial Queries**: Efficient entity searches using physics system (findEntitiesInRadius, findClosestEntity)
+- **Line of Sight**: Raycast-based visibility checks (hasLineOfSight)
 
 **Dependencies:**
-- Physics System (for spatial queries and steering)
+- Physics System (required for spatial queries, steering, and raycasting)
 - Asset System (for loading behavior trees and navmeshes)
+
+**Important:** Entities using AI features (patrol, navigation) must have physics bodies created via the Physics System.
 
 ---
 
@@ -21,16 +24,23 @@ The Bestow AI System provides game AI capabilities including behavior trees, nav
 
 ### 1. Behavior Trees
 
-Behavior trees organize AI decision-making hierarchically. Each entity can have:
-- **One behavior tree** (loaded from asset)
-- **Blackboard data** (shared variables for the tree)
-- **Execution state** (managed automatically during update)
+> **STATUS: PLANNED** - Full BehaviorTree.CPP integration is planned but not yet implemented. The blackboard data storage is available now for use with your own custom AI logic.
 
-**Node Types (via BehaviorTree.CPP):**
+Behavior trees organize AI decision-making hierarchically. Each entity can have:
+- **One behavior tree** (loaded from asset via AssetSystem) - *PLANNED*
+- **Blackboard data** (per-entity key-value storage using `std::any`) - *AVAILABLE NOW*
+- **Execution state** (managed automatically during update) - *PLANNED*
+
+**Node Types (via BehaviorTree.CPP):** *PLANNED FEATURE*
 - **Action nodes**: Perform tasks (move, attack, play animation)
 - **Condition nodes**: Check state (health low?, player visible?)
 - **Composite nodes**: Control flow (sequence, selector, parallel)
 - **Decorator nodes**: Modify behavior (repeat, invert, timeout)
+
+**Current Status:**
+- Blackboard data storage is fully functional
+- Behavior tree loading, parsing, and execution are planned for a future release
+- For now, use the blackboard with your own custom AI state machines or decision logic
 
 ### 2. Navigation
 
@@ -44,12 +54,21 @@ Navigation uses **Recast/Detour** for robust pathfinding:
 - Detour uses 3D (x, y=0, z) internally
 - The AI system handles conversion automatically
 
-### 3. Steering Behaviors
+### 3. Patrol Behavior
+
+The patrol system provides automatic back-and-forth movement:
+- **Automatic velocity management**: AI system updates X velocity each frame based on direction
+- **Boundary detection**: Flips direction at `startX ± range`
+- **Y velocity preservation**: Maintains vertical velocity (for gravity, jumping)
+- **Requires physics body**: Gracefully skips entities without physics bodies
+
+### 4. Steering Behaviors
 
 Simple movement behaviors integrated with physics:
-- **Patrol**: Back-and-forth movement along a path
-- **Navigation target**: Move toward a specific position
-- **Max speed/acceleration**: Configurable movement limits
+- **Navigation target**: Store a target position (for your custom AI logic to use)
+- **Max speed/acceleration**: Configurable movement limits (stored but not automatically applied)
+
+**Important:** Navigation target is STORAGE ONLY. The AI system does NOT automatically move entities toward their targets. You must implement movement yourself using physics velocity or custom steering logic.
 
 ---
 
@@ -66,15 +85,22 @@ class IAISystem {
 
 **Usage:**
 ```cpp
-// In your game loop
+// In your game loop (called automatically by Engine)
 aiSystem->update(deltaTime);
 ```
+
+**What update() does:**
+- Updates patrol behaviors (sets velocity for entities with patrol component)
+- Processes behavior tree execution (when BehaviorTree.CPP is integrated)
+- Does NOT automatically move entities toward navigation targets
 
 ---
 
 ### Behavior Trees
 
 #### Attach/Detach
+
+> **PLANNED FEATURE** - These methods exist in the interface but behavior tree execution is not yet implemented. Use blackboard data with custom AI logic for now.
 
 ```cpp
 // Attach a behavior tree asset to an entity
@@ -87,20 +113,33 @@ void detachBehaviorTree(Entity entity);
 bool hasBehaviorTree(Entity entity) const;
 ```
 
-**Example:**
+**Example (PLANNED):**
 ```cpp
 Entity enemy = entities->createEntity();
 
-// Load and attach behavior tree
+// Load and attach behavior tree (PLANNED - not yet functional)
 AssetHandle enemyAI = assets->registerAsset(AssetType::BehaviorTree,
                                              ":assets:/ai/enemy_patrol.xml");
 assets->loadAsset(enemyAI);
 aiSystem->attachBehaviorTree(enemy, enemyAI);
+
+// Later: check if entity has tree
+if (aiSystem->hasBehaviorTree(enemy)) {
+    // Entity has AI behavior
+}
+
+// Remove behavior tree
+aiSystem->detachBehaviorTree(enemy);
 ```
+
+**Notes:**
+- Attaching a new tree replaces the old tree
+- Detaching a tree does NOT clear blackboard data
+- Safe to detach from non-existent entities (no-op)
 
 #### Blackboard Data
 
-The blackboard stores per-entity data accessible to behavior tree nodes.
+The blackboard stores per-entity data accessible to behavior tree nodes and your custom AI logic.
 
 ```cpp
 // Set a value in the blackboard
@@ -126,7 +165,7 @@ aiSystem->setBehaviorTreeBlackboard(enemy, "alert", false);
 aiSystem->setBehaviorTreeBlackboard(enemy, "patrol_point", Vec2{500.0f, 300.0f});
 aiSystem->setBehaviorTreeBlackboard(enemy, "state", std::string("idle"));
 
-// Retrieve values
+// Retrieve values (must use correct type)
 int health = std::any_cast<int>(
     aiSystem->getBehaviorTreeBlackboard(enemy, "health"));
 
@@ -139,9 +178,29 @@ Vec2 target = std::any_cast<Vec2>(
 
 **Important Notes:**
 - Blackboard persists even if behavior tree is detached
-- Empty `std::any` returned for non-existent keys
+- Empty `std::any` returned for non-existent keys (check with `.has_value()`)
 - Values are independent between entities
 - Can overwrite with different type (type-safe via `std::any_cast`)
+- Returns empty `std::any` for non-existent entities
+
+**Type Safety:**
+```cpp
+// WRONG: Wrong type cast will throw
+aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f); // float
+int health = std::any_cast<int>(
+    aiSystem->getBehaviorTreeBlackboard(enemy, "health")); // THROWS!
+
+// CORRECT: Matching types
+aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f);
+float health = std::any_cast<float>(
+    aiSystem->getBehaviorTreeBlackboard(enemy, "health"));
+
+// SAFE: Check before casting
+std::any value = aiSystem->getBehaviorTreeBlackboard(enemy, "health");
+if (value.has_value()) {
+    float health = std::any_cast<float>(value);
+}
+```
 
 ---
 
@@ -171,12 +230,15 @@ aiSystem->loadNavMesh(navMesh);
 if (aiSystem->hasNavMesh()) {
     // Ready for pathfinding
 }
+
+// When changing levels
+aiSystem->unloadNavMesh();
 ```
 
-**NavMesh Format:**
-- Binary format generated by Recast
-- Contains polygon mesh and connectivity data
-- Loaded through AssetSystem as `NavMeshData`
+**Notes:**
+- Loading a new navmesh replaces the old one
+- Safe to unload when no navmesh is loaded (no-op)
+- NavMesh format is binary (generated by Recast)
 
 #### Pathfinding
 
@@ -217,13 +279,21 @@ if (auto path = aiSystem->findPath(query)) {
 
     float distance = path->totalLength;
     bool reachable = path->isComplete;
+} else {
+    // No path found or no navmesh loaded
 }
 ```
 
-**Fallback Behavior:**
-- If no navmesh loaded: returns `std::nullopt`
-- If navmesh loaded but no data: returns straight line path
-- If pathfinding fails: returns `std::nullopt`
+**Return Values:**
+- Returns `std::nullopt` if no navmesh loaded
+- Returns `std::nullopt` if pathfinding fails
+- Returns straight-line path if navmesh loaded but empty
+- Path with zero length if start equals end
+
+**Agent Radius:**
+- Used for obstacle avoidance
+- Larger radius = wider berth around obstacles
+- Zero radius is valid (point agent)
 
 #### Point Queries
 
@@ -253,6 +323,79 @@ physics->createBody(enemy, PhysicsBodyDef{
 });
 ```
 
+**Return Values:**
+- `isPointOnNavMesh()`: Returns `false` if no navmesh loaded or point not on mesh
+- `getClosestPointOnNavMesh()`: Returns `std::nullopt` if no navmesh loaded
+
+---
+
+### Patrol Behavior
+
+Built-in horizontal patrol behavior with automatic velocity updates.
+
+```cpp
+struct PatrolBehavior {
+    float startX = 0.0f;      // Center X position of patrol
+    float range = 100.0f;     // Distance to patrol in each direction
+    float speed = 50.0f;      // Movement speed
+    bool movingRight = true;  // Current direction (updated by system)
+};
+
+void setPatrolBehavior(Entity entity, const PatrolBehavior& patrol);
+void clearPatrolBehavior(Entity entity);
+std::optional<PatrolBehavior> getPatrolBehavior(Entity entity) const;
+```
+
+**Example:**
+```cpp
+// Create patrolling enemy
+Entity enemy = entities->createEntity();
+
+// Create physics body (REQUIRED for patrol)
+physics->createBody(enemy, PhysicsBodyDef{
+    .type = BodyType::Dynamic,
+    .transform = {.x = 300.0f, .y = 100.0f}
+});
+
+// Setup patrol: moves between X=200 and X=400 at 75 units/sec
+aiSystem->setPatrolBehavior(enemy, PatrolBehavior{
+    .startX = 300.0f,
+    .range = 100.0f,   // Patrols from 200 to 400
+    .speed = 75.0f,
+    .movingRight = true
+});
+
+// AI system will automatically (during update):
+// - Set X velocity based on direction
+// - Flip direction at range boundaries
+// - Preserve Y velocity (for gravity, jumping)
+```
+
+**Behavior Details:**
+- Automatically flips direction at `startX - range` and `startX + range`
+- Updates X velocity, preserves Y velocity
+- Requires physics body (gracefully skips entities without)
+- `movingRight` field is updated by the system (read it to know current direction)
+
+**Checking Direction:**
+```cpp
+// Get current patrol state
+if (auto patrol = aiSystem->getPatrolBehavior(enemy)) {
+    if (patrol->movingRight) {
+        // Enemy is moving right, flip sprite
+        sprite->flipX = false;
+    } else {
+        // Enemy is moving left, flip sprite
+        sprite->flipX = true;
+    }
+}
+```
+
+**Notes:**
+- Setting new patrol behavior replaces old behavior
+- Safe to clear on non-existent entities (no-op)
+- Returns `std::nullopt` for entities without patrol behavior
+
 ---
 
 ### Steering Behaviors
@@ -272,15 +415,45 @@ std::optional<Vec2> getNavigationTarget(Entity entity) const;
 
 **Example:**
 ```cpp
-// Make enemy chase player
+// Store target for later use
 Vec2 playerPos = physics->getPosition(player);
 aiSystem->setNavigationTarget(enemy, playerPos);
 
-// Later: stop chasing
+// Later: retrieve and use in your AI logic
+if (auto target = aiSystem->getNavigationTarget(enemy)) {
+    // Implement your own movement logic here
+    Vec2 enemyPos = physics->getPosition(enemy);
+    Vec2 direction = {target->x - enemyPos.x, target->y - enemyPos.y};
+    // ... calculate velocity and apply
+}
+
+// Stop chasing
 aiSystem->clearNavigationTarget(enemy);
 ```
 
-**Note:** Navigation target is stored but not automatically applied. Combine with path following in your behavior tree or update logic.
+**CRITICAL:** Navigation target is STORAGE ONLY. The AI System does NOT automatically move entities toward their targets. You must implement movement yourself:
+
+```cpp
+// Example: Simple seek behavior (you implement this)
+void seekTarget(Entity entity, Vec2 target, float dt) {
+    Vec2 pos = physics->getPosition(entity);
+    Vec2 toTarget = {target.x - pos.x, target.y - pos.y};
+    float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
+
+    if (distance > 0.001f) {
+        Vec2 velocity = {
+            (toTarget.x / distance) * maxSpeed,
+            (toTarget.y / distance) * maxSpeed
+        };
+        physics->setVelocity(entity, velocity);
+    }
+}
+```
+
+**Notes:**
+- Setting new target replaces old target
+- Safe to clear on non-existent entities (no-op)
+- Returns `std::nullopt` for entities without target
 
 #### Movement Parameters
 
@@ -303,57 +476,12 @@ aiSystem->setMaxSpeed(tank, 50.0f);
 aiSystem->setMaxAcceleration(tank, 250.0f);
 ```
 
-**Defaults:**
-- Max speed: 100.0 units/second
-- Max acceleration: 500.0 units/second²
+**CRITICAL:** These values are STORAGE ONLY. The AI System does NOT use these values automatically. They are conveniences for your custom steering logic to query if needed.
 
-#### Patrol Behavior
-
-Built-in horizontal patrol behavior (automatically updates physics velocity).
-
-```cpp
-struct PatrolBehavior {
-    float startX = 0.0f;      // Center X position of patrol
-    float range = 100.0f;     // Distance to patrol in each direction
-    float speed = 50.0f;      // Movement speed
-    bool movingRight = true;  // Current direction
-};
-
-void setPatrolBehavior(Entity entity, const PatrolBehavior& patrol);
-void clearPatrolBehavior(Entity entity);
-std::optional<PatrolBehavior> getPatrolBehavior(Entity entity) const;
-```
-
-**Example:**
-```cpp
-// Create patrolling enemy
-Entity enemy = entities->createEntity();
-
-// Create physics body (required for patrol)
-physics->createBody(enemy, PhysicsBodyDef{
-    .type = BodyType::Dynamic,
-    .transform = {.x = 300.0f, .y = 100.0f}
-});
-
-// Setup patrol: 200-400 on X axis at 75 units/sec
-aiSystem->setPatrolBehavior(enemy, PatrolBehavior{
-    .startX = 300.0f,
-    .range = 100.0f,   // Patrols from 200 to 400
-    .speed = 75.0f,
-    .movingRight = true
-});
-
-// AI system will automatically:
-// - Set velocity each frame based on direction
-// - Flip direction at range boundaries
-// - Preserve Y velocity (for gravity, jumping)
-```
-
-**Behavior Details:**
-- Automatically flips direction at `startX ± range`
-- Updates X velocity, preserves Y velocity
-- Requires physics body (gracefully skips entities without)
-- Can check current direction via `getPatrolBehavior()`
+**Notes:**
+- Values are stored per-entity
+- Safe to set on non-existent entities (no-op)
+- No getter methods (stored for your use in custom AI)
 
 ---
 
@@ -390,7 +518,13 @@ for (Entity enemy : nearbyEnemies) {
 **Performance:**
 - Uses physics system's optimized spatial queries
 - O(log n) via broad-phase acceleration
-- Empty vector if no entities found
+- Returns empty vector if no entities found
+- Returns empty vector if physics system unavailable
+
+**Notes:**
+- Negative radius returns empty vector
+- Zero radius returns empty vector
+- Collision mask filtering may not be fully implemented yet
 
 #### Closest Entity
 
@@ -415,9 +549,10 @@ if (nearest) {
 ```
 
 **Search Parameters:**
-- Searches within 2000 unit radius (hardcoded)
+- Searches within 2000 unit radius (hardcoded max distance)
 - Returns `std::nullopt` if no entities in range
-- Collision mask currently not implemented (uses all layers)
+- Returns `std::nullopt` if physics system unavailable
+- Collision mask parameter exists but may not filter correctly yet
 
 #### Line of Sight
 
@@ -453,192 +588,380 @@ if (aiSystem->hasLineOfSight(enemyPos, playerPos, LAYER_WALLS)) {
 
 ---
 
-## Creating Custom Behavior Trees
+## Common NPC AI Patterns
 
-**Note:** BehaviorTree.CPP integration is planned but not yet implemented. This section describes the future API.
+### Pattern 1: Simple Patrol Enemy
 
-### Behavior Tree XML Format
-
-```xml
-<BehaviorTree>
-    <Sequence>
-        <Condition name="PlayerVisible"/>
-        <Selector>
-            <Sequence>
-                <Condition name="InRange"/>
-                <Action name="Attack"/>
-            </Sequence>
-            <Action name="MoveToPlayer"/>
-        </Selector>
-    </Sequence>
-    <Action name="Patrol"/>
-</BehaviorTree>
-```
-
-### Custom Action Nodes
+Back-and-forth movement using the built-in patrol system.
 
 ```cpp
-// Example: Custom attack action
-class AttackAction : public BT::SyncActionNode {
+void createPatrolEnemy(Vec2 position, float patrolRange) {
+    Entity enemy = entities->createEntity();
+
+    // Physics body (REQUIRED)
+    physics->createBody(enemy, PhysicsBodyDef{
+        .type = BodyType::Dynamic,
+        .transform = {.x = position.x, .y = position.y},
+        .fixedRotation = true
+    });
+
+    // Collision shape
+    physics->attachBox(enemy, 16.0f, 16.0f);
+
+    // Patrol behavior - AI system handles velocity automatically
+    aiSystem->setPatrolBehavior(enemy, PatrolBehavior{
+        .startX = position.x,
+        .range = patrolRange,
+        .speed = 50.0f,
+        .movingRight = true
+    });
+}
+
+// In game update:
+void update(DeltaTime dt) {
+    aiSystem->update(dt); // Handles patrol velocity
+    physics->update(dt);   // Applies velocity to position
+}
+```
+
+### Pattern 2: Guard with Alert State
+
+Enemy patrols normally, chases player when spotted.
+
+```cpp
+class GuardAI {
 public:
-    AttackAction(const std::string& name, const BT::NodeConfiguration& config)
-        : BT::SyncActionNode(name, config) {}
+    void update(DeltaTime dt) {
+        Vec2 guardPos = physics->getPosition(guard_);
+        Vec2 playerPos = physics->getPosition(player_);
 
-    static BT::PortsList providedPorts() {
-        return { BT::InputPort<Entity>("target") };
-    }
+        // Check if player is visible
+        bool canSeePlayer = aiSystem->hasLineOfSight(guardPos, playerPos);
+        float distToPlayer = distance(guardPos, playerPos);
 
-    BT::NodeStatus tick() override {
-        Entity target;
-        if (!getInput("target", target)) {
-            return BT::NodeStatus::FAILURE;
+        if (canSeePlayer && distToPlayer < 300.0f) {
+            // Alert state - chase player
+            if (isPatrolling_) {
+                aiSystem->clearPatrolBehavior(guard_);
+                isPatrolling_ = false;
+            }
+            aiSystem->setBehaviorTreeBlackboard(guard_, "state", std::string("alert"));
+            chasePlayer(dt);
+        } else {
+            // Patrol state
+            if (!isPatrolling_) {
+                aiSystem->setPatrolBehavior(guard_, PatrolBehavior{
+                    .startX = guardPos.x,
+                    .range = 100.0f,
+                    .speed = 50.0f
+                });
+                isPatrolling_ = true;
+            }
+            aiSystem->setBehaviorTreeBlackboard(guard_, "state", std::string("patrol"));
         }
-
-        // Perform attack
-        damageSystem->dealDamage(target, 10);
-
-        return BT::NodeStatus::SUCCESS;
-    }
-};
-```
-
-### Custom Condition Nodes
-
-```cpp
-// Example: Check if player is visible
-class PlayerVisibleCondition : public BT::ConditionNode {
-public:
-    PlayerVisibleCondition(const std::string& name,
-                           const BT::NodeConfiguration& config,
-                           IAISystem* aiSystem,
-                           IPhysicsSystem* physicsSystem,
-                           Entity selfEntity)
-        : BT::ConditionNode(name, config)
-        , aiSystem_(aiSystem)
-        , physicsSystem_(physicsSystem)
-        , selfEntity_(selfEntity) {}
-
-    static BT::PortsList providedPorts() {
-        return { BT::OutputPort<bool>("visible") };
-    }
-
-    BT::NodeStatus tick() override {
-        // Get player from blackboard
-        Entity player = std::any_cast<Entity>(
-            aiSystem_->getBehaviorTreeBlackboard(selfEntity_, "player"));
-
-        Vec2 selfPos = physicsSystem_->getPosition(selfEntity_);
-        Vec2 playerPos = physicsSystem_->getPosition(player);
-
-        bool visible = aiSystem_->hasLineOfSight(selfPos, playerPos);
-
-        setOutput("visible", visible);
-
-        return visible ? BT::NodeStatus::SUCCESS : BT::NodeStatus::FAILURE;
     }
 
 private:
-    IAISystem* aiSystem_;
-    IPhysicsSystem* physicsSystem_;
-    Entity selfEntity_;
+    void chasePlayer(DeltaTime dt) {
+        Vec2 guardPos = physics->getPosition(guard_);
+        Vec2 playerPos = physics->getPosition(player_);
+
+        // Simple chase logic
+        Vec2 direction = {playerPos.x - guardPos.x, playerPos.y - guardPos.y};
+        float dist = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+
+        if (dist > 0.001f) {
+            Vec2 velocity = {
+                (direction.x / dist) * 100.0f, // Chase speed
+                (direction.y / dist) * 100.0f
+            };
+            physics->setVelocity(guard_, velocity);
+        }
+    }
+
+    Entity guard_;
+    Entity player_;
+    bool isPatrolling_ = true;
 };
 ```
 
-### Registering Custom Nodes
+### Pattern 3: Pathfinding Enemy
+
+Uses navmesh to navigate around obstacles.
 
 ```cpp
-// In your game initialization
-BT::BehaviorTreeFactory factory;
-
-// Register custom actions
-factory.registerNodeType<AttackAction>("Attack");
-factory.registerNodeType<MoveAction>("MoveToPlayer");
-
-// Register custom conditions
-factory.registerBuilder<PlayerVisibleCondition>(
-    "PlayerVisible",
-    [&](const std::string& name, const BT::NodeConfiguration& config) {
-        return std::make_unique<PlayerVisibleCondition>(
-            name, config, aiSystem, physicsSystem, currentEntity);
+class PathfindingEnemy {
+public:
+    void setDestination(Vec2 destination) {
+        destination_ = destination;
+        recalculatePath();
     }
-);
 
-// Load and create tree
-auto tree = factory.createTreeFromFile("enemy_ai.xml");
+    void update(DeltaTime dt) {
+        if (!destination_.has_value()) return;
+
+        // Recalculate path periodically
+        recalcTimer_ += dt;
+        if (recalcTimer_ >= 1.0f) { // Every second
+            recalculatePath();
+            recalcTimer_ = 0.0f;
+        }
+
+        // Follow current path
+        if (!path_.empty() && waypointIndex_ < path_.size()) {
+            Vec2 waypoint = path_[waypointIndex_];
+            Vec2 selfPos = physics->getPosition(self_);
+
+            float dist = distance(selfPos, waypoint);
+            if (dist < 15.0f) { // Reached waypoint
+                waypointIndex_++;
+                if (waypointIndex_ >= path_.size()) {
+                    // Reached destination
+                    destination_.reset();
+                    physics->setVelocity(self_, {0.0f, 0.0f});
+                    return;
+                }
+            }
+
+            // Move toward waypoint
+            Vec2 direction = {waypoint.x - selfPos.x, waypoint.y - selfPos.y};
+            float d = std::sqrt(direction.x * direction.x + direction.y * direction.y);
+            if (d > 0.001f) {
+                Vec2 velocity = {
+                    (direction.x / d) * 120.0f,
+                    (direction.y / d) * 120.0f
+                };
+                physics->setVelocity(self_, velocity);
+            }
+        }
+    }
+
+private:
+    void recalculatePath() {
+        if (!destination_.has_value() || !aiSystem->hasNavMesh()) {
+            return;
+        }
+
+        Vec2 selfPos = physics->getPosition(self_);
+        auto result = aiSystem->findPath({
+            .start = selfPos,
+            .end = *destination_,
+            .agentRadius = 0.5f
+        });
+
+        if (result) {
+            path_ = result->waypoints;
+            waypointIndex_ = 0;
+        } else {
+            path_.clear();
+        }
+    }
+
+    Entity self_;
+    std::optional<Vec2> destination_;
+    std::vector<Vec2> path_;
+    size_t waypointIndex_ = 0;
+    float recalcTimer_ = 0.0f;
+};
+```
+
+### Pattern 4: Turret with Line of Sight
+
+Stationary enemy that shoots when player is visible.
+
+```cpp
+class TurretAI {
+public:
+    void update(DeltaTime dt) {
+        Vec2 turretPos = physics->getPosition(turret_);
+        Vec2 playerPos = physics->getPosition(player_);
+
+        // Check line of sight
+        bool canSeePlayer = aiSystem->hasLineOfSight(turretPos, playerPos);
+        float distToPlayer = distance(turretPos, playerPos);
+
+        if (canSeePlayer && distToPlayer < 500.0f) {
+            // Player is visible and in range
+            shootCooldown_ -= dt;
+            if (shootCooldown_ <= 0.0f) {
+                shoot(playerPos);
+                shootCooldown_ = 1.0f; // 1 second between shots
+            }
+            aiSystem->setBehaviorTreeBlackboard(turret_, "target_visible", true);
+        } else {
+            // Player not visible
+            aiSystem->setBehaviorTreeBlackboard(turret_, "target_visible", false);
+        }
+    }
+
+private:
+    void shoot(Vec2 target) {
+        // Create projectile toward target
+        Vec2 turretPos = physics->getPosition(turret_);
+        // ... projectile creation logic
+    }
+
+    Entity turret_;
+    Entity player_;
+    float shootCooldown_ = 0.0f;
+};
+```
+
+### Pattern 5: Flocking Behavior
+
+Multiple enemies move together as a group.
+
+```cpp
+class FlockingEnemy {
+public:
+    void update(DeltaTime dt) {
+        Vec2 selfPos = physics->getPosition(self_);
+
+        // Find nearby flock members
+        std::vector<Entity> nearby = aiSystem->findEntitiesInRadius(
+            selfPos, 100.0f, ENEMY_LAYER
+        );
+
+        Vec2 separation = {0.0f, 0.0f};
+        Vec2 alignment = {0.0f, 0.0f};
+        Vec2 cohesion = {0.0f, 0.0f};
+        int count = 0;
+
+        for (Entity other : nearby) {
+            if (other == self_) continue;
+
+            Vec2 otherPos = physics->getPosition(other);
+            Vec2 diff = {selfPos.x - otherPos.x, selfPos.y - otherPos.y};
+            float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y);
+
+            // Separation: Avoid crowding
+            if (dist < 30.0f && dist > 0.001f) {
+                separation.x += diff.x / dist;
+                separation.y += diff.y / dist;
+            }
+
+            // Alignment: Match velocity
+            Vec2 otherVel = physics->getVelocity(other);
+            alignment.x += otherVel.x;
+            alignment.y += otherVel.y;
+
+            // Cohesion: Move toward center
+            cohesion.x += otherPos.x;
+            cohesion.y += otherPos.y;
+
+            count++;
+        }
+
+        if (count > 0) {
+            // Average alignment
+            alignment.x /= count;
+            alignment.y /= count;
+
+            // Average cohesion, then seek toward it
+            cohesion.x = cohesion.x / count - selfPos.x;
+            cohesion.y = cohesion.y / count - selfPos.y;
+        }
+
+        // Combine forces
+        Vec2 desired = {
+            separation.x * 1.5f + alignment.x * 1.0f + cohesion.x * 1.0f,
+            separation.y * 1.5f + alignment.y * 1.0f + cohesion.y * 1.0f
+        };
+
+        // Clamp to max speed
+        float mag = std::sqrt(desired.x * desired.x + desired.y * desired.y);
+        if (mag > maxSpeed_) {
+            desired.x = (desired.x / mag) * maxSpeed_;
+            desired.y = (desired.y / mag) * maxSpeed_;
+        }
+
+        physics->setVelocity(self_, desired);
+    }
+
+private:
+    Entity self_;
+    float maxSpeed_ = 80.0f;
+};
 ```
 
 ---
 
 ## Best Practices
 
-### Behavior Tree Design Patterns
+### 1. Always Create Physics Bodies for AI Entities
 
-#### 1. Layered Priority with Selector
+```cpp
+// WRONG: No physics body
+Entity enemy = entities->createEntity();
+aiSystem->setPatrolBehavior(enemy, patrol); // Will silently fail
 
-```xml
-<Selector name="EnemyBehavior">
-    <!-- Highest priority: React to danger -->
-    <Sequence name="Flee">
-        <Condition name="HealthLow"/>
-        <Action name="RunAway"/>
-    </Sequence>
-
-    <!-- Medium priority: Engage player -->
-    <Sequence name="Combat">
-        <Condition name="PlayerVisible"/>
-        <Selector>
-            <Sequence name="Melee">
-                <Condition name="InMeleeRange"/>
-                <Action name="Attack"/>
-            </Sequence>
-            <Action name="Approach"/>
-        </Selector>
-    </Sequence>
-
-    <!-- Lowest priority: Default behavior -->
-    <Action name="Patrol"/>
-</Selector>
+// CORRECT: Create physics body first
+Entity enemy = entities->createEntity();
+physics->createBody(enemy, bodyDef);
+aiSystem->setPatrolBehavior(enemy, patrol); // Now works
 ```
 
-**Why it works:**
-- Selector tries each child until one succeeds
-- Higher priority behaviors appear first
-- Falls through to patrol when nothing else applies
+### 2. Check Optional Returns
 
-#### 2. Sequence for Multi-Step Actions
+```cpp
+// WRONG: Assuming path exists
+auto path = aiSystem->findPath(query);
+for (const Vec2& wp : path->waypoints) { ... } // CRASH if nullopt
 
-```xml
-<Sequence name="CollectItem">
-    <Condition name="ItemNearby"/>
-    <Action name="PathToItem"/>
-    <Action name="PickUpItem"/>
-    <Action name="ReturnToBase"/>
-</Sequence>
+// CORRECT: Check before use
+if (auto path = aiSystem->findPath(query)) {
+    for (const Vec2& wp : path->waypoints) { ... }
+}
 ```
 
-**Why it works:**
-- Sequence requires all steps to succeed
-- Fails early if any step fails
-- Ensures complete action flow
+### 3. Throttle Expensive Operations
 
-#### 3. Decorator for Repetition
+```cpp
+// WRONG: Pathfinding every frame
+void update(DeltaTime dt) {
+    auto path = aiSystem->findPath({selfPos, targetPos}); // Every frame!
+}
 
-```xml
-<Repeat num_cycles="3">
-    <Sequence name="PatrolCycle">
-        <Action name="MoveToWaypoint"/>
-        <Action name="Wait" duration="2.0"/>
-    </Sequence>
-</Repeat>
+// CORRECT: Throttle recalculation
+void update(DeltaTime dt) {
+    recalcTimer += dt;
+    if (recalcTimer >= 0.5f) {  // Every 0.5 seconds
+        auto path = aiSystem->findPath({selfPos, targetPos});
+        recalcTimer = 0.0f;
+    }
+}
 ```
 
-**Why it works:**
-- Decorators wrap and modify child behavior
-- Useful for loops, timers, inverters
+### 4. Use Correct Types with Blackboard
 
-### Performance Optimization
+```cpp
+// WRONG: Type mismatch
+aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f); // float
+int health = std::any_cast<int>(
+    aiSystem->getBehaviorTreeBlackboard(enemy, "health")); // Throws!
 
-#### 1. Cache Spatial Queries
+// CORRECT: Matching types
+aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f);
+float health = std::any_cast<float>(
+    aiSystem->getBehaviorTreeBlackboard(enemy, "health"));
+```
+
+### 5. Update AI System Every Frame
+
+```cpp
+// WRONG: Patrol doesn't work
+void gameUpdate(DeltaTime dt) {
+    physics->update(dt); // Only physics
+}
+
+// CORRECT: Update AI before physics
+void gameUpdate(DeltaTime dt) {
+    aiSystem->update(dt); // Updates patrol velocities
+    physics->update(dt);   // Applies velocities
+}
+```
+
+### 6. Cache Spatial Queries
 
 ```cpp
 // SLOW: Query every frame
@@ -661,673 +984,16 @@ void update(DeltaTime dt) {
 }
 ```
 
-#### 2. LOD Behavior Trees
-
-```cpp
-// Distance-based AI detail levels
-float distToPlayer = distance(enemyPos, playerPos);
-
-if (distToPlayer < 300.0f) {
-    // Full AI: complex behavior tree
-    aiSystem->attachBehaviorTree(enemy, detailedAI);
-} else if (distToPlayer < 1000.0f) {
-    // Simple AI: patrol only
-    aiSystem->attachBehaviorTree(enemy, simpleAI);
-} else {
-    // No AI: sleep/despawn
-    aiSystem->detachBehaviorTree(enemy);
-}
-```
-
-#### 3. Limit Pathfinding Frequency
-
-```cpp
-// Don't recalculate path every frame
-struct ChaseState {
-    std::vector<Vec2> currentPath;
-    int waypointIndex = 0;
-    float recalcTimer = 0.0f;
-};
-
-void updateChase(ChaseState& state, DeltaTime dt) {
-    state.recalcTimer += dt;
-
-    // Recalculate path every 1 second
-    if (state.recalcTimer >= 1.0f) {
-        auto path = aiSystem->findPath({
-            .start = enemyPos,
-            .end = playerPos,
-            .agentRadius = 0.5f
-        });
-        if (path) {
-            state.currentPath = path->waypoints;
-            state.waypointIndex = 0;
-        }
-        state.recalcTimer = 0.0f;
-    }
-
-    // Follow current path
-    if (state.waypointIndex < state.currentPath.size()) {
-        Vec2 target = state.currentPath[state.waypointIndex];
-        // Move toward target...
-    }
-}
-```
-
-### Debugging AI Behavior
-
-#### 1. Blackboard Visualization
-
-```cpp
-// Log blackboard state for debugging
-void debugBlackboard(Entity entity) {
-    auto health = aiSystem->getBehaviorTreeBlackboard(entity, "health");
-    auto state = aiSystem->getBehaviorTreeBlackboard(entity, "state");
-    auto target = aiSystem->getBehaviorTreeBlackboard(entity, "target");
-
-    if (health.has_value()) {
-        fmt::print("Health: {}\n", std::any_cast<int>(health));
-    }
-    if (state.has_value()) {
-        fmt::print("State: {}\n", std::any_cast<std::string>(state));
-    }
-    if (target.has_value()) {
-        Vec2 t = std::any_cast<Vec2>(target);
-        fmt::print("Target: ({}, {})\n", t.x, t.y);
-    }
-}
-```
-
-#### 2. Visual Debug Overlays
-
-```cpp
-// Draw AI debug info (in debug builds only)
-#ifdef BESTOW_DEBUG
-void drawAIDebug(Entity entity) {
-    // Draw line of sight rays
-    Vec2 enemyPos = physics->getPosition(entity);
-    Vec2 playerPos = physics->getPosition(player);
-
-    Color rayColor = aiSystem->hasLineOfSight(enemyPos, playerPos)
-        ? Color::Green
-        : Color::Red;
-    graphics->drawLine(enemyPos, playerPos, rayColor);
-
-    // Draw navigation path
-    if (auto target = aiSystem->getNavigationTarget(entity)) {
-        auto path = aiSystem->findPath({
-            .start = enemyPos,
-            .end = *target
-        });
-        if (path) {
-            for (size_t i = 0; i < path->waypoints.size() - 1; ++i) {
-                graphics->drawLine(path->waypoints[i],
-                                   path->waypoints[i+1],
-                                   Color::Yellow);
-            }
-        }
-    }
-
-    // Draw patrol range
-    if (auto patrol = aiSystem->getPatrolBehavior(entity)) {
-        Vec2 left{patrol->startX - patrol->range, enemyPos.y};
-        Vec2 right{patrol->startX + patrol->range, enemyPos.y};
-        graphics->drawLine(left, right, Color::Cyan);
-    }
-}
-#endif
-```
-
-#### 3. State Logging
-
-```cpp
-// Log AI state transitions
-class LoggingAI {
-    std::string currentState_;
-
-    void transitionTo(const std::string& newState) {
-        if (newState != currentState_) {
-            fmt::print("[AI] Entity {} transitioning: {} -> {}\n",
-                       static_cast<uint32_t>(entity_),
-                       currentState_,
-                       newState);
-            currentState_ = newState;
-
-            aiSystem->setBehaviorTreeBlackboard(entity_, "state", newState);
-        }
-    }
-};
-```
-
-### Combining with Physics for Steering
-
-#### Basic Seek Behavior
-
-```cpp
-void seekTarget(Entity entity, Vec2 target, float dt) {
-    Vec2 currentPos = physics->getPosition(entity);
-    Vec2 currentVel = physics->getVelocity(entity);
-
-    // Desired velocity
-    Vec2 toTarget = {target.x - currentPos.x, target.y - currentPos.y};
-    float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-    if (distance < 0.001f) return; // At target
-
-    // Get AI parameters
-    float maxSpeed = 100.0f; // Or from aiSystem->getMaxSpeed()
-    float maxAccel = 500.0f; // Or from aiSystem->getMaxAcceleration()
-
-    // Normalize and scale to max speed
-    Vec2 desiredVel = {
-        (toTarget.x / distance) * maxSpeed,
-        (toTarget.y / distance) * maxSpeed
-    };
-
-    // Calculate steering force
-    Vec2 steering = {
-        desiredVel.x - currentVel.x,
-        desiredVel.y - currentVel.y
-    };
-
-    // Limit to max acceleration
-    float steerMag = std::sqrt(steering.x * steering.x + steering.y * steering.y);
-    if (steerMag > maxAccel * dt) {
-        float scale = (maxAccel * dt) / steerMag;
-        steering.x *= scale;
-        steering.y *= scale;
-    }
-
-    // Apply to velocity
-    Vec2 newVel = {
-        currentVel.x + steering.x,
-        currentVel.y + steering.y
-    };
-    physics->setVelocity(entity, newVel);
-}
-```
-
-#### Arrive Behavior (Slow Down Near Target)
-
-```cpp
-void arriveAtTarget(Entity entity, Vec2 target, float slowRadius, float dt) {
-    Vec2 currentPos = physics->getPosition(entity);
-    Vec2 currentVel = physics->getVelocity(entity);
-
-    Vec2 toTarget = {target.x - currentPos.x, target.y - currentPos.y};
-    float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-    if (distance < 0.001f) {
-        physics->setVelocity(entity, {0.0f, 0.0f});
-        return;
-    }
-
-    float maxSpeed = 100.0f;
-    float targetSpeed = maxSpeed;
-
-    // Slow down within slow radius
-    if (distance < slowRadius) {
-        targetSpeed = maxSpeed * (distance / slowRadius);
-    }
-
-    Vec2 desiredVel = {
-        (toTarget.x / distance) * targetSpeed,
-        (toTarget.y / distance) * targetSpeed
-    };
-
-    // Apply steering...
-    // (Same as seek behavior)
-}
-```
-
-#### Path Following
-
-```cpp
-void followPath(Entity entity, const NavigationPath& path, float dt) {
-    static size_t currentWaypoint = 0;
-    static const float WAYPOINT_RADIUS = 10.0f; // Distance to consider reached
-
-    if (currentWaypoint >= path.waypoints.size()) {
-        return; // Path complete
-    }
-
-    Vec2 target = path.waypoints[currentWaypoint];
-    Vec2 currentPos = physics->getPosition(entity);
-
-    // Check if reached current waypoint
-    Vec2 toWaypoint = {target.x - currentPos.x, target.y - currentPos.y};
-    float dist = std::sqrt(toWaypoint.x * toWaypoint.x + toWaypoint.y * toWaypoint.y);
-
-    if (dist < WAYPOINT_RADIUS) {
-        currentWaypoint++;
-        if (currentWaypoint >= path.waypoints.size()) {
-            // Reached end of path
-            physics->setVelocity(entity, {0.0f, 0.0f});
-            return;
-        }
-        target = path.waypoints[currentWaypoint];
-    }
-
-    // Use arrive for last waypoint, seek for others
-    if (currentWaypoint == path.waypoints.size() - 1) {
-        arriveAtTarget(entity, target, 50.0f, dt);
-    } else {
-        seekTarget(entity, target, dt);
-    }
-}
-```
-
 ---
 
-## Complete Examples
-
-### Example 1: Simple Patrol Behavior
-
-```cpp
-// Create patrolling enemy that doesn't use behavior trees
-void createPatrolEnemy(Vec2 position, float patrolRange) {
-    Entity enemy = entities->createEntity();
-
-    // Physics body
-    physics->createBody(enemy, PhysicsBodyDef{
-        .type = BodyType::Dynamic,
-        .transform = {.x = position.x, .y = position.y},
-        .fixedRotation = true
-    });
-
-    // Collision shape
-    physics->attachBox(enemy, 16.0f, 16.0f);
-
-    // Patrol behavior
-    aiSystem->setPatrolBehavior(enemy, PatrolBehavior{
-        .startX = position.x,
-        .range = patrolRange,
-        .speed = 50.0f,
-        .movingRight = true
-    });
-
-    // AI system will automatically update velocity each frame
-}
-
-// In game update loop:
-void update(DeltaTime dt) {
-    aiSystem->update(dt); // Handles patrol velocity updates
-    physics->update(dt);   // Applies velocity to position
-}
-```
-
-### Example 2: Chase and Attack Behavior
-
-```cpp
-class ChaseAttackAI {
-public:
-    ChaseAttackAI(Entity self, Entity target,
-                  IAISystem* ai, IPhysicsSystem* physics)
-        : self_(self), target_(target), ai_(ai), physics_(physics) {}
-
-    void update(DeltaTime dt) {
-        Vec2 selfPos = physics_->getPosition(self_);
-        Vec2 targetPos = physics_->getPosition(target_);
-
-        // Calculate distance to target
-        Vec2 toTarget = {targetPos.x - selfPos.x, targetPos.y - selfPos.y};
-        float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-        // State machine
-        switch (state_) {
-            case State::Patrol:
-                updatePatrol(dt);
-
-                // Transition to chase if player visible
-                if (ai_->hasLineOfSight(selfPos, targetPos)) {
-                    state_ = State::Chase;
-                    recalcPathTimer_ = 0.0f; // Immediate path recalc
-                }
-                break;
-
-            case State::Chase:
-                updateChase(dt, selfPos, targetPos, distance);
-
-                // Transition to attack if in range
-                if (distance < ATTACK_RANGE) {
-                    state_ = State::Attack;
-                    attackCooldown_ = 0.0f;
-                }
-                // Transition back to patrol if lost sight
-                else if (!ai_->hasLineOfSight(selfPos, targetPos)) {
-                    lostSightTimer_ += dt;
-                    if (lostSightTimer_ > 3.0f) {
-                        state_ = State::Patrol;
-                        ai_->setPatrolBehavior(self_, PatrolBehavior{
-                            .startX = selfPos.x,
-                            .range = 100.0f,
-                            .speed = 50.0f
-                        });
-                    }
-                } else {
-                    lostSightTimer_ = 0.0f;
-                }
-                break;
-
-            case State::Attack:
-                updateAttack(dt, distance);
-
-                // Transition back to chase if out of range
-                if (distance > ATTACK_RANGE * 1.2f) {
-                    state_ = State::Chase;
-                }
-                break;
-        }
-    }
-
-private:
-    enum class State { Patrol, Chase, Attack };
-
-    static constexpr float ATTACK_RANGE = 30.0f;
-    static constexpr float ATTACK_COOLDOWN = 1.0f;
-    static constexpr float PATH_RECALC_INTERVAL = 0.5f;
-
-    Entity self_;
-    Entity target_;
-    IAISystem* ai_;
-    IPhysicsSystem* physics_;
-
-    State state_ = State::Patrol;
-    float attackCooldown_ = 0.0f;
-    float lostSightTimer_ = 0.0f;
-    float recalcPathTimer_ = 0.0f;
-    std::vector<Vec2> currentPath_;
-    size_t waypointIndex_ = 0;
-
-    void updatePatrol(DeltaTime dt) {
-        // Patrol behavior handled automatically by AI system
-        // Just maintain patrol state in blackboard
-        ai_->setBehaviorTreeBlackboard(self_, "state", std::string("patrol"));
-    }
-
-    void updateChase(DeltaTime dt, Vec2 selfPos, Vec2 targetPos, float distance) {
-        ai_->setBehaviorTreeBlackboard(self_, "state", std::string("chase"));
-
-        // Recalculate path periodically
-        recalcPathTimer_ += dt;
-        if (recalcPathTimer_ >= PATH_RECALC_INTERVAL) {
-            if (ai_->hasNavMesh()) {
-                auto path = ai_->findPath({
-                    .start = selfPos,
-                    .end = targetPos,
-                    .agentRadius = 0.5f
-                });
-                if (path) {
-                    currentPath_ = path->waypoints;
-                    waypointIndex_ = 0;
-                }
-            }
-            recalcPathTimer_ = 0.0f;
-        }
-
-        // Follow path or seek directly
-        if (!currentPath_.empty() && waypointIndex_ < currentPath_.size()) {
-            Vec2 waypoint = currentPath_[waypointIndex_];
-            seekTarget(self_, waypoint, dt);
-
-            // Check if reached waypoint
-            Vec2 toWaypoint = {waypoint.x - selfPos.x, waypoint.y - selfPos.y};
-            float wpDist = std::sqrt(toWaypoint.x * toWaypoint.x +
-                                    toWaypoint.y * toWaypoint.y);
-            if (wpDist < 10.0f) {
-                waypointIndex_++;
-            }
-        } else {
-            // No path - seek directly
-            seekTarget(self_, targetPos, dt);
-        }
-    }
-
-    void updateAttack(DeltaTime dt, float distance) {
-        ai_->setBehaviorTreeBlackboard(self_, "state", std::string("attack"));
-
-        // Stop moving
-        physics_->setVelocity(self_, {0.0f, 0.0f});
-
-        // Attack on cooldown
-        attackCooldown_ += dt;
-        if (attackCooldown_ >= ATTACK_COOLDOWN) {
-            performAttack();
-            attackCooldown_ = 0.0f;
-        }
-    }
-
-    void seekTarget(Entity entity, Vec2 target, float dt) {
-        Vec2 currentPos = physics_->getPosition(entity);
-        Vec2 currentVel = physics_->getVelocity(entity);
-
-        Vec2 toTarget = {target.x - currentPos.x, target.y - currentPos.y};
-        float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-        if (distance < 0.001f) return;
-
-        float maxSpeed = 100.0f;
-        Vec2 desiredVel = {
-            (toTarget.x / distance) * maxSpeed,
-            (toTarget.y / distance) * maxSpeed
-        };
-
-        // Instant velocity change for simplicity
-        // (In production, use steering forces with acceleration)
-        physics_->setVelocity(entity, desiredVel);
-    }
-
-    void performAttack() {
-        // Deal damage, play animation, etc.
-        ai_->setBehaviorTreeBlackboard(self_, "last_attack_time",
-                                        std::chrono::steady_clock::now());
-    }
-};
-```
-
-### Example 3: Pathfinding to Target
-
-```cpp
-// Smart enemy that navigates around obstacles
-class PathfindingEnemy {
-public:
-    PathfindingEnemy(Entity self, IAISystem* ai, IPhysicsSystem* physics)
-        : self_(self), ai_(ai), physics_(physics) {}
-
-    // Set a destination and begin pathfinding
-    void setDestination(Vec2 destination) {
-        destination_ = destination;
-        recalculatePath();
-    }
-
-    void update(DeltaTime dt) {
-        if (!destination_.has_value()) return;
-
-        // Recalculate path periodically
-        recalcTimer_ += dt;
-        if (recalcTimer_ >= RECALC_INTERVAL) {
-            recalculatePath();
-            recalcTimer_ = 0.0f;
-        }
-
-        // Follow current path
-        if (!path_.empty() && waypointIndex_ < path_.size()) {
-            Vec2 currentWaypoint = path_[waypointIndex_];
-            Vec2 selfPos = physics_->getPosition(self_);
-
-            // Calculate distance to waypoint
-            Vec2 toWaypoint = {
-                currentWaypoint.x - selfPos.x,
-                currentWaypoint.y - selfPos.y
-            };
-            float distance = std::sqrt(toWaypoint.x * toWaypoint.x +
-                                      toWaypoint.y * toWaypoint.y);
-
-            // Check if reached waypoint
-            if (distance < WAYPOINT_RADIUS) {
-                waypointIndex_++;
-
-                // Check if reached destination
-                if (waypointIndex_ >= path_.size()) {
-                    onReachedDestination();
-                    return;
-                }
-
-                currentWaypoint = path_[waypointIndex_];
-            }
-
-            // Move toward current waypoint
-            bool isLastWaypoint = (waypointIndex_ == path_.size() - 1);
-            if (isLastWaypoint) {
-                arriveAt(currentWaypoint, dt);
-            } else {
-                seekTo(currentWaypoint, dt);
-            }
-        }
-    }
-
-private:
-    static constexpr float RECALC_INTERVAL = 1.0f;  // Recalc path every second
-    static constexpr float WAYPOINT_RADIUS = 15.0f; // Distance to consider reached
-    static constexpr float SLOW_RADIUS = 50.0f;     // Start slowing down
-    static constexpr float MAX_SPEED = 120.0f;
-    static constexpr float MAX_ACCEL = 600.0f;
-
-    Entity self_;
-    IAISystem* ai_;
-    IPhysicsSystem* physics_;
-
-    std::optional<Vec2> destination_;
-    std::vector<Vec2> path_;
-    size_t waypointIndex_ = 0;
-    float recalcTimer_ = 0.0f;
-
-    void recalculatePath() {
-        if (!destination_.has_value() || !ai_->hasNavMesh()) {
-            return;
-        }
-
-        Vec2 selfPos = physics_->getPosition(self_);
-
-        auto result = ai_->findPath({
-            .start = selfPos,
-            .end = *destination_,
-            .agentRadius = 0.5f
-        });
-
-        if (result) {
-            path_ = result->waypoints;
-            waypointIndex_ = 0;
-
-            // Update blackboard
-            ai_->setBehaviorTreeBlackboard(self_, "path_length",
-                                            result->totalLength);
-            ai_->setBehaviorTreeBlackboard(self_, "path_complete",
-                                            result->isComplete);
-        } else {
-            // No path found - clear path and stop
-            path_.clear();
-            waypointIndex_ = 0;
-            physics_->setVelocity(self_, {0.0f, 0.0f});
-        }
-    }
-
-    void seekTo(Vec2 target, DeltaTime dt) {
-        Vec2 selfPos = physics_->getPosition(self_);
-        Vec2 currentVel = physics_->getVelocity(self_);
-
-        Vec2 toTarget = {target.x - selfPos.x, target.y - selfPos.y};
-        float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-        if (distance < 0.001f) return;
-
-        // Desired velocity at max speed
-        Vec2 desiredVel = {
-            (toTarget.x / distance) * MAX_SPEED,
-            (toTarget.y / distance) * MAX_SPEED
-        };
-
-        // Calculate steering force
-        Vec2 steering = {
-            desiredVel.x - currentVel.x,
-            desiredVel.y - currentVel.y
-        };
-
-        // Apply acceleration limit
-        float steerMag = std::sqrt(steering.x * steering.x +
-                                   steering.y * steering.y);
-        float maxSteer = MAX_ACCEL * dt;
-        if (steerMag > maxSteer) {
-            float scale = maxSteer / steerMag;
-            steering.x *= scale;
-            steering.y *= scale;
-        }
-
-        // Apply steering
-        Vec2 newVel = {
-            currentVel.x + steering.x,
-            currentVel.y + steering.y
-        };
-
-        physics_->setVelocity(self_, newVel);
-    }
-
-    void arriveAt(Vec2 target, DeltaTime dt) {
-        Vec2 selfPos = physics_->getPosition(self_);
-        Vec2 currentVel = physics_->getVelocity(self_);
-
-        Vec2 toTarget = {target.x - selfPos.x, target.y - selfPos.y};
-        float distance = std::sqrt(toTarget.x * toTarget.x + toTarget.y * toTarget.y);
-
-        if (distance < 0.001f) {
-            physics_->setVelocity(self_, {0.0f, 0.0f});
-            return;
-        }
-
-        // Calculate target speed (slow down near target)
-        float targetSpeed = MAX_SPEED;
-        if (distance < SLOW_RADIUS) {
-            targetSpeed = MAX_SPEED * (distance / SLOW_RADIUS);
-        }
-
-        Vec2 desiredVel = {
-            (toTarget.x / distance) * targetSpeed,
-            (toTarget.y / distance) * targetSpeed
-        };
-
-        // Apply steering (same as seek)
-        Vec2 steering = {
-            desiredVel.x - currentVel.x,
-            desiredVel.y - currentVel.y
-        };
-
-        float steerMag = std::sqrt(steering.x * steering.x +
-                                   steering.y * steering.y);
-        float maxSteer = MAX_ACCEL * dt;
-        if (steerMag > maxSteer) {
-            float scale = maxSteer / steerMag;
-            steering.x *= scale;
-            steering.y *= scale;
-        }
-
-        Vec2 newVel = {
-            currentVel.x + steering.x,
-            currentVel.y + steering.y
-        };
-
-        physics_->setVelocity(self_, newVel);
-    }
-
-    void onReachedDestination() {
-        destination_.reset();
-        path_.clear();
-        waypointIndex_ = 0;
-        physics_->setVelocity(self_, {0.0f, 0.0f});
-
-        ai_->setBehaviorTreeBlackboard(self_, "reached_destination", true);
-    }
-};
-```
+## Common Pitfalls
+
+1. **Missing Physics Body**: Patrol requires physics body (silently fails without)
+2. **Not Checking Optionals**: `findPath()`, `getNavigationTarget()`, etc. return `std::nullopt` on failure
+3. **Pathfinding Every Frame**: Very expensive, throttle to 0.5-1.0 second intervals
+4. **Wrong Type Cast**: Blackboard throws `std::bad_any_cast` if types don't match
+5. **Forgetting AI Update**: Patrol won't work if you don't call `aiSystem->update(dt)`
+6. **Expecting Automatic Movement**: Navigation target is storage only, you must implement movement
 
 ---
 
@@ -1337,90 +1003,12 @@ When integrating the AI system into your game:
 
 - [ ] **Initialize dependencies first**: Physics and Asset systems must be initialized before AI system
 - [ ] **Load navmesh early**: Load level navmesh during level load, before creating AI entities
-- [ ] **Create physics bodies**: Entities need physics bodies for spatial queries and steering
+- [ ] **Create physics bodies**: Entities need physics bodies for patrol and spatial queries
 - [ ] **Call update()**: Include `aiSystem->update(dt)` in your game loop
-- [ ] **Set collision layers**: Configure physics collision masks for LOS and spatial queries
-- [ ] **Cache expensive queries**: Don't pathfind or query every frame
 - [ ] **Handle optional results**: Check `std::optional` returns before use
 - [ ] **Use blackboard for state**: Store AI state in blackboard for debugging
-- [ ] **Implement LOD**: Reduce AI complexity for distant entities
-
----
-
-## Common Pitfalls
-
-### 1. Missing Physics Body
-
-```cpp
-// WRONG: No physics body
-Entity enemy = entities->createEntity();
-aiSystem->setPatrolBehavior(enemy, patrol); // Will silently fail
-
-// CORRECT: Create physics body first
-Entity enemy = entities->createEntity();
-physics->createBody(enemy, bodyDef);
-aiSystem->setPatrolBehavior(enemy, patrol); // Now works
-```
-
-### 2. Not Checking Optional Returns
-
-```cpp
-// WRONG: Assuming path exists
-auto path = aiSystem->findPath(query);
-for (const Vec2& wp : path->waypoints) { ... } // CRASH if nullopt
-
-// CORRECT: Check before use
-if (auto path = aiSystem->findPath(query)) {
-    for (const Vec2& wp : path->waypoints) { ... }
-}
-```
-
-### 3. Pathfinding Every Frame
-
-```cpp
-// WRONG: Too expensive
-void update(DeltaTime dt) {
-    auto path = aiSystem->findPath({selfPos, targetPos}); // Every frame!
-}
-
-// CORRECT: Throttle recalculation
-void update(DeltaTime dt) {
-    recalcTimer += dt;
-    if (recalcTimer >= 0.5f) {  // Every 0.5 seconds
-        auto path = aiSystem->findPath({selfPos, targetPos});
-        recalcTimer = 0.0f;
-    }
-}
-```
-
-### 4. Wrong Type Cast from Blackboard
-
-```cpp
-// WRONG: Wrong type
-aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f); // float
-int health = std::any_cast<int>(
-    aiSystem->getBehaviorTreeBlackboard(enemy, "health")); // Throws!
-
-// CORRECT: Matching types
-aiSystem->setBehaviorTreeBlackboard(enemy, "health", 100.0f);
-float health = std::any_cast<float>(
-    aiSystem->getBehaviorTreeBlackboard(enemy, "health"));
-```
-
-### 5. Not Updating AI System
-
-```cpp
-// WRONG: Patrol doesn't work
-void gameUpdate(DeltaTime dt) {
-    physics->update(dt); // Only physics
-}
-
-// CORRECT: Update AI before physics
-void gameUpdate(DeltaTime dt) {
-    aiSystem->update(dt); // Updates velocities
-    physics->update(dt);   // Applies velocities
-}
-```
+- [ ] **Cache expensive queries**: Don't pathfind or query every frame
+- [ ] **Implement custom movement**: Navigation targets are storage only
 
 ---
 
@@ -1435,5 +1023,5 @@ void gameUpdate(DeltaTime dt) {
 
 ## Version History
 
-- **v1.0** (Current): Initial AI System with patrol, navigation, spatial queries
+- **v1.0** (Current): Initial AI System with patrol, navigation, spatial queries, blackboard
 - **Planned**: BehaviorTree.CPP integration, more steering behaviors, influence maps

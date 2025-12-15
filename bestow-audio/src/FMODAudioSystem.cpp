@@ -186,14 +186,57 @@ FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode
 #endif
 
 void FMODAudioSystem::update(DeltaTime dt) {
+    // Process stub-mode fade-outs (works regardless of FMOD availability)
+    for (auto& [channel, data] : channels_) {
+        // Process active fade-outs in stub mode (no fmodChannel)
+        if (data.fadeOut.active && !data.fmodChannel) {
+            data.fadeOut.currentTime += dt;
+
+            if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
+                // Fade complete - stop the channel
+                data.state.isPlaying = false;
+                data.state.volume = 0.0f;
+                data.fadeOut.active = false;
+            } else {
+                // Calculate fade progress (0.0 to 1.0)
+                float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
+                // Linear fade from start volume to 0
+                float newVolume = data.fadeOut.startVolume * (1.0f - progress);
+                data.state.volume = newVolume;
+            }
+        }
+    }
+
 #ifdef BESTOW_HAS_FMOD
     if (fmodSystem_) {
         // Update FMOD system (processes 3D audio, virtual channels, etc.)
         FMOD_System_Update(fmodSystem_);
 
-        // Update channel states by querying FMOD
+        // Process fade-outs and update channel states
         for (auto& [channel, data] : channels_) {
-            if (data.fmodChannel) {
+            // Process active fade-outs with FMOD channel
+            if (data.fadeOut.active && data.fmodChannel) {
+                data.fadeOut.currentTime += dt;
+
+                if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
+                    // Fade complete - stop the channel
+                    FMOD_Channel_Stop(data.fmodChannel);
+                    data.fmodChannel = nullptr;
+                    data.state.isPlaying = false;
+                    data.state.volume = 0.0f;
+                    data.fadeOut.active = false;
+                } else {
+                    // Calculate fade progress (0.0 to 1.0)
+                    float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
+                    // Linear fade from start volume to 0
+                    float newVolume = data.fadeOut.startVolume * (1.0f - progress);
+                    FMOD_Channel_SetVolume(data.fmodChannel, newVolume);
+                    data.state.volume = newVolume;
+                }
+            }
+
+            // Update channel states by querying FMOD
+            if (data.fmodChannel && !data.fadeOut.active) {
                 FMOD_BOOL isPlaying = 0;
                 FMOD_Channel_IsPlaying(data.fmodChannel, &isPlaying);
                 data.state.isPlaying = (isPlaying != 0);
@@ -242,10 +285,14 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
         channelData.state.isPlaying = true;
         channelData.state.isPaused = false;
         channelData.state.volume = sound.volume;
+        // Clear any active fade-out
+        channelData.fadeOut.active = false;
         return;
     }
 
     auto& channelData = channels_[channel];
+    // Clear any active fade-out when starting new sound
+    channelData.fadeOut.active = false;
 
     // Stop any currently playing sound on this channel
     if (channelData.fmodChannel) {
@@ -313,8 +360,11 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
     channelData.state.isPaused = false;
     channelData.state.volume = sound.volume;
 #else
-    channels_[channel].state.isPlaying = true;
-    channels_[channel].state.volume = sound.volume;
+    auto& channelData = channels_[channel];
+    channelData.state.isPlaying = true;
+    channelData.state.volume = sound.volume;
+    // Clear any active fade-out
+    channelData.fadeOut.active = false;
 #endif
 }
 
@@ -323,19 +373,40 @@ void FMODAudioSystem::stopChannel(Channel channel, float fadeOutTime) {
     if (auto it = channels_.find(channel); it != channels_.end()) {
         if (it->second.fmodChannel) {
             if (fadeOutTime > 0.0f) {
-                // TODO: Implement fade out using FMOD DSP or volume ramping
-                // For now, just stop immediately
-                FMOD_Channel_Stop(it->second.fmodChannel);
+                // Start fade-out process - actual stopping happens in update()
+                it->second.fadeOut.active = true;
+                it->second.fadeOut.targetTime = fadeOutTime;
+                it->second.fadeOut.currentTime = 0.0f;
+                it->second.fadeOut.startVolume = it->second.state.volume;
             } else {
+                // Stop immediately
                 FMOD_Channel_Stop(it->second.fmodChannel);
+                it->second.fmodChannel = nullptr;
+                it->second.state.isPlaying = false;
             }
-            it->second.fmodChannel = nullptr;
+        } else {
+            // Stub mode (no fmodChannel) - support fade-out
+            if (fadeOutTime > 0.0f && it->second.state.isPlaying) {
+                it->second.fadeOut.active = true;
+                it->second.fadeOut.targetTime = fadeOutTime;
+                it->second.fadeOut.currentTime = 0.0f;
+                it->second.fadeOut.startVolume = it->second.state.volume;
+            } else {
+                it->second.state.isPlaying = false;
+            }
         }
-        it->second.state.isPlaying = false;
     }
 #else
     if (auto it = channels_.find(channel); it != channels_.end()) {
-        it->second.state.isPlaying = false;
+        // Stub mode - support fade-out
+        if (fadeOutTime > 0.0f && it->second.state.isPlaying) {
+            it->second.fadeOut.active = true;
+            it->second.fadeOut.targetTime = fadeOutTime;
+            it->second.fadeOut.currentTime = 0.0f;
+            it->second.fadeOut.startVolume = it->second.state.volume;
+        } else {
+            it->second.state.isPlaying = false;
+        }
     }
 #endif
 }

@@ -369,18 +369,25 @@ bool VulkanGraphicsSystem::isFullscreen() const {
 void VulkanGraphicsSystem::setFullscreen(bool fullscreen) {
     if (isFullscreen_ == fullscreen) return;
 
-    isFullscreen_ = fullscreen;
-
     GLFWwindow* window = context_.getWindow();
     if (!window) return;
 
     if (fullscreen) {
+        // Save current windowed position and size for later restoration
+        glfwGetWindowPos(window, &windowedPosX_, &windowedPosY_);
+        glfwGetWindowSize(window, &windowedWidth_, &windowedHeight_);
+
+        // Switch to fullscreen on primary monitor
         GLFWmonitor* monitor = glfwGetPrimaryMonitor();
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
         glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
     } else {
-        glfwSetWindowMonitor(window, nullptr, 100, 100, 800, 600, 0);
+        // Restore windowed mode with saved position and size
+        glfwSetWindowMonitor(window, nullptr, windowedPosX_, windowedPosY_,
+                             windowedWidth_, windowedHeight_, 0);
     }
+
+    isFullscreen_ = fullscreen;
 }
 
 bool VulkanGraphicsSystem::shouldClose() const {

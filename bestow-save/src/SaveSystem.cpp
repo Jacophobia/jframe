@@ -22,6 +22,10 @@ using json = nlohmann::json;
 namespace bestow {
 
 void SaveSystem::update(DeltaTime dt) {
+    // Track playtime
+    sessionPlaytimeSeconds_ += dt;
+
+    // Auto-save handling
     if (autoSaveEnabled_) {
         autoSaveTimer_ += dt;
         if (autoSaveTimer_ >= autoSaveInterval_.count()) {
@@ -87,9 +91,12 @@ Result<void, SaveError> SaveSystem::save(SaveSlot slot, const std::string& saveN
         metadata["saveName"] = saveName;
         metadata["timestamp"] = std::chrono::duration_cast<std::chrono::seconds>(
             now.time_since_epoch()).count();
-        metadata["gameVersion"] = "0.1.0"; // TODO: Get from game config
-        metadata["playtimeSeconds"] = 0;    // TODO: Track playtime
-        metadata["completionPercentage"] = 0.0f; // TODO: Track completion
+        metadata["gameVersion"] = gameVersion_;
+        metadata["playtimeSeconds"] = getTotalPlaytime();
+        metadata["completionPercentage"] = completionPercentage_;
+        if (!currentLevel_.empty()) {
+            metadata["levelName"] = currentLevel_;
+        }
 
         std::ofstream metaFile(metaPath);
         if (!metaFile) {
@@ -170,6 +177,18 @@ Result<void, SaveError> SaveSystem::load(SaveSlot slot) {
         }
 
         saveFile.close();
+
+        // Load metadata to restore playtime and other tracked values
+        auto metadata = getSaveMetadata(slot);
+        if (metadata) {
+            loadedPlaytimeSeconds_ = metadata->playtimeSeconds;
+            sessionPlaytimeSeconds_ = 0.0f;  // Reset session time on load
+            completionPercentage_ = metadata->completionPercentage;
+            if (metadata->levelName) {
+                currentLevel_ = *metadata->levelName;
+            }
+        }
+
         return {};
 
     } catch (const std::exception&) {
@@ -324,6 +343,35 @@ std::filesystem::path SaveSystem::getSavePath(SaveSlot slot) const {
 
 std::filesystem::path SaveSystem::getMetadataPath(SaveSlot slot) const {
     return savesDirectory_ / activeProfile_ / ("save_" + std::to_string(slot) + ".meta");
+}
+
+void SaveSystem::setGameVersion(const std::string& version) {
+    gameVersion_ = version;
+}
+
+std::string SaveSystem::getGameVersion() const {
+    return gameVersion_;
+}
+
+std::uint64_t SaveSystem::getSessionPlaytime() const {
+    return static_cast<std::uint64_t>(sessionPlaytimeSeconds_);
+}
+
+std::uint64_t SaveSystem::getTotalPlaytime() const {
+    return loadedPlaytimeSeconds_ + static_cast<std::uint64_t>(sessionPlaytimeSeconds_);
+}
+
+void SaveSystem::resetSessionPlaytime() {
+    sessionPlaytimeSeconds_ = 0.0f;
+    loadedPlaytimeSeconds_ = 0;
+}
+
+void SaveSystem::setCompletionPercentage(float percentage) {
+    completionPercentage_ = std::clamp(percentage, 0.0f, 100.0f);
+}
+
+void SaveSystem::setCurrentLevel(const std::string& levelName) {
+    currentLevel_ = levelName;
 }
 
 }  // namespace bestow

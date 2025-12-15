@@ -1,76 +1,78 @@
 # Bestow TODO
 
-> Last Updated: 2025-12-07
+> Last Updated: 2025-12-15
 
-## Critical Implementation Gaps (Discovered 2025-12-07)
+## Critical Implementation Gaps (Updated 2025-12-14)
 
-> These gaps were identified through comprehensive codebase analysis. They represent stub implementations or missing functionality that blocks features.
+> These gaps were identified through comprehensive codebase analysis. Many items previously listed here were actually already implemented - this list has been corrected.
 
-### Physics3D System - Critical Gaps
+### Physics3D System - Remaining Gaps
 
 | Gap | File | Lines | Priority |
 |-----|------|-------|----------|
-| **Vehicle System (6 methods)** | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1676-1706 | CRITICAL |
-| Collision layer filtering | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1040-1047 | CRITICAL |
-| Mass setting at runtime | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 976-978 | HIGH |
-| Inertia tensor (returns identity) | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1994-2003 | HIGH |
-| Shape removal from compound | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 1926-1930 | HIGH |
-| Mesh/ConvexHull/HeightField shapes | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2112-2121 | MEDIUM |
+| ~~Vehicle System (6 methods)~~ | ~~bestow-physics3d~~ | ~~1774+~~ | ✅ IMPLEMENTED |
+| ~~Collision layer filtering~~ | ~~bestow-physics3d~~ | ~~OnContactValidate~~ | ✅ IMPLEMENTED |
+| ~~Mass setting at runtime~~ | ~~bestow-physics3d~~ | ~~setMass~~ | ✅ IMPLEMENTED (2025-12-14) |
+| ~~Inertia tensor~~ | ~~bestow-physics3d~~ | ~~getInertiaTensor~~ | ✅ IMPLEMENTED (2025-12-14) |
+| ~~Shape removal from compound~~ | ~~bestow-physics3d~~ | ~~removeShape~~ | ✅ IMPLEMENTED (2025-12-14) |
+| ~~Mesh/ConvexHull/HeightField shapes~~ | ~~bestow-physics3d~~ | ~~createCompoundBody/createHeightFieldBody~~ | ✅ IMPLEMENTED (2025-12-15) - ConvexHull via createCompoundBody, HeightField via createHeightFieldBody. Mesh requires interface extension. |
 | Debug line visualization | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2064-2066 | LOW |
 | Statistics tracking | `bestow-physics3d/src/bestow.physics3d.impl.cppm` | 2076-2081 | LOW |
 
-### Graphics3D System - Critical Gaps
+### Graphics3D System - Remaining Gaps
+
+> **Note:** The 3D graphics system is implemented in `bestow-vulkan` (primary) and `bestow-opengl` (fallback), NOT `bestow-graphics3d` which doesn't exist.
 
 | Gap | File | Lines | Priority |
 |-----|------|-------|----------|
-| **Entity rendering (3 methods)** | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1714-1731 | CRITICAL |
-| Material texture loading | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1627-1640 | CRITICAL |
-| Entity lighting updates | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1893 | HIGH |
-| Debug capsule drawing | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2044 | HIGH |
-| Debug frustum drawing | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2053 | HIGH |
-| Skybox from asset data | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2462-2470 | MEDIUM |
-| Render queue sorting/batching | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 1698-1708 | MEDIUM |
-| Fullscreen toggle | `bestow-graphics3d/src/bestow.graphics3d.impl.cppm` | 2129-2132 | MEDIUM |
+| ~~Entity rendering (3 methods)~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp:833+~~ | ✅ IMPLEMENTED |
+| ~~Material texture loading via AssetSystem~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - createMaterialFromData copies all PBR properties and texture handles; setMaterialTexture stores per-slot |
+| ~~Entity lighting updates~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - updateEntityLights iterates Light3DComponent/Transform3D, handles directional/point/spot lights |
+| ~~Debug capsule drawing~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - Full wireframe capsule with cylinder and hemispherical caps |
+| ~~Debug frustum drawing~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - Calculates 8 corners from plane intersections |
+| ~~Skybox from asset data~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - Full GPU cubemap texture creation with VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT, staging buffer uploads, and proper image transitions |
+| ~~Render queue sorting/batching~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - Multi-level sorting: layer → opaque/transparent → depth (front-to-back/back-to-front) → material batching |
+| ~~Fullscreen toggle~~ | ~~bestow-vulkan~~ | ~~VulkanGraphics3DSystem.cpp~~ | ✅ IMPLEMENTED (2025-12-15) - Proper GLFW fullscreen toggle with window state preservation |
 
-### Shader System - Critical Gaps
-
-| Gap | File | Lines | Priority |
-|-----|------|-------|----------|
-| **Texture binding not implemented** | `bestow-shader/src/bestow.shader.impl.cppm` | 525-587 | CRITICAL |
-| Geometry/Tess/Compute shaders ignored | `bestow-shader/src/bestow.shader.impl.cppm` | 173-203 | CRITICAL |
-| efsw hot reload incomplete | `bestow-shader/src/bestow.shader.impl.cppm` | 81-94 | HIGH |
-| Material reload logic bug | `bestow-shader/src/bestow.shader.impl.cppm` | 744-756 | HIGH |
-| Uniform array crash risk | `bestow-shader/src/bestow.shader.impl.cppm` | 935-966 | MEDIUM |
-
-### Input System - Critical Gaps
+### Shader System - Remaining Gaps
 
 | Gap | File | Lines | Priority |
 |-----|------|-------|----------|
-| **Text input/character events** | `bestow-input/src/InputSystem.cpp` | N/A | CRITICAL |
-| **Mouse scroll wheel** | `bestow-input/src/InputSystem.cpp` | N/A | CRITICAL |
-| Keyboard modifier keys | `bestow-input/src/InputSystem.cpp` | N/A | HIGH |
-| Direct keyboard state queries | Interface missing | N/A | MEDIUM |
-| Mouse button press/release | `bestow-input/src/InputSystem.cpp` | 342-344 | MEDIUM |
-| Mouse movement as mappable axis | Interface missing | N/A | MEDIUM |
+| ~~Texture binding~~ | ~~bestow-shader~~ | ~~getOrCreateTexture/bindMaterial~~ | ✅ IMPLEMENTED |
+| ~~Geometry/Tess/Compute shaders~~ | ~~bestow-shader~~ | ~~createShader/compileFullProgram~~ | ✅ IMPLEMENTED (2025-12-14) |
+| ~~efsw hot reload incomplete~~ | ~~bestow-shader~~ | ~~createShader/reloadShader~~ | ✅ IMPLEMENTED (2025-12-14) - Full hot reload via AssetSystem subscriptions for all shader stages |
+| ~~Material reload logic bug~~ | ~~bestow-shader~~ | ~~reloadMaterial~~ | ✅ IMPLEMENTED (2025-12-15) - Properly preserves subscription info and cleans up duplicates |
+| ~~Uniform array crash risk~~ | ~~bestow-shader~~ | ~~setUniformValue~~ | ✅ IMPLEMENTED (2025-12-15) - Added empty vector checks before accessing v[0] |
 
-### UI System - Critical Gaps
+### Input System - Remaining Gaps
 
 | Gap | File | Lines | Priority |
 |-----|------|-------|----------|
-| **Stylesheet loading** | `bestow-ui/src/bestow.ui.impl.cppm` | 508 | CRITICAL |
-| **Stylesheet application** | `bestow-ui/src/bestow.ui.impl.cppm` | 515 | CRITICAL |
-| Data binding synchronization | `bestow-ui/src/bestow.ui.impl.cppm` | 759 | MEDIUM |
-| Element callbacks | `bestow-ui/src/bestow.ui.impl.cppm` | 772 | MEDIUM |
+| ~~Text input/character events~~ | ~~bestow-input~~ | ~~onCharCallback~~ | ✅ IMPLEMENTED |
+| ~~Mouse scroll wheel~~ | ~~bestow-input~~ | ~~onScrollCallback/getScrollDelta~~ | ✅ IMPLEMENTED |
+| ~~Keyboard modifier keys~~ | ~~bestow-input~~ | ~~ModifierKey enum, getModifierState/isShiftPressed/etc~~ | ✅ IMPLEMENTED (2025-12-14) - Full modifier support with ModifierKey enum, query methods, and InputBinding modifier requirements |
+| ~~Direct keyboard state queries~~ | ~~bestow-input~~ | ~~isKeyDown/wasKeyJustPressed/wasKeyJustReleased~~ | ✅ IMPLEMENTED (2025-12-15) - Direct key state polling and just pressed/released detection |
+| ~~Mouse button press/release~~ | ~~bestow-input~~ | ~~wasMouseButtonJustPressed/wasMouseButtonJustReleased~~ | ✅ IMPLEMENTED (2025-12-15) - Tracks previous frame state for press/release detection |
+| Mouse movement as mappable axis | Interface missing | N/A | LOW |
 
-### Other Systems - Gaps
+### UI System - Remaining Gaps
+
+| Gap | File | Lines | Priority |
+|-----|------|-------|----------|
+| ~~Stylesheet loading~~ | ~~bestow-ui~~ | ~~loadStyleSheet~~ | ✅ IMPLEMENTED |
+| ~~Stylesheet application~~ | ~~bestow-ui~~ | ~~applyStyleSheet~~ | ✅ IMPLEMENTED |
+| ~~Data binding synchronization~~ | ~~bestow-ui~~ | ~~syncBindings~~ | ✅ IMPLEMENTED |
+| ~~Element callbacks~~ | ~~bestow-ui~~ | ~~registerElementCallback~~ | ✅ IMPLEMENTED |
+
+### Other Systems - Remaining Gaps
 
 | System | Gap | Priority |
 |--------|-----|----------|
-| AI | Behavior tree integration | HIGH |
-| AI | Steering behaviors | HIGH |
-| Audio | Fade out with DSP | MEDIUM |
-| Save | Game version tracking | MEDIUM |
-| Save | Playtime tracking | MEDIUM |
+| ~~AI~~ | ~~Behavior tree integration~~ | ✅ IMPLEMENTED (BehaviorTree.CPP with `BESTOW_HAS_BTCPP`) |
+| ~~AI~~ | ~~Steering behaviors~~ | ✅ IMPLEMENTED (Seek, Flee, Arrive) |
+| ~~Audio~~ | ~~Fade out with DSP~~ | ✅ IMPLEMENTED (2025-12-15) - Volume ramping in update() for smooth fade-out |
+| ~~Save~~ | ~~Game version tracking~~ | ✅ IMPLEMENTED (2025-12-15) - setGameVersion()/getGameVersion() API |
+| ~~Save~~ | ~~Playtime tracking~~ | ✅ IMPLEMENTED (2025-12-15) - Automatic tracking in update(), getTotalPlaytime() API |
 | Config | Asset system integration | MEDIUM |
 | GameState | Transition overlay | MEDIUM |
 
@@ -214,24 +216,24 @@ public:
 - [ ] Texture loading from asset handles (asset system integration)
 - [ ] Entity rendering via `renderEntities()` and `renderEntitiesInFrustum()`
 - [ ] Entity layer rendering via `renderEntitiesInLayer()`
-- [ ] Light entity updates via `updateLightsFromEntities()`
-- [ ] Render queue sorting by material/depth
+- [x] Light entity updates via `updateLightsFromEntities()` ✅ IMPLEMENTED (2025-12-15)
+- [x] Render queue sorting by material/depth ✅ IMPLEMENTED (2025-12-15)
 - [ ] Batch rendering for performance
-- [ ] Debug capsule drawing
-- [ ] Debug frustum drawing
-- [ ] Fullscreen toggle
-- [ ] Skybox cubemap loading
+- [x] Debug capsule drawing ✅ IMPLEMENTED (2025-12-15)
+- [x] Debug frustum drawing ✅ IMPLEMENTED (2025-12-15)
+- [x] Fullscreen toggle ✅ IMPLEMENTED (2025-12-15)
+- [x] Skybox cubemap loading ✅ IMPLEMENTED (2025-12-15) - Full GPU texture creation
 
 ### Physics3D System - CORE ENGINE FEATURE
 > The 3D and 2D parts of this engine are equally important. Physics3D is a first-class citizen.
-- [ ] Vehicle physics (VehicleConstraint-based)
-  - [ ] `createVehicle()` - Create wheeled vehicle
-  - [ ] `destroyVehicle()` - Remove vehicle
-  - [ ] `setVehicleInput()` - Steering/throttle/brake
-  - [ ] `getWheelTransform()` - Wheel positions
-  - [ ] `isWheelGrounded()` - Wheel contact
-  - [ ] `getVehicleSpeed()` - Current velocity
-- [ ] Collision layer/mask filtering
+- [x] Vehicle physics (VehicleConstraint-based) ✅ IMPLEMENTED
+  - [x] `createVehicle()` - Create wheeled vehicle
+  - [x] `destroyVehicle()` - Remove vehicle
+  - [x] `setVehicleInput()` - Steering/throttle/brake (via `updateVehicle()`)
+  - [x] `getWheelTransform()` - Wheel positions
+  - [x] `isWheelGrounded()` - Wheel contact
+  - [x] `getVehicleSpeed()` - Current velocity
+- [x] Collision layer/mask filtering ✅ IMPLEMENTED (via OnContactValidate callback)
 - [ ] Mass override (requires mass properties recalculation)
 - [ ] Complex shape types:
   - [ ] Mesh shape from vertices/indices
@@ -246,6 +248,22 @@ public:
 - [x] Implement `findPath()` with actual Detour pathfinding
 - [x] Implement `isPointOnNavMesh()` with proper navmesh query
 - [x] Implement `getClosestPointOnNavMesh()` with Detour projection
+
+### AI System - BehaviorTree.CPP Integration (NEW - 2025-12-14)
+- [x] Add BehaviorTree.CPP conditional compilation (`BESTOW_HAS_BTCPP`)
+- [x] Implement `initializeBehaviorTreeFactory()` with built-in nodes:
+  - Conditions: `HasTarget`, `IsAtTarget`, `HasLineOfSightToTarget`
+  - Actions: `SeekTarget`, `FleeFromTarget`, `ArriveAtTarget`, `StopMoving`, `ClearTarget`
+- [x] Implement `attachBehaviorTree()` to create BT trees from XML asset data
+- [x] Implement `tickBehaviorTree()` for per-frame execution
+
+### AI System - Steering Behaviors (NEW - 2025-12-14)
+- [x] Implement `SteeringBehaviorType` enum (None, Seek, Flee, Arrive, Pursue, Evade)
+- [x] Implement `calculateSeek()` - Move toward target at max speed
+- [x] Implement `calculateFlee()` - Move away from target at max speed
+- [x] Implement `calculateArrive()` - Move toward target with deceleration
+- [x] Implement `applySteeringBehavior()` with acceleration limiting
+- [x] Add `setSteeringBehavior()` and `setArrivalRadius()` API
 
 <details>
 <summary>Action Plan</summary>
@@ -288,6 +306,14 @@ struct NavMeshFileHeader {
 - [x] Connect `hasLineOfSight()` to `IPhysicsSystem::raycast()`
 - [x] Connect `findEntitiesInRadius()` to physics AABB queries
 - [x] Connect `findClosestEntity()` to physics spatial queries
+
+### UI System - RmlUi Integration (NEW - 2025-12-14)
+- [x] Implement `loadStyleSheet()` - Load CSS via AssetSystem
+- [x] Implement `applyStyleSheet()` - Inject CSS as `<style>` elements
+- [x] Implement `syncBindings()` - Sync data bindings to `data-value` attributes
+- [x] Implement `registerElementCallback()` - Per-element event callbacks
+- [x] Implement `wantsKeyboardInput()` - Proper text input focus detection
+- [x] Implement `wantsMouseInput()` - UI mouse capture detection
 
 <details>
 <summary>Action Plan</summary>

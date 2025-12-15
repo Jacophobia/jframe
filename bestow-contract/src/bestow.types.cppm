@@ -380,10 +380,40 @@ enum class InputDeviceType : std::uint8_t {
     Controller
 };
 
+/// Keyboard modifier keys (bitmask flags matching GLFW constants)
+/// These can be combined with bitwise OR to require multiple modifiers
+enum class ModifierKey : std::uint8_t {
+    None     = 0,
+    Shift    = 1,   // GLFW_MOD_SHIFT
+    Ctrl     = 2,   // GLFW_MOD_CONTROL
+    Alt      = 4,   // GLFW_MOD_ALT
+    Super    = 8,   // GLFW_MOD_SUPER (Windows/Command key)
+    CapsLock = 16,  // GLFW_MOD_CAPS_LOCK
+    NumLock  = 32   // GLFW_MOD_NUM_LOCK
+};
+
+/// Bitwise operators for ModifierKey
+constexpr ModifierKey operator|(ModifierKey a, ModifierKey b) {
+    return static_cast<ModifierKey>(static_cast<std::uint8_t>(a) | static_cast<std::uint8_t>(b));
+}
+
+constexpr ModifierKey operator&(ModifierKey a, ModifierKey b) {
+    return static_cast<ModifierKey>(static_cast<std::uint8_t>(a) & static_cast<std::uint8_t>(b));
+}
+
+constexpr ModifierKey& operator|=(ModifierKey& a, ModifierKey b) {
+    return a = a | b;
+}
+
+constexpr bool hasModifier(ModifierKey mods, ModifierKey test) {
+    return (mods & test) == test;
+}
+
 struct InputBinding {
     InputDeviceType deviceType = InputDeviceType::Keyboard;
     int deviceIndex = 0;
     int keyCode = 0;
+    ModifierKey requiredModifiers = ModifierKey::None;  ///< Modifiers that must be held for this binding
     float scale = 1.0f;
     float deadzone = 0.1f;
 };

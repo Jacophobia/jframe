@@ -1,6 +1,6 @@
 # Bestow Entity System Guide
 
-The Entity System is Bestow's implementation of the Entity-Component-System (ECS) architecture pattern, powered by EnTT. It provides high-performance entity and component management for game development.
+The Entity System is Bestow's implementation of the Entity-Component-System (ECS) architecture pattern, powered by EnTT 3.x. It provides high-performance entity and component management for game development.
 
 ## Table of Contents
 
@@ -23,6 +23,85 @@ The Entity System provides:
 - **Flexible queries** - Filter entities by component types efficiently
 - **Type-safe operations** - Compile-time type checking for components
 - **Direct EnTT access** - Full power of EnTT registry when needed
+
+### Technology Stack
+
+- **EnTT 3.x** - Modern C++ ECS library by Michele Caini
+- **Entity Type**: `entt::entity` (aliased as `bestow::Entity`)
+- **Storage**: Sparse set with packed arrays for cache-friendly iteration
+
+### Key Implementation Notes
+
+Bestow's `IEntitySystem` is a thin wrapper around EnTT 3.x. Understanding these implementation details will help you use the system effectively:
+
+1. **Entity is `entt::entity`** - The `Entity` type is aliased directly to `entt::entity` (typically a 32-bit unsigned integer with version bits for recycling)
+
+2. **Iteration pattern** - `view<T...>()` returns an EnTT view for range-based for loops:
+   ```cpp
+   for (auto entity : entities->view<Transform>()) {
+       auto& transform = entities->get<Transform>(entity);  // Use get() to access components
+   }
+   ```
+
+3. **`get()` panics, not throws** - `get<T>(entity)` will panic (assertion failure in debug, undefined behavior in release) if the component doesn't exist. Use `tryGet<T>(entity)` when uncertain.
+
+4. **Direct registry access for advanced features** - Use `getRegistry()` to access EnTT-specific features like `.each()` unpacking, groups, or custom storage configurations
+
+---
+
+## Quick Reference
+
+### Common Operations Cheat Sheet
+
+```cpp
+// Create and destroy
+Entity e = entities->createEntity();
+entities->destroyEntity(e);
+bool exists = entities->isValid(e);
+size_t total = entities->entityCount();
+
+// Add/remove components
+entities->emplace<Health>(e, 100, 100);
+entities->remove<Health>(e);
+
+// Check components
+bool has = entities->allOf<Health>(e);
+bool hasAny = entities->anyOf<Health, Shield>(e);
+
+// Access components (SAFE - returns nullptr if missing)
+if (auto* health = entities->tryGet<Health>(e)) {
+    health->current -= 10;
+}
+
+// Access components (FAST - panics if missing, use when certain)
+auto& transform = entities->get<Transform>(e);
+
+// Iterate entities with components
+for (auto entity : entities->view<Transform, Velocity>()) {
+    auto& t = entities->get<Transform>(entity);
+    auto& v = entities->get<Velocity>(entity);
+    // Update...
+}
+
+// Find specific entities
+auto player = entities->first<PlayerTag>();        // First match
+auto boss = entities->single<BossTag>();          // Only if exactly one exists
+auto enemies = entities->collect<EnemyTag>();     // All matches (allocates vector)
+
+// Count
+size_t count = entities->groupCount<Enemy>();
+bool anyEnemies = entities->hasAny<Enemy>();
+
+// Advanced: Direct EnTT access
+auto& registry = entities->getRegistry();
+for (auto [entity, t, v] : registry.view<Transform, Velocity>().each()) {
+    // Components unpacked directly - no get() needed
+}
+```
+
+---
+
+## Core Concepts
 
 ### What is ECS?
 
@@ -58,16 +137,18 @@ entities->emplace<FlyingAI>(enemy);
 
 ---
 
-## Core Concepts
-
 ### Entity
 
-An **Entity** is just a unique identifier (internally `entt::entity`, typically a 32-bit integer). It has no behavior or data itself - it's a handle that binds components together.
+An **Entity** is just a unique identifier (internally `entt::entity`, a 32-bit integer with version bits for safe recycling). It has no behavior or data itself - it's a handle that binds components together.
 
 ```cpp
 Entity player = entities->createEntity();
 Entity enemy = entities->createEntity();
 ```
+
+**Entity Recycling:** When you destroy an entity, EnTT recycles the ID by incrementing a version counter. This prevents stale handles from accidentally accessing new entities.
+
+---
 
 ### Component
 
@@ -94,6 +175,15 @@ struct BadComponent {
 };
 ```
 
+**Tag Components:** Use empty structs for categorization (e.g., `PlayerTag`, `EnemyTag`). These have zero memory overhead.
+
+```cpp
+struct PlayerTag {};
+struct EnemyTag {};
+```
+
+---
+
 ### System
 
 A **System** contains the logic that operates on entities with specific components. In Bestow, systems are typically functions or classes that query entities and process their components.
@@ -101,8 +191,10 @@ A **System** contains the logic that operates on entities with specific componen
 ```cpp
 // System logic - operates on entities with Transform and Velocity
 void updateMovement(IEntitySystem& entities, DeltaTime dt) {
-    for (auto [entity, transform, velocity] :
-         entities.view<Transform, Velocity>().each()) {
+    for (auto entity : entities.view<Transform, Velocity>()) {
+        auto& transform = entities.get<Transform>(entity);
+        auto& velocity = entities.get<Velocity>(entity);
+
         transform.x += velocity.dx * dt.count();
         transform.y += velocity.dy * dt.count();
     }
@@ -127,6 +219,8 @@ Entity createEntity();
 ```cpp
 Entity player = entities->createEntity();
 ```
+
+**Returns:** A valid entity handle.
 
 ---
 
@@ -182,6 +276,8 @@ std::size_t entityCount() const;
 std::size_t total = entities->entityCount();
 ```
 
+**Note:** This iterates all entities to count valid ones - O(n) complexity.
+
 ---
 
 ### Component Management
@@ -227,7 +323,7 @@ const T& get(Entity entity) const;
 
 **Returns:** Reference to the component.
 
-**Throws:** If the entity doesn't have the component.
+**Panics:** If the entity doesn't have the component (assertion failure in debug, undefined behavior in release).
 
 **Example:**
 ```cpp
@@ -239,6 +335,8 @@ health.current -= 10;
 const auto& transform = entities->get<Transform>(player);
 float x = transform.x;
 ```
+
+**Important:** Only use `get()` when you're **certain** the entity has the component. Otherwise, use `tryGet()` for safety.
 
 ---
 
@@ -361,16 +459,20 @@ for (auto entity : entities->view<Transform, Velocity>()) {
     transform.x += velocity.dx * dt.count();
     transform.y += velocity.dy * dt.count();
 }
-
-// EnTT's each() provides unpacked access
-for (auto [entity, transform, velocity] :
-     entities->view<Transform, Velocity>().each()) {
-    transform.x += velocity.dx * dt.count();
-    transform.y += velocity.dy * dt.count();
-}
 ```
 
 **Performance:** Views are extremely fast - they don't allocate memory or copy entities.
+
+**Advanced:** For direct component unpacking without `get()` calls, use `getRegistry()` and EnTT's `.each()`:
+
+```cpp
+auto& registry = entities->getRegistry();
+for (auto [entity, transform, velocity] : registry.view<Transform, Velocity>().each()) {
+    // Components unpacked directly - no get() calls needed
+    transform.x += velocity.dx * dt;
+    transform.y += velocity.dy * dt;
+}
+```
 
 ---
 
@@ -414,6 +516,8 @@ if (entities->hasAny<Player>()) {
     // Game is active
 }
 ```
+
+**Performance:** Early-exit iteration - stops as soon as first entity is found.
 
 ---
 
@@ -462,6 +566,8 @@ if (!player) {
 ```
 
 **Use case:** Validating singleton entities.
+
+**Implementation Note:** Uses `view.size()` for O(1) check when possible.
 
 ---
 
@@ -513,52 +619,34 @@ auto aliveEnemies = entities->collectExcluding<Enemy, Dead>();
 auto worldObjects = entities->collectExcluding<Sprite, UIElement>();
 ```
 
+**Note:** The first template parameter is the required component, all subsequent parameters are excluded components.
+
 ---
 
 #### `query(selector)`
 
-Advanced query with predicates.
+Type-erased query with predicate support.
 
 ```cpp
 std::vector<Entity> query(const EntitySelector& selector) const;
-
-struct EntitySelector {
-    std::vector<entt::id_type> requiredComponents;
-    std::vector<entt::id_type> excludedComponents;
-    std::optional<std::function<bool(Entity)>> predicate;
-};
 ```
 
 **Example:**
 ```cpp
-// Find all enemies with low health
-EntitySelector selector{};
-selector.predicate = [&](Entity e) {
-    auto* health = entities->tryGet<Health>(e);
-    return health && health->current < 20;
+EntitySelector selector{
+    .requiredComponents = {},
+    .excludedComponents = {},
+    .predicate = [](Entity e) {
+        // Custom filter logic
+        return true;
+    }
 };
-auto lowHealthEnemies = entities->query(selector);
+auto result = entities->query(selector);
 ```
 
-**Use case:** Complex queries with custom logic. For simple component filtering, use `view()` instead.
+**Use case:** Dynamic queries where component types aren't known at compile-time.
 
----
-
-#### `each(callback)`
-
-Iterate all valid entities.
-
-```cpp
-void each(std::function<void(Entity)> callback);
-```
-
-**Example:**
-```cpp
-// Process all entities
-entities->each([&](Entity e) {
-    // Handle entity
-});
-```
+**Note:** The type-erased component filtering (`requiredComponents`, `excludedComponents`) is not fully implemented in the current version. Use the predicate for custom filtering.
 
 ---
 
@@ -577,10 +665,18 @@ const entt::registry& getRegistry() const;
 ```cpp
 auto& registry = entities->getRegistry();
 
+// Use EnTT's .each() for unpacked iteration (faster than view + get)
+for (auto [entity, transform, velocity] :
+     registry.view<Transform, Velocity>().each()) {
+    // Components directly accessible, no get() calls needed
+    transform.x += velocity.dx * dt;
+    transform.y += velocity.dy * dt;
+}
+
 // Use EnTT groups (cached multi-component queries)
 auto group = registry.group<Transform>(entt::get<Velocity>);
 for (auto entity : group) {
-    auto& [transform, velocity] = group.get(entity);
+    auto [transform, velocity] = group.get<Transform, Velocity>(entity);
     // Process
 }
 
@@ -591,6 +687,27 @@ for (auto entity : registry.view<Sprite>(entt::exclude<Hidden>)) {
 ```
 
 **Use case:** When you need EnTT-specific features not exposed by IEntitySystem.
+
+---
+
+### Iteration Helper
+
+#### `each(callback)`
+
+Iterate all valid entities with a callback.
+
+```cpp
+void each(std::function<void(Entity)> callback);
+```
+
+**Example:**
+```cpp
+entities->each([](Entity e) {
+    std::cout << "Entity: " << static_cast<uint32_t>(e) << std::endl;
+});
+```
+
+**Note:** This iterates ALL entities regardless of components. For component-filtered iteration, use `view()`.
 
 ---
 
@@ -629,6 +746,8 @@ struct GameObject {
 };
 ```
 
+---
+
 ### 2. Use Tags for States
 
 Tags are zero-size components used for marking entities:
@@ -651,14 +770,7 @@ entities->emplace<DeadTag>(enemy);
 entities->remove<DeadTag>(enemy);
 ```
 
-**Note:** Tags must have at least one member to avoid EnTT limitations with empty types:
-
-```cpp
-// Correct tag definition
-struct EnemyTag {
-    bool _ = false;  // Dummy member
-};
-```
+---
 
 ### 3. Entity Lifecycle Management
 
@@ -670,12 +782,14 @@ class GameSystem {
 
     void update(IEntitySystem& entities) {
         // Entity might have been destroyed since last frame
-        if (entities->isValid(cachedPlayer_)) {
-            auto& transform = entities->get<Transform>(cachedPlayer_);
+        if (entities.isValid(cachedPlayer_)) {
+            auto& transform = entities.get<Transform>(cachedPlayer_);
             // Safe to use
         } else {
             // Find player again
-            cachedPlayer_ = *entities->first<Player>();
+            if (auto player = entities.first<Player>()) {
+                cachedPlayer_ = *player;
+            }
         }
     }
 };
@@ -700,14 +814,25 @@ for (Entity enemy : enemies) {
 }
 ```
 
+---
+
 ### 4. Efficient Iteration
 
 **Use `view()` for read-only iteration:**
 
 ```cpp
 // Fast - no allocations
-for (auto [entity, transform, sprite] :
-     entities->view<Transform, Sprite>().each()) {
+for (auto entity : entities->view<Transform, Sprite>()) {
+    // Process
+}
+```
+
+**Use direct registry access for unpacked iteration:**
+
+```cpp
+// Fastest - components unpacked directly, no get() calls
+auto& registry = entities->getRegistry();
+for (auto [entity, transform, sprite] : registry.view<Transform, Sprite>().each()) {
     // Process
 }
 ```
@@ -718,6 +843,8 @@ for (auto [entity, transform, sprite] :
 // Slower - allocates vector
 auto enemies = entities->collect<Enemy>();
 ```
+
+---
 
 ### 5. Component Ownership
 
@@ -735,7 +862,7 @@ struct Parent {
 };
 
 // In your system:
-for (auto [entity, parent] : entities->view<Parent>().each()) {
+for (auto [entity, parent] : entities->getRegistry().view<Parent>().each()) {
     if (entities->isValid(parent.parent)) {
         // Use parent entity
     }
@@ -771,6 +898,8 @@ Entity createPlayer(IEntitySystem& entities, float x, float y) {
 }
 ```
 
+---
+
 ### Pattern 2: Querying by Component
 
 ```cpp
@@ -782,8 +911,9 @@ std::vector<Entity> findEnemiesInRange(
 ) {
     std::vector<Entity> result;
 
-    for (auto [entity, transform] :
-         entities.view<Transform, EnemyTag>().each()) {
+    for (auto entity : entities.view<Transform, EnemyTag>()) {
+        auto& transform = entities.get<Transform>(entity);
+
         float dx = transform.x - x;
         float dy = transform.y - y;
         float distSq = dx * dx + dy * dy;
@@ -797,6 +927,8 @@ std::vector<Entity> findEnemiesInRange(
 }
 ```
 
+---
+
 ### Pattern 3: System Update Pattern
 
 ```cpp
@@ -804,14 +936,18 @@ class MovementSystem {
 public:
     void update(IEntitySystem& entities, DeltaTime dt) {
         // Update all entities with position and velocity
-        for (auto [entity, transform, velocity] :
-             entities.view<Transform, Velocity>().each()) {
+        for (auto entity : entities.view<Transform, Velocity>()) {
+            auto& transform = entities.get<Transform>(entity);
+            auto& velocity = entities.get<Velocity>(entity);
+
             transform.x += velocity.dx * dt.count();
             transform.y += velocity.dy * dt.count();
         }
     }
 };
 ```
+
+---
 
 ### Pattern 4: Component Communication
 
@@ -847,6 +983,8 @@ class DamageSystem {
 };
 ```
 
+---
+
 ### Pattern 5: Singleton Entities
 
 ```cpp
@@ -869,6 +1007,8 @@ void updateCamera(IEntitySystem& entities) {
     }
 }
 ```
+
+---
 
 ### Pattern 6: Parent-Child Relationships
 
@@ -893,8 +1033,9 @@ void attachChild(IEntitySystem& entities, Entity parent, Entity child) {
 
 // Update children based on parent transform
 void updateHierarchy(IEntitySystem& entities) {
-    for (auto [child, childTransform, parent] :
-         entities.view<Transform, Parent>().each()) {
+    for (auto child : entities.view<Transform, Parent>()) {
+        auto& childTransform = entities.get<Transform>(child);
+        auto& parent = entities.get<Parent>(child);
 
         if (entities.isValid(parent.parent)) {
             auto& parentTransform = entities.get<Transform>(parent.parent);
@@ -908,7 +1049,9 @@ void updateHierarchy(IEntitySystem& entities) {
 }
 ```
 
-### Pattern 7: Pooling Enemies
+---
+
+### Pattern 7: Object Pooling
 
 ```cpp
 // Reuse dead enemies instead of destroying them
@@ -961,10 +1104,11 @@ Components of the same type are stored in contiguous memory (structure-of-arrays
 
 ```cpp
 // FAST - cache friendly iteration
-for (auto [entity, transform, velocity] :
-     entities.view<Transform, Velocity>().each()) {
+for (auto entity : entities.view<Transform, Velocity>()) {
     // All Transform data is in contiguous memory
     // All Velocity data is in contiguous memory
+    auto& transform = entities.get<Transform>(entity);
+    auto& velocity = entities.get<Velocity>(entity);
     transform.x += velocity.dx * dt.count();
 }
 
@@ -992,6 +1136,8 @@ struct Rotation { float angle; };
 // Now you need two memory fetches instead of one
 ```
 
+---
+
 ### 2. Avoid Frequent Entity Creation/Destruction
 
 **Problem:** Creating/destroying entities has overhead.
@@ -1005,6 +1151,8 @@ entities.destroyEntity(bullet);  // Expensive
 // Do this:
 entities.emplace<InactiveTag>(bullet);  // Cheap
 ```
+
+---
 
 ### 3. Use `view()` Instead of `collect()`
 
@@ -1024,6 +1172,8 @@ for (Entity e : enemies) {
 ```
 
 **Exception:** Use `collect()` when you need to modify entities during iteration.
+
+---
 
 ### 4. Minimize Component Size
 
@@ -1046,6 +1196,8 @@ struct HugeComponent {
 };
 ```
 
+---
+
 ### 5. Use Empty Tag Components for States
 
 **Tags have zero overhead (no memory allocated):**
@@ -1061,6 +1213,8 @@ if (entities.get<PlayerState>(player).isInvincible) {
     // Must fetch entire PlayerState component from memory
 }
 ```
+
+---
 
 ### 6. Avoid `groupCount()` in Hot Paths
 
@@ -1082,9 +1236,32 @@ void onEnemyKilled(Entity enemy) {
 }
 ```
 
-### 7. Use EnTT Groups for Hot Paths
+---
 
-For frequently iterated combinations, use EnTT groups (cached queries):
+### 7. Use EnTT's `.each()` for Unpacked Iteration
+
+For frequently iterated combinations, use direct registry access with `.each()`:
+
+```cpp
+// Faster - components unpacked directly, no get() calls
+auto& registry = entities.getRegistry();
+for (auto [entity, transform, velocity] : registry.view<Transform, Velocity>().each()) {
+    transform.x += velocity.dx * dt.count();
+}
+
+// Slower - requires get() calls
+for (auto entity : entities.view<Transform, Velocity>()) {
+    auto& transform = entities.get<Transform>(entity);
+    auto& velocity = entities.get<Velocity>(entity);
+    transform.x += velocity.dx * dt.count();
+}
+```
+
+---
+
+### 8. Use EnTT Groups for Performance-Critical Paths
+
+For very hot paths, use EnTT groups (cached queries):
 
 ```cpp
 // Cache the query for repeated use
@@ -1093,7 +1270,7 @@ auto group = registry.group<Transform>(entt::get<Velocity>);
 
 // Very fast iteration - components already organized
 for (auto entity : group) {
-    auto& [transform, velocity] = group.get(entity);
+    auto [transform, velocity] = group.get<Transform, Velocity>(entity);
     transform.x += velocity.dx * dt.count();
 }
 ```
@@ -1122,9 +1299,9 @@ struct Health { int current, maximum; };
 struct Sprite { std::string texture; };
 
 // Tags
-struct PlayerTag { bool _ = false; };
-struct EnemyTag { bool _ = false; };
-struct DeadTag { bool _ = false; };
+struct PlayerTag {};
+struct EnemyTag {};
+struct DeadTag {};
 
 // Systems
 class GameSystem {
@@ -1137,8 +1314,10 @@ public:
 
 private:
     void updateMovement(IEntitySystem& entities, DeltaTime dt) {
-        for (auto [entity, transform, velocity] :
-             entities.view<Transform, Velocity>().each()) {
+        for (auto entity : entities.view<Transform, Velocity>()) {
+            auto& transform = entities.get<Transform>(entity);
+            auto& velocity = entities.get<Velocity>(entity);
+
             transform.x += velocity.dx * dt.count();
             transform.y += velocity.dy * dt.count();
         }
@@ -1152,8 +1331,8 @@ private:
         auto& playerTransform = entities.get<Transform>(*player);
 
         // Check collisions with enemies
-        for (auto [enemy, enemyTransform] :
-             entities.view<Transform, EnemyTag>().each()) {
+        for (auto enemy : entities.view<Transform, EnemyTag>()) {
+            auto& enemyTransform = entities.get<Transform>(enemy);
 
             float dx = playerTransform.x - enemyTransform.x;
             float dy = playerTransform.y - enemyTransform.y;
@@ -1180,63 +1359,9 @@ private:
 };
 ```
 
-### Example 2: Spawn System with Pooling
+---
 
-```cpp
-class SpawnSystem {
-public:
-    Entity spawnEnemy(IEntitySystem& entities, float x, float y) {
-        Entity enemy = getPooledEnemy(entities);
-
-        // Reset transform
-        auto& transform = entities.get<Transform>(enemy);
-        transform.x = x;
-        transform.y = y;
-        transform.rotation = 0.0f;
-
-        // Reset health
-        auto& health = entities.get<Health>(enemy);
-        health.current = health.maximum;
-
-        // Activate
-        if (entities.allOf<InactiveTag>(enemy)) {
-            entities.remove<InactiveTag>(enemy);
-        }
-
-        return enemy;
-    }
-
-    void despawnEnemy(IEntitySystem& entities, Entity enemy) {
-        // Don't destroy - just deactivate
-        entities.emplace<InactiveTag>(enemy);
-
-        // Stop movement
-        auto& velocity = entities.get<Velocity>(enemy);
-        velocity.dx = 0.0f;
-        velocity.dy = 0.0f;
-    }
-
-private:
-    Entity getPooledEnemy(IEntitySystem& entities) {
-        // Try to reuse inactive enemy
-        if (auto recycled = entities.first<EnemyTag, InactiveTag>()) {
-            return *recycled;
-        }
-
-        // Create new enemy
-        Entity enemy = entities.createEntity();
-        entities.emplace<EnemyTag>(enemy);
-        entities.emplace<Transform>(enemy, 0.0f, 0.0f, 0.0f);
-        entities.emplace<Velocity>(enemy, 0.0f, 0.0f);
-        entities.emplace<Health>(enemy, 50, 50);
-        entities.emplace<Sprite>(enemy, "enemy.png");
-
-        return enemy;
-    }
-};
-```
-
-### Example 3: Camera Follow System
+### Example 2: Camera Follow System
 
 ```cpp
 class CameraSystem {
@@ -1263,7 +1388,9 @@ public:
 };
 ```
 
-### Example 4: Debug Entity Inspector
+---
+
+### Example 3: Debug Entity Inspector
 
 ```cpp
 void debugPrintEntity(IEntitySystem& entities, Entity entity) {
@@ -1317,43 +1444,59 @@ for (auto entity : registry.view<Sprite>(entt::exclude<HiddenTag>)) {
 }
 ```
 
+---
+
 ### Using EnTT Storage Iteration
 
 ```cpp
 // Iterate ONLY Transform components (no entity access)
 auto& registry = entities.getRegistry();
-for (auto& transform : registry.storage<Transform>()) {
-    transform.x += 1.0f;  // Bulk update
+auto* storage = registry.storage<Transform>();
+if (storage) {
+    for (auto& transform : *storage) {
+        transform.x += 1.0f;  // Bulk update
+    }
 }
 ```
 
+---
+
 ### Custom Component Pools
 
-EnTT uses a default packed array storage, but you can customize per-component:
+EnTT uses a default sparse set storage, but you can customize per-component:
 
 ```cpp
 // In your initialization code
 auto& registry = entities.getRegistry();
 
-// Use stable storage (entities don't move in memory)
-registry.storage<Transform>().reserve(1000);
+// Reserve capacity for known entity count
+registry.reserve<Transform>(1000);
+registry.reserve<Velocity>(1000);
 ```
 
 ---
 
 ## Troubleshooting
 
-### "Component not found" exception
+### "Component not found" panic/crash
 
 ```cpp
-// BAD - throws if component missing
+// BAD - panics/crashes if component missing
 auto& health = entities.get<Health>(enemy);
 
 // GOOD - safe check
 if (auto* health = entities.tryGet<Health>(enemy)) {
     health->current -= 10;
 }
+
+// ALSO GOOD - when you're certain the component exists
+if (entities.allOf<Health>(enemy)) {
+    auto& health = entities.get<Health>(enemy);  // Safe - we checked first
+    health.current -= 10;
+}
 ```
+
+---
 
 ### Iterator invalidation during entity destruction
 
@@ -1369,6 +1512,8 @@ for (Entity enemy : enemies) {
     entities.destroyEntity(enemy);
 }
 ```
+
+---
 
 ### Stale entity handles
 
@@ -1386,7 +1531,7 @@ class System {
 class System {
     Entity cachedEntity_;
 
-    void update() {
+    void update(IEntitySystem& entities) {
         if (entities.isValid(cachedEntity_)) {
             auto& health = entities.get<Health>(cachedEntity_);
         }
@@ -1400,13 +1545,24 @@ class System {
 
 The Entity System provides a fast, flexible foundation for game development using the ECS pattern:
 
-- **Entities** are unique IDs that bind components
-- **Components** are pure data structures
+- **Entities** are unique IDs (`entt::entity`) that bind components together
+- **Components** are pure data structures (no logic)
 - **Systems** contain the logic that operates on entities with specific components
-- Use `view()` for fast iteration
-- Use tags for entity states
-- Keep components small and focused
-- Always validate entity handles before use
+- Use `view<T...>()` for fast, non-allocating iteration
+- Use `collect<T...>()` when you need to modify entities during iteration
+- Use `tryGet<T>()` for safe component access, `get<T>()` when certain component exists
+- Use `first<T...>()` and `single<T...>()` to find singleton entities
+- Use tags (empty structs) for entity states and categorization
+- Keep components small and focused for better cache performance
+- Always validate cached entity handles with `isValid()` before use
+- Use `getRegistry()` for direct EnTT access when you need advanced features
+
+**Key Patterns:**
+- `for (auto e : entities->view<T>()) { auto& c = entities->get<T>(e); }` - Standard iteration
+- `for (auto [e, c] : registry.view<T>().each()) { }` - Unpacked iteration (faster)
+- `auto opt = entities->first<Player>();` - Find singleton
+- `if (auto* c = entities->tryGet<T>(e)) { }` - Safe component access
+- `auto all = entities->collect<Enemy>();` - Collect for modification during iteration
 
 For more information:
 - **EnTT Documentation**: https://github.com/skypjack/entt/wiki

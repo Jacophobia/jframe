@@ -12,6 +12,7 @@ The Config System is Bestow's Lua-based configuration management system. It prov
 - Change notification callbacks
 - Runtime value modification
 - Sandboxed Lua execution for security
+- Unified Lua parsing for other systems
 
 **Why Lua over JSON:**
 - Comments for documentation (`-- this is a comment`)
@@ -52,6 +53,9 @@ Safe libraries available:
 - `table` - Table manipulation (insert, remove, sort, etc.)
 - `string` - String functions (format, match, gsub, etc.)
 
+Safe custom functions:
+- `include(path)` - Load another config file via AssetSystem (path cannot contain `..` for security)
+
 ### Type-Safe Retrieval
 
 Config values are stored with type information and retrieved through type-safe getters:
@@ -84,12 +88,14 @@ void update(DeltaTime dt);
 void shutdown();
 ```
 
+You typically don't call these directly - the engine handles the lifecycle.
+
 ### Configuration Loading
 
 ```cpp
 // Load a Lua config file from path (via AssetSystem)
 bool loadConfig(const std::string& filePath);
-// Example: config->loadConfig("data/config/player.lua")
+// Example: config->loadConfig("config/player.lua")
 
 // Load config from pre-registered asset handle
 bool loadConfigAsset(AssetHandle configAsset);
@@ -102,10 +108,13 @@ bool reloadConfig(const std::string& filePath);
 ```
 
 **Config File Format:**
+All config files must return a table:
 ```lua
--- File must return a table
+-- config/player.lua
 return {
     -- Your config values here
+    speed = 100.0,
+    health = 100
 }
 ```
 
@@ -118,7 +127,7 @@ std::optional<int> getInt(const ConfigKey& key) const;
 std::optional<bool> getBool(const ConfigKey& key) const;
 std::optional<std::string> getString(const ConfigKey& key) const;
 
-// Get value with default fallback
+// Get value with default fallback (recommended)
 float getFloatOr(const ConfigKey& key, float defaultValue) const;
 int getIntOr(const ConfigKey& key, int defaultValue) const;
 bool getBoolOr(const ConfigKey& key, bool defaultValue) const;
@@ -132,9 +141,9 @@ if (auto speed = config->getFloat("player.speed")) {
     player.setSpeed(*speed);
 }
 
-// Use default fallback for safe access
+// Use default fallback for safe access (preferred)
 float gravity = config->getFloatOr("physics.gravity", -980.0f);
-int maxHealth = config->getIntOr("player.max_health", 100);
+int maxHealth = config->getIntOr("player.health.maximum", 100);
 bool debugMode = config->getBoolOr("debug.enabled", false);
 ```
 
@@ -165,7 +174,7 @@ auto items = config->getStringArray("inventory.starting_items");
 ### Runtime Value Modification
 
 ```cpp
-// Set values at runtime (does not modify files)
+// Set values at runtime (does not modify files, in-memory only)
 void setFloat(const ConfigKey& key, float value);
 void setInt(const ConfigKey& key, int value);
 void setBool(const ConfigKey& key, bool value);
@@ -179,6 +188,7 @@ config->setFloat("player.speed", 150.0f);
 config->setBool("debug.show_colliders", true);
 
 // Note: Changes are in-memory only, not persisted to file
+// When the file is hot reloaded, your changes will be overwritten
 ```
 
 ### State Queries
@@ -206,12 +216,16 @@ if (config->hasKey("player.special_ability")) {
 
 // Get all player-related keys
 auto playerKeys = config->getKeysWithPrefix("player.");
-// Returns: ["player.speed", "player.max_health", "player.jump_force", ...]
+// Returns: ["player.speed", "player.health.initial", "player.health.maximum", ...]
 
 // List loaded configs
 for (const auto& path : config->getLoadedConfigs()) {
-    spdlog::info("Loaded config: {}", path);
+    logInfo("Loaded config: {}", path);
 }
+
+// Check when a config was last loaded
+auto metadata = config->getMetadata("config/player.lua");
+logInfo("Player config loaded at {}", metadata.loadTime);
 ```
 
 ### Hot Reload
@@ -249,12 +263,17 @@ SubscriptionId onKeyChanged(const std::string& keyPrefix,
 void unsubscribe(SubscriptionId id);
 ```
 
+**Callback signature:**
+```cpp
+using ConfigChangeCallback = std::function<void(const ConfigKey& key)>;
+```
+
 **Usage:**
 ```cpp
 // Subscribe to player config changes
 SubscriptionId subId = config->onKeyChanged("player.",
     [this](const ConfigKey& key) {
-        spdlog::info("Player config changed: {}", key);
+        logInfo("Player config changed: {}", key);
         reloadPlayerStats();
     });
 
@@ -264,10 +283,10 @@ config->unsubscribe(subId);
 
 ### Unified Lua Parsing
 
-The Config System provides sandboxed Lua parsing for other systems to use:
+The Config System provides sandboxed Lua parsing for other systems to use instead of creating their own `sol::state`:
 
 ```cpp
-// Parse Lua string and get result object
+// Parse Lua string and get result
 std::optional<sol::object> parseLuaString(
     const std::string& luaCode,
     const std::string& description = "lua");
@@ -277,12 +296,13 @@ std::optional<sol::object> parseLuaAsset(
     AssetHandle luaAsset,
     const std::string& description = "lua");
 
-// Execute Lua code for side effects (no return value)
+// Execute Lua code for side effects (defining globals, functions, etc.)
 bool executeLuaString(
     const std::string& luaCode,
     const std::string& description = "lua");
 
-// Get direct access to Lua state (advanced use only)
+// Get direct access to the sandboxed Lua state for advanced use cases
+// WARNING: The state is shared; be careful with modifications
 sol::state* getLuaState();
 ```
 
@@ -301,6 +321,18 @@ if (result) {
     std::string name = table["name"];
     float speed = table["speed"];
 }
+
+// Parse Lua from asset (e.g., blueprint, level)
+AssetHandle levelAsset = assets->registerAsset(AssetType::Data, "levels/level1.lua");
+assets->loadAsset(levelAsset);
+
+auto levelData = config->parseLuaAsset(levelAsset, "level");
+if (levelData) {
+    sol::table level = levelData->as<sol::table>();
+    std::string levelName = level["name"];
+    int levelWidth = level["width"];
+    // ... parse level data
+}
 ```
 
 ## Lua Config Format
@@ -310,23 +342,23 @@ if (result) {
 All config files must return a table:
 
 ```lua
--- data/config/player.lua
+-- config/player.lua
 return {
     speed = 100.0,
-    max_health = 100,
-    jump_force = 500.0,
-    can_double_jump = true,
+    health = 100,
+    jumpForce = 500.0,
+    canDoubleJump = true,
     name = "Hero"
 }
 ```
 
 Access in C++:
 ```cpp
-config->loadConfig("data/config/player.lua");
+config->loadConfig("config/player.lua");
 
 float speed = config->getFloatOr("speed", 100.0f);
-int maxHealth = config->getIntOr("max_health", 100);
-bool canDoubleJump = config->getBoolOr("can_double_jump", false);
+int health = config->getIntOr("health", 100);
+bool canDoubleJump = config->getBoolOr("canDoubleJump", false);
 ```
 
 ### Nested Tables
@@ -334,35 +366,42 @@ bool canDoubleJump = config->getBoolOr("can_double_jump", false);
 Use nested tables for organization:
 
 ```lua
--- data/config/game.lua
+-- config/game.lua
 return {
     player = {
         speed = 100.0,
-        max_health = 100,
-        jump_force = 500.0
+        health = {
+            initial = 100,
+            maximum = 100
+        },
+        jump = {
+            maxJumps = 2,
+            jumpForce = 800.0
+        }
     },
 
     physics = {
         gravity = -980.0,
-        terminal_velocity = -1000.0,
+        terminalVelocity = -1000.0,
         friction = 0.8
     },
 
     audio = {
-        master_volume = 1.0,
-        music_volume = 0.7,
-        sfx_volume = 0.9
+        masterVolume = 1.0,
+        musicVolume = 0.7,
+        sfxVolume = 0.9
     }
 }
 ```
 
 Access with dot notation:
 ```cpp
-config->loadConfig("data/config/game.lua");
+config->loadConfig("config/game.lua");
 
 float speed = config->getFloatOr("player.speed", 100.0f);
+int maxHealth = config->getIntOr("player.health.maximum", 100);
 float gravity = config->getFloatOr("physics.gravity", -980.0f);
-float musicVol = config->getFloatOr("audio.music_volume", 0.7f);
+float musicVol = config->getFloatOr("audio.musicVolume", 0.7f);
 ```
 
 ### Arrays
@@ -370,19 +409,19 @@ float musicVol = config->getFloatOr("audio.music_volume", 0.7f);
 Lua arrays use 1-based indexing and sequential keys:
 
 ```lua
--- data/config/animations.lua
+-- config/animations.lua
 return {
     walk = {
         frames = {1, 2, 3, 4, 5, 6},
-        frame_duration = 0.1
+        frameDuration = 0.1
     },
 
     idle = {
         frames = {7, 8},
-        frame_duration = 0.5
+        frameDuration = 0.5
     },
 
-    spawn_points = {
+    spawnPoints = {
         {x = 100, y = 200},
         {x = 300, y = 200},
         {x = 500, y = 200}
@@ -394,10 +433,10 @@ return {
 
 Access arrays:
 ```cpp
-config->loadConfig("data/config/animations.lua");
+config->loadConfig("config/animations.lua");
 
 auto walkFrames = config->getIntArray("walk.frames");
-float frameDuration = config->getFloatOr("walk.frame_duration", 0.1f);
+float frameDuration = config->getFloatOr("walk.frameDuration", 0.1f);
 
 auto tags = config->getStringArray("tags");
 ```
@@ -407,7 +446,7 @@ auto tags = config->getStringArray("tags");
 #### Variables and Constants
 
 ```lua
--- data/config/level.lua
+-- config/level.lua
 local TILE_SIZE = 32
 local SCREEN_WIDTH = 1280
 local SCREEN_HEIGHT = 720
@@ -416,17 +455,17 @@ local TILES_X = SCREEN_WIDTH / TILE_SIZE
 local TILES_Y = SCREEN_HEIGHT / TILE_SIZE
 
 return {
-    tile_size = TILE_SIZE,
-    grid_width = TILES_X,
-    grid_height = TILES_Y,
-    total_tiles = TILES_X * TILES_Y
+    tileSize = TILE_SIZE,
+    gridWidth = TILES_X,
+    gridHeight = TILES_Y,
+    totalTiles = TILES_X * TILES_Y
 }
 ```
 
 #### Math Expressions
 
 ```lua
--- data/config/enemies.lua
+-- config/enemies.lua
 return {
     slime = {
         health = 50,
@@ -444,8 +483,8 @@ return {
         health = 1000,
         speed = 50.0,
         damage = 25,
-        -- Boss is 5x tougher than goblin
-        toughness_multiplier = math.floor(1000 / 100)
+        -- Boss is 10x tougher than goblin
+        toughnessMultiplier = math.floor(1000 / 100)
     }
 }
 ```
@@ -453,16 +492,16 @@ return {
 #### Loops for Generated Data
 
 ```lua
--- data/config/waves.lua
+-- config/waves.lua
 local waves = {}
 
 -- Generate 10 waves of increasing difficulty
 for i = 1, 10 do
     waves[i] = {
-        enemy_count = i * 5,
-        enemy_health_multiplier = 1.0 + (i * 0.1),
-        enemy_speed_multiplier = 1.0 + (i * 0.05),
-        spawn_interval = math.max(1.0, 2.0 - (i * 0.1))
+        enemyCount = i * 5,
+        healthMultiplier = 1.0 + (i * 0.1),
+        speedMultiplier = 1.0 + (i * 0.05),
+        spawnInterval = math.max(1.0, 2.0 - (i * 0.1))
     }
 end
 
@@ -471,29 +510,39 @@ return {
 }
 ```
 
+Access generated data:
+```cpp
+for (int i = 1; i <= 10; i++) {
+    std::string prefix = std::format("waves.{}", i);
+    int enemyCount = config->getIntOr(prefix + ".enemyCount", 5);
+    float healthMult = config->getFloatOr(prefix + ".healthMultiplier", 1.0f);
+    // ... use wave data
+}
+```
+
 #### Conditional Values
 
 ```lua
--- data/config/debug.lua
+-- config/debug.lua
 local DEBUG = true  -- Toggle debug mode
 
 return {
-    debug_enabled = DEBUG,
+    debugEnabled = DEBUG,
 
     player = {
         invincible = DEBUG,
         speed = DEBUG and 500.0 or 100.0,
-        starting_health = DEBUG and 9999 or 100
+        startingHealth = DEBUG and 9999 or 100
     },
 
     enemy = {
-        spawn_enabled = not DEBUG,
-        damage_multiplier = DEBUG and 0.0 or 1.0
+        spawnEnabled = not DEBUG,
+        damageMultiplier = DEBUG and 0.0 or 1.0
     },
 
     rendering = {
-        show_colliders = DEBUG,
-        show_fps = DEBUG,
+        showColliders = DEBUG,
+        showFPS = DEBUG,
         vsync = not DEBUG
     }
 }
@@ -502,33 +551,33 @@ return {
 #### Comments
 
 ```lua
--- data/config/player.lua
+-- config/player.lua
 return {
     -- Movement
     speed = 100.0,          -- Pixels per second
-    jump_force = 500.0,     -- Initial upward velocity
-    max_fall_speed = -1000.0, -- Terminal velocity
+    jumpForce = 500.0,      -- Initial upward velocity
+    maxFallSpeed = -1000.0, -- Terminal velocity
 
     -- Combat
-    max_health = 100,       -- Hit points
-    attack_damage = 25,     -- Damage per hit
-    attack_cooldown = 0.5,  -- Seconds between attacks
+    health = 100,           -- Hit points
+    attackDamage = 25,      -- Damage per hit
+    attackCooldown = 0.5,   -- Seconds between attacks
 
     -- Abilities
-    can_double_jump = true, -- Enable double jump mechanic
-    dash_distance = 150.0,  -- Dash distance in pixels
-    dash_cooldown = 2.0     -- Seconds before dash can be used again
+    canDoubleJump = true,   -- Enable double jump mechanic
+    dashDistance = 150.0,   -- Dash distance in pixels
+    dashCooldown = 2.0      -- Seconds before dash can be used again
 }
 ```
 
 #### Including Other Config Files
 
-Use the `include()` function to load other config files:
+Use the `include()` function to load other config files via AssetSystem:
 
 ```lua
--- data/config/main.lua
-local player = include("data/config/player.lua")
-local enemies = include("data/config/enemies.lua")
+-- config/main.lua
+local player = include("config/player.lua")
+local enemies = include("config/enemies.lua")
 
 return {
     player = player,
@@ -536,30 +585,32 @@ return {
 
     game = {
         difficulty = "normal",
-        starting_level = 1
+        startingLevel = 1
     }
 }
 ```
 
 Note: `include()` paths cannot contain `..` for security.
 
-## Hot Reload
+## Hot Reload Workflow
 
 ### Enabling Hot Reload
 
-Hot reload is powered by the AssetSystem's file watching via efsw:
+Hot reload is powered by the AssetSystem's file watching:
 
 ```cpp
 void Game::init() {
+    auto& sys = engine.systems();
+
     // Enable hot reload in debug builds
     #if defined(BESTOW_DEV_TOOLS)
-        config_->enableHotReload(true);
-        spdlog::info("Config hot reload enabled");
+        sys.config->enableHotReload(true);
+        logInfo("Config hot reload enabled");
     #endif
 
     // Load configs
-    config_->loadConfig("data/config/player.lua");
-    config_->loadConfig("data/config/game.lua");
+    sys.config->loadConfig("config/player.lua");
+    sys.config->loadConfig("config/game.lua");
 }
 ```
 
@@ -576,7 +627,8 @@ public:
         // Subscribe to player config changes
         configSubId_ = config_->onKeyChanged("player.",
             [this](const ConfigKey& key) {
-                handleConfigChange(key);
+                logInfo("Player config changed: {}", key);
+                loadPlayerConfig();
             });
 
         // Load initial values
@@ -588,24 +640,14 @@ public:
     }
 
 private:
-    void handleConfigChange(const ConfigKey& key) {
-        spdlog::info("Player config changed: {}", key);
-
-        if (key == "player.speed") {
-            playerSpeed_ = config_->getFloatOr("player.speed", 100.0f);
-        } else if (key == "player.max_health") {
-            maxHealth_ = config_->getIntOr("player.max_health", 100);
-        } else {
-            // Other keys changed, reload all
-            loadPlayerConfig();
-        }
-    }
-
     void loadPlayerConfig() {
         playerSpeed_ = config_->getFloatOr("player.speed", 100.0f);
-        maxHealth_ = config_->getIntOr("player.max_health", 100);
-        jumpForce_ = config_->getFloatOr("player.jump_force", 500.0f);
+        maxHealth_ = config_->getIntOr("player.health.maximum", 100);
+        jumpForce_ = config_->getFloatOr("player.jump.jumpForce", 500.0f);
         // ... load other values
+
+        logInfo("Player config loaded: speed={}, health={}",
+                playerSpeed_, maxHealth_);
     }
 
     IConfigSystem* config_ = nullptr;
@@ -617,29 +659,30 @@ private:
 };
 ```
 
-### Hot Reload Workflow
+### Hot Reload Flow
 
 1. **Start game in debug mode** - Hot reload is enabled
 2. **Edit config file** - Change values in your editor
-3. **Save file** - AssetSystem detects the change via efsw
+3. **Save file** - AssetSystem detects the change
 4. **Automatic reload** - Config file is re-executed
 5. **Notifications sent** - All subscribers receive callbacks
 6. **Game updates** - Systems apply new values
 
 Example workflow:
 ```lua
--- Edit data/config/player.lua while game is running
+-- Edit config/player.lua while game is running
 return {
-    speed = 150.0,  -- Changed from 100.0
-    jump_force = 600.0  -- Changed from 500.0
+    speed = 150.0,       -- Changed from 100.0
+    jumpForce = 600.0    -- Changed from 500.0
 }
 
 -- Save file
 -- Console output:
--- [Config] Hot reload: data/config/player.lua modified, reloading
--- [Config] Loaded 2 config values from data/config/player.lua
+-- [Config] Hot reload: config/player.lua modified, reloading
+-- [Config] Loaded config from config/player.lua
 -- Player config changed: player.speed
--- Player config changed: player.jump_force
+-- Player config changed: player.jump.jumpForce
+-- Player config loaded: speed=150, health=100
 
 -- Player immediately moves faster and jumps higher in-game!
 ```
@@ -658,48 +701,32 @@ data/config/
 ├── physics.lua        # Physics constants
 ├── audio.lua          # Audio volumes
 ├── ui.lua             # UI layout values
-└── levels/
-    ├── level1.lua
-    ├── level2.lua
-    └── level3.lua
+└── input.lua          # Input mappings
 ```
 
-### 2. Use Namespaces in Flat Configs
+### 2. Use Nested Tables for Structure
 
-If you load multiple configs, use unique prefixes:
-
-```lua
--- data/config/player.lua
-return {
-    player_speed = 100.0,
-    player_health = 100,
-    player_jump = 500.0
-}
-
--- data/config/enemy.lua
-return {
-    enemy_speed = 60.0,
-    enemy_health = 50,
-    enemy_damage = 10
-}
-```
-
-Or better yet, use nested tables in a single file:
+Group related values using nested tables:
 
 ```lua
--- data/config/game.lua
+-- GOOD - Organized with nested tables
 return {
     player = {
         speed = 100.0,
         health = 100,
-        jump_force = 500.0
-    },
-
-    enemy = {
-        speed = 60.0,
-        health = 50,
-        damage = 10
+        jump = {
+            maxJumps = 2,
+            jumpForce = 800.0
+        }
     }
+}
+
+-- BAD - Flat structure with prefixes
+return {
+    playerSpeed = 100.0,
+    playerHealth = 100,
+    playerMaxJumps = 2,
+    playerJumpForce = 800.0
 }
 ```
 
@@ -708,7 +735,7 @@ return {
 Use `getXxxOr()` methods to provide safe defaults:
 
 ```cpp
-// BAD - Can return nullopt
+// BAD - Can return nullopt, requires checking
 auto speed = config->getFloat("player.speed");
 if (speed) {
     player.setSpeed(*speed);
@@ -719,27 +746,9 @@ float speed = config->getFloatOr("player.speed", 100.0f);
 player.setSpeed(speed);
 ```
 
-### 4. Validate Critical Values
+### 4. Cache Frequently-Accessed Values
 
-Check that critical config values are reasonable:
-
-```cpp
-void loadPlayerConfig() {
-    float speed = config->getFloatOr("player.speed", 100.0f);
-
-    // Validate
-    if (speed <= 0.0f || speed > 1000.0f) {
-        spdlog::warn("Invalid player speed {}, clamping to [1, 1000]", speed);
-        speed = std::clamp(speed, 1.0f, 1000.0f);
-    }
-
-    playerSpeed_ = speed;
-}
-```
-
-### 5. Cache Frequently-Accessed Values
-
-Don't call `getXxx()` every frame:
+Don't call `getXxx()` every frame - cache values and reload on change:
 
 ```cpp
 // BAD - Config lookup every frame
@@ -764,17 +773,40 @@ void onConfigChanged(const ConfigKey& key) {
 }
 ```
 
+### 5. Use Comments Extensively
+
+Lua allows comments - use them to document your config:
+
+```lua
+return {
+    -- Player Movement
+    -- All speeds are in pixels per second
+    speed = 100.0,        -- Normal walking speed
+    sprintSpeed = 200.0,  -- Sprinting speed (2x normal)
+
+    -- Jump Physics
+    jumpForce = 500.0,    -- Initial upward velocity
+    gravity = -980.0,     -- Acceleration due to gravity
+    maxFallSpeed = -1000.0, -- Terminal velocity
+
+    -- EXPERIMENTAL: Double jump mechanic
+    -- TODO: Needs playtesting
+    canDoubleJump = false,
+    doubleJumpForce = 400.0
+}
+```
+
 ### 6. Separate Config from Game Data
 
 **Config** = Simple values, constants, settings
 **Game Data** = Complex structures, blueprints, levels
 
 ```lua
--- GOOD - Config file
+-- GOOD - Config file (simple values)
 return {
-    enemy_health = 50,
-    enemy_speed = 60.0,
-    enemy_damage = 10
+    enemyHealth = 50,
+    enemySpeed = 60.0,
+    enemyDamage = 10
 }
 
 -- BAD - This should be a Blueprint, not Config
@@ -783,69 +815,93 @@ return {
         {
             type = "slime",
             position = {x = 100, y = 200},
-            patrol_path = {{0, 0}, {100, 0}, {100, 100}},
-            ai_behavior = function() ... end
+            patrolPath = {{0, 0}, {100, 0}, {100, 100}},
+            aiBehavior = function() ... end  -- Too complex for config
         }
     }
 }
 ```
 
-### 7. Use Comments Extensively
+### 7. Validate Critical Values
 
-Lua allows comments - use them!
-
-```lua
-return {
-    -- Player Movement
-    -- All speeds are in pixels per second
-    speed = 100.0,        -- Normal walking speed
-    sprint_speed = 200.0, -- Sprinting speed (2x normal)
-
-    -- Jump Physics
-    jump_force = 500.0,   -- Initial upward velocity
-    gravity = -980.0,     -- Acceleration due to gravity
-    max_fall_speed = -1000.0, -- Terminal velocity
-
-    -- EXPERIMENTAL: Double jump mechanic
-    -- TODO: Needs playtesting
-    can_double_jump = false,
-    double_jump_force = 400.0
-}
-```
-
-### 8. Version Your Config Files
-
-For games with updates/DLC, version your configs:
-
-```lua
--- data/config/game.lua
-return {
-    _config_version = "1.2.0",
-
-    -- ... config values
-}
-```
-
-Then validate:
+Check that critical config values are reasonable:
 
 ```cpp
-void loadGameConfig() {
-    config->loadConfig("data/config/game.lua");
+void loadPlayerConfig() {
+    float speed = config_->getFloatOr("player.speed", 100.0f);
 
-    auto version = config->getString("_config_version");
-    if (!version || *version != "1.2.0") {
-        spdlog::error("Config version mismatch! Expected 1.2.0, got {}",
-                     version.value_or("unknown"));
+    // Validate
+    if (speed <= 0.0f || speed > 1000.0f) {
+        logWarn("Invalid player speed {}, clamping to [1, 1000]", speed);
+        speed = std::clamp(speed, 1.0f, 1000.0f);
     }
+
+    playerSpeed_ = speed;
 }
 ```
 
 ## Code Examples
 
-### Example 1: Game Settings Config
+### Example 1: Loading Player Config
 
 ```lua
--- data/config/game.lua
+-- config/player.lua
+return {
+    moveSpeed = 400.0,
+    health = {
+        initial = 100,
+        maximum = 100
+    },
+    jump = {
+        maxJumps = 2,  -- Double jump enabled
+        jumpForce = 800.0
+    },
+    animation = {
+        runningThreshold = 10.0,
+        jumpingThreshold = -10.0
+    },
+    spawnFallback = { x = 100.0, y = 400.0 }
+}
+```
+
+```cpp
+class PlayerSystem {
+public:
+    void init(IConfigSystem* config) {
+        config_ = config;
+        config_->loadConfig("config/player.lua");
+        loadPlayerConfig();
+
+        // Subscribe to changes for hot reload
+        configSubId_ = config_->onKeyChanged("player.", [this](auto&) {
+            loadPlayerConfig();
+        });
+    }
+
+    void loadPlayerConfig() {
+        moveSpeed_ = config_->getFloatOr("moveSpeed", 400.0f);
+        maxHealth_ = config_->getIntOr("health.maximum", 100);
+        maxJumps_ = config_->getIntOr("jump.maxJumps", 2);
+        jumpForce_ = config_->getFloatOr("jump.jumpForce", 800.0f);
+
+        logInfo("Player config: speed={}, health={}, jumps={}",
+                moveSpeed_, maxHealth_, maxJumps_);
+    }
+
+private:
+    IConfigSystem* config_;
+    SubscriptionId configSubId_;
+    float moveSpeed_;
+    int maxHealth_;
+    int maxJumps_;
+    float jumpForce_;
+};
+```
+
+### Example 2: Game Settings Config
+
+```lua
+-- config/game.lua
 return {
     window = {
         title = "My Platformer",
@@ -856,211 +912,45 @@ return {
     },
 
     audio = {
-        master_volume = 1.0,
-        music_volume = 0.7,
-        sfx_volume = 0.9,
-        mute_when_unfocused = true
+        masterVolume = 1.0,
+        musicVolume = 0.7,
+        sfxVolume = 0.9
     },
 
     gameplay = {
-        difficulty = "normal", -- "easy", "normal", "hard"
-        starting_lives = 3,
-        time_limit_seconds = 300,
-        enable_powerups = true
+        difficulty = "normal",
+        startingLives = 3,
+        timeLimitSeconds = 300
     }
 }
 ```
-
-Loading in C++:
 
 ```cpp
 void Game::init() {
-    config_->loadConfig("data/config/game.lua");
+    auto& sys = engine.systems();
+    sys.config->loadConfig("config/game.lua");
 
     // Window settings
-    windowTitle_ = config_->getStringOr("window.title", "Game");
-    windowWidth_ = config_->getIntOr("window.width", 1280);
-    windowHeight_ = config_->getIntOr("window.height", 720);
+    windowTitle_ = sys.config->getStringOr("window.title", "Game");
+    windowWidth_ = sys.config->getIntOr("window.width", 1280);
+    windowHeight_ = sys.config->getIntOr("window.height", 720);
 
     // Audio settings
-    float masterVol = config_->getFloatOr("audio.master_volume", 1.0f);
-    float musicVol = config_->getFloatOr("audio.music_volume", 0.7f);
-    audio_->setMasterVolume(masterVol);
-    audio_->setMusicVolume(musicVol);
+    float masterVol = sys.config->getFloatOr("audio.masterVolume", 1.0f);
+    float musicVol = sys.config->getFloatOr("audio.musicVolume", 0.7f);
+    sys.audio->setMasterVolume(masterVol);
+    sys.audio->setMusicVolume(musicVol);
 
     // Gameplay settings
-    difficulty_ = config_->getStringOr("gameplay.difficulty", "normal");
-    startingLives_ = config_->getIntOr("gameplay.starting_lives", 3);
+    difficulty_ = sys.config->getStringOr("gameplay.difficulty", "normal");
+    startingLives_ = sys.config->getIntOr("gameplay.startingLives", 3);
 }
 ```
 
-### Example 2: Player Stats Config
+### Example 3: Generated Wave Data
 
 ```lua
--- data/config/player.lua
-local DEBUG = false
-
-return {
-    -- Movement (pixels per second)
-    walk_speed = 100.0,
-    run_speed = 200.0,
-    crouch_speed = 50.0,
-
-    -- Jump physics
-    jump_force = 500.0,
-    double_jump_enabled = true,
-    double_jump_force = 400.0,
-    wall_jump_force = 450.0,
-
-    -- Combat
-    max_health = DEBUG and 9999 or 100,
-    starting_health = 100,
-    invincibility_frames = 60, -- 1 second at 60fps
-
-    attack_damage = 25,
-    attack_range = 32.0,
-    attack_cooldown = 0.5,
-
-    -- Special abilities
-    dash_enabled = true,
-    dash_distance = 150.0,
-    dash_duration = 0.2,
-    dash_cooldown = 2.0,
-
-    -- Animation
-    idle_frames = {1, 2, 3, 4},
-    walk_frames = {5, 6, 7, 8, 9, 10},
-    jump_frame = 11,
-    fall_frame = 12,
-    attack_frames = {13, 14, 15},
-
-    frame_duration = 0.1
-}
-```
-
-Using in a player system:
-
-```cpp
-class PlayerSystem {
-public:
-    void init(IConfigSystem* config) {
-        config_ = config;
-        loadConfig();
-
-        // Subscribe to changes
-        configSubId_ = config_->onKeyChanged("", [this](const auto& key) {
-            loadConfig();
-        });
-    }
-
-    void loadConfig() {
-        // Movement
-        walkSpeed_ = config_->getFloatOr("walk_speed", 100.0f);
-        runSpeed_ = config_->getFloatOr("run_speed", 200.0f);
-
-        // Jump
-        jumpForce_ = config_->getFloatOr("jump_force", 500.0f);
-        canDoubleJump_ = config_->getBoolOr("double_jump_enabled", true);
-        doubleJumpForce_ = config_->getFloatOr("double_jump_force", 400.0f);
-
-        // Combat
-        maxHealth_ = config_->getIntOr("max_health", 100);
-        attackDamage_ = config_->getIntOr("attack_damage", 25);
-        attackCooldown_ = config_->getFloatOr("attack_cooldown", 0.5f);
-
-        // Animation
-        idleFrames_ = config_->getIntArray("idle_frames");
-        walkFrames_ = config_->getIntArray("walk_frames");
-        frameDuration_ = config_->getFloatOr("frame_duration", 0.1f);
-
-        spdlog::info("Player config loaded: speed={}, health={}", walkSpeed_, maxHealth_);
-    }
-
-private:
-    IConfigSystem* config_;
-    SubscriptionId configSubId_;
-
-    float walkSpeed_, runSpeed_;
-    float jumpForce_, doubleJumpForce_;
-    bool canDoubleJump_;
-    int maxHealth_, attackDamage_;
-    float attackCooldown_;
-    std::vector<int> idleFrames_, walkFrames_;
-    float frameDuration_;
-};
-```
-
-### Example 3: Hot Reload Setup
-
-```cpp
-class Game {
-public:
-    void init() {
-        // Enable hot reload in debug mode
-        #if defined(BESTOW_DEV_TOOLS)
-            config_->enableHotReload(true);
-            spdlog::info("Hot reload enabled");
-        #endif
-
-        // Load all configs
-        loadAllConfigs();
-
-        // Subscribe to config changes
-        configSubId_ = config_->onConfigChanged([this](const ConfigKey& key) {
-            handleConfigChange(key);
-        });
-    }
-
-    void shutdown() {
-        config_->unsubscribe(configSubId_);
-    }
-
-private:
-    void loadAllConfigs() {
-        config_->loadConfig("data/config/game.lua");
-        config_->loadConfig("data/config/player.lua");
-        config_->loadConfig("data/config/enemies.lua");
-        config_->loadConfig("data/config/physics.lua");
-
-        applyAllConfigs();
-    }
-
-    void handleConfigChange(const ConfigKey& key) {
-        spdlog::info("Config changed: {}", key);
-
-        // Determine which system needs updating
-        if (key.starts_with("player.")) {
-            playerSystem_->loadConfig();
-        } else if (key.starts_with("enemy.")) {
-            enemySystem_->loadConfig();
-        } else if (key.starts_with("physics.")) {
-            physics_->loadConfig();
-        } else {
-            // Reload everything for safety
-            applyAllConfigs();
-        }
-    }
-
-    void applyAllConfigs() {
-        playerSystem_->loadConfig();
-        enemySystem_->loadConfig();
-        physics_->loadConfig();
-        audio_->loadConfig();
-    }
-
-    IConfigSystem* config_;
-    SubscriptionId configSubId_;
-
-    std::unique_ptr<PlayerSystem> playerSystem_;
-    std::unique_ptr<EnemySystem> enemySystem_;
-    // ... other systems
-};
-```
-
-### Example 4: Generated Config Data
-
-```lua
--- data/config/waves.lua
+-- config/waves.lua
 local waves = {}
 
 -- Generate 20 waves of increasing difficulty
@@ -1068,35 +958,21 @@ for wave = 1, 20 do
     local difficulty = 1.0 + (wave * 0.15)
 
     waves[wave] = {
-        -- More enemies each wave
-        enemy_count = 5 + (wave * 2),
-
-        -- Enemies get tougher
-        health_multiplier = difficulty,
-        speed_multiplier = 1.0 + (wave * 0.05),
-        damage_multiplier = difficulty,
-
-        -- Faster spawning
-        spawn_interval = math.max(0.5, 2.0 - (wave * 0.1)),
-
-        -- Boss every 5 waves
-        has_boss = (wave % 5) == 0,
-        boss_health = 500 * difficulty,
-
-        -- Rewards scale
-        gold_reward = 100 * wave,
-        xp_reward = 50 * wave
+        enemyCount = 5 + (wave * 2),
+        healthMultiplier = difficulty,
+        speedMultiplier = 1.0 + (wave * 0.05),
+        spawnInterval = math.max(0.5, 2.0 - (wave * 0.1)),
+        hasBoss = (wave % 5) == 0,
+        goldReward = 100 * wave
     }
 end
 
 return {
     waves = waves,
-    starting_wave = 1,
-    max_waves = 20
+    startingWave = 1,
+    maxWaves = 20
 }
 ```
-
-Using in a wave manager:
 
 ```cpp
 struct WaveConfig {
@@ -1109,23 +985,23 @@ struct WaveConfig {
 
 class WaveManager {
 public:
-    void loadConfig() {
-        int waveCount = config_->getIntOr("max_waves", 10);
+    void loadConfig(IConfigSystem* config) {
+        int waveCount = config->getIntOr("maxWaves", 10);
 
         for (int i = 1; i <= waveCount; i++) {
             std::string prefix = std::format("waves.{}", i);
 
             WaveConfig wave;
-            wave.enemyCount = config_->getIntOr(prefix + ".enemy_count", 5);
-            wave.healthMultiplier = config_->getFloatOr(prefix + ".health_multiplier", 1.0f);
-            wave.spawnInterval = config_->getFloatOr(prefix + ".spawn_interval", 2.0f);
-            wave.hasBoss = config_->getBoolOr(prefix + ".has_boss", false);
-            wave.goldReward = config_->getIntOr(prefix + ".gold_reward", 100);
+            wave.enemyCount = config->getIntOr(prefix + ".enemyCount", 5);
+            wave.healthMultiplier = config->getFloatOr(prefix + ".healthMultiplier", 1.0f);
+            wave.spawnInterval = config->getFloatOr(prefix + ".spawnInterval", 2.0f);
+            wave.hasBoss = config->getBoolOr(prefix + ".hasBoss", false);
+            wave.goldReward = config->getIntOr(prefix + ".goldReward", 100);
 
             waves_.push_back(wave);
         }
 
-        spdlog::info("Loaded {} wave configurations", waves_.size());
+        logInfo("Loaded {} wave configurations", waves_.size());
     }
 
 private:
@@ -1133,87 +1009,47 @@ private:
 };
 ```
 
-## Advanced Topics
+## Integration with Other Systems
 
-### Accessing Nested Tables
+### Using ConfigSystem for Lua Parsing
 
-For deeply nested config:
+Other systems should use ConfigSystem for Lua parsing instead of creating their own `sol::state`:
 
-```lua
-return {
-    characters = {
-        player = {
-            stats = {
-                base = {
-                    strength = 10,
-                    agility = 15
-                }
-            }
+```cpp
+// Blueprint system parses Lua blueprints
+class BlueprintSystem {
+    void loadBlueprint(const std::string& path) {
+        AssetHandle asset = assets_->registerAsset(AssetType::Data, path);
+        assets_->loadAsset(asset);
+
+        // Use ConfigSystem for sandboxed Lua parsing
+        auto result = config_->parseLuaAsset(asset, "blueprint");
+        if (!result) {
+            logError("Failed to parse blueprint: {}", path);
+            return;
         }
+
+        sol::table blueprint = result->as<sol::table>();
+        // ... process blueprint
     }
-}
+
+private:
+    IConfigSystem* config_;
+    IAssetSystem* assets_;
+};
 ```
 
-Access with full path:
-```cpp
-int strength = config->getIntOr("characters.player.stats.base.strength", 10);
-```
+### Config and Hot Reload
 
-### Querying All Keys
+ConfigSystem integrates with AssetSystem for hot reload:
 
-Find all keys in a namespace:
-
-```cpp
-// Get all player-related keys
-auto playerKeys = config->getKeysWithPrefix("player.");
-
-// Results:
-// "player.speed"
-// "player.max_health"
-// "player.jump_force"
-// etc.
-
-for (const auto& key : playerKeys) {
-    spdlog::info("Player config: {}", key);
-}
-```
-
-### Using Direct Lua State (Advanced)
-
-For advanced use cases, get direct access to the sandboxed Lua state:
-
-```cpp
-sol::state* lua = config->getLuaState();
-
-// Execute custom Lua code
-lua->script(R"(
-    function double(x)
-        return x * 2
-    end
-)");
-
-// Call Lua functions
-sol::function doubleFunc = (*lua)["double"];
-int result = doubleFunc(5); // result = 10
-```
-
-Warning: The Lua state is shared - be careful not to interfere with config loading.
-
-### Config Events via EventSystem
-
-Config changes are also published to the EventSystem:
-
-```cpp
-// Subscribe via EventSystem
-eventSubId_ = events->subscribe(Events::ConfigChanged,
-    [this](const EventData& data) {
-        auto& event = std::get<ConfigEventData>(data);
-        spdlog::info("Config changed: key={}, section={}",
-                    event.key, event.section);
-    });
-```
-
-This is useful for decoupled systems that don't want a direct reference to ConfigSystem.
+1. Load config via `loadConfig()` - registers asset internally
+2. Enable hot reload - `enableHotReload(true)`
+3. Subscribe to changes - `onKeyChanged()` or `onConfigChanged()`
+4. Edit file - AssetSystem detects change
+5. Automatic reload - ConfigSystem reloads the Lua file
+6. Notifications - Your callbacks are invoked
+7. Apply changes - Your systems update their cached values
 
 ## Summary
 
@@ -1225,15 +1061,17 @@ The Config System provides a powerful, Lua-based configuration solution with:
 - Lua's full expressiveness (math, loops, conditionals)
 - Sandboxed execution for security
 - Change notifications for reactive systems
+- Unified Lua parsing for other systems
 
 **Quick Checklist:**
 
-- Load configs at startup: `config->loadConfig("data/config/game.lua")`
+- Load configs at startup: `config->loadConfig("config/game.lua")`
 - Enable hot reload in debug: `config->enableHotReload(true)`
 - Use `getXxxOr()` with defaults for safe access
 - Subscribe to changes: `config->onKeyChanged("prefix.", callback)`
 - Cache frequently-accessed values
 - Use Lua features: comments, math, variables, loops
 - Organize configs by system/feature
-
-For more examples, see the unit tests in `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/ConfigSystemTests.cpp`.
+- Validate critical values
+- Use nested tables for structure
+- Let other systems use ConfigSystem for Lua parsing

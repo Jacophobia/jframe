@@ -62,9 +62,17 @@ public:
     void invalidateSoundCache();
 
 private:
+    struct FadeOutData {
+        float targetTime = 0.0f;      // Total fade duration
+        float currentTime = 0.0f;     // Elapsed time
+        float startVolume = 1.0f;     // Volume when fade started
+        bool active = false;
+    };
+
     struct ChannelData {
         ChannelState state;
         std::string group;
+        FadeOutData fadeOut;          // Fade-out tracking
 #ifdef BESTOW_HAS_FMOD
         FMOD_CHANNEL* fmodChannel = nullptr;
 #endif

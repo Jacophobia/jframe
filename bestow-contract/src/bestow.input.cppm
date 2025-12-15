@@ -64,6 +64,45 @@ public:
     virtual bool isMouseButtonDown(int button) const = 0;
 
     //======================================================================
+    // Modifier Keys
+    //======================================================================
+
+    /// Get the current state of all modifier keys as a bitmask
+    virtual ModifierKey getModifierState() const = 0;
+
+    /// Check if a specific modifier (or combination) is currently pressed
+    virtual bool isModifierPressed(ModifierKey mod) const = 0;
+
+    /// Convenience methods for common modifier checks
+    virtual bool isShiftPressed() const = 0;
+    virtual bool isCtrlPressed() const = 0;
+    virtual bool isAltPressed() const = 0;
+    virtual bool isSuperPressed() const = 0;  // Windows/Command key
+
+    //======================================================================
+    // Direct Keyboard State
+    //======================================================================
+
+    /// Check if a specific key is currently pressed (by GLFW key code)
+    virtual bool isKeyDown(int keyCode) const = 0;
+
+    /// Check if a key was just pressed this frame
+    virtual bool wasKeyJustPressed(int keyCode) const = 0;
+
+    /// Check if a key was just released this frame
+    virtual bool wasKeyJustReleased(int keyCode) const = 0;
+
+    //======================================================================
+    // Direct Mouse Button State
+    //======================================================================
+
+    /// Check if a mouse button was just pressed this frame
+    virtual bool wasMouseButtonJustPressed(int button) const = 0;
+
+    /// Check if a mouse button was just released this frame
+    virtual bool wasMouseButtonJustReleased(int button) const = 0;
+
+    //======================================================================
     // Scroll Wheel
     //======================================================================
 

@@ -1,52 +1,69 @@
 # Game Development with Bestow Engine
 
-> **IMPORTANT: Before implementing ANY feature, consult the [Decision Runbook](engine-docs/DECISION-RUNBOOK.md).** The runbook contains decision trees for every common scenario - where code belongs, how to store data, how systems communicate, etc. Following the runbook ensures consistent, correct architectural decisions.
+> **This is your primary guide for building games with Bestow.** It covers architecture, best practices, and practical patterns for creating polished games.
 
-> **This guide teaches you how to build games with the Bestow engine from the ground up.** It covers architecture, best practices, and practical patterns for creating polished games.
+> **IMPORTANT: Always consult the [Decision Runbook](engine-docs/DECISION-RUNBOOK.md) before implementing any feature.** The runbook contains decision trees for common scenarios - where code belongs, how to store data, how systems communicate, etc.
+
+---
 
 ## Quick Start
 
 ```cpp
-// main.cpp - Minimal game setup
+// src/main.cpp - Minimal game setup
+import std;
+import bestow;
 import bestow.core;
-import bestow.services;
 
-class MyGame : public bestow::IApplication {
-public:
-    MyGame(
-        bestow::IGraphicsSystem& graphics,
-        bestow::IEntitySystem& entities,
-        bestow::IInputSystem& input
-    ) : graphics_(&graphics), entities_(&entities), input_(&input) {}
-
-    void run() override {
-        initialize();
-        while (!shouldQuit_) {
-            float dt = frameTimer_.tick();
-            handleInput();
-            update(dt);
-            render();
-        }
-    }
-
-private:
-    bestow::IGraphicsSystem* graphics_;
-    bestow::IEntitySystem* entities_;
-    bestow::IInputSystem* input_;
-    bestow::core::FrameTimer frameTimer_;
-    bool shouldQuit_ = false;
-
-    void initialize() { /* Setup game */ }
-    void handleInput() { /* Process input */ }
-    void update(float dt) { /* Update game logic */ }
-    void render() { /* Draw everything */ }
-};
+#include "Game.h"
 
 int main() {
-    bestow::core::Engine engine;
-    engine.run<MyGame>();
+    // Build the engine with the systems you need
+    auto engineResult = bestow::core::EngineBuilder()
+        .withEvents()
+        .withEntities()
+        .withPhysics()
+        .withGraphics({
+            .width = 1280,
+            .height = 720,
+            .title = "My Game",
+            .vsync = true
+        })
+        .withInput()
+        .withAssets("data")
+        .withAudio()
+        .build();
+
+    if (!engineResult) {
+        std::cerr << "Engine build failed: " << engineResult.error() << std::endl;
+        return 1;
+    }
+
+    // Run your game
+    MyGame game;
+    engineResult->run(game);
+
     return 0;
 }
+```
+
+```cpp
+// src/Game.h - Implement the Application interface
+#pragma once
+
+import bestow;
+import bestow.core;
+
+class MyGame : public bestow::core::Application {
+public:
+    bool initialize(bestow::core::Engine& engine) override;
+    void updateFixed(bestow::DeltaTime dt) override;
+    void render(float alpha) override;
+    void shutdown() override;
+
+private:
+    bestow::core::Engine* engine_ = nullptr;
+    bestow::Entity player_;
+};
 ```
 
 ---
@@ -90,15 +107,7 @@ return {
 }
 ```
 
-### 2. Data-Driven Everything
-
-**Define behavior in data, not code.** This enables:
-- Hot reload during development
-- Designer-friendly iteration
-- Mod support
-- Easier balancing
-
-### 3. Dvorak-Friendly Controls
+### 2. Dvorak-Friendly Controls
 
 **Default movement keys are `,AOE` (Dvorak WASD equivalent).**
 
@@ -119,14 +128,24 @@ return {
 }
 ```
 
-### 4. Vulkan-First Rendering
+### 3. Vulkan-First Rendering
 
-**Vulkan is the primary renderer.** OpenGL exists for:
-- Rapid prototyping
-- Fallback on older hardware
-- Simpler debugging
+**Vulkan is the primary renderer.** OpenGL exists for rapid prototyping and fallback. Always test with Vulkan before shipping.
 
-Always test with Vulkan before shipping.
+### 4. Contract-Based Architecture
+
+**All systems are accessed through interfaces (contracts).** Your game never depends on specific implementations - only on the interface contracts defined in `bestow-contract`.
+
+```cpp
+// ✅ Correct - Depend on interfaces
+IGraphicsSystem* graphics_;
+IEntitySystem* entities_;
+IPhysicsSystem* physics_;
+
+// ❌ Wrong - Never depend on implementations
+VulkanGraphicsSystem* graphics_;
+EntityManager* entities_;
+```
 
 ---
 
@@ -134,12 +153,13 @@ Always test with Vulkan before shipping.
 
 ```
 games/game1/
-├── CLAUDE.md              # This file
+├── CLAUDE.md              # This file - your primary guide
 ├── CMakeLists.txt         # Build configuration
 ├── src/
-│   ├── main.cpp           # Entry point
-│   ├── Game.cppm          # Main game class
-│   └── systems/           # Custom game systems
+│   ├── main.cpp           # Entry point with EngineBuilder
+│   ├── Game.h             # Application interface implementation
+│   ├── Game.cpp           # Game logic
+│   └── systems/           # Custom game-specific systems
 ├── data/
 │   ├── blueprints/        # Entity templates (Lua)
 │   │   ├── player.lua
@@ -163,70 +183,213 @@ games/game1/
 
 ---
 
-## The Game Loop
+## The Application Interface
 
-### Basic Structure
+Your game implements the `Application` interface to hook into the engine's game loop.
 
 ```cpp
-void Game::run() {
-    // 1. Initialize all systems
-    initialize();
+class Application {
+public:
+    virtual ~Application() = default;
+    virtual bool initialize(Engine& engine) = 0;
+    virtual void updateFixed(DeltaTime dt) = 0;
+    virtual void render(float alpha) = 0;
+    virtual void shutdown() = 0;
+};
+```
 
-    // 2. Load initial assets
-    loadAssets();
+### initialize(Engine& engine)
 
-    // 3. Load first level
-    loadLevel("levels/level1.lua");
+Called once before the game loop starts.
 
-    // 4. Main loop
-    while (!shouldQuit_) {
-        float dt = frameTimer_.tick();
+**Returns:** `true` on success, `false` to abort startup.
 
-        // Fixed timestep for physics
-        accumulator_ += dt;
-        while (accumulator_ >= FIXED_DT) {
-            fixedUpdate(FIXED_DT);
-            accumulator_ -= FIXED_DT;
-        }
+```cpp
+bool MyGame::initialize(bestow::core::Engine& engine) {
+    engine_ = &engine;
+    auto& sys = engine.systems();
 
-        // Variable timestep for everything else
-        handleInput();
-        update(dt);
-        render();
+    // Load initial assets
+    playerTexture_ = sys.assets->registerAsset(
+        AssetType::Texture, "textures/player.png"
+    );
+    sys.assets->loadAsset(playerTexture_);
 
-        // Process async operations
-        assets_->update();
-        events_->processDeferred();
-    }
+    // Create player entity
+    player_ = sys.entities->createEntity();
+    sys.physics->createBody(player_, {
+        .type = BodyType::Dynamic,
+        .transform = {.x = 100, .y = 200},
+        .size = {32, 48}
+    });
 
-    // 5. Cleanup
-    shutdown();
+    // Load first level
+    sys.levels->loadLevel("levels/level1.lua");
+
+    return true;
 }
 ```
 
-### Fixed vs Variable Timestep
+### updateFixed(DeltaTime dt)
 
-| Fixed Timestep (fixedUpdate) | Variable Timestep (update) |
-|------------------------------|---------------------------|
-| Physics simulation | Input handling |
-| Collision detection | Animation |
-| Deterministic game logic | Camera movement |
-| Networking | UI updates |
+Called at a fixed timestep (typically 60Hz) for deterministic simulation.
+
+**Use for:** Physics, AI, game logic, animations
 
 ```cpp
-static constexpr float FIXED_DT = 1.0f / 60.0f;  // 60 Hz physics
+void MyGame::updateFixed(DeltaTime dt) {
+    auto& sys = engine_->systems();
 
-void Game::fixedUpdate(float dt) {
-    physics_->step(dt);
-    // Other deterministic systems...
-}
+    // Handle input
+    handleInput(sys);
 
-void Game::update(float dt) {
-    camera_->update(dt);
-    animations_->update(dt);
-    // Other variable systems...
+    // Update systems
+    sys.physics->update(dt);
+    sys.ai->update(dt);
+    sys.audio->update(dt);
+
+    // Process events
+    sys.events->processQueue();
 }
 ```
+
+### render(float alpha)
+
+Called as fast as possible for smooth rendering.
+
+**Parameters:**
+- `alpha`: Interpolation factor between previous and current physics state (0.0-1.0)
+
+```cpp
+void MyGame::render(float alpha) {
+    auto& sys = engine_->systems();
+
+    sys.graphics->beginFrame();
+
+    // Render game entities
+    sys.graphics->renderEntities(*sys.entities);
+
+    // Render UI on top
+    ui_->render();
+
+    sys.graphics->endFrame();
+}
+```
+
+### shutdown()
+
+Called once after the game loop exits.
+
+```cpp
+void MyGame::shutdown() {
+    // Save game state
+    saveProgress();
+
+    // Cleanup resources
+    ui_.reset();
+}
+```
+
+---
+
+## Available Systems
+
+Access all systems through `engine.systems()`:
+
+```cpp
+auto& sys = engine.systems();
+
+// All 19 system interfaces:
+sys.events      // IEventSystem - Pub/sub messaging
+sys.assets      // IAssetSystem - File loading and hot reload
+sys.entities    // IEntitySystem - ECS with EnTT
+sys.graphics    // IGraphicsSystem - 2D rendering
+sys.graphics3d  // IGraphics3DSystem - 3D rendering
+sys.audio       // IAudioSystem - FMOD audio
+sys.input       // IInputSystem - Action mapping
+sys.physics     // IPhysicsSystem - 2D Box2D
+sys.physics3d   // IPhysics3DSystem - 3D Jolt
+sys.levels      // ILevelSystem - Lua level loading
+sys.save        // ISaveSystem - Binary saves
+sys.config      // IConfigSystem - Lua config parsing
+sys.camera      // ICameraSystem - Camera control
+sys.shader      // IShaderSystem - Shader management
+sys.ai          // IAISystem - Behavior trees, pathfinding
+sys.ui          // IUISystem - RmlUi interface
+sys.gas         // IGASSystem - Gameplay Ability System
+sys.gamestate   // IGameStateSystem - State machine
+sys.blueprints  // IBlueprintFactory - Entity templates
+```
+
+**Note:** Only systems you enabled with `EngineBuilder` will be non-null.
+
+---
+
+## EngineBuilder Configuration
+
+The `EngineBuilder` provides a fluent interface to configure your engine:
+
+```cpp
+auto engineResult = EngineBuilder()
+    // Core systems (no dependencies)
+    .withEvents()
+    .withEntities()
+    .withAssets("data")  // Base path for assets
+
+    // Graphics and input (input requires graphics)
+    .withGraphics({
+        .width = 1280,
+        .height = 720,
+        .title = "My Game",
+        .vsync = true,
+        .clearColor = Color{26, 26, 26, 255}
+    })
+    .withInput()
+    .withCamera({.width = 1280, .height = 720})
+
+    // Physics
+    .withPhysics()      // 2D Box2D
+    // .withPhysics3D() // 3D Jolt (alternative)
+
+    // Audio
+    .withAudio()
+
+    // High-level systems (require other systems)
+    .withLevel()        // Requires assets
+    .withBlueprints()   // Requires entities
+    .withAI()           // Requires physics (for line-of-sight)
+    .withGAS()          // Gameplay Ability System
+    .withSave("saves")  // Binary save files
+
+    // Build and validate
+    .build();
+
+if (!engineResult) {
+    std::cerr << "Build failed: " << engineResult.error() << std::endl;
+    return 1;
+}
+
+auto engine = std::move(*engineResult);
+```
+
+### System Dependencies
+
+The builder enforces dependency order:
+
+| System | Requires | Recommends |
+|--------|----------|------------|
+| Events | None | |
+| Assets | None | |
+| Entities | None | |
+| Graphics | None | |
+| Input | Graphics (window) | |
+| Physics | None | |
+| Audio | None | Assets |
+| Level | Assets | |
+| Blueprints | Entities | Physics |
+| AI | None | Physics, Assets |
+| Camera | None | |
+| GAS | None | |
 
 ---
 
@@ -237,7 +400,7 @@ Bestow uses EnTT for its ECS. **Think in components, not objects.**
 ### Components Are Data
 
 ```cpp
-// Good - Pure data
+// Pure data structures
 struct Transform2D {
     float x = 0, y = 0;
     float rotation = 0;
@@ -256,12 +419,27 @@ struct Health {
 struct PlayerTag {};  // Empty tag component
 ```
 
-### Systems Are Logic
+### Creating Entities
+
+```cpp
+// From code
+Entity player = sys.entities->createEntity();
+sys.entities->emplace<Transform2D>(player, 100.0f, 200.0f);
+sys.entities->emplace<Velocity>(player);
+sys.entities->emplace<Health>(player, 100, 100);
+
+// From blueprint (preferred - Lua-driven)
+Entity player = sys.blueprints->createEntity("player");
+```
+
+### Iterating Entities
 
 ```cpp
 void MovementSystem::update(float dt) {
-    // Iterate all entities with Transform2D AND Velocity
-    auto view = entities_->view<Transform2D, Velocity>();
+    auto& sys = engine_->systems();
+
+    // Get all entities with Transform2D AND Velocity
+    auto view = sys.entities->view<Transform2D, Velocity>();
 
     for (auto entity : view) {
         auto& transform = view.get<Transform2D>(entity);
@@ -271,20 +449,6 @@ void MovementSystem::update(float dt) {
         transform.y += velocity.y * dt;
     }
 }
-```
-
-### Entity Creation
-
-```cpp
-// From code
-Entity player = entities_->createEntity();
-entities_->emplace<Transform2D>(player, 100.0f, 200.0f);
-entities_->emplace<Velocity>(player);
-entities_->emplace<Health>(player, 100, 100);
-entities_->emplace<PlayerTag>(player);
-
-// From blueprint (preferred)
-Entity player = blueprints_->createEntity("player");
 ```
 
 ### Best Practices
@@ -301,29 +465,31 @@ Entity player = blueprints_->createEntity("player");
 ### Polling Input State
 
 ```cpp
-void Game::handleInput() {
+void handleInput() {
+    auto& sys = engine_->systems();
+
     // Keyboard - Use ,AOE for Dvorak movement
-    if (input_->isKeyHeld(Key::Comma)) {  // Up (Dvorak W)
+    if (sys.input->isKeyHeld(Key::Comma)) {  // Up (Dvorak W)
         moveUp();
     }
-    if (input_->isKeyHeld(Key::A)) {      // Left
+    if (sys.input->isKeyHeld(Key::A)) {      // Left
         moveLeft();
     }
-    if (input_->isKeyHeld(Key::O)) {      // Down (Dvorak S)
+    if (sys.input->isKeyHeld(Key::O)) {      // Down (Dvorak S)
         moveDown();
     }
-    if (input_->isKeyHeld(Key::E)) {      // Right (Dvorak D)
+    if (sys.input->isKeyHeld(Key::E)) {      // Right (Dvorak D)
         moveRight();
     }
 
     // Single press detection
-    if (input_->isKeyJustPressed(Key::Space)) {
+    if (sys.input->isKeyJustPressed(Key::Space)) {
         jump();
     }
 
     // Mouse
-    auto [mx, my] = input_->getMousePosition();
-    if (input_->isMouseButtonJustPressed(MouseButton::Left)) {
+    auto [mx, my] = sys.input->getMousePosition();
+    if (sys.input->isMouseButtonJustPressed(MouseButton::Left)) {
         shoot(mx, my);
     }
 }
@@ -332,32 +498,44 @@ void Game::handleInput() {
 ### Action Mapping (Recommended)
 
 ```cpp
-// Define actions once
-input_->bindAction("move_up", Key::Comma);     // Dvorak
-input_->bindAction("move_up", Key::W);         // QWERTY fallback
-input_->bindAction("jump", Key::Space);
-input_->bindAction("jump", GamepadButton::A);  // Controller support
+// Define actions once in initialize()
+sys.input->registerMapping({
+    .binding = {
+        .deviceType = InputDeviceType::Keyboard,
+        .keyCode = 44,  // Comma key (Dvorak W)
+        .scale = 1.0f
+    },
+    .action = "move_up"
+});
+
+sys.input->registerMapping({
+    .binding = {
+        .deviceType = InputDeviceType::Gamepad,
+        .buttonCode = 0,  // A button
+    },
+    .action = "jump"
+});
 
 // Use actions everywhere
-if (input_->isActionHeld("move_up")) {
-    moveUp();
-}
-if (input_->isActionJustPressed("jump")) {
+if (sys.input->wasActionJustPressed("jump")) {
     jump();
 }
+
+float moveX = sys.input->getActionValue("move_right") -
+              sys.input->getActionValue("move_left");
 ```
 
 ### Gamepad Support
 
 ```cpp
 // Check for connected controllers
-if (input_->hasGamepad(0)) {
+if (sys.input->hasGamepad(0)) {
     // Analog stick with deadzone
-    float horizontal = input_->getAxis(0, GamepadAxis::LeftX);
-    float vertical = input_->getAxis(0, GamepadAxis::LeftY);
+    float horizontal = sys.input->getAxisValue(0, GamepadAxis::LeftX);
+    float vertical = sys.input->getAxisValue(0, GamepadAxis::LeftY);
 
     if (std::abs(horizontal) > 0.2f) {  // Deadzone
-        move(horizontal, 0);
+        movePlayer(horizontal);
     }
 }
 ```
@@ -373,12 +551,10 @@ if (input_->hasGamepad(0)) {
 PhysicsBodyDef def{
     .type = BodyType::Dynamic,
     .transform = { .x = 100, .y = 200 },
+    .size = { 32, 48 },
     .fixedRotation = true  // Prevent rotation (platformers)
 };
-physics_->createBody(entity, def);
-
-// Add collision shape
-physics_->addBoxShape(entity, 32, 48);  // width, height
+sys.physics->createBody(entity, def);
 ```
 
 ### From Blueprints (Preferred)
@@ -405,18 +581,18 @@ return {
 
 ```cpp
 // Subscribe to collision events
-events_->subscribe(Events::CollisionBegin, [this](const EventData& data) {
+sys.events->subscribe(Events::CollisionBegin, [this](const EventData& data) {
     auto& collision = std::get<CollisionEvent>(data);
 
     Entity a = collision.entityA;
     Entity b = collision.entityB;
 
     // Check what collided
-    if (entities_->has<PlayerTag>(a) && entities_->has<EnemyTag>(b)) {
+    if (sys.entities->has<PlayerTag>(a) && sys.entities->has<EnemyTag>(b)) {
         onPlayerHitEnemy(a, b);
     }
 
-    if (entities_->has<PlayerTag>(a) && entities_->has<CoinTag>(b)) {
+    if (sys.entities->has<PlayerTag>(a) && sys.entities->has<CoinTag>(b)) {
         collectCoin(b);
     }
 });
@@ -426,10 +602,10 @@ events_->subscribe(Events::CollisionBegin, [this](const EventData& data) {
 
 ```cpp
 // Check ground beneath player
-auto result = physics_->raycast(
-    playerPos,                    // Start
-    {playerPos.x, playerPos.y + 50},  // End (downward)
-    CollisionMask::Ground         // What to hit
+auto result = sys.physics->raycast(
+    playerPos,                          // Start
+    {playerPos.x, playerPos.y + 50},    // End (downward)
+    CollisionMask::Ground               // What to hit
 );
 
 if (result.hit && result.distance < 5.0f) {
@@ -441,21 +617,40 @@ if (result.hit && result.distance < 5.0f) {
 
 ## Asset Management
 
+### The AssetSystem Rule
+
+**ALL file system interactions MUST go through AssetSystem.** Never directly read files from other systems.
+
+```cpp
+// ❌ WRONG - Direct file I/O
+std::ifstream file("data/config.lua");
+
+// ✅ CORRECT - Through AssetSystem
+AssetHandle config = sys.assets->registerAsset(AssetType::Data, "config.lua");
+sys.assets->loadAsset(config);
+```
+
 ### Loading Assets
 
 ```cpp
-void Game::loadAssets() {
+void loadAssets() {
+    auto& sys = engine_->systems();
+
     // Register assets (doesn't load yet)
-    playerTexture_ = assets_->registerAsset(AssetType::Texture, "textures/player.png");
-    jumpSound_ = assets_->registerAsset(AssetType::Sound, "audio/sfx/jump.ogg");
+    playerTexture_ = sys.assets->registerAsset(
+        AssetType::Texture, "textures/player.png"
+    );
+    jumpSound_ = sys.assets->registerAsset(
+        AssetType::Sound, "audio/sfx/jump.ogg"
+    );
 
     // Load synchronously (blocking)
-    assets_->loadAsset(playerTexture_);
+    sys.assets->loadAsset(playerTexture_);
 
-    // Load asynchronously (non-blocking)
-    assets_->loadAssetAsync(jumpSound_, [this](AssetHandle h, AssetState state) {
+    // Load asynchronously (non-blocking, preferred)
+    sys.assets->loadAssetAsync(jumpSound_, [](AssetHandle h, AssetState state) {
         if (state == AssetState::Loaded) {
-            spdlog::info("Jump sound loaded!");
+            logInfo("Jump sound loaded!");
         }
     });
 }
@@ -464,20 +659,24 @@ void Game::loadAssets() {
 ### Hot Reload
 
 ```cpp
-void Game::initialize() {
+void initialize() {
+    auto& sys = engine_->systems();
+
     // Enable hot reload in debug builds
-    assets_->enableHotReload(true);
+    sys.assets->enableHotReload(true);
 
     // Subscribe to texture changes
-    assets_->subscribeToType(AssetType::Texture, [this](AssetHandle h, AssetType) {
-        spdlog::info("Texture reloaded, refreshing sprites...");
-        refreshSprites();
-    });
+    sys.assets->subscribeToType(AssetType::Texture,
+        [this](AssetHandle h, AssetType) {
+            logInfo("Texture reloaded, refreshing sprites...");
+            refreshSprites();
+        }
+    );
 }
 
-void Game::update(float dt) {
+void updateFixed(DeltaTime dt) {
     // Process hot reload notifications
-    assets_->update();
+    sys.assets->update();
 }
 ```
 
@@ -491,8 +690,8 @@ void Game::update(float dt) {
 
 ```cpp
 // These are equivalent:
-assets_->registerAsset(AssetType::Texture, ":assets:/textures/player.png");
-assets_->registerAsset(AssetType::Texture, "data/textures/player.png");
+sys.assets->registerAsset(AssetType::Texture, ":assets:/textures/player.png");
+sys.assets->registerAsset(AssetType::Texture, "data/textures/player.png");
 ```
 
 ---
@@ -529,7 +728,6 @@ return {
         -- Coins
         { type = "coin", x = 200, y = 400 },
         { type = "coin", x = 250, y = 400 },
-        { type = "coin", x = 300, y = 400 },
     }
 }
 
@@ -551,43 +749,31 @@ end
 ### Loading Levels
 
 ```cpp
-void Game::loadLevel(const std::string& path) {
+void loadLevel(const std::string& path) {
+    auto& sys = engine_->systems();
+
     // Unload current level
     if (currentLevel_) {
-        level_->unloadLevel(*currentLevel_);
+        sys.levels->unloadLevel(currentLevel_);
     }
 
     // Load level asset
-    AssetHandle levelAsset = assets_->registerAsset(AssetType::Data, path);
-    assets_->loadAsset(levelAsset);
+    AssetHandle levelAsset = sys.assets->registerAsset(
+        AssetType::Level, path
+    );
+    sys.assets->loadAsset(levelAsset);
 
-    // Parse level
-    auto result = level_->loadLevel(levelAsset);
+    // Parse and activate level
+    auto result = sys.levels->loadLevel(levelAsset);
     if (!result) {
-        spdlog::error("Failed to load level: {}", path);
+        logError("Failed to load level: " + path);
         return;
     }
 
     currentLevel_ = *result;
-    level_->setActiveLevel(currentLevel_);
-
-    // Spawn entities from definitions
-    for (const auto& def : level_->getEntityDefs(currentLevel_)) {
-        Entity e = blueprints_->createEntity(def.type);
-
-        // Apply transform from level
-        if (entities_->has<Transform2D>(e)) {
-            auto& t = entities_->get<Transform2D>(e);
-            t.x = def.transform.x;
-            t.y = def.transform.y;
-        }
-
-        // Apply custom properties
-        applyEntityProperties(e, def.properties);
-    }
 
     // Spawn player at spawn point
-    auto spawnPos = level_->getSpawnPoint(currentLevel_, "player");
+    auto spawnPos = sys.levels->getSpawnPoint(currentLevel_, "player");
     if (spawnPos) {
         spawnPlayer(spawnPos->x, spawnPos->y);
     }
@@ -622,37 +808,19 @@ return {
     health = 150,  -- Override
     speed = 200,   -- New property
 }
-
--- data/blueprints/enemies/slime.lua
-return {
-    extends = "_base/character",
-
-    sprite = {
-        texture = "textures/enemies/slime.png",
-        width = 24, height = 24
-    },
-
-    health = 30,   -- Override
-    damage = 10,   -- New property
-
-    ai = {
-        behavior = "patrol",
-        speed = 50
-    }
-}
 ```
 
 ### Creating Entities from Blueprints
 
 ```cpp
 // Simple creation
-Entity player = blueprints_->createEntity("player");
+Entity player = sys.blueprints->createEntity("player");
 
 // With position
-Entity enemy = blueprints_->createEntityAt("enemies/slime", 500, 300);
+Entity enemy = sys.blueprints->createEntityAt("enemies/slime", 500, 300);
 
 // With property overrides
-Entity boss = blueprints_->createEntity("enemies/slime", {
+Entity boss = sys.blueprints->createEntity("enemies/slime", {
     {"health", 300},
     {"scale", 2.0f},
     {"isBoss", true}
@@ -667,46 +835,28 @@ Entity boss = blueprints_->createEntity("enemies/slime", {
 
 ```cpp
 // One-shot sound effect
-audio_->playSound("audio/sfx/jump.ogg");
+sys.audio->playSound("audio/sfx/jump.ogg");
 
 // With volume
-audio_->playSound("audio/sfx/coin.ogg", 0.8f);
+sys.audio->playSound("audio/sfx/coin.ogg", 0.8f);
 
 // Background music (loops by default)
-audio_->playMusic("audio/music/level1.ogg");
+sys.audio->playMusic("audio/music/level1.ogg");
 
 // Control music
-audio_->setMusicVolume(0.5f);
-audio_->pauseMusic();
-audio_->resumeMusic();
+sys.audio->setMusicVolume(0.5f);
+sys.audio->pauseMusic();
+sys.audio->resumeMusic();
 ```
 
 ### Spatial Audio
 
 ```cpp
 // Set listener position (usually camera or player)
-audio_->setListenerPosition(playerPos.x, playerPos.y);
+sys.audio->setListenerPosition(playerPos.x, playerPos.y);
 
 // Play sound at position
-audio_->playSoundAt("audio/sfx/explosion.ogg", enemyPos.x, enemyPos.y);
-```
-
-### Audio Configuration
-
-```lua
--- data/config/audio.lua
-return {
-    master_volume = 1.0,
-    music_volume = 0.7,
-    sfx_volume = 1.0,
-
-    -- Preload frequently used sounds
-    preload = {
-        "audio/sfx/jump.ogg",
-        "audio/sfx/coin.ogg",
-        "audio/sfx/hit.ogg"
-    }
-}
+sys.audio->playSoundAt("audio/sfx/explosion.ogg", enemyPos.x, enemyPos.y);
 ```
 
 ---
@@ -716,24 +866,26 @@ return {
 ### Basic Camera Control
 
 ```cpp
-void Game::updateCamera(float dt) {
+void updateCamera(float dt) {
+    auto& sys = engine_->systems();
+
     // Follow player with smoothing
     if (player_) {
-        auto& playerPos = entities_->get<Transform2D>(player_);
-        camera_->follow(playerPos.x, playerPos.y, 5.0f * dt);  // Lerp factor
+        auto& playerPos = sys.entities->get<Transform2D>(player_);
+        sys.camera->follow(playerPos.x, playerPos.y, 5.0f * dt);
     }
 
     // Clamp to level bounds
-    auto bounds = level_->getLevelBounds(currentLevel_);
-    camera_->clampToBounds(bounds);
+    auto bounds = sys.levels->getLevelBounds(currentLevel_);
+    sys.camera->clampToBounds(bounds);
 }
 ```
 
 ### Screen Shake
 
 ```cpp
-void Game::onPlayerDamaged() {
-    camera_->shake(0.3f, 10.0f);  // Duration, intensity
+void onPlayerDamaged() {
+    sys.camera->shake(0.3f, 10.0f);  // Duration, intensity
 }
 ```
 
@@ -741,10 +893,10 @@ void Game::onPlayerDamaged() {
 
 ```cpp
 // Screen to world (for mouse interaction)
-auto [worldX, worldY] = camera_->screenToWorld(mouseX, mouseY);
+auto [worldX, worldY] = sys.camera->screenToWorld(mouseX, mouseY);
 
 // World to screen (for UI positioning)
-auto [screenX, screenY] = camera_->worldToScreen(entityX, entityY);
+auto [screenX, screenY] = sys.camera->worldToScreen(entityX, entityY);
 ```
 
 ---
@@ -754,15 +906,17 @@ auto [screenX, screenY] = camera_->worldToScreen(entityX, entityY);
 ### Subscribing to Events
 
 ```cpp
-void Game::initialize() {
+void initialize() {
+    auto& sys = engine_->systems();
+
     // Built-in events
-    events_->subscribe(Events::CollisionBegin, [this](const EventData& d) {
+    sys.events->subscribe(Events::CollisionBegin, [this](const EventData& d) {
         handleCollision(std::get<CollisionEvent>(d));
     });
 
-    events_->subscribe(Events::AssetLoaded, [this](const EventData& d) {
+    sys.events->subscribe(Events::AssetLoaded, [this](const EventData& d) {
         auto& e = std::get<AssetLoadedEvent>(d);
-        spdlog::info("Asset loaded: {}", e.path);
+        logInfo("Asset loaded: " + e.path);
     });
 }
 ```
@@ -774,7 +928,6 @@ void Game::initialize() {
 namespace GameEvents {
     constexpr EventType PlayerDied = 1000;
     constexpr EventType ScoreChanged = 1001;
-    constexpr EventType LevelCompleted = 1002;
 }
 
 struct ScoreChangedEvent {
@@ -783,18 +936,18 @@ struct ScoreChangedEvent {
 };
 
 // Emit custom events
-void Game::addScore(int points) {
+void addScore(int points) {
     int oldScore = score_;
     score_ += points;
 
-    events_->emit(GameEvents::ScoreChanged, ScoreChangedEvent{
+    sys.events->emit(GameEvents::ScoreChanged, ScoreChangedEvent{
         .oldScore = oldScore,
         .newScore = score_
     });
 }
 
 // Subscribe to custom events
-events_->subscribe(GameEvents::ScoreChanged, [this](const EventData& d) {
+sys.events->subscribe(GameEvents::ScoreChanged, [this](const EventData& d) {
     auto& e = std::get<ScoreChangedEvent>(d);
     ui_->updateScoreDisplay(e.newScore);
 });
@@ -821,21 +974,21 @@ struct SaveData {
     }
 };
 
-void Game::saveGame(int slot) {
+void saveGame(int slot) {
     SaveData data{
         .level = currentLevelIndex_,
         .score = score_,
-        .health = entities_->get<Health>(player_).current,
-        .playerX = entities_->get<Transform2D>(player_).x,
-        .playerY = entities_->get<Transform2D>(player_).y,
+        .health = sys.entities->get<Health>(player_).current,
+        .playerX = sys.entities->get<Transform2D>(player_).x,
+        .playerY = sys.entities->get<Transform2D>(player_).y,
         .collectedItems = inventory_
     };
 
-    save_->save(slot, data);
+    sys.save->save(slot, data);
 }
 
-void Game::loadGame(int slot) {
-    auto result = save_->load<SaveData>(slot);
+void loadGame(int slot) {
+    auto result = sys.save->load<SaveData>(slot);
     if (result) {
         loadLevel(result->level);
         score_ = result->score;
@@ -844,84 +997,31 @@ void Game::loadGame(int slot) {
 }
 ```
 
-### Auto-Save
-
-```cpp
-void Game::onCheckpointReached() {
-    saveGame(0);  // Slot 0 = auto-save
-}
-```
-
 ---
 
-## UI System
-
-### Loading UI Documents
-
-```cpp
-void Game::initializeUI() {
-    // Load main menu
-    mainMenu_ = ui_->loadDocument("ui/main_menu.rml");
-
-    // Load HUD
-    hud_ = ui_->loadDocument("ui/hud.rml");
-    ui_->showDocument(hud_);
-}
-```
-
-### RML Document Example
-
-```html
-<!-- data/ui/hud.rml -->
-<rml>
-<head>
-    <link type="text/rcss" href="styles/hud.rcss"/>
-</head>
-<body>
-    <div id="health-bar">
-        <div id="health-fill" style="width: 100%;"/>
-    </div>
-    <div id="score">Score: <span id="score-value">0</span></div>
-</body>
-</rml>
-```
-
-### Updating UI
-
-```cpp
-void Game::updateHUD() {
-    // Update health bar
-    float healthPercent = (float)health_ / maxHealth_ * 100;
-    ui_->setProperty(hud_, "#health-fill", "width",
-                     std::to_string(healthPercent) + "%");
-
-    // Update score
-    ui_->setInnerText(hud_, "#score-value", std::to_string(score_));
-}
-```
-
----
-
-## Best Practices Summary
+## Best Practices
 
 ### Do's
 
-1. **Use blueprints for entities** - Define in Lua, spawn from C++
-2. **Use action mapping for input** - Don't hardcode keys
-3. **Use events for decoupling** - Systems shouldn't know about each other
-4. **Use fixed timestep for physics** - Deterministic simulation
-5. **Use async loading** - Don't block the main thread
-6. **Enable hot reload** - Faster iteration
-7. **Use ,AOE for movement** - Dvorak-friendly defaults
+1. **Use EngineBuilder** - Declarative system configuration
+2. **Use blueprints for entities** - Define in Lua, spawn from C++
+3. **Use action mapping for input** - Don't hardcode keys
+4. **Use events for decoupling** - Systems shouldn't know about each other
+5. **Use fixed timestep for physics** - Deterministic simulation
+6. **Use async loading** - Don't block the main thread
+7. **Enable hot reload** - Faster iteration
+8. **Use ,AOE for movement** - Dvorak-friendly defaults
+9. **Access systems through engine.systems()** - Never store raw system pointers
 
 ### Don'ts
 
 1. **Don't read files directly** - Always use AssetSystem
-2. **Don't create deep inheritance** - Use composition
-3. **Don't poll every frame unnecessarily** - Use events
-4. **Don't hardcode values** - Put them in Lua config
-5. **Don't ignore the fixed timestep** - Physics needs it
-6. **Don't forget cleanup** - Unsubscribe, unload, destroy
+2. **Don't depend on implementations** - Only use interface contracts
+3. **Don't create deep inheritance** - Use composition
+4. **Don't poll every frame unnecessarily** - Use events
+5. **Don't hardcode values** - Put them in Lua config
+6. **Don't ignore the fixed timestep** - Physics needs it
+7. **Don't forget cleanup** - Unsubscribe, unload, destroy
 
 ---
 
@@ -931,7 +1031,7 @@ Detailed guides for each engine system are in `engine-docs/`:
 
 - [Entity System](engine-docs/ENTITY-SYSTEM.md) - ECS architecture
 - [Graphics System](engine-docs/GRAPHICS-SYSTEM.md) - Rendering (Vulkan/OpenGL)
-- [Physics System](engine-docs/PHYSICS-SYSTEM.md) - Box2D/Jolt integration
+- [Physics System](engine-docs/PHYSICS-SYSTEM.md) - Box2D integration
 - [Audio System](engine-docs/AUDIO-SYSTEM.md) - FMOD audio
 - [Input System](engine-docs/INPUT-SYSTEM.md) - Keyboard/mouse/gamepad
 - [Asset System](engine-docs/ASSET-SYSTEM.md) - Asset loading and hot reload
@@ -944,6 +1044,7 @@ Detailed guides for each engine system are in `engine-docs/`:
 - [Save System](engine-docs/SAVE-SYSTEM.md) - Game saves
 - [UI System](engine-docs/UI-SYSTEM.md) - RmlUi interface
 - [GAS System](engine-docs/GAS-SYSTEM.md) - Gameplay abilities
+- [Decision Runbook](engine-docs/DECISION-RUNBOOK.md) - When to use what
 
 ---
 
@@ -959,33 +1060,38 @@ Detailed guides for each engine system are in `engine-docs/`:
 **"Entity has no component"**
 - Verify blueprint includes the component
 - Check inheritance chain
-- Use `entities_->has<T>()` before `get<T>()`
+- Use `sys.entities->has<T>()` before `get<T>()`
 
 **"Physics bodies not colliding"**
 - Check collision masks/categories
 - Verify both bodies have shapes attached
-- Ensure physics step is being called
+- Ensure physics step is being called in updateFixed()
 
 **"Hot reload not working"**
-- Call `assets_->enableHotReload(true)`
-- Call `assets_->update()` every frame
+- Call `sys.assets->enableHotReload(true)`
+- Call `sys.assets->update()` every frame
 - Check file watcher is running (efsw)
 
 **"Input not responding"**
 - Check correct key codes (Dvorak vs QWERTY)
-- Verify input system is being updated
+- Verify input system is enabled in EngineBuilder
 - Check window has focus
+
+**"System pointer is null"**
+- Ensure you enabled the system with EngineBuilder (e.g., `.withPhysics()`)
+- Check for null before accessing: `if (sys.physics) { ... }`
 
 ---
 
 ## Performance Tips
 
-1. **Profile with Tracy** - `BESTOW_ENABLE_TRACY=ON`
+1. **Profile with Tracy** - Build with `BESTOW_ENABLE_TRACY=ON`
 2. **Batch draw calls** - Use sprite batching
-3. **Pool frequently created entities** - Avoid allocation
+3. **Pool frequently created entities** - Avoid allocation churn
 4. **Use async asset loading** - Don't block main thread
 5. **Minimize component iteration** - Cache views when possible
 6. **Use spatial partitioning** - For large entity counts
+7. **Use fixed timestep properly** - Physics in updateFixed(), rendering in render()
 
 ---
 

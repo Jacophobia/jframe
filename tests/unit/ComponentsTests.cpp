@@ -672,8 +672,23 @@ public:
     Vec2 getMousePosition() const override { return {0, 0}; }
     Vec2 getMouseDelta() const override { return {0, 0}; }
     bool isMouseButtonDown(int button) const override { return false; }
+    bool wasMouseButtonJustPressed(int button) const override { return false; }
+    bool wasMouseButtonJustReleased(int button) const override { return false; }
 
     Vec2 getScrollDelta() const override { return Vec2{0.0f, 0.0f}; }
+
+    // Modifier key queries
+    ModifierKey getModifierState() const override { return ModifierKey::None; }
+    bool isModifierPressed(ModifierKey mod) const override { return false; }
+    bool isShiftPressed() const override { return false; }
+    bool isCtrlPressed() const override { return false; }
+    bool isAltPressed() const override { return false; }
+    bool isSuperPressed() const override { return false; }
+
+    // Direct keyboard state queries
+    bool isKeyDown(int keyCode) const override { return false; }
+    bool wasKeyJustPressed(int keyCode) const override { return false; }
+    bool wasKeyJustReleased(int keyCode) const override { return false; }
 
     void enableTextInput() override {}
     void disableTextInput() override {}

@@ -1,9 +1,8 @@
 # Bestow Save System Guide
 
-**Version:** 1.0
+**Version:** 2.0
 **Module:** `bestow.save`
 **Interface:** `ISaveSystem`
-**Implementation:** `SaveSystem`
 
 ## Table of Contents
 
@@ -13,121 +12,47 @@
 4. [API Reference](#api-reference)
 5. [Serialization Guide](#serialization-guide)
 6. [Profile Management](#profile-management)
-7. [Versioning and Migration](#versioning-and-migration)
-8. [Best Practices](#best-practices)
-9. [Advanced Usage](#advanced-usage)
-10. [Error Handling](#error-handling)
-11. [File Format Details](#file-format-details)
+7. [Best Practices](#best-practices)
+8. [Error Handling](#error-handling)
+9. [Complete Examples](#complete-examples)
 
 ---
 
 ## Overview
 
-The Bestow Save System provides a robust, binary-based save/load mechanism for game state persistence. It uses **cereal** for binary serialization and **JSON** for metadata, offering fast, compact saves with rich metadata support.
+The Bestow Save System provides a robust save/load mechanism for game state persistence. It uses abstract archive interfaces (`ISaveArchive` and `ILoadArchive`) for serialization, allowing game components to save their state without depending on specific serialization libraries.
 
 ### Key Features
 
-- **Binary serialization** with cereal for compact, fast saves
-- **JSON metadata** files for easy inspection (save name, timestamp, playtime, etc.)
-- **Profile system** for multiple save profiles (multi-user support)
-- **Save slots** for multiple saves per profile
-- **Auto-save** with configurable intervals
-- **Quick save/load** for instant save points
-- **Version management** with magic number validation
-- **ISaveable interface** for component-based serialization
+- **Abstract archive interfaces** - No direct cereal dependency in your game code
+- **ISaveable interface** - Simple contract for serializable components
+- **Profile system** - Multiple save profiles for different users
+- **Save slots** - Numbered save slots (0 to `UINT32_MAX - 2`)
+- **Quick save/load** - Instant save points (reserved slot `UINT32_MAX - 1`)
+- **Auto-save** - Automatic saves at configurable intervals (reserved slot `UINT32_MAX`)
+- **Rich metadata** - Save name, timestamp, playtime, completion percentage
+- **Result-based error handling** - `std::expected<void, SaveError>` for robust error handling
 
-### Architecture Note
+### Architecture Note: Intentional Exception to AssetSystem Rule
 
-The Save System is an **intentional exception** to the AssetSystem rule. While most file I/O goes through AssetSystem, SaveSystem needs direct file access because:
+**The Save System is an INTENTIONAL EXCEPTION to the AssetSystem gateway rule.**
 
-1. **Write operations** - AssetSystem is read-only; saves require writing user data
-2. **User data vs game assets** - Save files are user-generated, not bundled assets
-3. **No hot reload** - Users don't modify save files while playing
-4. **Different lifecycle** - Saves are created/deleted during gameplay, not loaded at startup
+While the engine architecture requires all file I/O to go through AssetSystem, SaveSystem is exempt because:
+
+1. **Write operations required** - AssetSystem is read-only by design; saves need write access
+2. **User data vs game assets** - Save files are user-generated data, not bundled game assets
+3. **No hot reload needed** - Users don't modify save files while the game runs
+4. **Different lifecycle** - Saves are created/deleted during gameplay, not preloaded at startup
+
+SaveSystem directly uses `std::ofstream`, `std::ifstream`, and `std::filesystem` for file operations. This is by design and architecturally correct.
 
 ---
 
 ## Core Concepts
 
-### Save Slots
-
-Save slots are identified by `SaveSlot` (a `std::uint32_t`). You can use any slot number from 0 to `UINT32_MAX - 2`. Two special slots are reserved:
-
-```cpp
-// Regular save slots
-SaveSlot slot0 = 0;
-SaveSlot slot1 = 1;
-SaveSlot mySlot = 42;
-
-// Reserved slots (defined in SaveSlots namespace)
-SaveSlots::QuickSave  // UINT32_MAX - 1 (used by quickSave())
-SaveSlots::AutoSave   // UINT32_MAX     (used by autoSave())
-```
-
-### Profiles
-
-Profiles enable multiple users to have separate save files. Each profile has its own directory under `saves/`:
-
-```
-saves/
-  ├── default/          # Default profile
-  │   ├── save_0.sav
-  │   ├── save_0.meta
-  │   └── save_1.sav
-  ├── player1/          # Custom profile
-  │   └── save_0.sav
-  └── player2/
-      └── save_0.sav
-```
-
-Switching profiles changes which save directory is active:
-
-```cpp
-saveSystem->setActiveProfile("player1");
-saveSystem->save(0, "Player 1's Save");  // Saves to saves/player1/save_0.sav
-
-saveSystem->setActiveProfile("player2");
-saveSystem->save(0, "Player 2's Save");  // Saves to saves/player2/save_0.sav
-```
-
-### Save Metadata
-
-Each save has two files:
-
-1. **`.sav` file** - Binary data (cereal format)
-2. **`.meta` file** - JSON metadata
-
-Metadata includes:
-
-```cpp
-struct SaveMetadata {
-    SaveSlot slot;                           // Slot number
-    std::string saveName;                    // User-friendly name
-    std::chrono::system_clock::time_point timestamp;  // When saved
-    std::string gameVersion;                 // Game version (currently "0.1.0")
-    std::uint64_t playtimeSeconds;          // Total playtime (not yet tracked)
-    float completionPercentage;              // Progress 0-100% (not yet tracked)
-    std::optional<std::string> levelName;   // Current level (optional)
-    bool hasScreenshot;                      // Screenshot support (not yet implemented)
-};
-```
-
-Example metadata JSON:
-
-```json
-{
-  "slot": 0,
-  "saveName": "Forest Temple - 65%",
-  "timestamp": 1735776000,
-  "gameVersion": "0.1.0",
-  "playtimeSeconds": 3600,
-  "completionPercentage": 65.0
-}
-```
-
 ### ISaveable Interface
 
-Game components implement `ISaveable` to participate in save/load:
+The `ISaveable` interface defines how game components participate in save/load operations:
 
 ```cpp
 class ISaveable {
@@ -137,26 +62,171 @@ public:
     // Unique identifier for this saveable type
     virtual std::string getSaveKey() const = 0;
 
-    // Write data to save file
+    // Write data to save archive
     virtual void serialize(ISaveArchive& archive) const = 0;
 
-    // Read data from save file
+    // Read data from load archive
     virtual void deserialize(const ILoadArchive& archive) = 0;
 };
+```
+
+**Key Points:**
+
+- **getSaveKey()** - Returns a unique string identifying this saveable (e.g., `"player_stats"`)
+- **serialize()** - Called during save to write data to the archive
+- **deserialize()** - Called during load to read data from the archive
+- Each saveable must have a unique save key within your game
+
+### Archive Interfaces
+
+The save system uses abstract archive interfaces to decouple your code from specific serialization libraries:
+
+```cpp
+class ISaveArchive {
+public:
+    virtual void writeInt(const std::string& key, int value) = 0;
+    virtual void writeFloat(const std::string& key, float value) = 0;
+    virtual void writeDouble(const std::string& key, double value) = 0;
+    virtual void writeString(const std::string& key, const std::string& value) = 0;
+    virtual void writeBool(const std::string& key, bool value) = 0;
+    virtual void writeBytes(const std::string& key, const std::vector<std::uint8_t>& value) = 0;
+};
+
+class ILoadArchive {
+public:
+    virtual int readInt(const std::string& key) const = 0;
+    virtual float readFloat(const std::string& key) const = 0;
+    virtual double readDouble(const std::string& key) const = 0;
+    virtual std::string readString(const std::string& key) const = 0;
+    virtual bool readBool(const std::string& key) const = 0;
+    virtual std::vector<std::uint8_t> readBytes(const std::string& key) const = 0;
+};
+```
+
+These interfaces provide a simple, key-value API for serialization. Complex types can be serialized using `writeBytes()` and `readBytes()`.
+
+### Save Slots
+
+Save slots are identified by `SaveSlot` (a `std::uint32_t` alias):
+
+```cpp
+using SaveSlot = std::uint32_t;
+
+namespace SaveSlots {
+    inline constexpr SaveSlot QuickSave = UINT32_MAX - 1;  // 4294967294
+    inline constexpr SaveSlot AutoSave = UINT32_MAX;       // 4294967295
+}
+```
+
+**Available Slots:**
+
+- **Regular slots:** 0 to `UINT32_MAX - 2` (use 0-9 for player-accessible saves)
+- **QuickSave:** `SaveSlots::QuickSave` (used by `quickSave()` and `quickLoad()`)
+- **AutoSave:** `SaveSlots::AutoSave` (used by `autoSave()`)
+
+**Example:**
+
+```cpp
+// Regular save slots
+saveSystem->save(0, "Checkpoint 1");
+saveSystem->save(1, "Before Boss Fight");
+
+// Quick save (F5/F9 pattern)
+saveSystem->quickSave();  // Uses SaveSlots::QuickSave
+
+// Auto-save (periodic background saves)
+saveSystem->enableAutoSave(std::chrono::minutes(5));  // Uses SaveSlots::AutoSave
+```
+
+### Save Metadata
+
+Each save slot has associated metadata:
+
+```cpp
+struct SaveMetadata {
+    SaveSlot slot;                                      // Slot number
+    std::string saveName;                               // User-friendly name
+    std::chrono::system_clock::time_point timestamp;    // When saved
+    std::string gameVersion;                            // Game version string
+    std::uint64_t playtimeSeconds = 0;                  // Total playtime
+    float completionPercentage = 0.0f;                  // Progress (0-100)
+    std::optional<std::string> levelName;               // Current level (optional)
+    bool hasScreenshot = false;                         // Screenshot exists
+};
+```
+
+Metadata allows you to display save information without loading the entire save file.
+
+### Profiles
+
+Profiles enable multiple users to have separate save directories:
+
+```
+saves/
+  ├── default/          # Default profile
+  │   ├── save_0.sav
+  │   └── save_0.meta
+  ├── player1/
+  │   └── save_0.sav
+  └── player2/
+      └── save_0.sav
+```
+
+Switch profiles with `setActiveProfile()`:
+
+```cpp
+saveSystem->setActiveProfile("player1");
+saveSystem->save(0, "Player 1 Save");  // Saves to saves/player1/save_0.sav
 ```
 
 ---
 
 ## Quick Start
 
-### 1. Basic Save and Load
+### 1. Implement ISaveable
 
 ```cpp
 import bestow.save;
 
-// Get the save system (injected via DI)
-ISaveSystem* saveSystem = /* from dependency injection */;
+class PlayerStats : public ISaveable {
+public:
+    int health = 100;
+    int maxHealth = 100;
+    int coins = 0;
 
+    std::string getSaveKey() const override {
+        return "player_stats";  // Must be unique
+    }
+
+    void serialize(ISaveArchive& archive) const override {
+        archive.writeInt("health", health);
+        archive.writeInt("maxHealth", maxHealth);
+        archive.writeInt("coins", coins);
+    }
+
+    void deserialize(const ILoadArchive& archive) override {
+        health = archive.readInt("health");
+        maxHealth = archive.readInt("maxHealth");
+        coins = archive.readInt("coins");
+    }
+};
+```
+
+### 2. Register Your Saveable
+
+```cpp
+PlayerStats playerStats;
+
+// Register before saving/loading
+saveSystem->registerSaveable(&playerStats);
+
+// When done (e.g., in destructor)
+saveSystem->unregisterSaveable(&playerStats);
+```
+
+### 3. Save and Load
+
+```cpp
 // Save to slot 0
 auto result = saveSystem->save(0, "My First Save");
 if (result.has_value()) {
@@ -169,62 +239,23 @@ if (result.has_value()) {
 auto loadResult = saveSystem->load(0);
 if (loadResult.has_value()) {
     std::println("Load successful!");
+    // playerStats now has loaded values
 } else {
     std::println("Load failed: {}", static_cast<int>(loadResult.error()));
 }
 ```
 
-### 2. Making Your Component Saveable
+### 4. Quick Save/Load
 
 ```cpp
-class PlayerStats : public ISaveable {
-public:
-    int health = 100;
-    int maxHealth = 100;
-    int coins = 0;
-    std::string currentLevel;
-
-    std::string getSaveKey() const override {
-        return "player_stats";
-    }
-
-    void serialize(ISaveArchive& archive) const override {
-        archive.writeInt("health", health);
-        archive.writeInt("maxHealth", maxHealth);
-        archive.writeInt("coins", coins);
-        archive.writeString("currentLevel", currentLevel);
-    }
-
-    void deserialize(const ILoadArchive& archive) override {
-        health = archive.readInt("health");
-        maxHealth = archive.readInt("maxHealth");
-        coins = archive.readInt("coins");
-        currentLevel = archive.readString("currentLevel");
-    }
-};
-
-// Register with save system
-PlayerStats playerStats;
-saveSystem->registerSaveable(&playerStats);
-
-// Save will now include player stats
-saveSystem->save(0, "Checkpoint");
-
-// Clean up when done
-saveSystem->unregisterSaveable(&playerStats);
-```
-
-### 3. Quick Save/Load
-
-```cpp
-// Quick save to reserved slot (F5 key)
+// Quick save (F5 pattern)
 saveSystem->quickSave();
 
-// Quick load from reserved slot (F9 key)
+// Quick load (F9 pattern)
 saveSystem->quickLoad();
 ```
 
-### 4. Auto-Save
+### 5. Auto-Save
 
 ```cpp
 // Enable auto-save every 5 minutes
@@ -233,11 +264,9 @@ saveSystem->enableAutoSave(std::chrono::minutes(5));
 // In your game loop
 void gameUpdate(DeltaTime dt) {
     saveSystem->update(dt);  // Handles auto-save timer
-
-    // ... rest of game logic
 }
 
-// Disable auto-save
+// Disable when not needed
 saveSystem->disableAutoSave();
 ```
 
@@ -249,11 +278,10 @@ saveSystem->disableAutoSave();
 
 #### `update(DeltaTime dt)`
 
-Updates the save system. Must be called every frame to handle auto-save.
+Updates the save system (handles auto-save timer). Must be called every frame if using auto-save.
 
-```cpp
-void update(DeltaTime dt) override;
-```
+**Parameters:**
+- `dt` - Delta time in seconds
 
 **Usage:**
 ```cpp
@@ -261,6 +289,7 @@ void gameLoop() {
     while (running) {
         float dt = calculateDeltaTime();
         saveSystem->update(dt);
+        // ... rest of game logic
     }
 }
 ```
@@ -273,12 +302,13 @@ void gameLoop() {
 
 Registers a component to be included in saves.
 
-```cpp
-void registerSaveable(ISaveable* saveable) override;
-```
-
 **Parameters:**
 - `saveable` - Pointer to ISaveable object (must remain valid until unregistered)
+
+**Important:**
+- The saveable object must outlive its registration
+- Each saveable must have a unique `getSaveKey()` value
+- Multiple registrations of the same pointer are allowed (implementation may keep duplicates)
 
 **Usage:**
 ```cpp
@@ -286,18 +316,12 @@ PlayerStats stats;
 saveSystem->registerSaveable(&stats);
 ```
 
-**Important:**
-- The saveable object must outlive its registration
-- Multiple registrations of the same pointer are allowed (implementation keeps duplicates)
-- Each saveable must have a unique `getSaveKey()` value
-
 #### `unregisterSaveable(ISaveable* saveable)`
 
 Removes a component from the save list.
 
-```cpp
-void unregisterSaveable(ISaveable* saveable) override;
-```
+**Parameters:**
+- `saveable` - Pointer previously passed to `registerSaveable()`
 
 **Usage:**
 ```cpp
@@ -313,15 +337,15 @@ saveSystem->unregisterSaveable(&stats);
 Saves all registered saveables to the specified slot.
 
 ```cpp
-Result<void, SaveError> save(SaveSlot slot, const std::string& saveName) override;
+Result<void, SaveError> save(SaveSlot slot, const std::string& saveName);
 ```
 
 **Parameters:**
-- `slot` - Save slot number (0 to UINT32_MAX - 2)
-- `saveName` - User-friendly name for the save
+- `slot` - Save slot number (0 to `UINT32_MAX - 2`, or use `SaveSlots::QuickSave`/`AutoSave`)
+- `saveName` - User-friendly name for the save (displayed in UI)
 
 **Returns:**
-- `Result<void, SaveError>` - Success (void) or error code
+- `Result<void, SaveError>` - Success (empty value) or error code
 
 **Errors:**
 - `SaveError::IOError` - Failed to create/write save file
@@ -333,14 +357,7 @@ auto result = saveSystem->save(0, "Level 1 Checkpoint");
 if (result.has_value()) {
     std::println("Game saved!");
 } else {
-    switch (result.error()) {
-        case SaveError::IOError:
-            std::println("Failed to write save file");
-            break;
-        case SaveError::SerializationError:
-            std::println("Failed to serialize game state");
-            break;
-    }
+    handleSaveError(result.error());
 }
 ```
 
@@ -349,21 +366,26 @@ if (result.has_value()) {
 Loads save data from the specified slot into all registered saveables.
 
 ```cpp
-Result<void, SaveError> load(SaveSlot slot) override;
+Result<void, SaveError> load(SaveSlot slot);
 ```
 
 **Parameters:**
 - `slot` - Save slot number
 
 **Returns:**
-- `Result<void, SaveError>` - Success (void) or error code
+- `Result<void, SaveError>` - Success (empty value) or error code
 
 **Errors:**
 - `SaveError::FileNotFound` - Save file doesn't exist
 - `SaveError::IOError` - Failed to read save file
-- `SaveError::CorruptedFile` - Invalid magic number
+- `SaveError::CorruptedFile` - Invalid magic number or corrupted data
 - `SaveError::VersionMismatch` - Save file version mismatch
-- `SaveError::SerializationError` - Save has data for unregistered saveables, or deserialization exception
+- `SaveError::SerializationError` - Save contains data for unregistered saveables, or deserialization exception
+
+**Important:**
+- All saveables in the save file must have corresponding registered ISaveable objects
+- If the save contains data for an unregistered saveable, load returns `SerializationError`
+- Saveables are matched by their `getSaveKey()` string
 
 **Usage:**
 ```cpp
@@ -371,29 +393,27 @@ auto result = saveSystem->load(0);
 if (!result.has_value()) {
     switch (result.error()) {
         case SaveError::FileNotFound:
-            std::println("No save found in slot 0");
+            std::println("No save found");
             break;
         case SaveError::CorruptedFile:
             std::println("Save file is corrupted!");
             break;
         case SaveError::VersionMismatch:
-            std::println("Save was created with a different game version");
+            std::println("Save is from a different game version");
+            break;
+        default:
+            std::println("Failed to load save");
             break;
     }
 }
 ```
-
-**Important:**
-- All saveables in the save file must have corresponding registered ISaveable objects
-- If the save contains data for an unregistered saveable, load returns `SerializationError`
-- Saveables are matched by their `getSaveKey()` string
 
 #### `deleteSave(SaveSlot slot)`
 
 Deletes the save file and metadata for the specified slot.
 
 ```cpp
-bool deleteSave(SaveSlot slot) override;
+bool deleteSave(SaveSlot slot);
 ```
 
 **Returns:**
@@ -405,7 +425,7 @@ bool deleteSave(SaveSlot slot) override;
 if (saveSystem->deleteSave(0)) {
     std::println("Save deleted");
 } else {
-    std::println("Save not found");
+    std::println("No save in that slot");
 }
 ```
 
@@ -415,10 +435,10 @@ if (saveSystem->deleteSave(0)) {
 
 #### `quickSave()`
 
-Saves to the QuickSave reserved slot.
+Saves to the QuickSave reserved slot (`SaveSlots::QuickSave`).
 
 ```cpp
-void quickSave() override;
+void quickSave();
 ```
 
 **Equivalent to:**
@@ -431,12 +451,26 @@ save(SaveSlots::QuickSave, "Quick Save");
 Loads from the QuickSave reserved slot.
 
 ```cpp
-void quickLoad() override;
+void quickLoad();
 ```
 
 **Equivalent to:**
 ```cpp
 load(SaveSlots::QuickSave);
+```
+
+**Usage:**
+```cpp
+// Bind to F5/F9 keys
+if (input->isKeyJustPressed(Key::F5)) {
+    saveSystem->quickSave();
+    showNotification("Quick Saved!");
+}
+
+if (input->isKeyJustPressed(Key::F9)) {
+    saveSystem->quickLoad();
+    showNotification("Quick Loaded!");
+}
 ```
 
 ---
@@ -445,10 +479,10 @@ load(SaveSlots::QuickSave);
 
 #### `autoSave()`
 
-Manually triggers an auto-save to the AutoSave reserved slot.
+Manually triggers an auto-save to the AutoSave reserved slot (`SaveSlots::AutoSave`).
 
 ```cpp
-void autoSave() override;
+void autoSave();
 ```
 
 **Equivalent to:**
@@ -456,13 +490,29 @@ void autoSave() override;
 save(SaveSlots::AutoSave, "Auto Save");
 ```
 
+**Usage:**
+```cpp
+// Auto-save on level completion
+void onLevelComplete() {
+    saveSystem->autoSave();
+}
+```
+
 #### `enableAutoSave(std::chrono::seconds interval)`
 
 Enables automatic saving at the specified interval.
 
 ```cpp
-void enableAutoSave(std::chrono::seconds interval) override;
+void enableAutoSave(std::chrono::seconds interval);
 ```
+
+**Parameters:**
+- `interval` - Time between auto-saves (e.g., `std::chrono::minutes(5)`)
+
+**Important:**
+- You must call `update(dt)` every frame for auto-save to work
+- Timer starts immediately when enabled
+- Auto-save overwrites the previous auto-save (always uses `SaveSlots::AutoSave`)
 
 **Usage:**
 ```cpp
@@ -473,17 +523,18 @@ saveSystem->enableAutoSave(std::chrono::minutes(5));
 saveSystem->enableAutoSave(std::chrono::seconds(30));
 ```
 
-**Important:**
-- You must call `update(dt)` every frame for auto-save to work
-- Timer starts immediately when enabled
-- Auto-save overwrites the previous auto-save
-
 #### `disableAutoSave()`
 
 Disables automatic saving.
 
 ```cpp
-void disableAutoSave() override;
+void disableAutoSave();
+```
+
+**Usage:**
+```cpp
+// Disable during cutscenes or boss fights
+saveSystem->disableAutoSave();
 ```
 
 ---
@@ -495,7 +546,7 @@ void disableAutoSave() override;
 Checks if a save file exists in the specified slot.
 
 ```cpp
-bool saveExists(SaveSlot slot) const override;
+bool saveExists(SaveSlot slot) const;
 ```
 
 **Usage:**
@@ -512,7 +563,7 @@ if (saveSystem->saveExists(0)) {
 Retrieves metadata for a specific save slot.
 
 ```cpp
-std::optional<SaveMetadata> getSaveMetadata(SaveSlot slot) const override;
+std::optional<SaveMetadata> getSaveMetadata(SaveSlot slot) const;
 ```
 
 **Returns:**
@@ -524,9 +575,12 @@ std::optional<SaveMetadata> getSaveMetadata(SaveSlot slot) const override;
 auto meta = saveSystem->getSaveMetadata(0);
 if (meta) {
     std::println("Save: {}", meta->saveName);
-    std::println("Created: {}", formatTimestamp(meta->timestamp));
+    std::println("Version: {}", meta->gameVersion);
     std::println("Playtime: {} hours", meta->playtimeSeconds / 3600);
     std::println("Progress: {}%", meta->completionPercentage);
+    if (meta->levelName) {
+        std::println("Level: {}", *meta->levelName);
+    }
 }
 ```
 
@@ -535,7 +589,7 @@ if (meta) {
 Retrieves metadata for all saves in the current profile.
 
 ```cpp
-std::vector<SaveMetadata> getAllSaveMetadata() const override;
+std::vector<SaveMetadata> getAllSaveMetadata() const;
 ```
 
 **Returns:**
@@ -543,19 +597,18 @@ std::vector<SaveMetadata> getAllSaveMetadata() const override;
 
 **Usage:**
 ```cpp
+// Display save selection screen
 auto allSaves = saveSystem->getAllSaveMetadata();
 
-// Show save selection screen
 for (const auto& meta : allSaves) {
     std::println("Slot {}: {} ({}%)",
         meta.slot, meta.saveName, meta.completionPercentage);
 }
 
 // Sort by most recent
-std::sort(allSaves.begin(), allSaves.end(),
-    [](const auto& a, const auto& b) {
-        return a.timestamp > b.timestamp;
-    });
+std::ranges::sort(allSaves, [](const auto& a, const auto& b) {
+    return a.timestamp > b.timestamp;
+});
 ```
 
 ---
@@ -567,8 +620,11 @@ std::sort(allSaves.begin(), allSaves.end(),
 Switches to a different save profile.
 
 ```cpp
-void setActiveProfile(const std::string& profileId) override;
+void setActiveProfile(const std::string& profileId);
 ```
+
+**Parameters:**
+- `profileId` - Profile identifier (becomes directory name under `saves/`)
 
 **Effects:**
 - Creates the profile directory if it doesn't exist
@@ -578,8 +634,6 @@ void setActiveProfile(const std::string& profileId) override;
 ```cpp
 // Main menu - profile selection
 saveSystem->setActiveProfile("player1");
-
-// Save to player1's directory
 saveSystem->save(0, "Player 1's Save");
 
 // Switch profiles
@@ -592,7 +646,7 @@ saveSystem->save(0, "Player 2's Save");
 Returns the currently active profile ID.
 
 ```cpp
-std::string getActiveProfile() const override;
+std::string getActiveProfile() const;
 ```
 
 **Usage:**
@@ -606,7 +660,7 @@ std::println("Current profile: {}", current);
 Returns a list of all existing profile IDs.
 
 ```cpp
-std::vector<std::string> getProfiles() const override;
+std::vector<std::string> getProfiles() const;
 ```
 
 **Returns:**
@@ -619,93 +673,56 @@ auto profiles = saveSystem->getProfiles();
 for (const auto& profile : profiles) {
     std::println("Profile: {}", profile);
 }
+
+// Create new profile button
+if (ui->button("New Profile")) {
+    std::string name = promptForName();
+    saveSystem->setActiveProfile(name);  // Creates directory
+}
 ```
 
 ---
 
 ## Serialization Guide
 
-### Archive Interface
+### Basic Types
 
-The Save System provides two archive types:
-
-```cpp
-class ISaveArchive {
-    void writeInt(const std::string& key, int value);
-    void writeFloat(const std::string& key, float value);
-    void writeDouble(const std::string& key, double value);
-    void writeString(const std::string& key, const std::string& value);
-    void writeBool(const std::string& key, bool value);
-    void writeBytes(const std::string& key, const std::vector<std::uint8_t>& value);
-};
-
-class ILoadArchive {
-    int readInt(const std::string& key) const;
-    float readFloat(const std::string& key) const;
-    double readDouble(const std::string& key) const;
-    std::string readString(const std::string& key) const;
-    bool readBool(const std::string& key) const;
-    std::vector<std::uint8_t> readBytes(const std::string& key) const;
-};
-```
-
-### Implementing ISaveable
-
-#### Basic Example
+The archive interfaces support these types directly:
 
 ```cpp
-class PlayerInventory : public ISaveable {
-public:
-    int coins = 0;
-    int keys = 0;
-    std::vector<std::string> items;
-    bool hasMap = false;
+void serialize(ISaveArchive& archive) const override {
+    archive.writeInt("health", health);
+    archive.writeFloat("speed", speed);
+    archive.writeDouble("preciseValue", preciseValue);
+    archive.writeString("name", name);
+    archive.writeBool("isAlive", isAlive);
+}
 
-    std::string getSaveKey() const override {
-        return "player_inventory";
-    }
-
-    void serialize(ISaveArchive& archive) const override {
-        archive.writeInt("coins", coins);
-        archive.writeInt("keys", keys);
-        archive.writeBool("hasMap", hasMap);
-
-        // Serialize vector as bytes
-        // Convert vector<string> to binary format manually
-        // (See "Complex Types" section below)
-    }
-
-    void deserialize(const ILoadArchive& archive) override {
-        coins = archive.readInt("coins");
-        keys = archive.readInt("keys");
-        hasMap = archive.readBool("hasMap");
-    }
-};
+void deserialize(const ILoadArchive& archive) override {
+    health = archive.readInt("health");
+    speed = archive.readFloat("speed");
+    preciseValue = archive.readDouble("preciseValue");
+    name = archive.readString("name");
+    isAlive = archive.readBool("isAlive");
+}
 ```
 
-#### Complex Types
+### Complex Types
 
-For types not directly supported by the archive interface, use `writeBytes()` / `readBytes()`:
+For types not directly supported, use `writeBytes()` and `readBytes()`:
 
 ```cpp
 class LevelState : public ISaveable {
-public:
-    glm::vec3 playerPosition;
+    glm::vec2 playerPosition;
     std::vector<int> completedQuests;
 
-    std::string getSaveKey() const override {
-        return "level_state";
-    }
-
     void serialize(ISaveArchive& archive) const override {
-        // Serialize glm::vec3 as 3 floats
+        // Serialize glm::vec2 as 2 floats
         archive.writeFloat("posX", playerPosition.x);
         archive.writeFloat("posY", playerPosition.y);
-        archive.writeFloat("posZ", playerPosition.z);
 
         // Serialize vector<int> as bytes
-        std::vector<std::uint8_t> bytes;
-        bytes.resize(completedQuests.size() * sizeof(int));
+        std::vector<std::uint8_t> bytes(completedQuests.size() * sizeof(int));
         std::memcpy(bytes.data(), completedQuests.data(), bytes.size());
         archive.writeBytes("completedQuests", bytes);
     }
@@ -713,7 +730,6 @@ public:
     void deserialize(const ILoadArchive& archive) override {
         playerPosition.x = archive.readFloat("posX");
         playerPosition.y = archive.readFloat("posY");
-        playerPosition.z = archive.readFloat("posZ");
 
         auto bytes = archive.readBytes("completedQuests");
         completedQuests.resize(bytes.size() / sizeof(int));
@@ -722,41 +738,89 @@ public:
 };
 ```
 
-#### Alternative: Direct Cereal Access
-
-For advanced users who want full cereal features (versioning, complex containers), you can access the underlying cereal archive:
-
-**Note:** This requires including cereal headers and is platform-specific.
+### Strings and Collections
 
 ```cpp
-// NOT RECOMMENDED - breaks the abstraction
-// Only use if you need advanced cereal features
-
-#include <cereal/archives/binary.hpp>
-#include <cereal/types/vector.hpp>
-#include <cereal/types/map.hpp>
-
-class AdvancedSaveable : public ISaveable {
-public:
-    std::map<std::string, int> questProgress;
+class Inventory : public ISaveable {
+    std::vector<std::string> items;
+    std::map<std::string, int> quantities;
 
     void serialize(ISaveArchive& archive) const override {
-        // Get the underlying cereal archive (internal implementation detail)
-        auto& cerealArchive = *static_cast<cereal::BinaryOutputArchive*>(
-            static_cast<CerealSaveArchive&>(archive).getArchivePtr());
+        // Serialize vector of strings as concatenated bytes
+        std::vector<std::uint8_t> itemsData;
+        for (const auto& item : items) {
+            itemsData.insert(itemsData.end(), item.begin(), item.end());
+            itemsData.push_back('\0');  // Null terminator
+        }
+        archive.writeBytes("items", itemsData);
 
-        cerealArchive(questProgress);
+        // Serialize map manually
+        std::vector<std::uint8_t> mapData;
+        for (const auto& [key, value] : quantities) {
+            // Write key
+            mapData.insert(mapData.end(), key.begin(), key.end());
+            mapData.push_back('\0');
+            // Write value
+            mapData.insert(mapData.end(),
+                reinterpret_cast<const std::uint8_t*>(&value),
+                reinterpret_cast<const std::uint8_t*>(&value) + sizeof(int));
+        }
+        archive.writeBytes("quantities", mapData);
     }
 
-    // Similar for deserialize...
+    void deserialize(const ILoadArchive& archive) override {
+        // Deserialize vector of strings
+        auto itemsData = archive.readBytes("items");
+        items.clear();
+        std::string current;
+        for (auto byte : itemsData) {
+            if (byte == '\0') {
+                if (!current.empty()) {
+                    items.push_back(current);
+                    current.clear();
+                }
+            } else {
+                current.push_back(static_cast<char>(byte));
+            }
+        }
+
+        // Deserialize map
+        auto mapData = archive.readBytes("quantities");
+        quantities.clear();
+        std::string key;
+        size_t i = 0;
+        while (i < mapData.size()) {
+            // Read key
+            while (i < mapData.size() && mapData[i] != '\0') {
+                key.push_back(static_cast<char>(mapData[i++]));
+            }
+            i++;  // Skip null terminator
+            // Read value
+            int value;
+            std::memcpy(&value, &mapData[i], sizeof(int));
+            i += sizeof(int);
+            quantities[key] = value;
+            key.clear();
+        }
+    }
 };
 ```
 
-**Warning:** This approach:
-- Breaks encapsulation
-- Requires platform-specific casts
-- May break with future implementations
-- Only use if the simple archive interface is insufficient
+### Validation on Load
+
+Always validate loaded data:
+
+```cpp
+void deserialize(const ILoadArchive& archive) override {
+    health = archive.readInt("health");
+    maxHealth = archive.readInt("maxHealth");
+
+    // Validate and clamp
+    if (health < 0) health = 0;
+    if (maxHealth <= 0) maxHealth = 100;  // Sensible default
+    if (health > maxHealth) health = maxHealth;
+}
+```
 
 ---
 
@@ -765,10 +829,10 @@ public:
 ### Use Cases
 
 1. **Local Multiplayer** - Each player has their own profile
-2. **Multiple Playthroughs** - Keep separate saves for different runs
+2. **Multiple Playthroughs** - Separate saves for different runs
 3. **Testing** - Isolate test saves from real saves
 
-### Example: Profile Selection Screen
+### Example: Profile Selection
 
 ```cpp
 class ProfileManager {
@@ -793,11 +857,10 @@ class ProfileManager {
     void selectProfile(const std::string& profileId) {
         saveSystem_->setActiveProfile(profileId);
 
-        // Load last save for this profile
+        // Load most recent save for this profile
         auto saves = saveSystem_->getAllSaveMetadata();
         if (!saves.empty()) {
-            // Load most recent
-            auto mostRecent = std::max_element(saves.begin(), saves.end(),
+            auto mostRecent = std::ranges::max_element(saves,
                 [](const auto& a, const auto& b) {
                     return a.timestamp < b.timestamp;
                 });
@@ -815,99 +878,49 @@ class ProfileManager {
 
 ---
 
-## Versioning and Migration
-
-### Save File Format
-
-Each save file has a header:
-
-```cpp
-struct SaveHeader {
-    std::uint32_t magicNumber;  // 0x42465356 ("BFSV" = Bestow Save)
-    std::uint32_t version;      // Currently 1
-};
-```
-
-### Version Checking
-
-The system validates save files on load:
-
-```cpp
-auto result = saveSystem->load(0);
-if (!result.has_value() && result.error() == SaveError::VersionMismatch) {
-    std::println("This save was created with a different game version");
-    // Offer to migrate or start new game
-}
-```
-
-### Migration (Future Feature)
-
-**Note:** Migration is not yet implemented. The system reserves `SaveError::MigrationFailed` for future use.
-
-Planned migration system:
-
-```cpp
-// FUTURE API - not yet implemented
-saveSystem->registerMigration(1, 2, [](SaveData& data) {
-    // Migrate save data from version 1 to version 2
-    data.addField("newFeature", defaultValue);
-    return true;  // success
-});
-```
-
-For now, version mismatches result in load failure. To handle this:
-
-1. **Manual migration** - Load raw file, convert, re-save
-2. **Graceful degradation** - Detect version, load what you can
-3. **Fresh start** - Prompt user to start a new game
-
----
-
 ## Best Practices
 
 ### 1. What to Save vs Derive
 
 **Save:**
 - Player state (health, inventory, position)
-- Quest progress
+- Quest progress and flags
 - World changes (defeated enemies, opened chests)
-- Player choices and flags
+- Player choices
 
 **Don't Save (derive at runtime):**
-- Texture handles (reload via AssetSystem)
+- Asset handles (reload via AssetSystem)
 - Entity IDs (regenerate from blueprints)
 - UI state (rebuild from game state)
 - Transient effects (particles, sounds)
 
-### 2. Save Frequently, But Not Too Frequently
+### 2. Use Unique Save Keys
 
 ```cpp
-// Good: Save at checkpoints
-void onCheckpointReached() {
-    saveSystem->save(currentSlot, "Checkpoint");
-}
+// ✅ Good: Unique, descriptive keys
+class PlayerStats : public ISaveable {
+    std::string getSaveKey() const override { return "player_stats"; }
+};
 
-// Good: Auto-save on level transitions
-void onLevelComplete() {
-    saveSystem->autoSave();
-}
+class EnemyManager : public ISaveable {
+    std::string getSaveKey() const override { return "enemy_manager"; }
+};
 
-// Bad: Save every frame
-void update(DeltaTime dt) {
-    saveSystem->save(0, "Frame Save");  // DON'T DO THIS
-}
+// ❌ Bad: Generic or duplicate keys
+class PlayerStats : public ISaveable {
+    std::string getSaveKey() const override { return "data"; }  // Too generic
+};
+
+class PlayerInventory : public ISaveable {
+    std::string getSaveKey() const override { return "player_stats"; }  // DUPLICATE!
+};
 ```
 
-**Recommendation:**
-- Manual saves at player-initiated checkpoints
-- Auto-save every 5-10 minutes
-- Quick save for player convenience (F5/F9)
-
-### 3. Graceful Error Handling
+### 3. Handle Errors Gracefully
 
 ```cpp
-void saveGame(SaveSlot slot) {
-    auto result = saveSystem->save(slot, "My Save");
+void saveGame(SaveSlot slot, const std::string& name) {
+    auto result = saveSystem->save(slot, name);
 
     if (result.has_value()) {
         showNotification("Game Saved!");
@@ -925,11 +938,7 @@ void saveGame(SaveSlot slot) {
         }
     }
 }
-```
 
-### 4. Provide Fallbacks
-
-```cpp
 void loadGame(SaveSlot slot) {
     auto result = saveSystem->load(slot);
 
@@ -947,46 +956,31 @@ void loadGame(SaveSlot slot) {
 }
 ```
 
-### 5. Use Unique Save Keys
+### 4. Register/Unregister Properly
 
 ```cpp
-// Good: Unique, descriptive keys
-class PlayerStats : public ISaveable {
-    std::string getSaveKey() const override { return "player_stats"; }
-};
+class Game {
+    PlayerStats playerStats_;
+    Inventory inventory_;
+    ISaveSystem* saveSystem_;
 
-class EnemyManager : public ISaveable {
-    std::string getSaveKey() const override { return "enemy_manager"; }
-};
+    Game(ISaveSystem* saveSystem) : saveSystem_(saveSystem) {
+        // Register in constructor
+        saveSystem_->registerSaveable(&playerStats_);
+        saveSystem_->registerSaveable(&inventory_);
+    }
 
-// Bad: Generic or duplicate keys
-class PlayerStats : public ISaveable {
-    std::string getSaveKey() const override { return "data"; }  // Too generic
-};
-
-class PlayerInventory : public ISaveable {
-    std::string getSaveKey() const override { return "player_stats"; }  // DUPLICATE!
+    ~Game() {
+        // Unregister in destructor
+        saveSystem_->unregisterSaveable(&inventory_);
+        saveSystem_->unregisterSaveable(&playerStats_);
+    }
 };
 ```
 
-### 6. Validate Loaded Data
+### 5. Test Your Save System Early
 
 ```cpp
-void deserialize(const ILoadArchive& archive) override {
-    health = archive.readInt("health");
-    maxHealth = archive.readInt("maxHealth");
-
-    // Validate and clamp
-    if (health < 0) health = 0;
-    if (health > maxHealth) health = maxHealth;
-    if (maxHealth <= 0) maxHealth = 100;  // Sensible default
-}
-```
-
-### 7. Test Your Save System Early
-
-```cpp
-// Unit test example
 void testSaveLoad() {
     PlayerStats stats;
     stats.health = 75;
@@ -1012,146 +1006,6 @@ void testSaveLoad() {
 
 ---
 
-## Advanced Usage
-
-### Example: Save Slot Management System
-
-```cpp
-class SaveSlotManager {
-public:
-    SaveSlotManager(ISaveSystem* saveSystem) : saveSystem_(saveSystem) {}
-
-    // Find the first empty slot
-    std::optional<SaveSlot> findEmptySlot() {
-        for (SaveSlot slot = 0; slot < maxSlots_; ++slot) {
-            if (!saveSystem_->saveExists(slot)) {
-                return slot;
-            }
-        }
-        return std::nullopt;  // All slots full
-    }
-
-    // Get all saves sorted by recency
-    std::vector<SaveMetadata> getSavesSortedByDate() {
-        auto saves = saveSystem_->getAllSaveMetadata();
-        std::sort(saves.begin(), saves.end(),
-            [](const auto& a, const auto& b) {
-                return a.timestamp > b.timestamp;
-            });
-        return saves;
-    }
-
-    // Get oldest save (for auto-overwrite)
-    std::optional<SaveSlot> getOldestSave() {
-        auto saves = saveSystem_->getAllSaveMetadata();
-        if (saves.empty()) return std::nullopt;
-
-        auto oldest = std::min_element(saves.begin(), saves.end(),
-            [](const auto& a, const auto& b) {
-                return a.timestamp < b.timestamp;
-            });
-        return oldest->slot;
-    }
-
-    // Save to first available slot, or overwrite oldest
-    SaveSlot smartSave(const std::string& name) {
-        auto slot = findEmptySlot();
-        if (!slot) {
-            slot = getOldestSave();
-            if (!slot) slot = 0;  // Fallback
-        }
-
-        saveSystem_->save(*slot, name);
-        return *slot;
-    }
-
-private:
-    ISaveSystem* saveSystem_;
-    static constexpr SaveSlot maxSlots_ = 10;
-};
-```
-
-### Example: Save Screenshot System (Future)
-
-```cpp
-class SaveWithScreenshot {
-public:
-    void saveWithScreenshot(SaveSlot slot, const std::string& name) {
-        // Take screenshot
-        auto screenshot = captureScreenshot();
-
-        // Save game state
-        auto result = saveSystem_->save(slot, name);
-        if (!result.has_value()) return;
-
-        // Save screenshot as PNG
-        auto metaPath = saveSystem_->getMetadataPath(slot);
-        auto screenshotPath = metaPath.parent_path() /
-            ("save_" + std::to_string(slot) + ".png");
-        saveScreenshot(screenshot, screenshotPath);
-
-        // Update metadata to indicate screenshot exists
-        // (Requires extending SaveMetadata)
-    }
-
-private:
-    ISaveSystem* saveSystem_;
-
-    Image captureScreenshot() {
-        // Capture framebuffer
-        // ... implementation ...
-    }
-
-    void saveScreenshot(const Image& img, const std::filesystem::path& path) {
-        // Save as PNG using stb_image_write or similar
-        // ... implementation ...
-    }
-};
-```
-
-### Example: Cloud Save Integration
-
-```cpp
-class CloudSaveManager {
-public:
-    void uploadSave(SaveSlot slot) {
-        if (!saveSystem_->saveExists(slot)) return;
-
-        auto savePath = getSavePath(slot);
-        auto metaPath = getMetadataPath(slot);
-
-        // Read save file
-        std::ifstream saveFile(savePath, std::ios::binary);
-        std::vector<std::uint8_t> saveData(
-            (std::istreambuf_iterator<char>(saveFile)),
-            std::istreambuf_iterator<char>());
-
-        // Upload to cloud (Steam, Epic, etc.)
-        cloudService_->uploadFile("save_" + std::to_string(slot) + ".sav", saveData);
-    }
-
-    void downloadSave(SaveSlot slot) {
-        auto saveData = cloudService_->downloadFile("save_" + std::to_string(slot) + ".sav");
-
-        auto savePath = getSavePath(slot);
-        std::ofstream saveFile(savePath, std::ios::binary);
-        saveFile.write(reinterpret_cast<const char*>(saveData.data()), saveData.size());
-        saveFile.close();
-    }
-
-    void syncSaves() {
-        // Compare local and cloud timestamps
-        // Download newer saves, upload newer local saves
-    }
-
-private:
-    ISaveSystem* saveSystem_;
-    CloudService* cloudService_;
-};
-```
-
----
-
 ## Error Handling
 
 ### Error Codes
@@ -1160,7 +1014,7 @@ private:
 enum class SaveError {
     Success,              // No error (not used in Result)
     FileNotFound,         // Save file doesn't exist
-    CorruptedFile,        // Invalid magic number
+    CorruptedFile,        // Invalid magic number or corrupted data
     InvalidChecksum,      // (Reserved for future use)
     VersionMismatch,      // Save version != current version
     MigrationFailed,      // (Reserved for future use)
@@ -1237,98 +1091,21 @@ bool saveWithRetry(SaveSlot slot, const std::string& name, int maxRetries = 3) {
 
 ---
 
-## File Format Details
+## Complete Examples
 
-### Save File Structure
-
-```
-[Header: 8 bytes]
-  - Magic Number: 4 bytes (0x42465356 = "BFSV")
-  - Version: 4 bytes (currently 1)
-
-[Cereal Binary Archive]
-  - Saveable Count: uint32_t
-  - For each saveable:
-    - Key: string (cereal serialized)
-    - Data: serialized via ISaveArchive calls
-```
-
-### Metadata File Structure
-
-JSON format:
-
-```json
-{
-  "slot": 0,
-  "saveName": "Forest Temple",
-  "timestamp": 1735776000,
-  "gameVersion": "0.1.0",
-  "playtimeSeconds": 3600,
-  "completionPercentage": 65.0,
-  "levelName": "forest_temple",     // optional
-  "hasScreenshot": false
-}
-```
-
-### File Locations
-
-```
-saves/
-  └── {profile}/
-      ├── save_{slot}.sav   # Binary save data
-      └── save_{slot}.meta  # JSON metadata
-```
-
-Examples:
-- `saves/default/save_0.sav`
-- `saves/default/save_0.meta`
-- `saves/player1/save_0.sav`
-- `saves/default/save_4294967294.sav` (QuickSave slot)
-- `saves/default/save_4294967295.sav` (AutoSave slot)
-
-### Compression (Future)
-
-**Note:** Compression with zstd is planned but not yet implemented.
-
-Future implementation will compress the cereal archive section:
-
-```cpp
-// FUTURE API
-saveSystem->enableCompression(true);
-saveSystem->setCompressionLevel(3);  // zstd level 1-22
-```
-
-Compressed saves will have a modified header:
-
-```
-[Header: 12 bytes]
-  - Magic Number: 4 bytes (0x42465356)
-  - Version: 4 bytes
-  - Flags: 4 bytes (bit 0 = compressed)
-
-[Compressed Data]
-  - Decompressed Size: 4 bytes
-  - zstd Compressed Archive: variable length
-```
-
----
-
-## Complete Example: Platformer Save System
+### Example 1: Platformer Save System
 
 ```cpp
 import bestow.save;
 
-// ============================================================================
-// Saveable Components
-// ============================================================================
-
+// Saveable components
 class PlayerState : public ISaveable {
 public:
     int health = 100;
     int maxHealth = 100;
     int coins = 0;
     int lives = 3;
-    glm::vec2 position = {0, 0};
+    float posX = 0, posY = 0;
     std::string currentLevel = "level1";
 
     std::string getSaveKey() const override {
@@ -1340,8 +1117,8 @@ public:
         archive.writeInt("maxHealth", maxHealth);
         archive.writeInt("coins", coins);
         archive.writeInt("lives", lives);
-        archive.writeFloat("posX", position.x);
-        archive.writeFloat("posY", position.y);
+        archive.writeFloat("posX", posX);
+        archive.writeFloat("posY", posY);
         archive.writeString("currentLevel", currentLevel);
     }
 
@@ -1350,8 +1127,8 @@ public:
         maxHealth = archive.readInt("maxHealth");
         coins = archive.readInt("coins");
         lives = archive.readInt("lives");
-        position.x = archive.readFloat("posX");
-        position.y = archive.readFloat("posY");
+        posX = archive.readFloat("posX");
+        posY = archive.readFloat("posY");
         currentLevel = archive.readString("currentLevel");
 
         // Validate
@@ -1366,7 +1143,6 @@ public:
     std::set<std::string> completedLevels;
     std::set<std::string> unlockedAbilities;
     int highScore = 0;
-    float totalPlaytime = 0.0f;
 
     std::string getSaveKey() const override {
         return "game_progress";
@@ -1377,7 +1153,7 @@ public:
         std::vector<std::uint8_t> levelsData;
         for (const auto& level : completedLevels) {
             levelsData.insert(levelsData.end(), level.begin(), level.end());
-            levelsData.push_back('\0');  // Null terminator
+            levelsData.push_back('\0');
         }
         archive.writeBytes("completedLevels", levelsData);
 
@@ -1389,10 +1165,10 @@ public:
         archive.writeBytes("unlockedAbilities", abilitiesData);
 
         archive.writeInt("highScore", highScore);
-        archive.writeFloat("totalPlaytime", totalPlaytime);
     }
 
     void deserialize(const ILoadArchive& archive) override {
+        // Deserialize sets from bytes
         auto levelsData = archive.readBytes("completedLevels");
         completedLevels.clear();
         std::string current;
@@ -1403,7 +1179,7 @@ public:
                     current.clear();
                 }
             } else {
-                current.push_back(byte);
+                current.push_back(static_cast<char>(byte));
             }
         }
 
@@ -1417,19 +1193,15 @@ public:
                     current.clear();
                 }
             } else {
-                current.push_back(byte);
+                current.push_back(static_cast<char>(byte));
             }
         }
 
         highScore = archive.readInt("highScore");
-        totalPlaytime = archive.readFloat("totalPlaytime");
     }
 };
 
-// ============================================================================
-// Game Class
-// ============================================================================
-
+// Game class
 class PlatformerGame {
 public:
     PlatformerGame(ISaveSystem* saveSystem)
@@ -1452,69 +1224,34 @@ public:
         // Update save system (for auto-save)
         saveSystem_->update(dt);
 
-        // Update game logic
-        // ...
+        // Game logic...
     }
 
-    // Called when player presses F5
     void onQuickSave() {
         saveSystem_->quickSave();
         showNotification("Quick Saved!");
     }
 
-    // Called when player presses F9
     void onQuickLoad() {
         saveSystem_->quickLoad();
         showNotification("Quick Loaded!");
     }
 
-    // Called when player completes a level
     void onLevelComplete(const std::string& levelName) {
         gameProgress_.completedLevels.insert(levelName);
-
-        // Auto-save on level completion
-        saveSystem_->autoSave();
+        saveSystem_->autoSave();  // Auto-save on level completion
     }
 
-    // Called when player dies
-    void onPlayerDeath() {
-        playerState_.lives--;
-
-        if (playerState_.lives <= 0) {
-            showGameOver();
-        } else {
-            // Load from last checkpoint (auto-save)
-            auto result = saveSystem_->load(SaveSlots::AutoSave);
-            if (!result.has_value()) {
-                // No auto-save, restart level
-                restartLevel();
-            }
-        }
-    }
-
-    // Called from main menu
-    void loadGame(SaveSlot slot) {
-        auto result = saveSystem_->load(slot);
-
-        if (result.has_value()) {
-            // Load successful, continue from saved position
-            loadLevel(playerState_.currentLevel);
-            spawnPlayerAt(playerState_.position);
-        } else {
-            handleLoadError(result.error());
-        }
-    }
-
-    // Called from pause menu
     void saveGame(SaveSlot slot) {
-        // Update current position and level
-        playerState_.position = player_->getPosition();
+        // Update current position
+        playerState_.posX = player_->getPosition().x;
+        playerState_.posY = player_->getPosition().y;
         playerState_.currentLevel = currentLevel_->getName();
 
-        // Calculate completion percentage
-        float completion = (gameProgress_.completedLevels.size() / float(totalLevels_)) * 100.0f;
+        // Calculate completion
+        float completion = (gameProgress_.completedLevels.size() /
+                           float(totalLevels_)) * 100.0f;
 
-        // Generate save name
         std::string saveName = std::format("{} - {}%",
             playerState_.currentLevel, static_cast<int>(completion));
 
@@ -1527,10 +1264,19 @@ public:
         }
     }
 
+    void loadGame(SaveSlot slot) {
+        auto result = saveSystem_->load(slot);
+
+        if (result.has_value()) {
+            loadLevel(playerState_.currentLevel);
+            spawnPlayerAt(playerState_.posX, playerState_.posY);
+        } else {
+            handleLoadError(result.error());
+        }
+    }
+
 private:
     ISaveSystem* saveSystem_;
-
-    // Saveable state
     PlayerState playerState_;
     GameProgress gameProgress_;
 
@@ -1539,29 +1285,67 @@ private:
     Level* currentLevel_ = nullptr;
     int totalLevels_ = 10;
 
-    void handleLoadError(SaveError error) {
-        switch (error) {
-            case SaveError::FileNotFound:
-                showError("No save found in this slot");
-                break;
-            case SaveError::CorruptedFile:
-                showError("Save file is corrupted");
-                break;
-            case SaveError::VersionMismatch:
-                showError("Save is from a different game version");
-                break;
-            default:
-                showError("Failed to load save");
-                break;
-        }
-    }
-
+    void handleLoadError(SaveError error) { /* ... */ }
     void showNotification(const std::string& msg) { /* ... */ }
     void showError(const std::string& msg) { /* ... */ }
-    void showGameOver() { /* ... */ }
-    void restartLevel() { /* ... */ }
     void loadLevel(const std::string& name) { /* ... */ }
-    void spawnPlayerAt(glm::vec2 pos) { /* ... */ }
+    void spawnPlayerAt(float x, float y) { /* ... */ }
+};
+```
+
+### Example 2: Save Slot Manager
+
+```cpp
+class SaveSlotManager {
+public:
+    SaveSlotManager(ISaveSystem* saveSystem) : saveSystem_(saveSystem) {}
+
+    // Find the first empty slot
+    std::optional<SaveSlot> findEmptySlot() {
+        for (SaveSlot slot = 0; slot < maxSlots_; ++slot) {
+            if (!saveSystem_->saveExists(slot)) {
+                return slot;
+            }
+        }
+        return std::nullopt;  // All slots full
+    }
+
+    // Get all saves sorted by recency
+    std::vector<SaveMetadata> getSavesSortedByDate() {
+        auto saves = saveSystem_->getAllSaveMetadata();
+        std::ranges::sort(saves, [](const auto& a, const auto& b) {
+            return a.timestamp > b.timestamp;
+        });
+        return saves;
+    }
+
+    // Get oldest save (for auto-overwrite)
+    std::optional<SaveSlot> getOldestSave() {
+        auto saves = saveSystem_->getAllSaveMetadata();
+        if (saves.empty()) return std::nullopt;
+
+        auto oldest = std::ranges::min_element(saves,
+            [](const auto& a, const auto& b) {
+                return a.timestamp < b.timestamp;
+            });
+        return oldest->slot;
+    }
+
+    // Save to first available slot, or overwrite oldest
+    SaveSlot smartSave(const std::string& name) {
+        auto slot = findEmptySlot();
+        if (!slot) {
+            slot = getOldestSave();
+            if (!slot) slot = 0;  // Fallback
+        }
+
+        saveSystem_->save(*slot, name);
+        return *slot;
+    }
+
+private:
+    ISaveSystem* saveSystem_;
+    static constexpr SaveSlot maxSlots_ = 10;
 };
 ```
 
@@ -1571,24 +1355,25 @@ private:
 
 The Bestow Save System provides:
 
-- Fast binary serialization with cereal
-- Rich JSON metadata for save management
-- Profile support for multi-user scenarios
-- Auto-save and quick save convenience features
-- Robust error handling with `std::expected`
-- Simple ISaveable interface for components
+- **Simple ISaveable interface** for game components
+- **Abstract archive interfaces** to decouple from serialization libraries
+- **Profile support** for multi-user scenarios
+- **Auto-save and quick save** convenience features
+- **Robust error handling** with `std::expected`
+- **Rich metadata** for save management UI
 
 **Key Takeaways:**
 
 1. Implement `ISaveable` for components that need persistence
 2. Register saveables before saving, unregister when done
-3. Use `save()` and `load()` for manual saves
-4. Use `quickSave()` / `quickLoad()` for player convenience
-5. Enable auto-save for safety
-6. Handle errors gracefully with fallbacks
-7. Test your save system early and often
+3. Use `save()` and `load()` with `Result<void, SaveError>` return type
+4. Use `quickSave()` / `quickLoad()` for player convenience (F5/F9)
+5. Enable auto-save for periodic background saves
+6. Query metadata for save UI without loading full save files
+7. Handle errors gracefully with fallbacks
+8. SaveSystem is an intentional exception to the AssetSystem rule
 
-For questions or issues, refer to:
+**For more information, refer to:**
 - Interface: `/bestow-contract/src/bestow.save.cppm`
-- Implementation: `/bestow-save/src/SaveSystem.cpp`
-- Tests: `/tests/unit/SaveSystemTests.cpp`
+- Implementation: `/bestow-save/src/SaveSystem.cpp` (if available)
+- Tests: `/tests/unit/SaveSystemTests.cpp` (if available)

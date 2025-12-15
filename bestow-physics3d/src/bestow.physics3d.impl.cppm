@@ -1038,8 +1038,45 @@ Result<void, Physics3DError> JoltPhysics3DSystem::applyAngularImpulse(Entity ent
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::setMass(Entity entity, float mass) {
-    // TODO: Implement mass override (Jolt requires mass properties recalculation)
-    return std::unexpected(Physics3DError::InvalidConfiguration);
+    if (mass <= 0.0f) return std::unexpected(Physics3DError::InvalidConfiguration);
+
+    auto* bodyId = getBodyID(entity);
+    if (!bodyId) return std::unexpected(Physics3DError::BodyNotFound);
+
+    JPH::Body* body = physicsSystem_->GetBodyLockInterface().TryGetBody(*bodyId);
+    if (!body) return std::unexpected(Physics3DError::BodyNotFound);
+
+    // Only dynamic bodies have modifiable mass
+    if (body->GetMotionType() != JPH::EMotionType::Dynamic) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    // Get current shape to recalculate mass properties
+    const JPH::Shape* shape = body->GetShape();
+
+    // Calculate new mass properties with the specified mass
+    JPH::MassProperties massProps;
+    massProps.mMass = mass;
+
+    // Scale inertia tensor proportionally to the mass change
+    float currentMass = 1.0f / body->GetMotionProperties()->GetInverseMass();
+    float massScale = mass / currentMass;
+
+    // Get current inertia and scale it
+    JPH::Vec3 invInertia = body->GetMotionProperties()->GetInverseInertiaDiagonal();
+    if (invInertia.GetX() > 0.0f && invInertia.GetY() > 0.0f && invInertia.GetZ() > 0.0f) {
+        JPH::Vec3 inertia(1.0f / invInertia.GetX(), 1.0f / invInertia.GetY(), 1.0f / invInertia.GetZ());
+        inertia = inertia * massScale;
+        massProps.mInertia = JPH::Mat44::sScale(inertia);
+    } else {
+        // Calculate fresh inertia from shape
+        shape->GetMassProperties().ScaleToMass(mass);
+        massProps = shape->GetMassProperties();
+        massProps.ScaleToMass(mass);
+    }
+
+    body->GetMotionProperties()->SetMassProperties(JPH::EAllowedDOFs::All, massProps);
+    return {};
 }
 
 Result<float, Physics3DError> JoltPhysics3DSystem::getMass(Entity entity) const {
@@ -2035,6 +2072,27 @@ Result<void, Physics3DError> JoltPhysics3DSystem::createCompoundBody(
         compoundSettings.AddShape(toJolt(cylinder.localPosition), toJolt(cylinder.localRotation), cylinderShape);
     }
 
+    // Add all convex hull shapes
+    for (const auto& convexHull : shape.convexHulls) {
+        if (convexHull.vertices.empty()) continue;
+
+        // Create convex hull from vertices
+        JPH::Array<JPH::Vec3> joltVertices;
+        joltVertices.reserve(convexHull.vertices.size());
+        for (const auto& v : convexHull.vertices) {
+            joltVertices.push_back(toJolt(v));
+        }
+
+        JPH::ConvexHullShapeSettings hullSettings(joltVertices.data(),
+                                                   static_cast<int>(joltVertices.size()));
+        JPH::Shape::ShapeResult hullResult = hullSettings.Create();
+        if (hullResult.IsValid()) {
+            compoundSettings.AddShape(toJolt(convexHull.localPosition),
+                                      toJolt(convexHull.localRotation),
+                                      hullResult.Get());
+        }
+    }
+
     JPH::Shape::ShapeResult shapeResult = compoundSettings.Create();
     if (!shapeResult.IsValid()) {
         return std::unexpected(Physics3DError::InvalidShape);
@@ -2206,10 +2264,58 @@ Result<std::uint32_t, Physics3DError> JoltPhysics3DSystem::addShape(Entity entit
 }
 
 Result<void, Physics3DError> JoltPhysics3DSystem::removeShape(Entity entity, std::uint32_t shapeIndex) {
-    // Removing shapes from a compound requires recreating the compound without that shape
-    // This is a complex operation that would need to track all shapes
-    // For now, return an error as this requires more sophisticated tracking
-    return std::unexpected(Physics3DError::InternalError);
+    if (!physicsSystem_) return std::unexpected(Physics3DError::InternalError);
+
+    JPH::BodyID* bodyId = getBodyID(entity);
+    if (!bodyId) return std::unexpected(Physics3DError::BodyNotFound);
+
+    JPH::BodyInterface& bodyInterface = physicsSystem_->GetBodyInterface();
+    const JPH::Shape* currentShape = bodyInterface.GetShape(*bodyId);
+
+    // Can only remove shapes from compound shapes
+    if (currentShape->GetType() != JPH::EShapeType::Compound) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    const JPH::CompoundShape* compound = static_cast<const JPH::CompoundShape*>(currentShape);
+    std::uint32_t numSubShapes = compound->GetNumSubShapes();
+
+    if (shapeIndex >= numSubShapes) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    // Cannot remove the last shape - body must have at least one shape
+    if (numSubShapes <= 1) {
+        return std::unexpected(Physics3DError::InvalidConfiguration);
+    }
+
+    // Create a new compound shape without the specified sub-shape
+    // We use StaticCompoundShape for this operation
+    JPH::StaticCompoundShapeSettings newCompoundSettings;
+
+    for (std::uint32_t i = 0; i < numSubShapes; ++i) {
+        if (i == shapeIndex) continue;  // Skip the shape to remove
+
+        const JPH::CompoundShape::SubShape& subShape = compound->GetSubShape(i);
+
+        // Get the sub-shape's local transform
+        JPH::Vec3 position = subShape.GetPositionCOM();
+        JPH::Quat rotation = subShape.GetRotation();
+
+        // Add to new compound (need to cast away const for the shape reference)
+        newCompoundSettings.AddShape(position, rotation, subShape.mShape);
+    }
+
+    // Create the new compound shape
+    JPH::Shape::ShapeResult result = newCompoundSettings.Create();
+    if (!result.IsValid()) {
+        return std::unexpected(Physics3DError::InternalError);
+    }
+
+    // Replace the body's shape
+    bodyInterface.SetShape(*bodyId, result.Get(), true, JPH::EActivation::Activate);
+
+    return {};
 }
 
 Result<std::uint32_t, Physics3DError> JoltPhysics3DSystem::getShapeCount(Entity entity) const {
@@ -2280,8 +2386,37 @@ Result<Mat3, Physics3DError> JoltPhysics3DSystem::getInertiaTensor(Entity entity
     const JPH::Body* body = physicsSystem_->GetBodyLockInterface().TryGetBody(*bodyId);
     if (!body) return std::unexpected(Physics3DError::BodyNotFound);
 
-    // Return identity matrix for now - proper inertia tensor extraction requires more work
-    return Mat3{1.0f};
+    // Get the inverse inertia diagonal from motion properties
+    const JPH::MotionProperties* motionProps = body->GetMotionProperties();
+    if (!motionProps) {
+        // Static bodies don't have motion properties with meaningful inertia
+        return Mat3{0.0f};
+    }
+
+    JPH::Vec3 invInertiaDiag = motionProps->GetInverseInertiaDiagonal();
+    JPH::Quat inertiaRotation = motionProps->GetInertiaRotation();
+
+    // Convert inverse inertia diagonal to inertia tensor
+    // The inertia tensor in local space is diagonal, but may be rotated
+    float ix = (invInertiaDiag.GetX() > 0.0f) ? 1.0f / invInertiaDiag.GetX() : 0.0f;
+    float iy = (invInertiaDiag.GetY() > 0.0f) ? 1.0f / invInertiaDiag.GetY() : 0.0f;
+    float iz = (invInertiaDiag.GetZ() > 0.0f) ? 1.0f / invInertiaDiag.GetZ() : 0.0f;
+
+    // Build the diagonal inertia matrix
+    JPH::Mat44 diagInertia = JPH::Mat44::sScale(JPH::Vec3(ix, iy, iz));
+
+    // Apply the inertia rotation to get the full inertia tensor
+    JPH::Mat44 rotMat = JPH::Mat44::sRotation(inertiaRotation);
+    JPH::Mat44 rotMatTranspose = rotMat.Transposed();
+    JPH::Mat44 inertiaTensor = rotMat * diagInertia * rotMatTranspose;
+
+    // Extract 3x3 matrix (GLM uses column-major order)
+    Mat3 result;
+    result[0][0] = inertiaTensor(0, 0); result[1][0] = inertiaTensor(0, 1); result[2][0] = inertiaTensor(0, 2);
+    result[0][1] = inertiaTensor(1, 0); result[1][1] = inertiaTensor(1, 1); result[2][1] = inertiaTensor(1, 2);
+    result[0][2] = inertiaTensor(2, 0); result[1][2] = inertiaTensor(2, 1); result[2][2] = inertiaTensor(2, 2);
+
+    return result;
 }
 
 //==========================================================================
@@ -2391,15 +2526,23 @@ JPH::Ref<JPH::Shape> JoltPhysics3DSystem::createShape(const PhysicsBodyDef3D& de
             return new JPH::CylinderShape(def.shapeHalfHeight, def.shapeRadius);
 
         case ShapeType3D::Mesh:
-            // TODO: Implement mesh shape creation from vertices/indices
+            // Mesh shapes require vertex and index data which PhysicsBodyDef3D doesn't support.
+            // For static mesh colliders (level geometry), consider extending the interface
+            // with a dedicated createMeshBody(Entity, Transform3D, MeshShapeDef) method.
+            // NOTE: Mesh shapes in Jolt are typically static-only (concave collision).
             return nullptr;
 
         case ShapeType3D::ConvexHull:
-            // TODO: Implement convex hull shape creation
+            // ConvexHull shapes require vertex data which PhysicsBodyDef3D doesn't support.
+            // Use createCompoundBody() with a single ConvexHullShapeDef in the convexHulls vector:
+            //   CompoundShapeDef compound;
+            //   compound.convexHulls.push_back(ConvexHullShapeDef{.vertices = myVertices});
+            //   physics->createCompoundBody(entity, BodyType3D::Dynamic, transform, compound);
             return nullptr;
 
         case ShapeType3D::HeightField:
-            // TODO: Implement height field shape creation
+            // HeightField shapes require specialized height data which PhysicsBodyDef3D doesn't support.
+            // Use the dedicated createHeightFieldBody(Entity, Transform3D, HeightFieldShapeDef) method.
             return nullptr;
 
         default:

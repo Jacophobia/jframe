@@ -1,556 +1,218 @@
-# Bestow Gameplay Ability System (GAS) Guide
+# Gameplay Ability System (GAS)
 
-## Overview
+The Gameplay Ability System provides a flexible, data-driven framework for implementing RPG-style mechanics: abilities, effects, attributes, and tags. Inspired by Unreal Engine's Gameplay Ability System, it enables complex character progression, status effects, and ability interactions with minimal code.
 
-The Bestow Gameplay Ability System (GAS) is an Unreal Engine-inspired framework for implementing abilities, effects, and attributes in a data-driven, flexible way. It provides a robust foundation for RPG mechanics, character progression, status effects, and complex ability interactions.
+## Quick Start
 
-**Key Features:**
-- **Hierarchical Tag System** - Categorize and filter abilities, effects, and states
-- **Attribute System** - Dynamic stats with base/current values and modifiers
-- **Gameplay Effects** - Buffs, debuffs, damage-over-time, and instant modifications
-- **Gameplay Abilities** - Cooldown-based actions with costs and requirements
-- **Lua Integration** - Define abilities, effects, and attributes in Lua for hot-reloadable content
-- **Event-Driven** - Callbacks for attribute changes, effect applications, and ability activations
+```cpp
+// Initialize GAS for an entity
+Entity player = sys.entities->createEntity();
+sys.gas->initializeComponent(player);
+
+// Register and apply an attribute
+AttributeDef healthDef{
+    .name = "Health",
+    .baseValue = 100.0f,
+    .minValue = 0.0f,
+    .maxValue = 100.0f
+};
+AttributeId healthId = sys.gas->registerAttribute(healthDef);
+sys.gas->initializeAttribute(player, healthId, 100.0f);
+
+// Grant an ability
+AbilityDef dashDef{
+    .name = "Dash",
+    .cooldown = 3.0f
+};
+AbilityId dashId = sys.gas->registerAbility(dashDef);
+sys.gas->grantAbility(player, dashId);
+
+// Activate the ability
+if (sys.gas->tryActivateAbility(player, dashId)) {
+    // Dash activated!
+}
+```
 
 ## Core Concepts
 
 ### 1. Gameplay Tags
 
-Tags are hierarchical identifiers used for categorization, filtering, and requirements throughout the GAS system.
+**Hierarchical identifiers** for categorizing abilities, effects, and states.
 
-**Hierarchy Example:**
-```
-State.Movement.Running
-State.Movement.Jumping
-State.Combat.Attacking
-State.Combat.Stunned
-```
+**Format:** Dot-separated hierarchy (e.g., `"State.Movement.Running"`)
 
-Tags use dot-notation for hierarchy. `State.Movement` is a parent of `State.Movement.Running`.
-
-**Common Use Cases:**
-- State tracking (grounded, airborne, stunned, invincible)
-- Ability categorization (attack abilities, movement abilities)
-- Effect filtering (cleanse effects remove effects with certain tags)
-- Conditional logic (can only jump when grounded)
-
-### 2. Attributes
-
-Attributes represent numeric stats like health, mana, speed, strength, etc. Each attribute has:
-- **Base Value** - The fundamental value without modifiers
-- **Current Value** - The computed value after all effects are applied
-- **Min/Max Constraints** - Clamping boundaries
-- **Change Callbacks** - Notifications when values change
-
-### 3. Gameplay Effects
-
-Effects modify attributes temporarily or permanently. They can:
-- Apply instant changes (damage, healing)
-- Apply duration-based modifiers (buffs that last 10 seconds)
-- Apply infinite modifiers (passive auras)
-- Tick periodically (damage-over-time, regeneration)
-- Stack multiple times
-- Grant temporary tags
-- Require or block certain tags
-
-### 4. Gameplay Abilities
-
-Abilities are activatable actions with:
-- Cooldowns
-- Activation costs (mana, stamina, etc.)
-- Tag-based requirements (must be grounded, can't be stunned)
-- Tag-based blocking (can't attack while blocking)
-- Effects applied on activation/end
-- Ability cancellation logic
-
-## Setting Up GAS
-
-### Initialize the GAS System
+**Use cases:**
+- State tracking: `"State.Grounded"`, `"State.Stunned"`
+- Ability categorization: `"Ability.Attack"`, `"Ability.Movement"`
+- Effect filtering: Block effects on immune targets
+- Requirements: Can only jump when grounded
 
 ```cpp
-import bestow;
+// Register tags
+GameplayTag groundedTag = sys.gas->registerTag("State.Grounded");
+GameplayTag stunned = sys.gas->registerTag("State.Combat.Stunned");
 
-// In your game initialization
-auto* gas = engine.systems().gas();
-gas->initialize();
-```
+// Add/remove tags
+sys.gas->addTag(player, groundedTag);
+sys.gas->removeTag(player, groundedTag);
 
-### Attach GAS Component to Entities
-
-```cpp
-Entity player = entities->createEntity();
-
-// Initialize the Ability System Component
-gas->initializeComponent(player);
-
-// The entity can now use tags, attributes, effects, and abilities
-```
-
-## Working with Tags
-
-### Register Tags (C++)
-
-```cpp
-GameplayTag groundedTag = gas->registerTag("State.Grounded");
-GameplayTag stunnedTag = gas->registerTag("State.Stunned");
-GameplayTag attackTag = gas->registerTag("Ability.Attack");
-```
-
-### Add/Remove Tags
-
-```cpp
-// Add tag to entity
-gas->addTag(player, groundedTag);
-
-// Check if entity has tag
-if (gas->hasTag(player, stunnedTag)) {
-    // Player is stunned
+// Query tags
+if (sys.gas->hasTag(player, stunned)) {
+    // Player can't act while stunned
 }
 
-// Remove tag
-gas->removeTag(player, groundedTag);
-```
-
-### Tag Queries
-
-```cpp
-GameplayTagContainer required;
-required.addTag(groundedTag);
-
-GameplayTagContainer blocked;
-blocked.addTag(stunnedTag);
-
-const GameplayTagContainer* playerTags = gas->getTags(player);
-
-// Check if player has required tags and no blocked tags
-if (playerTags->matchesQuery(required, blocked)) {
-    // Can perform grounded action while not stunned
-}
-```
-
-### Tag Hierarchy
-
-```cpp
-GameplayTag movement = gas->registerTag("State.Movement");
-GameplayTag running = gas->registerTag("State.Movement.Running");
-
-// Check parent relationship
-if (gas->isParentOf(movement, running)) {
+// Hierarchy
+GameplayTag movement = sys.gas->registerTag("State.Movement");
+GameplayTag running = sys.gas->registerTag("State.Movement.Running");
+if (sys.gas->isParentOf(movement, running)) {
     // "State.Movement" is parent of "State.Movement.Running"
 }
 ```
 
-## Working with Attributes
+### 2. Attributes
 
-### Define Attributes (C++)
+**Numeric stats** with base/current value tracking and automatic modifier application.
+
+**Properties:**
+- **Base value** - The fundamental stat (strength, max health)
+- **Current value** - After all modifiers (buffs, debuffs, equipment)
+- **Min/Max** - Clamping boundaries
+- **Callbacks** - Notifications on change
 
 ```cpp
-AttributeDef healthDef {
-    .name = "Health",
-    .baseValue = 100.0f,
+// Define and register
+AttributeDef manaDef{
+    .name = "Mana",
+    .baseValue = 50.0f,
     .minValue = 0.0f,
-    .maxValue = 100.0f,
+    .maxValue = 200.0f,
     .clampEnabled = true
 };
+AttributeId manaId = sys.gas->registerAttribute(manaDef);
 
-AttributeId healthId = gas->registerAttribute(healthDef);
+// Initialize on entity
+sys.gas->initializeAttribute(player, manaId, 100.0f);
+
+// Read values
+float current = sys.gas->getAttributeValue(player, manaId);
+float base = sys.gas->getAttributeBaseValue(player, manaId);
+
+// Modify
+sys.gas->modifyAttribute(player, manaId, -30.0f);  // Spend mana
+sys.gas->setAttributeBaseValue(player, manaId, 150.0f);  // Level up
 ```
 
-### Initialize Attributes on Entities
+### 3. Gameplay Effects
+
+**Modifiers** that change attributes temporarily or permanently.
+
+**Types:**
+- **Instant** - Apply once and remove (damage, healing)
+- **Duration** - Last for a set time (buffs, debuffs)
+- **Infinite** - Persist until removed (auras, equipment)
+
+**Features:**
+- Periodic ticking (DoT/HoT)
+- Stacking
+- Tag requirements
+- Granted tags
 
 ```cpp
-// Set starting health to 100
-gas->initializeAttribute(player, healthId, 100.0f);
-
-// Get current value
-float currentHealth = gas->getAttributeValue(player, healthId);
-
-// Get base value (without modifiers)
-float baseHealth = gas->getAttributeBaseValue(player, healthId);
-```
-
-### Modify Attributes
-
-```cpp
-// Reduce health by 25
-gas->modifyAttribute(player, healthId, -25.0f);
-
-// Heal for 50 (will be clamped to max)
-gas->modifyAttribute(player, healthId, 50.0f);
-
-// Set new base value (recalculates effects)
-gas->setAttributeBaseValue(player, healthId, 150.0f);
-```
-
-### Attribute Change Callbacks
-
-```cpp
-gas->setAttributeChangeCallback([](const AttributeChangeEvent& event) {
-    // event.entity - The entity whose attribute changed
-    // event.attribute - The attribute ID that changed
-    // event.oldValue - Value before change
-    // event.newValue - Value after change
-
-    if (event.newValue <= 0.0f) {
-        // Entity died
-    }
-});
-```
-
-## Working with Effects
-
-### Define Effects (C++)
-
-```cpp
-// Instant heal effect
-EffectDef healDef {
+// Instant heal
+EffectDef healDef{
     .name = "SmallHeal",
     .durationType = EffectDurationType::Instant,
     .modifiers = {
-        { .attribute = healthId, .op = EffectModifierOp::Add, .value = 50.0f }
+        {.attribute = healthId, .op = EffectModifierOp::Add, .value = 50.0f}
     }
 };
-EffectId healId = gas->registerEffect(healDef);
+EffectId healId = sys.gas->registerEffect(healDef);
 
-// Duration-based speed buff
-EffectDef hasteDef {
+// Duration buff
+EffectDef hasteDef{
     .name = "Haste",
     .durationType = EffectDurationType::Duration,
-    .duration = 10.0f,  // Lasts 10 seconds
+    .duration = 10.0f,
     .modifiers = {
-        { .attribute = speedId, .op = EffectModifierOp::Multiply, .value = 1.5f }
+        {.attribute = speedId, .op = EffectModifierOp::Multiply, .value = 1.5f}
     }
 };
-EffectId hasteId = gas->registerEffect(hasteDef);
+EffectId hasteId = sys.gas->registerEffect(hasteDef);
 
-// Periodic damage-over-time
-EffectDef poisonDef {
+// Damage over time
+EffectDef poisonDef{
     .name = "Poison",
     .durationType = EffectDurationType::Duration,
-    .duration = 5.0f,   // Lasts 5 seconds
-    .period = 1.0f,     // Ticks every 1 second
+    .duration = 5.0f,
+    .period = 1.0f,  // Tick every second
     .modifiers = {
-        { .attribute = healthId, .op = EffectModifierOp::Add, .value = -10.0f }
+        {.attribute = healthId, .op = EffectModifierOp::Add, .value = -10.0f}
     }
 };
-EffectId poisonId = gas->registerEffect(poisonDef);
+EffectId poisonId = sys.gas->registerEffect(poisonDef);
 
-// Infinite aura with granted tags
-GameplayTag buffedTag = gas->registerTag("State.Buffed");
-EffectDef auraDef {
-    .name = "StrengthAura",
-    .durationType = EffectDurationType::Infinite,
-    .modifiers = {
-        { .attribute = strengthId, .op = EffectModifierOp::Add, .value = 20.0f }
-    },
-    .grantedTags = { buffedTag }
-};
-auraDef.grantedTags.addTag(buffedTag);
-EffectId auraId = gas->registerEffect(auraDef);
+// Apply effects
+sys.gas->applyEffect(target, healId, source);
+sys.gas->applyEffect(player, hasteId, player);
 ```
 
-### Effect Modifier Operations
+**Modifier Operations:**
+- `Add`: `currentValue += value`
+- `Multiply`: `currentValue *= value`
+- `Override`: `currentValue = value`
+
+### 4. Gameplay Abilities
+
+**Activatable actions** with cooldowns, costs, and requirements.
+
+**Features:**
+- Cooldown management
+- Activation costs (mana, stamina)
+- Tag requirements (must be grounded, can't be stunned)
+- Tag blocking (can't attack while blocking)
+- Effect application on activate/end
+- Ability cancellation
 
 ```cpp
-// Add: currentValue += value
-{ .attribute = healthId, .op = EffectModifierOp::Add, .value = 50.0f }
-
-// Multiply: currentValue *= value
-{ .attribute = damageId, .op = EffectModifierOp::Multiply, .value = 2.0f }
-
-// Override: currentValue = value
-{ .attribute = speedId, .op = EffectModifierOp::Override, .value = 0.0f }  // Stun
-```
-
-### Apply Effects
-
-```cpp
-Entity source = player;
-Entity target = enemy;
-
-// Apply instant damage
-gas->applyEffect(target, damageEffectId, source);
-
-// Apply duration buff
-gas->applyEffect(player, hasteId, player);
-
-// Check if entity has effect
-if (gas->hasEffect(player, hasteId)) {
-    // Player is currently hasted
-}
-
-// Remove specific effect
-gas->removeEffect(player, hasteId);
-
-// Remove all effects
-gas->removeAllEffects(player);
-
-// Get all active effects
-std::vector<ActiveEffect> effects = gas->getActiveEffects(player);
-```
-
-### Effect Stacking
-
-```cpp
-EffectDef stackingBuff {
-    .name = "DamageBoost",
-    .durationType = EffectDurationType::Infinite,
-    .modifiers = {
-        { .attribute = damageId, .op = EffectModifierOp::Add, .value = 10.0f }
-    },
-    .stackable = true,
-    .maxStacks = 5
-};
-EffectId boostId = gas->registerEffect(stackingBuff);
-
-// Apply 3 times - each application adds a stack
-gas->applyEffect(player, boostId, player);  // 1 stack: +10 damage
-gas->applyEffect(player, boostId, player);  // 2 stacks: +20 damage
-gas->applyEffect(player, boostId, player);  // 3 stacks: +30 damage
-```
-
-### Effect Tag Requirements
-
-```cpp
-GameplayTag vulnerableTag = gas->registerTag("State.Vulnerable");
-GameplayTag immuneTag = gas->registerTag("State.Immune");
-
-EffectDef criticalDamage {
-    .name = "CriticalHit",
-    .durationType = EffectDurationType::Instant,
-    .modifiers = {
-        { .attribute = healthId, .op = EffectModifierOp::Add, .value = -100.0f }
-    },
-    .applicationRequiredTags = { vulnerableTag },  // Only works on vulnerable targets
-    .applicationBlockedTags = { immuneTag }        // Doesn't work on immune targets
-};
-criticalDamage.applicationRequiredTags.addTag(vulnerableTag);
-criticalDamage.applicationBlockedTags.addTag(immuneTag);
-```
-
-### Effect Removal by Tag
-
-```cpp
-GameplayTag cleanseTag = gas->registerTag("Action.Cleanse");
-
-EffectDef debuff {
-    .name = "Slow",
-    .durationType = EffectDurationType::Infinite,
-    .modifiers = {
-        { .attribute = speedId, .op = EffectModifierOp::Multiply, .value = 0.5f }
-    },
-    .removalTags = { cleanseTag }  // Removed if entity gains cleanse tag
-};
-debuff.removalTags.addTag(cleanseTag);
-
-// Later, cleanse removes all effects with removalTags containing "Action.Cleanse"
-gas->addTag(player, cleanseTag);
-gas->update(deltaTime);  // Effect will be removed during update
-```
-
-### Effect Application Callbacks
-
-```cpp
-gas->setEffectAppliedCallback([](const EffectAppliedEvent& event) {
-    // event.target - Entity that received the effect
-    // event.source - Entity that applied the effect
-    // event.effect - The effect ID that was applied
-
-    // Play visual effect, sound, etc.
-});
-```
-
-## Working with Abilities
-
-### Define Abilities (C++)
-
-```cpp
-// Simple dash ability with cooldown
-AbilityDef dashDef {
+// Simple ability with cooldown
+AbilityDef dashDef{
     .name = "Dash",
     .activationPolicy = AbilityActivationPolicy::OnInputPressed,
     .cooldown = 3.0f
 };
-AbilityId dashId = gas->registerAbility(dashDef);
+AbilityId dashId = sys.gas->registerAbility(dashDef);
 
-// Spell with mana cost
-AbilityDef fireballDef {
+// Ability with cost
+AbilityDef fireballDef{
     .name = "Fireball",
     .activationPolicy = AbilityActivationPolicy::OnInputPressed,
     .cooldown = 1.0f,
     .costs = {
-        { .attribute = manaId, .cost = 30.0f }
+        {.attribute = manaId, .cost = 30.0f}
     }
 };
-AbilityId fireballId = gas->registerAbility(fireballDef);
+AbilityId fireballId = sys.gas->registerAbility(fireballDef);
 
-// Ground-only jump ability
-GameplayTag groundedTag = gas->registerTag("State.Grounded");
-AbilityDef jumpDef {
-    .name = "Jump",
-    .activationPolicy = AbilityActivationPolicy::OnInputPressed,
-    .activationRequiredTags = { groundedTag }
-};
-jumpDef.activationRequiredTags.addTag(groundedTag);
-AbilityId jumpId = gas->registerAbility(jumpDef);
-
-// Block ability that prevents attacks
-GameplayTag attackAbilityTag = gas->registerTag("Ability.Attack");
-AbilityDef blockDef {
-    .name = "Block",
-    .activationPolicy = AbilityActivationPolicy::WhileInputHeld,
-    .blockAbilitiesWithTags = { attackAbilityTag }
-};
-blockDef.blockAbilitiesWithTags.addTag(attackAbilityTag);
-AbilityId blockId = gas->registerAbility(blockDef);
-```
-
-### Activation Policies
-
-```cpp
-// Activate once when input is pressed
-.activationPolicy = AbilityActivationPolicy::OnInputPressed
-
-// Activate once when input is released
-.activationPolicy = AbilityActivationPolicy::OnInputReleased
-
-// Active while input is held (like blocking or charging)
-.activationPolicy = AbilityActivationPolicy::WhileInputHeld
-
-// Always active (passive abilities, auras)
-.activationPolicy = AbilityActivationPolicy::Passive
-```
-
-### Grant and Use Abilities
-
-```cpp
-// Grant ability to entity
-gas->grantAbility(player, dashId);
-gas->grantAbility(player, fireballId);
-
-// Check if entity has ability
-if (gas->hasAbility(player, dashId)) {
-    // Player has dash
+// Grant and activate
+sys.gas->grantAbility(player, dashId);
+if (sys.gas->canActivateAbility(player, dashId)) {
+    bool activated = sys.gas->tryActivateAbility(player, dashId);
 }
 
-// Check if ability can be activated
-if (gas->canActivateAbility(player, dashId)) {
-    // Not on cooldown, meets requirements
-}
-
-// Try to activate (returns true if successful)
-if (gas->tryActivateAbility(player, dashId)) {
-    // Dash activated successfully
-}
-
-// Check if ability is active
-if (gas->isAbilityActive(player, blockId)) {
-    // Player is blocking
-}
-
-// End ability manually
-gas->endAbility(player, blockId);
-
-// Get remaining cooldown
-float cooldown = gas->getAbilityCooldown(player, dashId);
-if (cooldown > 0.0f) {
-    // Still on cooldown
-}
-
-// Remove ability from entity
-gas->removeAbility(player, dashId);
+// Query state
+bool isActive = sys.gas->isAbilityActive(player, dashId);
+float cooldown = sys.gas->getAbilityCooldown(player, dashId);
 ```
 
-### Abilities with Effects
-
-```cpp
-// Ability that applies speed boost when activated
-EffectDef speedBoost {
-    .name = "DashSpeedBoost",
-    .durationType = EffectDurationType::Duration,
-    .duration = 0.5f,
-    .modifiers = {
-        { .attribute = speedId, .op = EffectModifierOp::Multiply, .value = 3.0f }
-    }
-};
-EffectId speedBoostId = gas->registerEffect(speedBoost);
-
-AbilityDef dashDef {
-    .name = "Dash",
-    .cooldown = 3.0f,
-    .effectsToApplyOnActivate = { speedBoostId }
-};
-AbilityId dashId = gas->registerAbility(dashDef);
-
-// When dash activates, speed boost effect is automatically applied
-gas->tryActivateAbility(player, dashId);
-```
-
-### Abilities with End Effects
-
-```cpp
-// Sprint drains stamina when it ends
-EffectDef staminaDrain {
-    .name = "SprintExhaustion",
-    .durationType = EffectDurationType::Instant,
-    .modifiers = {
-        { .attribute = staminaId, .op = EffectModifierOp::Add, .value = -20.0f }
-    }
-};
-EffectId drainId = gas->registerEffect(staminaDrain);
-
-AbilityDef sprintDef {
-    .name = "Sprint",
-    .activationPolicy = AbilityActivationPolicy::WhileInputHeld,
-    .effectsToApplyOnEnd = { drainId }
-};
-AbilityId sprintId = gas->registerAbility(sprintDef);
-```
-
-### Ability Cancellation
-
-```cpp
-GameplayTag movementTag = gas->registerTag("Ability.Movement");
-
-AbilityDef dashDef {
-    .name = "Dash",
-    .abilityTags = { movementTag }
-};
-dashDef.abilityTags.addTag(movementTag);
-
-AbilityDef sprintDef {
-    .name = "Sprint",
-    .abilityTags = { movementTag },
-    .cancelAbilitiesWithTags = { movementTag }  // Cancels dash
-};
-sprintDef.abilityTags.addTag(movementTag);
-sprintDef.cancelAbilitiesWithTags.addTag(movementTag);
-
-// If dash is active, activating sprint will cancel dash
-gas->tryActivateAbility(player, dashId);      // Dash active
-gas->tryActivateAbility(player, sprintId);    // Dash cancelled, sprint active
-```
-
-### Ability Activation Callbacks
-
-```cpp
-gas->setAbilityActivatedCallback([](const AbilityActivatedEvent& event) {
-    // event.entity - Entity that activated the ability
-    // event.ability - The ability ID that was activated
-
-    // Play animation, sound effect, spawn particles, etc.
-});
-```
+**Activation Policies:**
+- `OnInputPressed` - Activate when input pressed
+- `OnInputReleased` - Activate when input released
+- `WhileInputHeld` - Active while held (blocking, charging)
+- `Passive` - Always active (auras)
 
 ## Lua Integration
 
-### Loading Definitions from Lua
-
-```cpp
-// Load from Lua script file
-std::string luaContent = readFile("abilities.lua");
-gas->loadDefinitionsFromLua(luaContent);
-```
+Define abilities, effects, and attributes in Lua for hot-reloadable, designer-friendly content.
 
 ### Lua Format: Tags
 
@@ -558,11 +220,8 @@ gas->loadDefinitionsFromLua(luaContent);
 Tags = {
     "State.Movement.Running",
     "State.Movement.Jumping",
-    "State.Movement.Dashing",
     "State.Combat.Attacking",
-    "State.Combat.Blocking",
     "State.Status.Stunned",
-    "State.Status.Invincible",
     "Ability.Attack",
     "Ability.Movement"
 }
@@ -580,22 +239,10 @@ Attributes = {
         clampEnabled = true
     },
     {
-        name = "Mana",
-        baseValue = 50,
-        minValue = 0,
-        maxValue = 200
-    },
-    {
         name = "MoveSpeed",
         baseValue = 400,
         minValue = 0,
         maxValue = 1000
-    },
-    {
-        name = "Stamina",
-        baseValue = 100,
-        minValue = 0,
-        maxValue = 100
     }
 }
 ```
@@ -609,7 +256,7 @@ Effects = {
         name = "SmallHeal",
         durationType = "instant",
         modifiers = {
-            { attribute = "Health", op = "add", value = 25 }
+            {attribute = "Health", op = "add", value = 25}
         }
     },
 
@@ -619,18 +266,18 @@ Effects = {
         durationType = "duration",
         duration = 10.0,
         modifiers = {
-            { attribute = "MoveSpeed", op = "multiply", value = 1.5 }
+            {attribute = "MoveSpeed", op = "multiply", value = 1.5}
         }
     },
 
-    -- Damage over time (periodic)
+    -- Periodic damage
     {
         name = "Poison",
         durationType = "duration",
         duration = 5.0,
-        period = 1.0,  -- Ticks every second
+        period = 1.0,
         modifiers = {
-            { attribute = "Health", op = "add", value = -5 }
+            {attribute = "Health", op = "add", value = -5}
         }
     },
 
@@ -641,9 +288,9 @@ Effects = {
         stackable = true,
         maxStacks = 5,
         modifiers = {
-            { attribute = "Damage", op = "add", value = 10 }
+            {attribute = "Damage", op = "add", value = 10}
         },
-        grantedTags = { "State.Status.Buffed" }
+        grantedTags = {"State.Buffed"}
     },
 
     -- Effect with tag requirements
@@ -651,21 +298,10 @@ Effects = {
         name = "CriticalDamage",
         durationType = "instant",
         modifiers = {
-            { attribute = "Health", op = "add", value = -100 }
+            {attribute = "Health", op = "add", value = -100}
         },
-        applicationRequiredTags = { "State.Status.Vulnerable" },
-        applicationBlockedTags = { "State.Status.Invincible" }
-    },
-
-    -- Effect that can be cleansed
-    {
-        name = "Slow",
-        durationType = "infinite",
-        modifiers = {
-            { attribute = "MoveSpeed", op = "multiply", value = 0.5 }
-        },
-        grantedTags = { "State.Status.Slowed" },
-        removalTags = { "Action.Cleanse" }
+        applicationRequiredTags = {"State.Vulnerable"},
+        applicationBlockedTags = {"State.Invincible"}
     }
 }
 ```
@@ -681,13 +317,13 @@ Abilities = {
         cooldown = 3.0
     },
 
-    -- Spell with mana cost
+    -- Spell with cost
     {
         name = "Fireball",
         activationPolicy = "onInputPressed",
         cooldown = 1.0,
         costs = {
-            { attribute = "Mana", cost = 30 }
+            {attribute = "Mana", cost = 30}
         }
     },
 
@@ -695,8 +331,16 @@ Abilities = {
     {
         name = "Jump",
         activationPolicy = "onInputPressed",
-        activationRequiredTags = { "State.Grounded" },
-        activationBlockedTags = { "State.Airborne" }
+        activationRequiredTags = {"State.Grounded"},
+        activationBlockedTags = {"State.Airborne"}
+    },
+
+    -- Block ability
+    {
+        name = "Block",
+        activationPolicy = "whileInputHeld",
+        blockAbilitiesWithTags = {"Ability.Attack"},
+        abilityTags = {"Ability.Defense"}
     },
 
     -- Ability with effects
@@ -705,430 +349,386 @@ Abilities = {
         activationPolicy = "onInputPressed",
         cooldown = 30.0,
         costs = {
-            { attribute = "Stamina", cost = 50 }
+            {attribute = "Stamina", cost = 50}
         },
-        abilityTags = { "Ability.Buff" },
-        effectsToApplyOnActivate = { "StrengthBuff", "Haste" },
-        effectsToApplyOnEnd = { "Exhaustion" }
-    },
-
-    -- Block that prevents attacks
-    {
-        name = "Block",
-        activationPolicy = "whileInputHeld",
-        blockAbilitiesWithTags = { "Ability.Attack" },
-        abilityTags = { "Ability.Defense" }
-    },
-
-    -- Sprint that cancels other movement
-    {
-        name = "Sprint",
-        activationPolicy = "whileInputHeld",
-        abilityTags = { "Ability.Movement" },
-        cancelAbilitiesWithTags = { "Ability.Movement" }
+        effectsToApplyOnActivate = {"StrengthBuff", "Haste"},
+        effectsToApplyOnEnd = {"Exhaustion"}
     }
 }
 ```
 
-### Complete Lua Example: RPG Character Abilities
+### Loading Definitions
+
+```cpp
+// From Lua file (via AssetSystem)
+AssetHandle gasConfig = sys.assets->registerAsset(
+    AssetType::Data, "config/abilities.lua"
+);
+sys.assets->loadAsset(gasConfig);
+auto* data = sys.assets->getAsset<DataAsset>(gasConfig);
+if (data) {
+    sys.gas->loadDefinitionsFromLua(data->content);
+}
+
+// Or directly from string
+std::string luaSource = R"(
+    Tags = {"State.Grounded"}
+    Attributes = {
+        {name = "Health", baseValue = 100, minValue = 0, maxValue = 100}
+    }
+)";
+sys.gas->loadDefinitionsFromLua(luaSource);
+```
+
+## Complete Examples
+
+### Example 1: Character Setup
+
+```cpp
+// Initialize GAS component
+Entity player = sys.entities->createEntity();
+sys.gas->initializeComponent(player);
+
+// Register attributes
+AttributeDef healthDef{.name = "Health", .baseValue = 100.0f, .minValue = 0.0f, .maxValue = 100.0f};
+AttributeDef manaDef{.name = "Mana", .baseValue = 50.0f, .minValue = 0.0f, .maxValue = 100.0f};
+AttributeDef speedDef{.name = "MoveSpeed", .baseValue = 400.0f, .minValue = 0.0f, .maxValue = 1000.0f};
+
+AttributeId healthId = sys.gas->registerAttribute(healthDef);
+AttributeId manaId = sys.gas->registerAttribute(manaDef);
+AttributeId speedId = sys.gas->registerAttribute(speedDef);
+
+// Initialize attributes on player
+sys.gas->initializeAttribute(player, healthId, 100.0f);
+sys.gas->initializeAttribute(player, manaId, 50.0f);
+sys.gas->initializeAttribute(player, speedId, 400.0f);
+
+// Register tags
+GameplayTag groundedTag = sys.gas->registerTag("State.Grounded");
+GameplayTag stunnedTag = sys.gas->registerTag("State.Stunned");
+
+// Add initial tags
+sys.gas->addTag(player, groundedTag);
+```
+
+### Example 2: Buff/Debuff System
+
+```cpp
+// Register effect definitions
+EffectDef speedBoost{
+    .name = "SpeedBoost",
+    .durationType = EffectDurationType::Duration,
+    .duration = 5.0f,
+    .modifiers = {
+        {.attribute = speedId, .op = EffectModifierOp::Multiply, .value = 1.5f}
+    }
+};
+EffectId speedBoostId = sys.gas->registerEffect(speedBoost);
+
+EffectDef stun{
+    .name = "Stun",
+    .durationType = EffectDurationType::Duration,
+    .duration = 2.0f,
+    .modifiers = {
+        {.attribute = speedId, .op = EffectModifierOp::Override, .value = 0.0f}
+    }
+};
+GameplayTag stunnedTag = sys.gas->registerTag("State.Stunned");
+stun.grantedTags.addTag(stunnedTag);
+EffectId stunId = sys.gas->registerEffect(stun);
+
+// Apply effects
+sys.gas->applyEffect(player, speedBoostId, player);  // Speed boost
+sys.gas->applyEffect(enemy, stunId, player);  // Stun enemy
+
+// Check active effects
+if (sys.gas->hasEffect(enemy, stunId)) {
+    // Enemy is stunned
+}
+
+// Remove effect early
+sys.gas->removeEffect(player, speedBoostId);
+```
+
+### Example 3: Ability with Cooldown
+
+```cpp
+// Define ability
+AbilityDef dashDef{
+    .name = "Dash",
+    .activationPolicy = AbilityActivationPolicy::OnInputPressed,
+    .cooldown = 3.0f,
+    .costs = {
+        {.attribute = staminaId, .cost = 20.0f}
+    }
+};
+
+// Create speed boost effect applied on dash
+EffectDef dashSpeed{
+    .name = "DashSpeed",
+    .durationType = EffectDurationType::Duration,
+    .duration = 0.5f,
+    .modifiers = {
+        {.attribute = speedId, .op = EffectModifierOp::Multiply, .value = 3.0f}
+    }
+};
+EffectId dashSpeedId = sys.gas->registerEffect(dashSpeed);
+
+dashDef.effectsToApplyOnActivate = {dashSpeedId};
+AbilityId dashId = sys.gas->registerAbility(dashDef);
+
+// Grant to player
+sys.gas->grantAbility(player, dashId);
+
+// In input handler
+if (sys.input->isKeyJustPressed(Key::Shift)) {
+    if (sys.gas->canActivateAbility(player, dashId)) {
+        bool activated = sys.gas->tryActivateAbility(player, dashId);
+        if (activated) {
+            // Play dash animation, particles, etc.
+        }
+    } else {
+        float cooldown = sys.gas->getAbilityCooldown(player, dashId);
+        // Show cooldown remaining on UI
+    }
+}
+```
+
+### Example 4: Lua-Based RPG System
 
 ```lua
--- Define all tags
+-- data/config/rpg_system.lua
+
 Tags = {
     "State.Grounded",
-    "State.Airborne",
     "State.Combat.Attacking",
-    "State.Combat.Blocking",
     "State.Status.Stunned",
     "State.Status.Invincible",
     "Ability.Attack",
-    "Ability.Movement",
-    "Ability.Defense"
+    "Ability.Movement"
 }
 
--- Define character stats
 Attributes = {
-    { name = "Health", baseValue = 100, minValue = 0, maxValue = 100 },
-    { name = "Mana", baseValue = 100, minValue = 0, maxValue = 100 },
-    { name = "Stamina", baseValue = 100, minValue = 0, maxValue = 100 },
-    { name = "MoveSpeed", baseValue = 400, minValue = 0, maxValue = 1000 },
-    { name = "AttackPower", baseValue = 10, minValue = 0, maxValue = 100 }
+    {name = "Health", baseValue = 100, minValue = 0, maxValue = 100},
+    {name = "Mana", baseValue = 100, minValue = 0, maxValue = 100},
+    {name = "Stamina", baseValue = 100, minValue = 0, maxValue = 100},
+    {name = "MoveSpeed", baseValue = 400, minValue = 0, maxValue = 1000},
+    {name = "AttackPower", baseValue = 10, minValue = 0, maxValue = 100}
 }
 
--- Define effects
 Effects = {
-    -- Combat effects
+    -- Damage effect
     {
-        name = "MeleeAttackDamage",
+        name = "MeleeDamage",
         durationType = "instant",
         modifiers = {
-            { attribute = "Health", op = "add", value = -15 }
+            {attribute = "Health", op = "add", value = -15}
         }
     },
 
-    -- Movement buff
+    -- Health regeneration
     {
-        name = "DashSpeedBoost",
-        durationType = "duration",
-        duration = 0.5,
-        modifiers = {
-            { attribute = "MoveSpeed", op = "multiply", value = 3.0 }
-        }
-    },
-
-    -- Mana regeneration
-    {
-        name = "ManaRegen",
+        name = "HealthRegen",
         durationType = "duration",
         duration = 10.0,
         period = 1.0,
         modifiers = {
-            { attribute = "Mana", op = "add", value = 5 }
+            {attribute = "Health", op = "add", value = 5}
         }
     },
 
-    -- Block defense boost
+    -- Stun debuff
     {
-        name = "BlockDefense",
-        durationType = "infinite",
-        grantedTags = { "State.Combat.Blocking" }
+        name = "Stun",
+        durationType = "duration",
+        duration = 2.0,
+        modifiers = {
+            {attribute = "MoveSpeed", op = "override", value = 0}
+        },
+        grantedTags = {"State.Status.Stunned"}
     }
 }
 
--- Define abilities
 Abilities = {
-    -- Basic melee attack
+    -- Basic attack
     {
         name = "MeleeAttack",
         activationPolicy = "onInputPressed",
         cooldown = 0.5,
         costs = {
-            { attribute = "Stamina", cost = 10 }
+            {attribute = "Stamina", cost = 10}
         },
-        abilityTags = { "Ability.Attack" },
-        activationBlockedTags = { "State.Status.Stunned" },
-        effectsToApplyOnActivate = { "MeleeAttackDamage" }
+        abilityTags = {"Ability.Attack"},
+        activationBlockedTags = {"State.Status.Stunned"},
+        effectsToApplyOnActivate = {"MeleeDamage"}
     },
 
-    -- Dash ability
+    -- Dash
     {
         name = "Dash",
         activationPolicy = "onInputPressed",
         cooldown = 3.0,
         costs = {
-            { attribute = "Stamina", cost = 20 }
+            {attribute = "Stamina", cost = 20}
         },
-        abilityTags = { "Ability.Movement" },
-        effectsToApplyOnActivate = { "DashSpeedBoost" }
+        abilityTags = {"Ability.Movement"}
     },
 
-    -- Jump (ground only)
+    -- Jump
     {
         name = "Jump",
         activationPolicy = "onInputPressed",
-        cooldown = 0.2,
-        activationRequiredTags = { "State.Grounded" },
-        abilityTags = { "Ability.Movement" }
+        activationRequiredTags = {"State.Grounded"},
+        abilityTags = {"Ability.Movement"}
     },
 
-    -- Block (held)
+    -- Healing spell
     {
-        name = "Block",
-        activationPolicy = "whileInputHeld",
-        blockAbilitiesWithTags = { "Ability.Attack" },
-        abilityTags = { "Ability.Defense" },
-        effectsToApplyOnActivate = { "BlockDefense" }
-    },
-
-    -- Mana potion
-    {
-        name = "DrinkManaPotion",
+        name = "Heal",
         activationPolicy = "onInputPressed",
-        cooldown = 5.0,
-        effectsToApplyOnActivate = { "ManaRegen" }
+        cooldown = 10.0,
+        costs = {
+            {attribute = "Mana", cost = 30}
+        },
+        effectsToApplyOnActivate = {"HealthRegen"}
     }
 }
 ```
 
-## Best Practices
-
-### 1. Attribute Design
-
-**Keep attributes focused:**
 ```cpp
-// Good - Clear, single-purpose attributes
-"Health", "Mana", "Stamina", "MoveSpeed", "JumpHeight"
+// Load the system
+AssetHandle rpgConfig = sys.assets->registerAsset(AssetType::Data, "config/rpg_system.lua");
+sys.assets->loadAsset(rpgConfig);
+auto* configData = sys.assets->getAsset<DataAsset>(rpgConfig);
+sys.gas->loadDefinitionsFromLua(configData->content);
 
-// Avoid - Vague or compound attributes
-"Power", "Stats", "AllBuffs"
+// Setup player
+Entity player = sys.entities->createEntity();
+sys.gas->initializeComponent(player);
+
+// Find registered IDs
+auto healthDef = sys.gas->getAttributeDef("Health");
+auto manaDef = sys.gas->getAttributeDef("Mana");
+auto dashAbilityDef = sys.gas->getAbilityDef("Dash");
+
+// Initialize and grant
+if (healthDef && manaDef && dashAbilityDef) {
+    sys.gas->initializeAttribute(player, healthDef->id, 100.0f);
+    sys.gas->initializeAttribute(player, manaDef->id, 100.0f);
+    sys.gas->grantAbility(player, dashAbilityDef->id);
+}
 ```
 
-**Use appropriate min/max values:**
+## Callbacks and Events
+
+### Attribute Changes
+
 ```cpp
-// Resource attributes - min 0
-{ name = "Health", minValue = 0.0f, maxValue = 100.0f }
+sys.gas->setAttributeChangeCallback([](const AttributeChangeEvent& event) {
+    // event.entity - Entity whose attribute changed
+    // event.attribute - Attribute ID
+    // event.oldValue - Previous value
+    // event.newValue - New value
 
-// Percentage modifiers - 0 to 1
-{ name = "DamageReduction", minValue = 0.0f, maxValue = 1.0f }
-
-// Speed/movement - unbounded max
-{ name = "MoveSpeed", minValue = 0.0f, maxValue = std::numeric_limits<float>::max() }
-```
-
-### 2. Effect Composition
-
-**Combine simple effects for complex behaviors:**
-```cpp
-// Instead of one complex effect, use multiple simple effects
-AbilityDef berserk {
-    .name = "BerserkMode",
-    .effectsToApplyOnActivate = {
-        speedBoostId,      // Move faster
-        damageBoostId,     // Hit harder
-        defenseReductionId // Take more damage
+    if (event.newValue <= 0.0f) {
+        // Handle death
     }
+});
+```
+
+### Effect Applications
+
+```cpp
+sys.gas->setEffectAppliedCallback([](const EffectAppliedEvent& event) {
+    // event.target - Entity receiving effect
+    // event.source - Entity applying effect
+    // event.effect - Effect ID
+
+    // Play visual effects, sounds, etc.
+});
+```
+
+### Ability Activations
+
+```cpp
+sys.gas->setAbilityActivatedCallback([](const AbilityActivatedEvent& event) {
+    // event.entity - Entity activating ability
+    // event.ability - Ability ID
+
+    // Play animations, particles, sounds
+});
+```
+
+## Advanced Patterns
+
+### Combo System
+
+```cpp
+// Define combo tags
+GameplayTag combo1 = sys.gas->registerTag("Combo.Stage1");
+GameplayTag combo2 = sys.gas->registerTag("Combo.Stage2");
+
+// First attack grants combo1 tag
+EffectDef grantCombo1{
+    .name = "GrantCombo1",
+    .durationType = EffectDurationType::Duration,
+    .duration = 2.0f  // Combo window
 };
-```
+grantCombo1.grantedTags.addTag(combo1);
+EffectId grantCombo1Id = sys.gas->registerEffect(grantCombo1);
 
-**Use tags to group related effects:**
-```lua
-Effects = {
-    {
-        name = "BleedingDOT",
-        grantedTags = { "Status.Bleeding", "Status.Debuff" }
-    },
-    {
-        name = "Poison",
-        grantedTags = { "Status.Poisoned", "Status.Debuff" }
-    }
-}
-
--- Cleanse ability removes all debuffs
-Abilities = {
-    {
-        name = "Cleanse",
-        effectsToApplyOnActivate = { "CleanseBuff" }
-    }
-}
-
-Effects = {
-    {
-        name = "CleanseBuff",
-        durationType = "instant",
-        removalTags = { "Status.Debuff" }
-    }
-}
-```
-
-### 3. Ability Organization
-
-**Use hierarchical tags for filtering:**
-```lua
-Tags = {
-    "Ability.Combat.Melee",
-    "Ability.Combat.Ranged",
-    "Ability.Movement.Dash",
-    "Ability.Movement.Jump",
-    "Ability.Utility.Heal"
-}
-```
-
-**Group abilities by role:**
-```lua
--- Tank abilities block attacks
-Abilities = {
-    { name = "Shield", blockAbilitiesWithTags = { "Ability.Attack" } },
-    { name = "Taunt", blockAbilitiesWithTags = { "Ability.Movement" } }
-}
-
--- DPS abilities cancel each other
-Abilities = {
-    { name = "RapidFire", cancelAbilitiesWithTags = { "Ability.Attack" } },
-    { name = "PowerShot", cancelAbilitiesWithTags = { "Ability.Attack" } }
-}
-```
-
-### 4. Performance Considerations
-
-**Minimize periodic effects:**
-```cpp
-// Prefer instant or duration effects
-// Periodic effects (DoT/HoT) trigger every period, costing performance
-
-// Good for damage spikes
-{ durationType = EffectDurationType::Instant }
-
-// Good for temporary buffs
-{ durationType = EffectDurationType::Duration }
-
-// Use sparingly - ticks every period
-{ durationType = EffectDurationType::Duration, period = 1.0f }
-```
-
-**Batch effect applications:**
-```cpp
-// Apply multiple effects at once instead of one-by-one
-for (EffectId effectId : effectsToApply) {
-    gas->applyEffect(target, effectId, source);
-}
-```
-
-### 5. Debugging GAS
-
-**Use callbacks to trace behavior:**
-```cpp
-gas->setAttributeChangeCallback([](const AttributeChangeEvent& event) {
-    std::cout << "Attribute " << event.attribute
-              << " changed from " << event.oldValue
-              << " to " << event.newValue << "\n";
-});
-
-gas->setEffectAppliedCallback([](const EffectAppliedEvent& event) {
-    std::cout << "Effect " << event.effect
-              << " applied to entity " << event.target
-              << " by " << event.source << "\n";
-});
-
-gas->setAbilityActivatedCallback([](const AbilityActivatedEvent& event) {
-    std::cout << "Ability " << event.ability
-              << " activated by " << event.entity << "\n";
-});
-```
-
-**Query active state:**
-```cpp
-// Check what effects are active
-auto effects = gas->getActiveEffects(player);
-for (const auto& effect : effects) {
-    auto def = gas->getEffectDef(effect.defId);
-    std::cout << "Active: " << def->name
-              << " (stacks: " << effect.stacks
-              << ", remaining: " << effect.remainingDuration << ")\n";
-}
-
-// Check what tags entity has
-const GameplayTagContainer* tags = gas->getTags(player);
-for (const auto& tag : tags->getTags()) {
-    std::cout << "Tag: " << tag.name << "\n";
-}
-```
-
-## Common Patterns
-
-### Pattern: Damage Calculation
-
-```cpp
-// Define base damage as attribute modifier
-float baseDamage = 50.0f;
-float attackPower = gas->getAttributeValue(attacker, attackPowerId);
-float defense = gas->getAttributeValue(defender, defenseId);
-
-float finalDamage = baseDamage + attackPower - defense;
-
-// Apply as instant effect
-EffectDef damageEffect {
-    .durationType = EffectDurationType::Instant,
-    .modifiers = {
-        { .attribute = healthId, .op = EffectModifierOp::Add, .value = -finalDamage }
-    }
-};
-EffectId damageId = gas->registerEffect(damageEffect);
-gas->applyEffect(defender, damageId, attacker);
-```
-
-### Pattern: Combo System
-
-```cpp
-GameplayTag combo1Tag = gas->registerTag("Combo.Stage1");
-GameplayTag combo2Tag = gas->registerTag("Combo.Stage2");
-GameplayTag combo3Tag = gas->registerTag("Combo.Stage3");
-
-// First attack grants combo tag
-AbilityDef attack1 {
+// First attack
+AbilityDef attack1{
     .name = "Attack1",
-    .effectsToApplyOnActivate = { grantCombo1TagId }
+    .effectsToApplyOnActivate = {grantCombo1Id}
 };
 
-// Second attack requires combo1, grants combo2
-AbilityDef attack2 {
-    .name = "Attack2",
-    .activationRequiredTags = { combo1Tag },
-    .effectsToApplyOnActivate = { grantCombo2TagId }
+// Second attack requires combo1
+AbilityDef attack2{
+    .name = "Attack2"
 };
-
-// Third attack requires combo2, deals bonus damage
-AbilityDef attack3 {
-    .name = "Attack3",
-    .activationRequiredTags = { combo2Tag },
-    .effectsToApplyOnActivate = { finisherDamageId }
-};
+attack2.activationRequiredTags.addTag(combo1);
 ```
 
-### Pattern: Buff/Debuff Management
+### Cleanse Mechanic
 
 ```cpp
-// All buffs grant "Status.Buff" tag
 // All debuffs grant "Status.Debuff" tag
+GameplayTag debuffTag = sys.gas->registerTag("Status.Debuff");
 
-// Cleanse removes all debuffs
-GameplayTag debuffTag = gas->registerTag("Status.Debuff");
-EffectDef cleanseEffect {
-    .name = "Cleanse",
-    .durationType = EffectDurationType::Instant,
-    .removalTags = { debuffTag }
+// Debuff example
+EffectDef poisonDef{
+    .name = "Poison",
+    .durationType = EffectDurationType::Duration,
+    .duration = 5.0f,
+    .period = 1.0f,
+    .modifiers = {{.attribute = healthId, .op = EffectModifierOp::Add, .value = -5.0f}}
 };
-cleanseEffect.removalTags.addTag(debuffTag);
+poisonDef.grantedTags.addTag(debuffTag);
 
-// Dispel removes all buffs
-GameplayTag buffTag = gas->registerTag("Status.Buff");
-EffectDef dispelEffect {
-    .name = "Dispel",
-    .durationType = EffectDurationType::Instant,
-    .removalTags = { buffTag }
-};
-dispelEffect.removalTags.addTag(buffTag);
+// Cleanse removes effects with debuff tag
+GameplayTag cleanseTag = sys.gas->registerTag("Action.Cleanse");
+poisonDef.removalTags.addTag(cleanseTag);
+
+// When player cleanses
+sys.gas->addTag(player, cleanseTag);
+sys.gas->update(dt);  // Effect removed during update
 ```
 
-### Pattern: State Machine with Tags
+### Conditional Ability Availability
 
 ```cpp
-// Movement states
-GameplayTag idleTag = gas->registerTag("State.Idle");
-GameplayTag runningTag = gas->registerTag("State.Running");
-GameplayTag jumpingTag = gas->registerTag("State.Jumping");
+bool canUseDesperationMove(Entity player) {
+    auto healthOpt = sys.gas->getAttributeDef("Health");
+    if (!healthOpt) return false;
 
-// Transitions remove old state, add new state
-void transitionToRunning(Entity entity) {
-    gas->removeTag(entity, idleTag);
-    gas->addTag(entity, runningTag);
+    float health = sys.gas->getAttributeValue(player, healthOpt->id);
+    float maxHealth = sys.gas->getAttributeBaseValue(player, healthOpt->id);
+
+    // Only available below 30% health
+    return (health / maxHealth) < 0.3f &&
+           sys.gas->canActivateAbility(player, desperationMoveId);
 }
-
-// Abilities check state requirements
-AbilityDef jumpAbility {
-    .name = "Jump",
-    .activationBlockedTags = { jumpingTag }  // Can't jump while jumping
-};
-```
-
-### Pattern: Cooldown Reduction
-
-```cpp
-// Cooldown reduction as attribute
-AttributeDef cooldownReduction {
-    .name = "CooldownReduction",
-    .baseValue = 0.0f,
-    .minValue = 0.0f,
-    .maxValue = 0.9f  // Max 90% CDR
-};
-
-// When ending ability, factor in CDR
-float baseCooldown = 10.0f;
-float cdr = gas->getAttributeValue(player, cdrId);
-float actualCooldown = baseCooldown * (1.0f - cdr);
-
-// Abilities use the calculated cooldown
-// (Note: Current implementation uses fixed cooldown from AbilityDef,
-//  you'd need custom logic to apply CDR modifier)
 ```
 
 ## Integration with Other Systems
@@ -1136,33 +736,27 @@ float actualCooldown = baseCooldown * (1.0f - cdr);
 ### Physics Integration
 
 ```cpp
-// Update movement speed based on GAS attribute
-float speed = gas->getAttributeValue(player, moveSpeedId);
-physics->setVelocity(player, direction * speed);
-
-// Apply knockback effect
-EffectDef knockback {
-    .name = "Knockback",
-    .durationType = EffectDurationType::Instant
-};
-gas->applyEffect(target, knockbackId, source);
-
-// In update loop, check for knockback effect
-if (gas->hasEffect(player, knockbackId)) {
-    physics->applyImpulse(player, knockbackDirection * knockbackForce);
-}
+// Apply knockback based on effect
+sys.gas->setEffectAppliedCallback([&](const EffectAppliedEvent& event) {
+    auto effectDef = sys.gas->getEffectDef(event.effect);
+    if (effectDef && effectDef->name == "Knockback") {
+        Vec2 direction = getDirection(event.source, event.target);
+        sys.physics->applyImpulse(event.target, direction * 500.0f);
+    }
+});
 ```
 
 ### Animation Integration
 
 ```cpp
-gas->setAbilityActivatedCallback([&](const AbilityActivatedEvent& event) {
-    auto def = gas->getAbilityDef(event.ability);
-
-    if (def->name == "Attack") {
-        animation->play(event.entity, "AttackAnim");
-    } else if (def->name == "Block") {
-        animation->play(event.entity, "BlockAnim");
+sys.gas->setAbilityActivatedCallback([&](const AbilityActivatedEvent& event) {
+    auto abilityDef = sys.gas->getAbilityDef(event.ability);
+    if (abilityDef) {
+        if (abilityDef->name == "MeleeAttack") {
+            // Play attack animation
+        } else if (abilityDef->name == "Dash") {
+            // Play dash animation
+        }
     }
 });
 ```
@@ -1170,71 +764,47 @@ gas->setAbilityActivatedCallback([&](const AbilityActivatedEvent& event) {
 ### UI Integration
 
 ```cpp
-// Display cooldowns
-float dashCooldown = gas->getAbilityCooldown(player, dashAbilityId);
-ui->setCooldownBar("Dash", dashCooldown);
+void updateUI() {
+    // Health bar
+    float health = sys.gas->getAttributeValue(player, healthId);
+    float maxHealth = sys.gas->getAttributeBaseValue(player, healthId);
+    ui->setHealthBar(health / maxHealth);
 
-// Display attribute bars
-float health = gas->getAttributeValue(player, healthId);
-float maxHealth = gas->getAttributeBaseValue(player, healthId);
-ui->setHealthBar(health / maxHealth);
+    // Ability cooldowns
+    float dashCooldown = sys.gas->getAbilityCooldown(player, dashId);
+    ui->setAbilityCooldown("Dash", dashCooldown);
 
-// Display active buffs/debuffs
-auto effects = gas->getActiveEffects(player);
-for (const auto& effect : effects) {
-    auto def = gas->getEffectDef(effect.defId);
-    ui->addStatusIcon(def->name, effect.remainingDuration);
-}
-```
-
-## Advanced Topics
-
-### Dynamic Effect Creation
-
-```cpp
-// Create effects at runtime based on game state
-float damageAmount = calculateDamage(attacker, defender);
-
-EffectDef dynamicDamage {
-    .name = "DynamicDamage_" + std::to_string(damageAmount),
-    .durationType = EffectDurationType::Instant,
-    .modifiers = {
-        { .attribute = healthId, .op = EffectModifierOp::Add, .value = -damageAmount }
-    }
-};
-
-EffectId id = gas->registerEffect(dynamicDamage);
-gas->applyEffect(defender, id, attacker);
-```
-
-### Chained Effects
-
-```cpp
-// Effect that applies another effect
-gas->setEffectAppliedCallback([&](const EffectAppliedEvent& event) {
-    auto def = gas->getEffectDef(event.effect);
-
-    if (def->name == "Explosion") {
-        // Apply burning to nearby enemies
-        for (Entity nearby : findNearbyEntities(event.target)) {
-            gas->applyEffect(nearby, burningEffectId, event.source);
+    // Active effects
+    auto effects = sys.gas->getActiveEffects(player);
+    for (const auto& effect : effects) {
+        auto def = sys.gas->getEffectDef(effect.defId);
+        if (def) {
+            ui->addStatusIcon(def->name, effect.remainingDuration);
         }
     }
-});
-```
-
-### Conditional Abilities
-
-```cpp
-bool canActivateSpecialMove(Entity player) {
-    // Custom logic beyond tag requirements
-    float health = gas->getAttributeValue(player, healthId);
-    float maxHealth = gas->getAttributeBaseValue(player, healthId);
-
-    return (health / maxHealth) < 0.3f &&  // Below 30% health
-           gas->canActivateAbility(player, desperationMoveId);
 }
 ```
+
+## Best Practices
+
+### Do's
+
+1. **Initialize components** - Always call `initializeComponent()` before using GAS features
+2. **Use Lua for content** - Define abilities, effects, and attributes in Lua files
+3. **Use events for integration** - Callbacks for animations, VFX, sound
+4. **Use tag hierarchies** - Organize with dot notation (`"State.Combat.Attacking"`)
+5. **Keep attributes focused** - Single-purpose stats (`"Health"`, `"MoveSpeed"`)
+6. **Compose effects** - Combine simple effects for complex behaviors
+7. **Call update()** - Required for duration effects, cooldowns, and tag removal
+
+### Don'ts
+
+1. **Don't skip component initialization** - GAS won't work without it
+2. **Don't create duplicate definitions** - Reuse registered tags, attributes, effects
+3. **Don't forget to grant abilities** - Registration doesn't grant them to entities
+4. **Don't hardcode IDs** - Use `getAttributeDef()`, `getEffectDef()`, etc. for lookups
+5. **Don't forget clamping** - Set appropriate min/max for attributes
+6. **Don't overuse periodic effects** - They have performance cost
 
 ## Troubleshooting
 
@@ -1242,39 +812,34 @@ bool canActivateSpecialMove(Entity player) {
 
 **Check tag requirements:**
 ```cpp
-auto effectDef = gas->getEffectDef(effectId);
-const GameplayTagContainer* targetTags = gas->getTags(target);
-
-if (!targetTags->matchesQuery(effectDef->applicationRequiredTags,
-                               effectDef->applicationBlockedTags)) {
-    // Target doesn't meet tag requirements
+auto effectDef = sys.gas->getEffectDef(effectId);
+const GameplayTagContainer* tags = sys.gas->getTags(target);
+if (effectDef && tags) {
+    bool meetsRequirements = tags->matchesQuery(
+        effectDef->applicationRequiredTags,
+        effectDef->applicationBlockedTags
+    );
 }
 ```
 
 ### Ability Can't Activate
 
-**Debug activation requirements:**
+**Debug checklist:**
 ```cpp
-if (!gas->canActivateAbility(player, abilityId)) {
-    // Check each requirement
-    if (!gas->hasAbility(player, abilityId)) {
-        std::cout << "Ability not granted\n";
+if (!sys.gas->canActivateAbility(player, abilityId)) {
+    // 1. Is ability granted?
+    if (!sys.gas->hasAbility(player, abilityId)) {
+        // Need to grant first
     }
 
-    float cooldown = gas->getAbilityCooldown(player, abilityId);
-    if (cooldown > 0.0f) {
-        std::cout << "On cooldown: " << cooldown << "s remaining\n";
+    // 2. On cooldown?
+    float cd = sys.gas->getAbilityCooldown(player, abilityId);
+    if (cd > 0.0f) {
+        // Wait for cooldown
     }
 
-    auto def = gas->getAbilityDef(abilityId);
-    const GameplayTagContainer* tags = gas->getTags(player);
-    if (!tags->matchesQuery(def->activationRequiredTags, def->activationBlockedTags)) {
-        std::cout << "Tag requirements not met\n";
-    }
-
-    if (!checkCosts(player, *def)) {
-        std::cout << "Insufficient resources\n";
-    }
+    // 3. Tag requirements met?
+    // 4. Enough resources for costs?
 }
 ```
 
@@ -1282,26 +847,110 @@ if (!gas->canActivateAbility(player, abilityId)) {
 
 **Verify effect is active:**
 ```cpp
-if (!gas->hasEffect(entity, effectId)) {
-    // Effect not active - may have been instant or expired
+if (!sys.gas->hasEffect(entity, effectId)) {
+    // Effect may have expired or not been applied
 }
 
-// Check if effect is modifying the right attribute
-auto effectDef = gas->getEffectDef(effectId);
-for (const auto& mod : effectDef->modifiers) {
-    std::cout << "Modifies attribute " << mod.attribute << "\n";
+// Check modifiers
+auto effectDef = sys.gas->getEffectDef(effectId);
+if (effectDef) {
+    for (const auto& mod : effectDef->modifiers) {
+        // Verify correct attribute ID
+    }
 }
+```
+
+## API Reference
+
+### Component Management
+
+```cpp
+void initializeComponent(Entity entity);
+void removeComponent(Entity entity);
+bool hasComponent(Entity entity) const;
+AbilitySystemComponent* getComponent(Entity entity);
+```
+
+### Tag Operations
+
+```cpp
+GameplayTag registerTag(const std::string& name);
+std::optional<GameplayTag> findTag(const std::string& name) const;
+bool isParentOf(const GameplayTag& parent, const GameplayTag& child) const;
+
+void addTag(Entity entity, const GameplayTag& tag);
+void removeTag(Entity entity, const GameplayTag& tag);
+bool hasTag(Entity entity, const GameplayTag& tag) const;
+const GameplayTagContainer* getTags(Entity entity) const;
+```
+
+### Attribute Operations
+
+```cpp
+AttributeId registerAttribute(const AttributeDef& def);
+std::optional<AttributeDef> getAttributeDef(AttributeId id) const;
+std::optional<AttributeDef> getAttributeDef(const std::string& name) const;
+
+void initializeAttribute(Entity entity, AttributeId id, float baseValue);
+float getAttributeValue(Entity entity, AttributeId id) const;
+float getAttributeBaseValue(Entity entity, AttributeId id) const;
+void setAttributeBaseValue(Entity entity, AttributeId id, float value);
+void modifyAttribute(Entity entity, AttributeId id, float delta);
+```
+
+### Effect Operations
+
+```cpp
+EffectId registerEffect(const EffectDef& def);
+std::optional<EffectDef> getEffectDef(EffectId id) const;
+std::optional<EffectDef> getEffectDef(const std::string& name) const;
+
+void applyEffect(Entity target, EffectId effectId, Entity source);
+void removeEffect(Entity entity, EffectId effectId);
+void removeAllEffects(Entity entity);
+bool hasEffect(Entity entity, EffectId effectId) const;
+std::vector<ActiveEffect> getActiveEffects(Entity entity) const;
+```
+
+### Ability Operations
+
+```cpp
+AbilityId registerAbility(const AbilityDef& def);
+std::optional<AbilityDef> getAbilityDef(AbilityId id) const;
+std::optional<AbilityDef> getAbilityDef(const std::string& name) const;
+
+void grantAbility(Entity entity, AbilityId abilityId);
+void removeAbility(Entity entity, AbilityId abilityId);
+bool hasAbility(Entity entity, AbilityId abilityId) const;
+bool canActivateAbility(Entity entity, AbilityId abilityId) const;
+bool tryActivateAbility(Entity entity, AbilityId abilityId);
+void endAbility(Entity entity, AbilityId abilityId);
+bool isAbilityActive(Entity entity, AbilityId abilityId) const;
+float getAbilityCooldown(Entity entity, AbilityId abilityId) const;
+```
+
+### Callbacks
+
+```cpp
+void setAttributeChangeCallback(AttributeChangeCallback callback);
+void setEffectAppliedCallback(EffectAppliedCallback callback);
+void setAbilityActivatedCallback(AbilityActivatedCallback callback);
+```
+
+### Lua Integration
+
+```cpp
+bool loadDefinitionsFromLua(const std::string& luaSource);
 ```
 
 ## Summary
 
-The Bestow GAS provides a powerful, data-driven framework for implementing RPG-style abilities and effects. Key takeaways:
+The GAS system provides:
+- **Tags** - Flexible categorization and state tracking
+- **Attributes** - Dynamic stats with automatic modifier application
+- **Effects** - Instant, duration, and periodic attribute modifications
+- **Abilities** - Cooldown-based actions with costs and requirements
+- **Lua Integration** - Hot-reloadable, designer-friendly content
+- **Callbacks** - Integration with animation, audio, UI, physics
 
-- **Tags** provide flexible categorization and filtering
-- **Attributes** track dynamic stats with automatic modifier application
-- **Effects** modify attributes with support for instant, duration, and periodic changes
-- **Abilities** are cooldown-based actions with costs, requirements, and effect application
-- **Lua integration** enables hot-reloadable, designer-friendly content
-- **Callbacks** allow integration with animation, audio, UI, and physics systems
-
-For questions or issues, refer to the test suite at `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/GASSystemTests.cpp` for comprehensive usage examples.
+For more examples, see the test suite at `/Users/jaaaacob/Documents/GameDev/jframe/tests/unit/GASSystemTests.cpp`.

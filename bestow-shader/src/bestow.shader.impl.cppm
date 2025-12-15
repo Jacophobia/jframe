@@ -42,14 +42,27 @@ struct ShaderProgramResource {
     std::string name;
     std::string vertexPath;
     std::string fragmentPath;
+    std::string geometryPath;
+    std::string tessControlPath;
+    std::string tessEvalPath;
+    std::string computePath;
     bool enableHotReload = false;
+    bool isCompute = false;  // Compute shaders are standalone
     std::unordered_map<std::string, GLint> uniformLocations;
 
     // AssetSystem integration
     AssetHandle vertAssetHandle{};
     AssetHandle fragAssetHandle{};
+    AssetHandle geomAssetHandle{};
+    AssetHandle tessCtrlAssetHandle{};
+    AssetHandle tessEvalAssetHandle{};
+    AssetHandle computeAssetHandle{};
     SubscriptionId vertSubscriptionId = InvalidSubscriptionId;
     SubscriptionId fragSubscriptionId = InvalidSubscriptionId;
+    SubscriptionId geomSubscriptionId = InvalidSubscriptionId;
+    SubscriptionId tessCtrlSubscriptionId = InvalidSubscriptionId;
+    SubscriptionId tessEvalSubscriptionId = InvalidSubscriptionId;
+    SubscriptionId computeSubscriptionId = InvalidSubscriptionId;
 
     GLint getUniformLocation(const std::string& uniformName) {
         auto it = uniformLocations.find(uniformName);
@@ -98,6 +111,18 @@ public:
                 }
                 if (shader.fragSubscriptionId != InvalidSubscriptionId) {
                     pIAssetSystem_->unsubscribe(shader.fragSubscriptionId);
+                }
+                if (shader.geomSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(shader.geomSubscriptionId);
+                }
+                if (shader.tessCtrlSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(shader.tessCtrlSubscriptionId);
+                }
+                if (shader.tessEvalSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(shader.tessEvalSubscriptionId);
+                }
+                if (shader.computeSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(shader.computeSubscriptionId);
                 }
             }
 
@@ -214,16 +239,26 @@ public:
             });
         }
 
-        std::string vertexSource, fragmentSource;
-        std::string vertexPath, fragmentPath;
+        std::string vertexSource, fragmentSource, geometrySource;
+        std::string tessControlSource, tessEvalSource, computeSource;
+        std::string vertexPath, fragmentPath, geometryPath;
+        std::string tessControlPath, tessEvalPath, computePath;
+
+        // Track asset handles for hot reload
+        AssetHandle vertHandle{}, fragHandle{}, geomHandle{};
+        AssetHandle tessCtrlHandle{}, tessEvalHandle{}, computeHandle{};
 
         for (const auto& stage : def.stages) {
+            std::string source;
+            std::string path;
+            AssetHandle stageHandle{};
+
             if (stage.isFromFile()) {
                 std::string fullPath = resolvePath(shaderBasePath_, stage.filePath);
 
                 // Load shader through AssetSystem
-                AssetHandle handle = pIAssetSystem_->loadShader(fullPath);
-                const ShaderData* shaderData = pIAssetSystem_->getShaderData(handle);
+                stageHandle = pIAssetSystem_->loadShader(fullPath);
+                const ShaderData* shaderData = pIAssetSystem_->getShaderData(stageHandle);
                 if (!shaderData || shaderData->glslSource.empty()) {
                     return std::unexpected(ShaderCompileError{
                         .error = ShaderError::FileNotFound,
@@ -231,24 +266,107 @@ public:
                         .filePath = stage.filePath
                     });
                 }
-
-                if (stage.stage == ShaderStage::Vertex) {
-                    vertexSource = shaderData->glslSource;
-                    vertexPath = stage.filePath;
-                } else if (stage.stage == ShaderStage::Fragment) {
-                    fragmentSource = shaderData->glslSource;
-                    fragmentPath = stage.filePath;
-                }
+                source = shaderData->glslSource;
+                path = fullPath;
             } else {
-                if (stage.stage == ShaderStage::Vertex) {
-                    vertexSource = stage.source;
-                } else if (stage.stage == ShaderStage::Fragment) {
-                    fragmentSource = stage.source;
-                }
+                source = stage.source;
+            }
+
+            switch (stage.stage) {
+                case ShaderStage::Vertex:
+                    vertexSource = source;
+                    vertexPath = path;
+                    vertHandle = stageHandle;
+                    break;
+                case ShaderStage::Fragment:
+                    fragmentSource = source;
+                    fragmentPath = path;
+                    fragHandle = stageHandle;
+                    break;
+                case ShaderStage::Geometry:
+                    geometrySource = source;
+                    geometryPath = path;
+                    geomHandle = stageHandle;
+                    break;
+                case ShaderStage::TessControl:
+                    tessControlSource = source;
+                    tessControlPath = path;
+                    tessCtrlHandle = stageHandle;
+                    break;
+                case ShaderStage::TessEvaluation:
+                    tessEvalSource = source;
+                    tessEvalPath = path;
+                    tessEvalHandle = stageHandle;
+                    break;
+                case ShaderStage::Compute:
+                    computeSource = source;
+                    computePath = path;
+                    computeHandle = stageHandle;
+                    break;
             }
         }
 
-        return compileShaderProgram(vertexSource, fragmentSource, def.name, vertexPath, fragmentPath);
+        auto result = compileFullShaderProgram(
+            vertexSource, fragmentSource, geometrySource,
+            tessControlSource, tessEvalSource, computeSource,
+            def.name,
+            vertexPath, fragmentPath, geometryPath,
+            tessControlPath, tessEvalPath, computePath
+        );
+
+        // Set up hot reload subscriptions for all shader stages
+        if (result && def.enableHotReload && hotReloadEnabled_) {
+            auto& shader = shaders_[*result];
+            shader.enableHotReload = true;
+
+            // Store asset handles
+            shader.vertAssetHandle = vertHandle;
+            shader.fragAssetHandle = fragHandle;
+            shader.geomAssetHandle = geomHandle;
+            shader.tessCtrlAssetHandle = tessCtrlHandle;
+            shader.tessEvalAssetHandle = tessEvalHandle;
+            shader.computeAssetHandle = computeHandle;
+
+            // Subscribe to changes for each valid shader stage
+            if (vertHandle.isValid()) {
+                shader.vertSubscriptionId = pIAssetSystem_->subscribe(vertHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+            if (fragHandle.isValid()) {
+                shader.fragSubscriptionId = pIAssetSystem_->subscribe(fragHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+            if (geomHandle.isValid()) {
+                shader.geomSubscriptionId = pIAssetSystem_->subscribe(geomHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+            if (tessCtrlHandle.isValid()) {
+                shader.tessCtrlSubscriptionId = pIAssetSystem_->subscribe(tessCtrlHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+            if (tessEvalHandle.isValid()) {
+                shader.tessEvalSubscriptionId = pIAssetSystem_->subscribe(tessEvalHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+            if (computeHandle.isValid()) {
+                shader.computeSubscriptionId = pIAssetSystem_->subscribe(computeHandle,
+                    [this, handle = *result](AssetHandle, AssetType) {
+                        onShaderFileChanged(handle);
+                    });
+            }
+        }
+
+        return result;
     }
 
     void destroyShader(ShaderProgramHandle handle) override {
@@ -261,6 +379,18 @@ public:
                 }
                 if (it->second.fragSubscriptionId != InvalidSubscriptionId) {
                     pIAssetSystem_->unsubscribe(it->second.fragSubscriptionId);
+                }
+                if (it->second.geomSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(it->second.geomSubscriptionId);
+                }
+                if (it->second.tessCtrlSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(it->second.tessCtrlSubscriptionId);
+                }
+                if (it->second.tessEvalSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(it->second.tessEvalSubscriptionId);
+                }
+                if (it->second.computeSubscriptionId != InvalidSubscriptionId) {
+                    pIAssetSystem_->unsubscribe(it->second.computeSubscriptionId);
                 }
             }
 
@@ -750,11 +880,65 @@ public:
         }
 
         auto& shader = it->second;
+
+        // For compute shaders, only compute handle is needed
+        if (shader.isCompute) {
+            if (!shader.computeAssetHandle.isValid()) {
+                return std::unexpected(ShaderCompileError{
+                    .error = ShaderError::InternalError,
+                    .message = "Compute shader was not loaded from file"
+                });
+            }
+
+            // Reload the asset
+            pIAssetSystem_->reloadAsset(shader.computeAssetHandle);
+            const ShaderData* computeData = pIAssetSystem_->getShaderData(shader.computeAssetHandle);
+            if (!computeData || computeData->glslSource.empty()) {
+                return std::unexpected(ShaderCompileError{
+                    .error = ShaderError::FileNotFound,
+                    .filePath = shader.computePath
+                });
+            }
+
+            // Compile new compute program
+            GLuint newProgram = compileFullProgram("", "", "", "", "", computeData->glslSource);
+            if (newProgram == 0) {
+                return std::unexpected(ShaderCompileError{
+                    .error = ShaderError::CompilationFailed,
+                    .message = lastCompileError_,
+                    .filePath = shader.computePath
+                });
+            }
+
+            // Delete old program and replace
+            if (shader.program != 0) {
+                glDeleteProgram(shader.program);
+            }
+            shader.program = newProgram;
+            shader.uniformLocations.clear();
+            stats_.hotReloads++;
+            return {};
+        }
+
+        // For graphics pipeline shaders, vertex and fragment are required
         if (!shader.vertAssetHandle.isValid() || !shader.fragAssetHandle.isValid()) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::InternalError,
                 .message = "Shader was not loaded from files"
             });
+        }
+
+        // Reload all valid assets
+        pIAssetSystem_->reloadAsset(shader.vertAssetHandle);
+        pIAssetSystem_->reloadAsset(shader.fragAssetHandle);
+        if (shader.geomAssetHandle.isValid()) {
+            pIAssetSystem_->reloadAsset(shader.geomAssetHandle);
+        }
+        if (shader.tessCtrlAssetHandle.isValid()) {
+            pIAssetSystem_->reloadAsset(shader.tessCtrlAssetHandle);
+        }
+        if (shader.tessEvalAssetHandle.isValid()) {
+            pIAssetSystem_->reloadAsset(shader.tessEvalAssetHandle);
         }
 
         // Get reloaded shader data from AssetSystem
@@ -774,8 +958,40 @@ public:
             });
         }
 
-        // Compile new program
-        GLuint newProgram = compileProgram(vertShaderData->glslSource, fragShaderData->glslSource);
+        // Get optional shader stages
+        std::string geometrySource, tessControlSource, tessEvalSource;
+
+        if (shader.geomAssetHandle.isValid()) {
+            const ShaderData* geomData = pIAssetSystem_->getShaderData(shader.geomAssetHandle);
+            if (geomData && !geomData->glslSource.empty()) {
+                geometrySource = geomData->glslSource;
+            }
+        }
+
+        if (shader.tessCtrlAssetHandle.isValid()) {
+            const ShaderData* tessCtrlData = pIAssetSystem_->getShaderData(shader.tessCtrlAssetHandle);
+            if (tessCtrlData && !tessCtrlData->glslSource.empty()) {
+                tessControlSource = tessCtrlData->glslSource;
+            }
+        }
+
+        if (shader.tessEvalAssetHandle.isValid()) {
+            const ShaderData* tessEvalData = pIAssetSystem_->getShaderData(shader.tessEvalAssetHandle);
+            if (tessEvalData && !tessEvalData->glslSource.empty()) {
+                tessEvalSource = tessEvalData->glslSource;
+            }
+        }
+
+        // Compile new program with all stages
+        GLuint newProgram = compileFullProgram(
+            vertShaderData->glslSource,
+            fragShaderData->glslSource,
+            geometrySource,
+            tessControlSource,
+            tessEvalSource,
+            ""  // No compute for graphics pipeline
+        );
+
         if (newProgram == 0) {
             return std::unexpected(ShaderCompileError{
                 .error = ShaderError::CompilationFailed,
@@ -811,17 +1027,43 @@ public:
             });
         }
 
-        // Re-load from Lua file
-        auto result = loadMaterial(it->second.luaPath);
+        // Save existing subscription info to preserve hot reload capability
+        AssetHandle savedAssetHandle = it->second.matAssetHandle;
+        SubscriptionId savedSubscriptionId = it->second.matSubscriptionId;
+        std::string savedLuaPath = it->second.luaPath;
+
+        // Re-load from Lua file (creates a new material internally)
+        auto result = loadMaterial(savedLuaPath);
         if (!result) {
             return std::unexpected(result.error());
         }
 
-        // Copy new material data over old
+        // Copy new material data over old, preserving the original handle
         auto newIt = materials_.find(*result);
         if (newIt != materials_.end()) {
-            it->second = newIt->second;
+            // Unsubscribe the new material's subscription (it's a duplicate)
+            if (pIAssetSystem_ && newIt->second.matSubscriptionId != InvalidSubscriptionId) {
+                pIAssetSystem_->unsubscribe(newIt->second.matSubscriptionId);
+            }
+
+            // Copy the newly loaded material properties to the original
+            it->second.name = newIt->second.name;
+            it->second.shader = newIt->second.shader;
+            it->second.uniforms = newIt->second.uniforms;
+            it->second.textures = newIt->second.textures;
+            it->second.blendMode = newIt->second.blendMode;
+            it->second.cullMode = newIt->second.cullMode;
+            it->second.depthWrite = newIt->second.depthWrite;
+            it->second.depthTest = newIt->second.depthTest;
+
+            // Restore original subscription info (so hot reload continues working)
+            it->second.luaPath = savedLuaPath;
+            it->second.matAssetHandle = savedAssetHandle;
+            it->second.matSubscriptionId = savedSubscriptionId;
+
+            // Remove the temporary new material
             materials_.erase(newIt);
+            stats_.materialCount--;  // We didn't actually add a new material
         }
 
         return {};
@@ -1012,6 +1254,8 @@ private:
     }
 
     GLuint compileShader(GLenum type, const std::string& source) {
+        if (source.empty()) return 0;
+
         GLuint shader = glCreateShader(type);
         const char* src = source.c_str();
         glShaderSource(shader, 1, &src, nullptr);
@@ -1022,13 +1266,186 @@ private:
         if (!success) {
             char infoLog[1024];
             glGetShaderInfoLog(shader, sizeof(infoLog), nullptr, infoLog);
-            lastCompileError_ = std::string(type == GL_VERTEX_SHADER ? "Vertex " : "Fragment ") +
-                               "shader compilation failed: " + infoLog;
+            const char* typeName = "Unknown";
+            switch (type) {
+                case GL_VERTEX_SHADER: typeName = "Vertex"; break;
+                case GL_FRAGMENT_SHADER: typeName = "Fragment"; break;
+                case GL_GEOMETRY_SHADER: typeName = "Geometry"; break;
+                case GL_TESS_CONTROL_SHADER: typeName = "TessControl"; break;
+                case GL_TESS_EVALUATION_SHADER: typeName = "TessEvaluation"; break;
+                case GL_COMPUTE_SHADER: typeName = "Compute"; break;
+            }
+            lastCompileError_ = std::string(typeName) + " shader compilation failed: " + infoLog;
             glDeleteShader(shader);
             return 0;
         }
 
         return shader;
+    }
+
+    // Compile a full shader program with all optional stages
+    GLuint compileFullProgram(
+        const std::string& vertexSource,
+        const std::string& fragmentSource,
+        const std::string& geometrySource,
+        const std::string& tessControlSource,
+        const std::string& tessEvalSource,
+        const std::string& computeSource)
+    {
+        // Compute shaders are standalone - can't be combined with other stages
+        if (!computeSource.empty()) {
+            GLuint computeShader = compileShader(GL_COMPUTE_SHADER, computeSource);
+            if (computeShader == 0) return 0;
+
+            GLuint program = glCreateProgram();
+            glAttachShader(program, computeShader);
+            glLinkProgram(program);
+            glDeleteShader(computeShader);
+
+            GLint success;
+            glGetProgramiv(program, GL_LINK_STATUS, &success);
+            if (!success) {
+                char infoLog[1024];
+                glGetProgramInfoLog(program, sizeof(infoLog), nullptr, infoLog);
+                lastCompileError_ = std::string("Compute program linking failed: ") + infoLog;
+                glDeleteProgram(program);
+                return 0;
+            }
+            return program;
+        }
+
+        // Regular graphics pipeline - vertex and fragment are required
+        if (vertexSource.empty() || fragmentSource.empty()) {
+            lastCompileError_ = "Vertex and fragment shaders are required for graphics pipeline";
+            return 0;
+        }
+
+        // Compile all shaders
+        GLuint vertShader = compileShader(GL_VERTEX_SHADER, vertexSource);
+        if (vertShader == 0) return 0;
+
+        GLuint fragShader = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
+        if (fragShader == 0) {
+            glDeleteShader(vertShader);
+            return 0;
+        }
+
+        GLuint geomShader = 0;
+        if (!geometrySource.empty()) {
+            geomShader = compileShader(GL_GEOMETRY_SHADER, geometrySource);
+            if (geomShader == 0) {
+                glDeleteShader(vertShader);
+                glDeleteShader(fragShader);
+                return 0;
+            }
+        }
+
+        GLuint tessCtrlShader = 0;
+        GLuint tessEvalShader = 0;
+        if (!tessControlSource.empty() || !tessEvalSource.empty()) {
+            // Both tessellation shaders must be provided together
+            if (tessControlSource.empty() || tessEvalSource.empty()) {
+                lastCompileError_ = "Both tessellation control and evaluation shaders must be provided together";
+                glDeleteShader(vertShader);
+                glDeleteShader(fragShader);
+                if (geomShader != 0) glDeleteShader(geomShader);
+                return 0;
+            }
+
+            tessCtrlShader = compileShader(GL_TESS_CONTROL_SHADER, tessControlSource);
+            if (tessCtrlShader == 0) {
+                glDeleteShader(vertShader);
+                glDeleteShader(fragShader);
+                if (geomShader != 0) glDeleteShader(geomShader);
+                return 0;
+            }
+
+            tessEvalShader = compileShader(GL_TESS_EVALUATION_SHADER, tessEvalSource);
+            if (tessEvalShader == 0) {
+                glDeleteShader(vertShader);
+                glDeleteShader(fragShader);
+                if (geomShader != 0) glDeleteShader(geomShader);
+                glDeleteShader(tessCtrlShader);
+                return 0;
+            }
+        }
+
+        // Link program
+        GLuint program = glCreateProgram();
+        glAttachShader(program, vertShader);
+        glAttachShader(program, fragShader);
+        if (geomShader != 0) glAttachShader(program, geomShader);
+        if (tessCtrlShader != 0) glAttachShader(program, tessCtrlShader);
+        if (tessEvalShader != 0) glAttachShader(program, tessEvalShader);
+        glLinkProgram(program);
+
+        // Delete shaders after linking
+        glDeleteShader(vertShader);
+        glDeleteShader(fragShader);
+        if (geomShader != 0) glDeleteShader(geomShader);
+        if (tessCtrlShader != 0) glDeleteShader(tessCtrlShader);
+        if (tessEvalShader != 0) glDeleteShader(tessEvalShader);
+
+        GLint success;
+        glGetProgramiv(program, GL_LINK_STATUS, &success);
+        if (!success) {
+            char infoLog[1024];
+            glGetProgramInfoLog(program, sizeof(infoLog), nullptr, infoLog);
+            lastCompileError_ = std::string("Program linking failed: ") + infoLog;
+            glDeleteProgram(program);
+            return 0;
+        }
+
+        return program;
+    }
+
+    Result<ShaderProgramHandle, ShaderCompileError> compileFullShaderProgram(
+        const std::string& vertexSource,
+        const std::string& fragmentSource,
+        const std::string& geometrySource,
+        const std::string& tessControlSource,
+        const std::string& tessEvalSource,
+        const std::string& computeSource,
+        const std::string& name,
+        const std::string& vertexPath,
+        const std::string& fragmentPath,
+        const std::string& geometryPath,
+        const std::string& tessControlPath,
+        const std::string& tessEvalPath,
+        const std::string& computePath)
+    {
+        GLuint program = compileFullProgram(
+            vertexSource, fragmentSource, geometrySource,
+            tessControlSource, tessEvalSource, computeSource
+        );
+
+        if (program == 0) {
+            std::string filePath = !vertexPath.empty() ? vertexPath :
+                                  !fragmentPath.empty() ? fragmentPath :
+                                  !computePath.empty() ? computePath : "";
+            return std::unexpected(ShaderCompileError{
+                .error = ShaderError::CompilationFailed,
+                .message = lastCompileError_,
+                .filePath = filePath
+            });
+        }
+
+        ShaderProgramHandle handle = nextShaderHandle_++;
+        shaders_[handle] = ShaderProgramResource{
+            .program = program,
+            .name = name,
+            .vertexPath = vertexPath,
+            .fragmentPath = fragmentPath,
+            .geometryPath = geometryPath,
+            .tessControlPath = tessControlPath,
+            .tessEvalPath = tessEvalPath,
+            .computePath = computePath,
+            .enableHotReload = false,
+            .isCompute = !computeSource.empty()
+        };
+
+        stats_.shaderCount++;
+        return handle;
     }
 
     void setUniformValue(GLint location, const UniformValue& value) {
@@ -1051,15 +1468,25 @@ private:
             } else if constexpr (std::is_same_v<T, Mat4>) {
                 glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(v));
             } else if constexpr (std::is_same_v<T, std::vector<float>>) {
-                glUniform1fv(location, static_cast<GLsizei>(v.size()), v.data());
+                if (!v.empty()) {
+                    glUniform1fv(location, static_cast<GLsizei>(v.size()), v.data());
+                }
             } else if constexpr (std::is_same_v<T, std::vector<Vec2>>) {
-                glUniform2fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                if (!v.empty()) {
+                    glUniform2fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                }
             } else if constexpr (std::is_same_v<T, std::vector<Vec3>>) {
-                glUniform3fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                if (!v.empty()) {
+                    glUniform3fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                }
             } else if constexpr (std::is_same_v<T, std::vector<Vec4>>) {
-                glUniform4fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                if (!v.empty()) {
+                    glUniform4fv(location, static_cast<GLsizei>(v.size()), glm::value_ptr(v[0]));
+                }
             } else if constexpr (std::is_same_v<T, std::vector<Mat4>>) {
-                glUniformMatrix4fv(location, static_cast<GLsizei>(v.size()), GL_FALSE, glm::value_ptr(v[0]));
+                if (!v.empty()) {
+                    glUniformMatrix4fv(location, static_cast<GLsizei>(v.size()), GL_FALSE, glm::value_ptr(v[0]));
+                }
             }
         }, value);
     }

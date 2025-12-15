@@ -78,7 +78,11 @@ TEST_F(AudioSystemTest, StopChannelWithFadeOut) {
     // Stop with fade out time
     audio_->stopChannel(Channels::Music, 0.5f);
 
-    // In stub mode, should still immediately stop
+    // Channel should still be playing during fade-out
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+
+    // After update with fade duration, channel should stop
+    audio_->update(0.5f);
     EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
 }
 
@@ -1228,6 +1232,340 @@ TEST_F(AudioSystemTest, PlayPositionalWithHighVolume) {
     SoundHandle handle = audio_->playPositional(sound);
     // Should handle gracefully
     EXPECT_TRUE(true);
+}
+
+//==========================================================================
+// Fade-Out Tests
+//==========================================================================
+
+TEST_F(AudioSystemTest, FadeOutInitiatesFadeOnChannel) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+
+    // Start fade-out
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Channel should still be playing immediately after fade-out starts
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutVolumeDecreasesOverTime) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    // Get initial volume
+    ChannelState initialState = audio_->getChannelState(Channels::Music);
+    float initialVolume = initialState.volume;
+
+    // Start fade-out over 1 second
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Update for half the fade duration
+    audio_->update(0.5f);
+
+    // Volume should have decreased
+    ChannelState midState = audio_->getChannelState(Channels::Music);
+    EXPECT_LT(midState.volume, initialVolume);
+
+    // Volume should be approximately half of initial volume
+    EXPECT_NEAR(midState.volume, initialVolume * 0.5f, 0.1f);
+}
+
+TEST_F(AudioSystemTest, FadeOutStopsAfterCompletion) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+
+    // Start fade-out over 0.5 seconds
+    audio_->stopChannel(Channels::Music, 0.5f);
+
+    // Update for full fade duration
+    audio_->update(0.5f);
+
+    // Channel should be stopped
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+
+    // Volume should be 0
+    ChannelState finalState = audio_->getChannelState(Channels::Music);
+    EXPECT_FLOAT_EQ(finalState.volume, 0.0f);
+}
+
+TEST_F(AudioSystemTest, FadeOutWithZeroDurationStopsImmediately) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+
+    // Stop with zero fade time
+    audio_->stopChannel(Channels::Music, 0.0f);
+
+    // Channel should stop immediately without needing update
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutProgressesLinearly) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    float initialVolume = audio_->getChannelState(Channels::Music).volume;
+
+    // Start 2 second fade-out
+    audio_->stopChannel(Channels::Music, 2.0f);
+
+    // Check volume at 25% progress
+    audio_->update(0.5f);
+    float volume25 = audio_->getChannelState(Channels::Music).volume;
+    EXPECT_NEAR(volume25, initialVolume * 0.75f, 0.1f);
+
+    // Check volume at 50% progress
+    audio_->update(0.5f);
+    float volume50 = audio_->getChannelState(Channels::Music).volume;
+    EXPECT_NEAR(volume50, initialVolume * 0.5f, 0.1f);
+
+    // Check volume at 75% progress
+    audio_->update(0.5f);
+    float volume75 = audio_->getChannelState(Channels::Music).volume;
+    EXPECT_NEAR(volume75, initialVolume * 0.25f, 0.1f);
+
+    // Complete the fade
+    audio_->update(0.5f);
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutMultipleUpdates) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+    float initialVolume = audio_->getChannelState(Channels::Music).volume;
+
+    // Start fade-out over 1 second
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Update with many small time steps
+    float totalTime = 0.0f;
+    float previousVolume = initialVolume;
+
+    while (audio_->isChannelPlaying(Channels::Music) && totalTime < 1.5f) {
+        audio_->update(0.016f);  // ~60 FPS
+        totalTime += 0.016f;
+
+        float currentVolume = audio_->getChannelState(Channels::Music).volume;
+        // Volume should monotonically decrease or stay the same
+        EXPECT_LE(currentVolume, previousVolume + 0.001f);  // Small tolerance for floating point
+        previousVolume = currentVolume;
+    }
+
+    // Fade should complete and stop the channel
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+    EXPECT_FLOAT_EQ(audio_->getChannelState(Channels::Music).volume, 0.0f);
+}
+
+TEST_F(AudioSystemTest, FadeOutOnNonPlayingChannel) {
+    // Try to fade-out a channel that's not playing
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Should not crash
+    audio_->update(0.5f);
+
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutInterruptedByNewSound) {
+    AssetHandle sound1{.uuid = 1, .type = AssetType::Sound};
+    AssetHandle sound2{.uuid = 2, .type = AssetType::Sound};
+
+    // Start playing sound 1
+    audio_->playOnChannel(Channels::Music, ChannelSound{.asset = sound1, .volume = 1.0f});
+
+    // Start fade-out
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Update partway through fade
+    audio_->update(0.3f);
+
+    // Play new sound while fading
+    audio_->playOnChannel(Channels::Music, ChannelSound{.asset = sound2, .volume = 0.8f});
+
+    // New sound should be playing at its specified volume
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+    ChannelState state = audio_->getChannelState(Channels::Music);
+    EXPECT_FLOAT_EQ(state.volume, 0.8f);
+}
+
+TEST_F(AudioSystemTest, FadeOutWithDifferentInitialVolumes) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+
+    // Test fade from 0.5 volume
+    ChannelSound sound{.asset = testSound, .volume = 0.5f};
+    audio_->playOnChannel(Channels::Music, sound);
+
+    float startVolume = audio_->getChannelState(Channels::Music).volume;
+    EXPECT_FLOAT_EQ(startVolume, 0.5f);
+
+    // Fade out over 1 second
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // At 50% progress, volume should be 50% of starting volume (0.25)
+    audio_->update(0.5f);
+
+    ChannelState midState = audio_->getChannelState(Channels::Music);
+    EXPECT_NEAR(midState.volume, 0.25f, 0.05f);
+}
+
+TEST_F(AudioSystemTest, FadeOutVeryShortDuration) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    // Very short fade (0.1 seconds)
+    audio_->stopChannel(Channels::Music, 0.1f);
+
+    // Update for the full duration
+    audio_->update(0.1f);
+
+    // Should be stopped
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutVeryLongDuration) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    // Very long fade (10 seconds)
+    audio_->stopChannel(Channels::Music, 10.0f);
+
+    // Update for 1 second
+    audio_->update(1.0f);
+
+    // Should still be playing
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+
+    // Volume should have decreased by 10%
+    ChannelState state = audio_->getChannelState(Channels::Music);
+    EXPECT_NEAR(state.volume, 0.9f, 0.05f);
+}
+
+TEST_F(AudioSystemTest, MultipleFadeOutsOnDifferentChannels) {
+    AssetHandle sound1{.uuid = 1, .type = AssetType::Sound};
+    AssetHandle sound2{.uuid = 2, .type = AssetType::Sound};
+
+    // Start sounds on different channels
+    audio_->playOnChannel(Channels::Music, ChannelSound{.asset = sound1, .volume = 1.0f});
+    audio_->playOnChannel(Channels::Ambience, ChannelSound{.asset = sound2, .volume = 1.0f});
+
+    // Fade out both with different durations
+    audio_->stopChannel(Channels::Music, 1.0f);
+    audio_->stopChannel(Channels::Ambience, 2.0f);
+
+    // Update for 1 second
+    audio_->update(1.0f);
+
+    // Music should be stopped
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+
+    // Ambience should still be playing at ~50% volume
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Ambience));
+    ChannelState ambienceState = audio_->getChannelState(Channels::Ambience);
+    EXPECT_NEAR(ambienceState.volume, 0.5f, 0.1f);
+
+    // Update another second
+    audio_->update(1.0f);
+
+    // Both should be stopped now
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Ambience));
+}
+
+TEST_F(AudioSystemTest, FadeOutDoesNotAffectOtherChannels) {
+    AssetHandle sound1{.uuid = 1, .type = AssetType::Sound};
+    AssetHandle sound2{.uuid = 2, .type = AssetType::Sound};
+
+    // Start sounds on different channels
+    audio_->playOnChannel(Channels::Music, ChannelSound{.asset = sound1, .volume = 1.0f});
+    audio_->playOnChannel(Channels::UI, ChannelSound{.asset = sound2, .volume = 0.8f});
+
+    // Fade out only music
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Update
+    audio_->update(0.5f);
+
+    // Music should be fading
+    ChannelState musicState = audio_->getChannelState(Channels::Music);
+    EXPECT_LT(musicState.volume, 1.0f);
+
+    // UI should be unaffected
+    ChannelState uiState = audio_->getChannelState(Channels::UI);
+    EXPECT_FLOAT_EQ(uiState.volume, 0.8f);
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::UI));
+}
+
+TEST_F(AudioSystemTest, FadeOutUpdateWithZeroDeltaTime) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    float volumeBefore = audio_->getChannelState(Channels::Music).volume;
+
+    // Update with zero delta time
+    audio_->update(0.0f);
+
+    float volumeAfter = audio_->getChannelState(Channels::Music).volume;
+
+    // Volume should not change
+    EXPECT_FLOAT_EQ(volumeBefore, volumeAfter);
+
+    // Should still be playing
+    EXPECT_TRUE(audio_->isChannelPlaying(Channels::Music));
+}
+
+TEST_F(AudioSystemTest, FadeOutExactDurationBoundary) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    // Fade out over exactly 1.0 seconds
+    audio_->stopChannel(Channels::Music, 1.0f);
+
+    // Update for exactly 1.0 seconds
+    audio_->update(1.0f);
+
+    // Should be stopped
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+    EXPECT_FLOAT_EQ(audio_->getChannelState(Channels::Music).volume, 0.0f);
+}
+
+TEST_F(AudioSystemTest, FadeOutExceedsDuration) {
+    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
+    ChannelSound sound{.asset = testSound, .volume = 1.0f};
+
+    audio_->playOnChannel(Channels::Music, sound);
+
+    // Fade out over 0.5 seconds
+    audio_->stopChannel(Channels::Music, 0.5f);
+
+    // Update for longer than fade duration
+    audio_->update(2.0f);
+
+    // Should be stopped
+    EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
+    EXPECT_FLOAT_EQ(audio_->getChannelState(Channels::Music).volume, 0.0f);
 }
 
 //==========================================================================

@@ -96,10 +96,17 @@ void InputSystem::shutdown() {
 void InputSystem::update() {
     prevActionStates_ = actionStates_;
     prevMousePosition_ = mousePosition_;
+    prevKeyStates_ = keyStates_;
+
+    // Save previous mouse button states
+    for (int i = 0; i < 8; ++i) {
+        prevMouseButtons_[i] = mouseButtons_[i];
+    }
 
     // Reset scroll delta (it accumulates from callbacks)
     scrollDelta_ = Vec2{0.0f, 0.0f};
 
+    updateModifierState();
     updateKeyboardState();
     updateMouseState();
     updateControllerState();
@@ -109,20 +116,21 @@ void InputSystem::update() {
 void InputSystem::updateKeyboardState() {
     if (!window_) return;
 
-    // If listening for input, capture any key press
-    if (isListening_) {
-        for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
-            if (glfwGetKey(window_, key) == GLFW_PRESS) {
-                lastInput_ = InputBinding{
-                    .deviceType = InputDeviceType::Keyboard,
-                    .deviceIndex = 0,
-                    .keyCode = key,
-                    .scale = 1.0f,
-                    .deadzone = 0.0f
-                };
-                isListening_ = false;
-                return;
-            }
+    // Poll all key states for direct query support
+    for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
+        bool pressed = glfwGetKey(window_, key) == GLFW_PRESS;
+        keyStates_[key] = pressed;
+
+        // If listening for input, capture any key press
+        if (isListening_ && pressed && !prevKeyStates_[key]) {
+            lastInput_ = InputBinding{
+                .deviceType = InputDeviceType::Keyboard,
+                .deviceIndex = 0,
+                .keyCode = key,
+                .scale = 1.0f,
+                .deadzone = 0.0f
+            };
+            isListening_ = false;
         }
     }
 }
@@ -253,7 +261,13 @@ void InputSystem::updateActionStates() {
         switch (mapping.binding.deviceType) {
             case InputDeviceType::Keyboard:
                 if (window_ && glfwGetKey(window_, mapping.binding.keyCode) == GLFW_PRESS) {
-                    bindingValue = mapping.binding.scale;
+                    // Check if required modifiers are satisfied
+                    // If requiredModifiers is None, no modifiers are required
+                    // If requiredModifiers is set, ALL specified modifiers must be pressed
+                    ModifierKey required = mapping.binding.requiredModifiers;
+                    if (required == ModifierKey::None || hasModifier(currentModifiers_, required)) {
+                        bindingValue = mapping.binding.scale;
+                    }
                 }
                 break;
 
@@ -456,6 +470,107 @@ void InputSystem::onCharCallback(unsigned int codepoint) {
         textInputBuffer_ += static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F));
         textInputBuffer_ += static_cast<char>(0x80 | (codepoint & 0x3F));
     }
+}
+
+void InputSystem::updateModifierState() {
+    if (!window_) {
+        currentModifiers_ = ModifierKey::None;
+        return;
+    }
+
+    // Poll modifier key states directly from GLFW
+    currentModifiers_ = ModifierKey::None;
+
+    // Check Shift (left or right)
+    if (glfwGetKey(window_, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+        glfwGetKey(window_, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::Shift;
+    }
+
+    // Check Ctrl (left or right)
+    if (glfwGetKey(window_, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+        glfwGetKey(window_, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::Ctrl;
+    }
+
+    // Check Alt (left or right)
+    if (glfwGetKey(window_, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+        glfwGetKey(window_, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::Alt;
+    }
+
+    // Check Super/Windows/Command (left or right)
+    if (glfwGetKey(window_, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+        glfwGetKey(window_, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::Super;
+    }
+
+    // Check Caps Lock (toggle state, not press state)
+    // Note: GLFW doesn't provide a direct way to check caps lock state,
+    // but we can use the key state as an approximation
+    if (glfwGetKey(window_, GLFW_KEY_CAPS_LOCK) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::CapsLock;
+    }
+
+    // Check Num Lock
+    if (glfwGetKey(window_, GLFW_KEY_NUM_LOCK) == GLFW_PRESS) {
+        currentModifiers_ |= ModifierKey::NumLock;
+    }
+}
+
+ModifierKey InputSystem::getModifierState() const {
+    return currentModifiers_;
+}
+
+bool InputSystem::isModifierPressed(ModifierKey mod) const {
+    return hasModifier(currentModifiers_, mod);
+}
+
+bool InputSystem::isShiftPressed() const {
+    return hasModifier(currentModifiers_, ModifierKey::Shift);
+}
+
+bool InputSystem::isCtrlPressed() const {
+    return hasModifier(currentModifiers_, ModifierKey::Ctrl);
+}
+
+bool InputSystem::isAltPressed() const {
+    return hasModifier(currentModifiers_, ModifierKey::Alt);
+}
+
+bool InputSystem::isSuperPressed() const {
+    return hasModifier(currentModifiers_, ModifierKey::Super);
+}
+
+bool InputSystem::isKeyDown(int keyCode) const {
+    auto it = keyStates_.find(keyCode);
+    return it != keyStates_.end() && it->second;
+}
+
+bool InputSystem::wasKeyJustPressed(int keyCode) const {
+    auto currIt = keyStates_.find(keyCode);
+    auto prevIt = prevKeyStates_.find(keyCode);
+    bool currentlyDown = currIt != keyStates_.end() && currIt->second;
+    bool wasDown = prevIt != prevKeyStates_.end() && prevIt->second;
+    return currentlyDown && !wasDown;
+}
+
+bool InputSystem::wasKeyJustReleased(int keyCode) const {
+    auto currIt = keyStates_.find(keyCode);
+    auto prevIt = prevKeyStates_.find(keyCode);
+    bool currentlyDown = currIt != keyStates_.end() && currIt->second;
+    bool wasDown = prevIt != prevKeyStates_.end() && prevIt->second;
+    return !currentlyDown && wasDown;
+}
+
+bool InputSystem::wasMouseButtonJustPressed(int button) const {
+    if (button < 0 || button >= 8) return false;
+    return mouseButtons_[button] && !prevMouseButtons_[button];
+}
+
+bool InputSystem::wasMouseButtonJustReleased(int button) const {
+    if (button < 0 || button >= 8) return false;
+    return !mouseButtons_[button] && prevMouseButtons_[button];
 }
 
 }  // namespace bestow

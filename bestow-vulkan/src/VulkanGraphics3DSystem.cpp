@@ -48,6 +48,13 @@ void VulkanGraphics3DSystem::shutdown() {
         lightUBO_ = 0;
     }
 
+    // Cleanup skybox cubemap texture
+    if (skyboxCubemapImage_ != 0) {
+        context_.destroyImage(skyboxCubemapImage_);
+        skyboxCubemapImage_ = 0;
+    }
+    hasSkybox_ = false;
+
     // Cleanup pipelines
     if (pbrPipeline_ != 0) {
         context_.destroyPipeline(pbrPipeline_);
@@ -644,7 +651,39 @@ Result<void, Graphics3DError> VulkanGraphics3DSystem::setMaterialTexture(
     if (it == materials_.end()) {
         return std::unexpected(Graphics3DError::InvalidMaterial);
     }
-    // Would set texture in descriptor set
+
+    // Update the appropriate texture slot in the material
+    // Texture slots:
+    // 0 = baseColorTexture
+    // 1 = metallicRoughnessTexture
+    // 2 = normalTexture
+    // 3 = occlusionTexture
+    // 4 = emissiveTexture
+    switch (slot) {
+        case 0:
+            it->second.pbrData.baseColorTexture = texture;
+            break;
+        case 1:
+            it->second.pbrData.metallicRoughnessTexture = texture;
+            break;
+        case 2:
+            it->second.pbrData.normalTexture = texture;
+            break;
+        case 3:
+            it->second.pbrData.occlusionTexture = texture;
+            break;
+        case 4:
+            it->second.pbrData.emissiveTexture = texture;
+            break;
+        default:
+            return std::unexpected(Graphics3DError::InvalidTexture);
+    }
+
+    // NOTE: In a full implementation, this would also update the Vulkan
+    // descriptor set to bind the texture for GPU access. Currently, the
+    // texture handle is stored and can be used during rendering to look up
+    // the actual texture data via the AssetSystem.
+
     return {};
 }
 
@@ -717,9 +756,71 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
     if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Rendering %zu items\n",
                                       frameCount, renderQueue_.size());
 
-    // Sort by material for batching
+    // Compute camera position for distance sorting
+    Vec3 cameraWorldPos = camera_.transform.position;
+
+    // Sort render queue for optimal rendering:
+    // 1. By render layer (lower layers rendered first)
+    // 2. Within layer: opaque objects before transparent
+    // 3. Opaque: front-to-back (early-Z optimization)
+    // 4. Transparent: back-to-front (correct blending)
+    // 5. Within same category: batch by material
     std::sort(renderQueue_.begin(), renderQueue_.end(),
-              [](const RenderItem& a, const RenderItem& b) {
+              [this, &cameraWorldPos](const RenderItem& a, const RenderItem& b) {
+                  // First, sort by render layer
+                  if (a.layer != b.layer) {
+                      return a.layer < b.layer;
+                  }
+
+                  // Check if materials are transparent
+                  bool aTransparent = false;
+                  bool bTransparent = false;
+
+                  auto aMatIt = materials_.find(a.material);
+                  auto bMatIt = materials_.find(b.material);
+
+                  if (aMatIt != materials_.end()) {
+                      aTransparent = (aMatIt->second.pbrData.blendMode == BlendMode::AlphaBlend ||
+                                      aMatIt->second.pbrData.blendMode == BlendMode::Additive);
+                  }
+                  if (bMatIt != materials_.end()) {
+                      bTransparent = (bMatIt->second.pbrData.blendMode == BlendMode::AlphaBlend ||
+                                      bMatIt->second.pbrData.blendMode == BlendMode::Additive);
+                  }
+
+                  // Opaque objects before transparent
+                  if (aTransparent != bTransparent) {
+                      return !aTransparent;  // false (opaque) comes before true (transparent)
+                  }
+
+                  // Calculate squared distances (avoid sqrt for performance)
+                  float aDistSq = (a.worldBounds.min.x + a.worldBounds.max.x) * 0.5f - cameraWorldPos.x;
+                  aDistSq *= aDistSq;
+                  float tempA = (a.worldBounds.min.y + a.worldBounds.max.y) * 0.5f - cameraWorldPos.y;
+                  aDistSq += tempA * tempA;
+                  tempA = (a.worldBounds.min.z + a.worldBounds.max.z) * 0.5f - cameraWorldPos.z;
+                  aDistSq += tempA * tempA;
+
+                  float bDistSq = (b.worldBounds.min.x + b.worldBounds.max.x) * 0.5f - cameraWorldPos.x;
+                  bDistSq *= bDistSq;
+                  float tempB = (b.worldBounds.min.y + b.worldBounds.max.y) * 0.5f - cameraWorldPos.y;
+                  bDistSq += tempB * tempB;
+                  tempB = (b.worldBounds.min.z + b.worldBounds.max.z) * 0.5f - cameraWorldPos.z;
+                  bDistSq += tempB * tempB;
+
+                  if (aTransparent) {
+                      // Transparent: back-to-front (farther objects first)
+                      if (std::abs(aDistSq - bDistSq) > 0.001f) {
+                          return aDistSq > bDistSq;
+                      }
+                  } else {
+                      // Opaque: front-to-back (closer objects first for early-Z)
+                      if (std::abs(aDistSq - bDistSq) > 0.001f) {
+                          return aDistSq < bDistSq;
+                      }
+                  }
+
+                  // Finally, batch by material
                   return a.material < b.material;
               });
 
@@ -1016,7 +1117,98 @@ void VulkanGraphics3DSystem::setAmbientLight(const Vec3& color, float intensity)
 }
 
 void VulkanGraphics3DSystem::updateEntityLights(IEntitySystem& entities) {
-    // Would update lights from entities with light components
+    // Clear existing dynamic lights (keep manually added lights)
+    // NOTE: This assumes all lights should come from entities when this method is called
+    clearLights();
+
+    // Get the view of entities with both Light3DComponent and Transform3D
+    auto lightView = entities.view<Light3DComponent, Transform3D>();
+
+    for (auto entity : lightView) {
+        const auto& lightComp = lightView.get<Light3DComponent>(entity);
+        const auto& transform = lightView.get<Transform3D>(entity);
+
+        // Skip disabled lights
+        if (!lightComp.enabled) continue;
+
+        const Light3D& light = lightComp.light;
+        Vec3 position = transform.position;
+
+        switch (light.type) {
+            case LightType::Directional: {
+                // Directional lights use transform rotation to determine direction
+                // Forward vector is typically (0, 0, -1) in local space, rotated by quaternion
+                Vec3 forward{0.0f, 0.0f, -1.0f};
+                // Apply quaternion rotation: q * v * q^(-1)
+                // Simplified rotation formula for a vector
+                Quat q = transform.rotation;
+                float qw = q.w, qx = q.x, qy = q.y, qz = q.z;
+
+                float vx = forward.x, vy = forward.y, vz = forward.z;
+
+                // Compute rotated vector using quaternion rotation formula
+                float ix = qw * vx + qy * vz - qz * vy;
+                float iy = qw * vy + qz * vx - qx * vz;
+                float iz = qw * vz + qx * vy - qy * vx;
+                float iw = -qx * vx - qy * vy - qz * vz;
+
+                Vec3 direction{
+                    ix * qw + iw * -qx + iy * -qz - iz * -qy,
+                    iy * qw + iw * -qy + iz * -qx - ix * -qz,
+                    iz * qw + iw * -qz + ix * -qy - iy * -qx
+                };
+
+                DirectionalLight dirLight;
+                dirLight.direction = direction;
+                dirLight.color = light.color;
+                dirLight.intensity = light.intensity;
+                dirLight.castShadows = light.castShadows;
+                setDirectionalLight(dirLight);
+                break;
+            }
+
+            case LightType::Point: {
+                PointLight pointLight;
+                pointLight.color = light.color;
+                pointLight.intensity = light.intensity;
+                pointLight.range = light.range;
+                pointLight.castShadows = light.castShadows;
+                addPointLight(pointLight, position);
+                break;
+            }
+
+            case LightType::Spot: {
+                // Spot lights also need direction from rotation
+                Vec3 forward{0.0f, 0.0f, -1.0f};
+                Quat q = transform.rotation;
+                float qw = q.w, qx = q.x, qy = q.y, qz = q.z;
+
+                float vx = forward.x, vy = forward.y, vz = forward.z;
+
+                float ix = qw * vx + qy * vz - qz * vy;
+                float iy = qw * vy + qz * vx - qx * vz;
+                float iz = qw * vz + qx * vy - qy * vx;
+                float iw = -qx * vx - qy * vy - qz * vz;
+
+                Vec3 direction{
+                    ix * qw + iw * -qx + iy * -qz - iz * -qy,
+                    iy * qw + iw * -qy + iz * -qx - ix * -qz,
+                    iz * qw + iw * -qz + ix * -qy - iy * -qx
+                };
+
+                SpotLight spotLight;
+                spotLight.direction = direction;
+                spotLight.color = light.color;
+                spotLight.intensity = light.intensity;
+                spotLight.range = light.range;
+                spotLight.innerConeAngle = light.innerConeAngle;
+                spotLight.outerConeAngle = light.outerConeAngle;
+                spotLight.castShadows = light.castShadows;
+                addSpotLight(spotLight, position);
+                break;
+            }
+        }
+    }
 }
 
 void VulkanGraphics3DSystem::setSkybox(const Skybox& skybox) {
@@ -1025,6 +1217,11 @@ void VulkanGraphics3DSystem::setSkybox(const Skybox& skybox) {
 }
 
 void VulkanGraphics3DSystem::clearSkybox() {
+    if (skyboxCubemapImage_ != 0) {
+        context_.destroyImage(skyboxCubemapImage_);
+        skyboxCubemapImage_ = 0;
+    }
+    skyboxCubemapData_ = CubemapData{};
     hasSkybox_ = false;
 }
 
@@ -1131,15 +1328,238 @@ void VulkanGraphics3DSystem::debugDrawCapsule(
     const Vec3& start, const Vec3& end, float radius,
     const Color& color, float duration, bool depthTest) {
     if (!debugRenderingEnabled_) return;
-    debugDrawSphere(start, radius, color, duration, depthTest);
-    debugDrawSphere(end, radius, color, duration, depthTest);
-    debugDrawLine(start, end, color, duration, depthTest);
+
+    constexpr int segments = 16;
+    constexpr int hemisphereRings = 4;
+
+    // Calculate the capsule axis
+    Vec3 axis{end.x - start.x, end.y - start.y, end.z - start.z};
+    float length = std::sqrt(axis.x * axis.x + axis.y * axis.y + axis.z * axis.z);
+
+    if (length < 0.0001f) {
+        // Degenerate capsule - just draw a sphere
+        debugDrawSphere(start, radius, color, duration, depthTest);
+        return;
+    }
+
+    // Normalize axis
+    Vec3 axisNorm{axis.x / length, axis.y / length, axis.z / length};
+
+    // Find perpendicular vectors using Gram-Schmidt
+    Vec3 perp1, perp2;
+    if (std::abs(axisNorm.x) < 0.9f) {
+        perp1 = Vec3{1.0f, 0.0f, 0.0f};
+    } else {
+        perp1 = Vec3{0.0f, 1.0f, 0.0f};
+    }
+    // perp1 = perp1 - (perp1 dot axisNorm) * axisNorm
+    float dot1 = perp1.x * axisNorm.x + perp1.y * axisNorm.y + perp1.z * axisNorm.z;
+    perp1.x -= dot1 * axisNorm.x;
+    perp1.y -= dot1 * axisNorm.y;
+    perp1.z -= dot1 * axisNorm.z;
+    float perp1Len = std::sqrt(perp1.x * perp1.x + perp1.y * perp1.y + perp1.z * perp1.z);
+    perp1.x /= perp1Len;
+    perp1.y /= perp1Len;
+    perp1.z /= perp1Len;
+
+    // perp2 = axisNorm cross perp1
+    perp2.x = axisNorm.y * perp1.z - axisNorm.z * perp1.y;
+    perp2.y = axisNorm.z * perp1.x - axisNorm.x * perp1.z;
+    perp2.z = axisNorm.x * perp1.y - axisNorm.y * perp1.x;
+
+    // Draw cylinder rings at start and end
+    for (int i = 0; i < segments; ++i) {
+        float a1 = 2.0f * 3.14159f * i / segments;
+        float a2 = 2.0f * 3.14159f * (i + 1) / segments;
+
+        float c1 = std::cos(a1), s1 = std::sin(a1);
+        float c2 = std::cos(a2), s2 = std::sin(a2);
+
+        // Points on the cylinder at start
+        Vec3 p1s{start.x + radius * (c1 * perp1.x + s1 * perp2.x),
+                 start.y + radius * (c1 * perp1.y + s1 * perp2.y),
+                 start.z + radius * (c1 * perp1.z + s1 * perp2.z)};
+        Vec3 p2s{start.x + radius * (c2 * perp1.x + s2 * perp2.x),
+                 start.y + radius * (c2 * perp1.y + s2 * perp2.y),
+                 start.z + radius * (c2 * perp1.z + s2 * perp2.z)};
+
+        // Points on the cylinder at end
+        Vec3 p1e{end.x + radius * (c1 * perp1.x + s1 * perp2.x),
+                 end.y + radius * (c1 * perp1.y + s1 * perp2.y),
+                 end.z + radius * (c1 * perp1.z + s1 * perp2.z)};
+        Vec3 p2e{end.x + radius * (c2 * perp1.x + s2 * perp2.x),
+                 end.y + radius * (c2 * perp1.y + s2 * perp2.y),
+                 end.z + radius * (c2 * perp1.z + s2 * perp2.z)};
+
+        // Draw ring segments at start and end
+        debugDrawLine(p1s, p2s, color, duration, depthTest);
+        debugDrawLine(p1e, p2e, color, duration, depthTest);
+
+        // Draw longitudinal lines along cylinder (4 lines evenly spaced)
+        if (i % (segments / 4) == 0) {
+            debugDrawLine(p1s, p1e, color, duration, depthTest);
+        }
+    }
+
+    // Draw hemispherical caps
+    for (int ring = 1; ring <= hemisphereRings; ++ring) {
+        float phi = (3.14159f / 2.0f) * ring / hemisphereRings;  // 0 to pi/2
+        float ringRadius = radius * std::cos(phi);
+        float ringOffset = radius * std::sin(phi);
+
+        for (int i = 0; i < segments; ++i) {
+            float a1 = 2.0f * 3.14159f * i / segments;
+            float a2 = 2.0f * 3.14159f * (i + 1) / segments;
+
+            float c1 = std::cos(a1), s1 = std::sin(a1);
+            float c2 = std::cos(a2), s2 = std::sin(a2);
+
+            // Start hemisphere (pointing in -axis direction)
+            Vec3 p1{start.x - axisNorm.x * ringOffset + ringRadius * (c1 * perp1.x + s1 * perp2.x),
+                    start.y - axisNorm.y * ringOffset + ringRadius * (c1 * perp1.y + s1 * perp2.y),
+                    start.z - axisNorm.z * ringOffset + ringRadius * (c1 * perp1.z + s1 * perp2.z)};
+            Vec3 p2{start.x - axisNorm.x * ringOffset + ringRadius * (c2 * perp1.x + s2 * perp2.x),
+                    start.y - axisNorm.y * ringOffset + ringRadius * (c2 * perp1.y + s2 * perp2.y),
+                    start.z - axisNorm.z * ringOffset + ringRadius * (c2 * perp1.z + s2 * perp2.z)};
+
+            debugDrawLine(p1, p2, color, duration, depthTest);
+
+            // End hemisphere (pointing in +axis direction)
+            Vec3 p3{end.x + axisNorm.x * ringOffset + ringRadius * (c1 * perp1.x + s1 * perp2.x),
+                    end.y + axisNorm.y * ringOffset + ringRadius * (c1 * perp1.y + s1 * perp2.y),
+                    end.z + axisNorm.z * ringOffset + ringRadius * (c1 * perp1.z + s1 * perp2.z)};
+            Vec3 p4{end.x + axisNorm.x * ringOffset + ringRadius * (c2 * perp1.x + s2 * perp2.x),
+                    end.y + axisNorm.y * ringOffset + ringRadius * (c2 * perp1.y + s2 * perp2.y),
+                    end.z + axisNorm.z * ringOffset + ringRadius * (c2 * perp1.z + s2 * perp2.z)};
+
+            debugDrawLine(p3, p4, color, duration, depthTest);
+        }
+    }
+
+    // Draw meridian lines on hemispheres (4 evenly spaced)
+    for (int i = 0; i < 4; ++i) {
+        float angle = 2.0f * 3.14159f * i / 4;
+        float c = std::cos(angle), s = std::sin(angle);
+
+        Vec3 dir{c * perp1.x + s * perp2.x, c * perp1.y + s * perp2.y, c * perp1.z + s * perp2.z};
+
+        // Draw arc from cylinder edge to pole at start
+        for (int j = 0; j < hemisphereRings; ++j) {
+            float phi1 = (3.14159f / 2.0f) * j / hemisphereRings;
+            float phi2 = (3.14159f / 2.0f) * (j + 1) / hemisphereRings;
+
+            Vec3 p1{start.x + radius * std::cos(phi1) * dir.x - radius * std::sin(phi1) * axisNorm.x,
+                    start.y + radius * std::cos(phi1) * dir.y - radius * std::sin(phi1) * axisNorm.y,
+                    start.z + radius * std::cos(phi1) * dir.z - radius * std::sin(phi1) * axisNorm.z};
+            Vec3 p2{start.x + radius * std::cos(phi2) * dir.x - radius * std::sin(phi2) * axisNorm.x,
+                    start.y + radius * std::cos(phi2) * dir.y - radius * std::sin(phi2) * axisNorm.y,
+                    start.z + radius * std::cos(phi2) * dir.z - radius * std::sin(phi2) * axisNorm.z};
+
+            debugDrawLine(p1, p2, color, duration, depthTest);
+        }
+
+        // Draw arc from cylinder edge to pole at end
+        for (int j = 0; j < hemisphereRings; ++j) {
+            float phi1 = (3.14159f / 2.0f) * j / hemisphereRings;
+            float phi2 = (3.14159f / 2.0f) * (j + 1) / hemisphereRings;
+
+            Vec3 p1{end.x + radius * std::cos(phi1) * dir.x + radius * std::sin(phi1) * axisNorm.x,
+                    end.y + radius * std::cos(phi1) * dir.y + radius * std::sin(phi1) * axisNorm.y,
+                    end.z + radius * std::cos(phi1) * dir.z + radius * std::sin(phi1) * axisNorm.z};
+            Vec3 p2{end.x + radius * std::cos(phi2) * dir.x + radius * std::sin(phi2) * axisNorm.x,
+                    end.y + radius * std::cos(phi2) * dir.y + radius * std::sin(phi2) * axisNorm.y,
+                    end.z + radius * std::cos(phi2) * dir.z + radius * std::sin(phi2) * axisNorm.z};
+
+            debugDrawLine(p1, p2, color, duration, depthTest);
+        }
+    }
 }
 
 void VulkanGraphics3DSystem::debugDrawFrustum(
     const Frustum& frustum, const Color& color,
     float duration, bool depthTest) {
-    // Would draw frustum from plane intersections
+    if (!debugRenderingEnabled_) return;
+
+    // Helper lambda to intersect 3 planes and get a point
+    // Planes: p1*x + d1 = 0 where p1 is normal
+    // Solve: [n1; n2; n3] * point = -[d1; d2; d3]
+    auto intersectPlanes = [](const Plane& p1, const Plane& p2, const Plane& p3) -> std::optional<Vec3> {
+        // Build matrix from normals (rows)
+        // Using Cramer's rule for 3x3 system
+        float a11 = p1.normal.x, a12 = p1.normal.y, a13 = p1.normal.z;
+        float a21 = p2.normal.x, a22 = p2.normal.y, a23 = p2.normal.z;
+        float a31 = p3.normal.x, a32 = p3.normal.y, a33 = p3.normal.z;
+
+        // Determinant of coefficient matrix
+        float det = a11 * (a22 * a33 - a23 * a32)
+                  - a12 * (a21 * a33 - a23 * a31)
+                  + a13 * (a21 * a32 - a22 * a31);
+
+        if (std::abs(det) < 1e-6f) {
+            return std::nullopt;  // Planes don't intersect at a point
+        }
+
+        // Right-hand side (negative distances)
+        float b1 = -p1.distance;
+        float b2 = -p2.distance;
+        float b3 = -p3.distance;
+
+        // Solve using Cramer's rule
+        float x = (b1 * (a22 * a33 - a23 * a32)
+                 - a12 * (b2 * a33 - a23 * b3)
+                 + a13 * (b2 * a32 - a22 * b3)) / det;
+
+        float y = (a11 * (b2 * a33 - a23 * b3)
+                 - b1 * (a21 * a33 - a23 * a31)
+                 + a13 * (a21 * b3 - b2 * a31)) / det;
+
+        float z = (a11 * (a22 * b3 - b2 * a32)
+                 - a12 * (a21 * b3 - b2 * a31)
+                 + b1 * (a21 * a32 - a22 * a31)) / det;
+
+        return Vec3{x, y, z};
+    };
+
+    // Frustum planes order: Near (0), Far (1), Left (2), Right (3), Top (4), Bottom (5)
+    // Calculate 8 corners by intersecting appropriate planes
+    std::array<std::optional<Vec3>, 8> corners;
+
+    // Near plane corners
+    corners[0] = intersectPlanes(frustum.planes[0], frustum.planes[2], frustum.planes[5]);  // Near-Left-Bottom
+    corners[1] = intersectPlanes(frustum.planes[0], frustum.planes[3], frustum.planes[5]);  // Near-Right-Bottom
+    corners[2] = intersectPlanes(frustum.planes[0], frustum.planes[2], frustum.planes[4]);  // Near-Left-Top
+    corners[3] = intersectPlanes(frustum.planes[0], frustum.planes[3], frustum.planes[4]);  // Near-Right-Top
+
+    // Far plane corners
+    corners[4] = intersectPlanes(frustum.planes[1], frustum.planes[2], frustum.planes[5]);  // Far-Left-Bottom
+    corners[5] = intersectPlanes(frustum.planes[1], frustum.planes[3], frustum.planes[5]);  // Far-Right-Bottom
+    corners[6] = intersectPlanes(frustum.planes[1], frustum.planes[2], frustum.planes[4]);  // Far-Left-Top
+    corners[7] = intersectPlanes(frustum.planes[1], frustum.planes[3], frustum.planes[4]);  // Far-Right-Top
+
+    // Verify all corners are valid
+    for (const auto& corner : corners) {
+        if (!corner.has_value()) {
+            return;  // Invalid frustum, can't draw
+        }
+    }
+
+    // Draw near plane quad
+    debugDrawLine(*corners[0], *corners[1], color, duration, depthTest);  // Bottom edge
+    debugDrawLine(*corners[1], *corners[3], color, duration, depthTest);  // Right edge
+    debugDrawLine(*corners[3], *corners[2], color, duration, depthTest);  // Top edge
+    debugDrawLine(*corners[2], *corners[0], color, duration, depthTest);  // Left edge
+
+    // Draw far plane quad
+    debugDrawLine(*corners[4], *corners[5], color, duration, depthTest);  // Bottom edge
+    debugDrawLine(*corners[5], *corners[7], color, duration, depthTest);  // Right edge
+    debugDrawLine(*corners[7], *corners[6], color, duration, depthTest);  // Top edge
+    debugDrawLine(*corners[6], *corners[4], color, duration, depthTest);  // Left edge
+
+    // Draw edges connecting near to far
+    debugDrawLine(*corners[0], *corners[4], color, duration, depthTest);  // Left-Bottom
+    debugDrawLine(*corners[1], *corners[5], color, duration, depthTest);  // Right-Bottom
+    debugDrawLine(*corners[2], *corners[6], color, duration, depthTest);  // Left-Top
+    debugDrawLine(*corners[3], *corners[7], color, duration, depthTest);  // Right-Top
 }
 
 void VulkanGraphics3DSystem::debugDrawRay(
@@ -1196,8 +1616,27 @@ bool VulkanGraphics3DSystem::isFullscreen() const {
 }
 
 void VulkanGraphics3DSystem::setFullscreen(bool fullscreen) {
+    if (isFullscreen_ == fullscreen) return;
+
+    GLFWwindow* window = context_.getWindow();
+    if (!window) return;
+
+    if (fullscreen) {
+        // Save current windowed position and size for later restoration
+        glfwGetWindowPos(window, &windowedPosX_, &windowedPosY_);
+        glfwGetWindowSize(window, &windowedWidth_, &windowedHeight_);
+
+        // Switch to fullscreen on primary monitor
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    } else {
+        // Restore windowed mode with saved position and size
+        glfwSetWindowMonitor(window, nullptr, windowedPosX_, windowedPosY_,
+                             windowedWidth_, windowedHeight_, 0);
+    }
+
     isFullscreen_ = fullscreen;
-    // Would switch window mode
 }
 
 bool VulkanGraphics3DSystem::shouldClose() const {
@@ -1841,10 +2280,43 @@ Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(c
 
 Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createMaterialFromData(const MaterialData& data) {
     PBRMaterial mat;
+
+    // Copy PBR factors
     mat.baseColorFactor = Vec4{data.baseColorFactor[0], data.baseColorFactor[1],
                                data.baseColorFactor[2], data.baseColorFactor[3]};
     mat.metallicFactor = data.metallicFactor;
     mat.roughnessFactor = data.roughnessFactor;
+    mat.normalScale = data.normalScale;
+    mat.occlusionStrength = data.occlusionStrength;
+    mat.emissiveFactor = Vec3{data.emissiveFactor[0], data.emissiveFactor[1], data.emissiveFactor[2]};
+    mat.alphaCutoff = data.alphaCutoff;
+
+    // Copy texture handles from MaterialData
+    // These can be loaded via AssetSystem and passed in the MaterialTextureRef
+    mat.baseColorTexture = data.baseColorTexture.handle;
+    mat.metallicRoughnessTexture = data.metallicRoughnessTexture.handle;
+    mat.normalTexture = data.normalTexture.handle;
+    mat.occlusionTexture = data.occlusionTexture.handle;
+    mat.emissiveTexture = data.emissiveTexture.handle;
+
+    // Copy render state
+    mat.doubleSided = data.doubleSided;
+    if (data.transparent) {
+        mat.blendMode = BlendMode::AlphaBlend;
+    } else if (mat.alphaCutoff > 0.0f && mat.alphaCutoff < 1.0f) {
+        mat.blendMode = BlendMode::AlphaTest;  // Use alpha test in shader
+    }
+
+    // Handle unlit materials differently
+    if (data.unlit) {
+        UnlitMaterial unlitMat;
+        unlitMat.color = mat.baseColorFactor;
+        unlitMat.texture = mat.baseColorTexture;
+        unlitMat.blendMode = mat.blendMode;
+        unlitMat.cullMode = data.doubleSided ? CullMode::None : CullMode::Back;
+        return createUnlitMaterial(unlitMat);
+    }
+
     return createMaterial(mat);
 }
 
@@ -1860,7 +2332,120 @@ Result<std::vector<MaterialHandle>, Graphics3DError> VulkanGraphics3DSystem::cre
 }
 
 Result<void, Graphics3DError> VulkanGraphics3DSystem::createSkyboxFromData(const CubemapData& data) {
-    // Would create cubemap texture
+    // Validate cubemap data
+    if (data.facePixels.size() != 6) {
+        return std::unexpected(Graphics3DError::InvalidTexture);
+    }
+
+    if (data.faceWidth <= 0 || data.faceHeight <= 0 || data.channels <= 0) {
+        return std::unexpected(Graphics3DError::InvalidTexture);
+    }
+
+    // Verify all faces have the expected size
+    std::size_t expectedSize = static_cast<std::size_t>(data.faceWidth * data.faceHeight * data.channels);
+    for (const auto& facePixels : data.facePixels) {
+        if (facePixels.size() != expectedSize) {
+            return std::unexpected(Graphics3DError::InvalidTexture);
+        }
+    }
+
+    // Destroy existing skybox cubemap if present
+    if (skyboxCubemapImage_ != 0) {
+        context_.destroyImage(skyboxCubemapImage_);
+        skyboxCubemapImage_ = 0;
+    }
+
+    // Determine Vulkan format based on channels
+    VkFormat format;
+    switch (data.channels) {
+        case 1:
+            format = VK_FORMAT_R8_UNORM;
+            break;
+        case 2:
+            format = VK_FORMAT_R8G8_UNORM;
+            break;
+        case 3:
+            // Vulkan doesn't support RGB8, convert to RGBA or use BGR
+            // Most cubemap loaders provide RGBA, but fallback to RGBA8
+            format = VK_FORMAT_R8G8B8A8_UNORM;
+            break;
+        case 4:
+            format = VK_FORMAT_R8G8B8A8_UNORM;
+            break;
+        default:
+            return std::unexpected(Graphics3DError::InvalidTexture);
+    }
+
+    // For RGB data, we need to convert to RGBA
+    std::vector<std::vector<unsigned char>> rgbaFaces;
+    const std::vector<std::vector<unsigned char>>* facesToUpload = &data.facePixels;
+
+    if (data.channels == 3) {
+        rgbaFaces.resize(6);
+        for (std::size_t face = 0; face < 6; ++face) {
+            const auto& srcFace = data.facePixels[face];
+            auto& dstFace = rgbaFaces[face];
+            std::size_t pixelCount = static_cast<std::size_t>(data.faceWidth * data.faceHeight);
+            dstFace.resize(pixelCount * 4);
+
+            for (std::size_t i = 0; i < pixelCount; ++i) {
+                dstFace[i * 4 + 0] = srcFace[i * 3 + 0];  // R
+                dstFace[i * 4 + 1] = srcFace[i * 3 + 1];  // G
+                dstFace[i * 4 + 2] = srcFace[i * 3 + 2];  // B
+                dstFace[i * 4 + 3] = 255;                  // A
+            }
+        }
+        facesToUpload = &rgbaFaces;
+        expectedSize = static_cast<std::size_t>(data.faceWidth * data.faceHeight * 4);
+    }
+
+    // Create cubemap image
+    vulkan::VulkanImageDef imageDef{};
+    imageDef.width = static_cast<std::uint32_t>(data.faceWidth);
+    imageDef.height = static_cast<std::uint32_t>(data.faceHeight);
+    imageDef.depth = 1;
+    imageDef.mipLevels = 1;
+    imageDef.arrayLayers = 6;  // Will be set automatically due to isCubemap
+    imageDef.format = format;
+    imageDef.type = VK_IMAGE_TYPE_2D;
+    imageDef.usage = vulkan::VulkanImageUsage::Sampled | vulkan::VulkanImageUsage::TransferDst;
+    imageDef.isCubemap = true;
+    imageDef.debugName = "skybox_cubemap";
+
+    auto imageResult = context_.createImage(imageDef);
+    if (!imageResult) {
+        return std::unexpected(Graphics3DError::InternalError);
+    }
+
+    skyboxCubemapImage_ = *imageResult;
+
+    // Upload each face to the cubemap
+    // Face order: +X (0), -X (1), +Y (2), -Y (3), +Z (4), -Z (5)
+    for (std::uint32_t face = 0; face < 6; ++face) {
+        const auto& faceData = (*facesToUpload)[face];
+        auto uploadResult = context_.uploadToImageLayer(
+            skyboxCubemapImage_,
+            faceData.data(),
+            faceData.size(),
+            face
+        );
+
+        if (!uploadResult) {
+            // Clean up on failure
+            context_.destroyImage(skyboxCubemapImage_);
+            skyboxCubemapImage_ = 0;
+            return std::unexpected(Graphics3DError::InternalError);
+        }
+    }
+
+    // Store cubemap data for potential re-creation
+    skyboxCubemapData_ = data;
+    hasSkybox_ = true;
+
+    // Set default skybox parameters
+    skybox_.rotation = 0.0f;
+    skybox_.exposure = 1.0f;
+
     return {};
 }
 

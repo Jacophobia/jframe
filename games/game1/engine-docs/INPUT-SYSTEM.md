@@ -1,9 +1,9 @@
 # Bestow Input System Guide
 
-**Version:** 1.0
-**Last Updated:** 2025-12-09
+**Version:** 2.0
+**Last Updated:** 2025-12-14
 
-The Input System provides comprehensive handling for keyboard, mouse, and gamepad input with support for action mapping, rebinding, and multiple input devices. This guide covers everything game developers need to implement responsive, accessible input in their games.
+The Input System provides comprehensive handling for keyboard, mouse, and gamepad input through an **action mapping architecture**. This guide covers everything game developers need to implement responsive, accessible input in their games.
 
 ---
 
@@ -11,14 +11,13 @@ The Input System provides comprehensive handling for keyboard, mouse, and gamepa
 
 1. [Overview](#overview)
 2. [Core Concepts](#core-concepts)
-3. [Keyboard Input](#keyboard-input)
+3. [Action Mapping](#action-mapping)
 4. [Mouse Input](#mouse-input)
-5. [Gamepad Input](#gamepad-input)
-6. [Action Mapping](#action-mapping)
-7. [Input Rebinding](#input-rebinding)
-8. [Text Input](#text-input)
-9. [Best Practices](#best-practices)
-10. [Complete Examples](#complete-examples)
+5. [Controller Support](#controller-support)
+6. [Text Input](#text-input)
+7. [Input Listening and Rebinding](#input-listening-and-rebinding)
+8. [Best Practices](#best-practices)
+9. [Complete Examples](#complete-examples)
 
 ---
 
@@ -26,8 +25,8 @@ The Input System provides comprehensive handling for keyboard, mouse, and gamepa
 
 The Input System (`IInputSystem`) is the centralized interface for all player input in Bestow. It provides:
 
-- **Multi-device support**: Keyboard, mouse, and up to 4 gamepads simultaneously
-- **Action-based input**: Map hardware inputs to logical actions (e.g., "jump", "shoot")
+- **Action-based input**: Map hardware inputs (keys, buttons) to logical actions
+- **Multi-device support**: Keyboard, mouse, and gamepad simultaneously
 - **Frame-perfect detection**: Track pressed, held, and released states
 - **Live rebinding**: Allow players to remap controls at runtime
 - **Dvorak-friendly defaults**: Optimized for Dvorak keyboard layout (,AOE movement)
@@ -37,31 +36,30 @@ The Input System (`IInputSystem`) is the centralized interface for all player in
 ```cpp
 import bestow;
 
-class MyGame : public IApplication {
+class MyGame : public bestow::core::Application {
 public:
-    MyGame(IInputSystem& input) : input_(&input) {}
+    bool initialize(bestow::core::Engine& engine) override {
+        auto& sys = engine.systems();
 
-    void initialize() {
         // Register action mappings
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {
                 .deviceType = InputDeviceType::Keyboard,
                 .keyCode = 44,  // Comma (,) - left on Dvorak
             },
             .action = "move_left"
         });
+
+        return true;
     }
 
-    void update() {
-        input_->update();  // Call once per frame
+    void updateFixed(DeltaTime dt) override {
+        auto& sys = engine.systems();
 
-        if (input_->isActionActive("move_left")) {
+        if (sys.input->isActionActive("move_left")) {
             // Player is moving left
         }
     }
-
-private:
-    IInputSystem* input_;
 };
 ```
 
@@ -69,79 +67,175 @@ private:
 
 ## Core Concepts
 
-### Action vs Raw Input
+### Action-Based Input System
 
-**Actions** are logical game commands (e.g., "jump", "fire", "menu_open"). They are platform-agnostic and rebindable.
+**The Input System is entirely action-based.** You map device inputs (keyboard keys, mouse buttons, gamepad buttons) to named actions, then query those actions in your game code.
 
-**Raw input** is direct hardware state (e.g., "Space key pressed", "Mouse X = 512"). Use raw input only for debugging or rebinding UI.
+**Actions** are logical game commands (e.g., "jump", "fire", "menu_open"). They are:
+- Platform-agnostic
+- Rebindable at runtime
+- Support multiple input sources (keyboard + gamepad)
+- Work with analog inputs (joysticks, triggers)
 
 ```cpp
-// Good: Use actions for gameplay
-if (input_->isActionActive("jump")) {
+// Good: Action-based input
+if (input->isActionActive("jump")) {
     player.jump();
 }
 
-// Avoid: Don't hard-code key checks in game logic
-if (input_->isKeyPressed(GLFW_KEY_SPACE)) {  // NO! Tightly coupled to hardware
-    player.jump();
-}
+// The system does NOT expose raw key queries
+// Everything goes through action mappings
+```
+
+### Input Structures
+
+The system uses these core types:
+
+**InputBinding** - Describes a physical input:
+```cpp
+struct InputBinding {
+    InputDeviceType deviceType;  // Keyboard, Mouse, Controller
+    int deviceIndex;             // Controller index (0-3)
+    int keyCode;                 // Key/button code
+    float scale;                 // Multiplier for analog values
+    float deadzone;              // Ignore values below this threshold
+};
+```
+
+**InputMapping** - Maps a binding to an action:
+```cpp
+struct InputMapping {
+    InputBinding binding;
+    Action action;  // std::string
+};
+```
+
+**ActionState** - Current state of an action:
+```cpp
+struct ActionState {
+    Action action;
+    bool active;        // Currently held
+    float value;        // Analog value (0.0-1.0)
+    bool justPressed;   // Pressed this frame
+    bool justReleased;  // Released this frame
+};
 ```
 
 ### Input States
 
-Every action and input has three states:
+Every action has three states you can query:
 
 | State | Method | Description | Use Case |
 |-------|--------|-------------|----------|
-| **Active** | `isActionActive()` | Input is currently held down | Continuous movement, aiming |
-| **Just Pressed** | `wasActionJustPressed()` | Input pressed this frame | Jump, shoot, open menu |
-| **Just Released** | `wasActionJustReleased()` | Input released this frame | Charge attacks, drag-and-drop |
+| **Active** | `isActionActive(action)` | Input is currently held down | Continuous movement, aiming |
+| **Just Pressed** | `wasActionJustPressed(action)` | Input pressed this frame | Jump, shoot, open menu |
+| **Just Released** | `wasActionJustReleased(action)` | Input released this frame | Charge attacks, drag-and-drop |
 
 ```cpp
-void update() {
+void updateFixed(DeltaTime dt) {
+    auto& sys = engine_->systems();
+
     // Continuous movement while held
-    if (input_->isActionActive("move_right")) {
+    if (sys.input->isActionActive("move_right")) {
         player.velocity.x = 200.0f;
     }
 
     // Jump only on the first frame of press
-    if (input_->wasActionJustPressed("jump")) {
+    if (sys.input->wasActionJustPressed("jump")) {
         player.jump();
     }
 
     // Release a charged shot
-    if (input_->wasActionJustReleased("charge")) {
+    if (sys.input->wasActionJustReleased("charge")) {
         player.releaseChargedShot();
     }
 }
 ```
 
-### Action Values
+### Action Values (Analog Input)
 
-Actions have both binary (active/inactive) and analog (0.0 to 1.0) states. This supports analog sticks and triggers:
+Actions support analog values from 0.0 to 1.0 (or -1.0 to +1.0 for axes):
 
 ```cpp
-// Binary: Is the player moving?
-bool isMoving = input_->isActionActive("move_horizontal");
-
-// Analog: How much are they moving?
-float moveAmount = input_->getActionValue("move_horizontal");
-// moveAmount ranges from -1.0 (full left) to +1.0 (full right)
-
+// Get analog value (-1.0 to +1.0 for axes, 0.0 to 1.0 for buttons)
+float moveAmount = sys.input->getActionValue("move_horizontal");
 player.velocity.x = moveAmount * player.maxSpeed;
+
+// Digital check (is value above threshold?)
+bool isMoving = sys.input->isActionActive("move_horizontal");
+```
+
+### Complete Action State
+
+For comprehensive action information, use `getActionState()`:
+
+```cpp
+ActionState state = sys.input->getActionState("jump");
+
+if (state.active) {
+    // Action is currently active
+}
+if (state.justPressed) {
+    // Action was just pressed this frame
+}
+if (state.justReleased) {
+    // Action was just released this frame
+}
+float value = state.value;  // Analog value
+```
+
+### Query All Action States
+
+```cpp
+// Get state of all registered actions
+std::vector<ActionState> allStates = sys.input->getAllActionStates();
+
+for (const auto& state : allStates) {
+    std::cout << state.action << ": " << state.value << "\n";
+}
 ```
 
 ---
 
-## Keyboard Input
+## Action Mapping
 
-### Key Codes
+Action mapping decouples game logic from hardware inputs. Players can use keyboard, mouse, or gamepad interchangeably.
 
-Bestow uses GLFW key codes. Common keys:
+### Registering Mappings
+
+```cpp
+void setupControls() {
+    auto& sys = engine_->systems();
+
+    // Keyboard jump (Space)
+    sys.input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32},
+        .action = "jump"
+    });
+
+    // Controller jump (A button - button code 0)
+    sys.input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0},
+        .action = "jump"
+    });
+
+    // Mouse jump (Left click)
+    sys.input->registerMapping({
+        .binding = {.deviceType = InputDeviceType::Mouse, .keyCode = 0},
+        .action = "jump"
+    });
+
+    // Now all three inputs trigger the same "jump" action!
+}
+```
+
+### Key Codes Reference
+
+Bestow uses GLFW key codes for keyboard input. Common keys:
 
 | Key | Code | Dvorak Position | QWERTY Position |
 |-----|------|-----------------|-----------------|
-| Comma (`,`) | 44 | Home row left | QWERTY Q position |
+| Comma (`,`) | 44 | Home row left | Below M |
 | A | 65 | Left hand middle | QWERTY A position |
 | O | 79 | Right hand index | QWERTY S position |
 | E | 69 | Right hand middle | QWERTY D position |
@@ -151,55 +245,152 @@ Bestow uses GLFW key codes. Common keys:
 | Tab | 258 | Tab | Tab |
 | Left Shift | 340 | Left Shift | Left Shift |
 | Left Ctrl | 341 | Left Ctrl | Left Ctrl |
+| Left Arrow | 263 | Arrow key | Arrow key |
+| Right Arrow | 262 | Arrow key | Arrow key |
+| Up Arrow | 265 | Arrow key | Arrow key |
+| Down Arrow | 264 | Arrow key | Arrow key |
 
 **Full reference**: See GLFW documentation for complete key code list.
 
 ### Dvorak-Friendly Movement
 
-**IMPORTANT**: The project owner uses Dvorak layout. Default movement should use **,AOE** (Dvorak home row), which maps to WASD positions on QWERTY keyboards.
+**IMPORTANT**: The project owner uses Dvorak layout. Default movement should use **,AOE** (Dvorak home row), which corresponds to WASD finger positions on QWERTY keyboards.
 
 ```cpp
-void setupDvorakMovement(IInputSystem* input) {
+void setupDvorakMovement() {
+    auto& sys = engine_->systems();
+
     // Left: Comma (,) - Dvorak left hand
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 44},
         .action = "move_left"
     });
 
     // Down: A - Dvorak home row
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 65},
         .action = "move_down"
     });
 
     // Up: O - Dvorak home row
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79},
         .action = "move_up"
     });
 
     // Right: E - Dvorak right hand
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 69},
         .action = "move_right"
     });
 }
 ```
 
-### Keyboard State Queries
+### Multiple Bindings per Action
 
-While action mapping is preferred, you can query raw keyboard state:
+You can bind multiple inputs to the same action. The system returns the **maximum absolute value** when multiple inputs are active:
 
 ```cpp
-// Check if a specific key is down (avoid in gameplay code)
-bool spacePressed = input_->isKeyPressed(GLFW_KEY_SPACE);  // Not in interface
+// Bind both O and Up Arrow to "move_up"
+sys.input->registerMapping({
+    .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79},
+    .action = "move_up"
+});
+sys.input->registerMapping({
+    .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 265},  // Up Arrow
+    .action = "move_up"
+});
+
+// Both keys will activate the same action
+if (sys.input->isActionActive("move_up")) {
+    // Triggered by either O or Up Arrow
+}
 ```
 
-**Note**: The current interface does not expose `isKeyPressed()` directly. Use action mapping instead for all gameplay input.
+### Directional Actions with Scale
+
+Use `scale` to create opposing directional actions:
+
+```cpp
+void setupHorizontalMovement() {
+    auto& sys = engine_->systems();
+
+    // Left = negative scale
+    sys.input->registerMapping({
+        .binding = {
+            .deviceType = InputDeviceType::Keyboard,
+            .keyCode = 44,  // Comma
+            .scale = -1.0f  // Negative for left
+        },
+        .action = "move_horizontal"
+    });
+
+    // Right = positive scale
+    sys.input->registerMapping({
+        .binding = {
+            .deviceType = InputDeviceType::Keyboard,
+            .keyCode = 69,  // E
+            .scale = 1.0f   // Positive for right
+        },
+        .action = "move_horizontal"
+    });
+
+    // In gameplay:
+    float moveX = sys.input->getActionValue("move_horizontal");
+    // Comma = -1.0, E = +1.0
+    player.velocity.x = moveX * player.maxSpeed;
+}
+```
+
+### Querying Mappings
+
+```cpp
+// Get all current mappings
+std::vector<InputMapping> mappings = sys.input->getMappings();
+
+for (const auto& mapping : mappings) {
+    std::cout << "Action: " << mapping.action << "\n";
+    std::cout << "Device: " << static_cast<int>(mapping.binding.deviceType) << "\n";
+    std::cout << "Key/Button: " << mapping.binding.keyCode << "\n";
+}
+```
+
+### Removing Mappings
+
+```cpp
+// Remove specific mapping by binding
+InputBinding toRemove{
+    .deviceType = InputDeviceType::Keyboard,
+    .keyCode = 32  // Space
+};
+sys.input->removeMapping(toRemove);
+
+// Remove all mappings
+sys.input->clearMappings();
+```
 
 ---
 
 ## Mouse Input
+
+### Mouse Position and Delta
+
+```cpp
+// Get current mouse position (screen coordinates)
+Vec2 mousePos = sys.input->getMousePosition();
+// mousePos.x and mousePos.y are in pixels from top-left corner
+
+// Get mouse movement this frame
+Vec2 mouseDelta = sys.input->getMouseDelta();
+// mouseDelta.x and mouseDelta.y show change since last frame
+
+// Example: Camera rotation
+void updateCamera() {
+    Vec2 delta = sys.input->getMouseDelta();
+    camera.rotation.y += delta.x * sensitivity;
+    camera.rotation.x += delta.y * sensitivity;
+}
+```
 
 ### Mouse Buttons
 
@@ -215,36 +406,23 @@ Mouse buttons are indexed 0-7:
 
 ```cpp
 // Check if mouse button is down
-if (input_->isMouseButtonDown(0)) {  // Left click
+if (sys.input->isMouseButtonDown(0)) {  // Left click
     fireWeapon();
 }
 
 // Map mouse buttons to actions
-input_->registerMapping({
+sys.input->registerMapping({
     .binding = {
         .deviceType = InputDeviceType::Mouse,
         .keyCode = 0,  // Left button
     },
     .action = "attack"
 });
-```
 
-### Mouse Position and Delta
-
-```cpp
-// Get current mouse position (screen coordinates)
-Vec2 mousePos = input_->getMousePosition();
-// mousePos.x and mousePos.y are in pixels from top-left corner
-
-// Get mouse movement this frame
-Vec2 mouseDelta = input_->getMouseDelta();
-// mouseDelta.x and mouseDelta.y show change since last frame
-
-// Example: Camera rotation
-void updateCamera() {
-    Vec2 delta = input_->getMouseDelta();
-    camera.rotation.y += delta.x * sensitivity;
-    camera.rotation.x += delta.y * sensitivity;
+// Use the action
+if (sys.input->wasActionJustPressed("attack")) {
+    Vec2 mousePos = sys.input->getMousePosition();
+    shootAt(mousePos);
 }
 ```
 
@@ -252,12 +430,12 @@ void updateCamera() {
 
 ```cpp
 // Get scroll wheel movement this frame
-Vec2 scroll = input_->getScrollDelta();
+Vec2 scroll = sys.input->getScrollDelta();
 // scroll.y is vertical scroll (most common)
 // scroll.x is horizontal scroll (trackpad two-finger swipe)
 
-void update() {
-    Vec2 scroll = input_->getScrollDelta();
+void updateFixed(DeltaTime dt) {
+    Vec2 scroll = sys.input->getScrollDelta();
 
     if (scroll.y > 0) {
         // Scrolled up
@@ -273,29 +451,29 @@ void update() {
 
 ---
 
-## Gamepad Input
+## Controller Support
 
-### Controller Support
+### Connected Controllers
 
-Bestow supports up to **4 simultaneous controllers** using SDL2's GameController API. Controllers are automatically detected when connected.
+Bestow supports multiple simultaneous controllers using SDL2's GameController API:
 
 ```cpp
 // Check how many controllers are connected
-int numControllers = input_->getConnectedControllerCount();
+int numControllers = sys.input->getConnectedControllerCount();
 
 // Check if specific controller slot is active
-if (input_->isControllerConnected(0)) {
-    std::string name = input_->getControllerName(0);
+if (sys.input->isControllerConnected(0)) {
+    std::string name = sys.input->getControllerName(0);
     // name = "Xbox Series X Controller", "DualShock 4", etc.
 }
 ```
 
 ### Controller Buttons
 
-SDL2 provides standardized button mappings for Xbox/PlayStation-style controllers:
+SDL2 provides standardized button mappings. Button codes for common buttons:
 
-| Button | SDL Code | Xbox | PlayStation |
-|--------|----------|------|-------------|
+| Button | Code | Xbox | PlayStation |
+|--------|------|------|-------------|
 | A / Cross | 0 | A | Cross (X) |
 | B / Circle | 1 | B | Circle |
 | X / Square | 2 | X | Square |
@@ -314,7 +492,7 @@ SDL2 provides standardized button mappings for Xbox/PlayStation-style controller
 
 ```cpp
 // Map controller button to action
-input_->registerMapping({
+sys.input->registerMapping({
     .binding = {
         .deviceType = InputDeviceType::Controller,
         .deviceIndex = 0,  // First controller
@@ -326,24 +504,23 @@ input_->registerMapping({
 
 ### Controller Axes
 
-Analog sticks and triggers use axes. Axis codes are offset by `SDL_CONTROLLER_BUTTON_MAX`:
+Analog sticks and triggers use axes. Note: Axis codes may be offset by SDL_CONTROLLER_BUTTON_MAX in some implementations. Refer to SDL2 documentation for exact codes.
 
-| Axis | SDL Code | Range | Description |
-|------|----------|-------|-------------|
-| Left Stick X | 0 | -1.0 to +1.0 | Left = -1, Right = +1 |
-| Left Stick Y | 1 | -1.0 to +1.0 | Up = -1, Down = +1 |
-| Right Stick X | 2 | -1.0 to +1.0 | Left = -1, Right = +1 |
-| Right Stick Y | 3 | -1.0 to +1.0 | Up = -1, Down = +1 |
-| Left Trigger | 4 | 0.0 to +1.0 | Unpressed = 0, Pressed = +1 |
-| Right Trigger | 5 | 0.0 to +1.0 | Unpressed = 0, Pressed = +1 |
+Common axes:
+- Left Stick X: Horizontal movement (-1.0 to +1.0)
+- Left Stick Y: Vertical movement (-1.0 to +1.0)
+- Right Stick X: Aiming/camera horizontal
+- Right Stick Y: Aiming/camera vertical
+- Left Trigger: 0.0 to +1.0
+- Right Trigger: 0.0 to +1.0
 
 ```cpp
 // Map left stick horizontal axis
-input_->registerMapping({
+sys.input->registerMapping({
     .binding = {
         .deviceType = InputDeviceType::Controller,
         .deviceIndex = 0,
-        .keyCode = SDL_CONTROLLER_BUTTON_MAX + 0,  // Left Stick X
+        .keyCode = /* axis code */,
         .scale = 1.0f,
         .deadzone = 0.2f  // Ignore small movements
     },
@@ -351,7 +528,7 @@ input_->registerMapping({
 });
 
 // In gameplay code
-float moveX = input_->getActionValue("move_horizontal");
+float moveX = sys.input->getActionValue("move_horizontal");
 player.velocity.x = moveX * player.maxSpeed;
 ```
 
@@ -363,7 +540,7 @@ Analog sticks have **drift** (small unintended movements). Use deadzones to filt
 InputBinding leftStickX{
     .deviceType = InputDeviceType::Controller,
     .deviceIndex = 0,
-    .keyCode = SDL_CONTROLLER_BUTTON_MAX + 0,  // Left Stick X
+    .keyCode = /* axis code */,
     .scale = 1.0f,
     .deadzone = 0.2f  // Ignore values between -0.2 and +0.2
 };
@@ -375,158 +552,129 @@ InputBinding leftStickX{
 
 ---
 
-## Action Mapping
+## Text Input
 
-Action mapping decouples game logic from hardware inputs. Players can use keyboard, mouse, or gamepad interchangeably.
-
-### Registering Mappings
+For text entry (chat, player names, console), enable text input mode:
 
 ```cpp
-void setupControls(IInputSystem* input) {
-    // Keyboard jump (Space)
-    input->registerMapping({
-        .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32},
-        .action = "jump"
-    });
+class ChatBox {
+public:
+    void open() {
+        auto& sys = engine_->systems();
+        sys.input->enableTextInput();
+        sys.input->clearTextInput();
+    }
 
-    // Controller jump (A button)
-    input->registerMapping({
-        .binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0},
-        .action = "jump"
-    });
+    void close() {
+        auto& sys = engine_->systems();
+        sys.input->disableTextInput();
+    }
 
-    // Mouse jump (Left click)
-    input->registerMapping({
-        .binding = {.deviceType = InputDeviceType::Mouse, .keyCode = 0},
-        .action = "jump"
-    });
+    void update() {
+        auto& sys = engine_->systems();
 
-    // Now all three inputs trigger the same "jump" action!
-}
-```
+        if (!sys.input->isTextInputEnabled()) {
+            return;
+        }
 
-### Multiple Bindings per Action
+        std::string text = sys.input->getTextInput();
+        if (!text.empty()) {
+            chatBuffer_ += text;
+            sys.input->clearTextInput();  // Clear for next frame
+        }
 
-You can bind multiple inputs to the same action. The system returns the **maximum absolute value** when multiple inputs are active:
+        // Handle backspace (use an action for special keys)
+        if (sys.input->wasActionJustPressed("backspace")) {
+            if (!chatBuffer_.empty()) {
+                chatBuffer_.pop_back();
+            }
+        }
 
-```cpp
-// Bind both A and Left Arrow to "move_left"
-input->registerMapping({
-    .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 65},
-    .action = "move_left"
-});
-input->registerMapping({
-    .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 263},  // Left Arrow
-    .action = "move_left"
-});
+        // Submit with Enter
+        if (sys.input->wasActionJustPressed("submit")) {
+            submitChat(chatBuffer_);
+            chatBuffer_.clear();
+        }
+    }
 
-// Both keys will activate the same action
-if (input->isActionActive("move_left")) {
-    // Triggered by either A or Left Arrow
-}
-```
+private:
+    std::string chatBuffer_;
 
-### Directional Actions with Scale
-
-Use `scale` to create opposing directional actions:
-
-```cpp
-void setupHorizontalMovement(IInputSystem* input) {
-    // Left = negative scale
-    input->registerMapping({
-        .binding = {
-            .deviceType = InputDeviceType::Keyboard,
-            .keyCode = 44,  // Comma
-            .scale = -1.0f  // Negative for left
-        },
-        .action = "move_horizontal"
-    });
-
-    // Right = positive scale
-    input->registerMapping({
-        .binding = {
-            .deviceType = InputDeviceType::Keyboard,
-            .keyCode = 69,  // E
-            .scale = 1.0f   // Positive for right
-        },
-        .action = "move_horizontal"
-    });
-
-    // Controller left stick (already analog)
-    input->registerMapping({
-        .binding = {
-            .deviceType = InputDeviceType::Controller,
-            .keyCode = SDL_CONTROLLER_BUTTON_MAX + 0,  // Left Stick X
-            .scale = 1.0f,
-            .deadzone = 0.2f
-        },
-        .action = "move_horizontal"
-    });
-
-    // In gameplay:
-    float moveX = input->getActionValue("move_horizontal");
-    // Comma = -1.0, E = +1.0, stick = -1.0 to +1.0
-}
-```
-
-### Removing Mappings
-
-```cpp
-// Remove specific mapping
-InputBinding toRemove{
-    .deviceType = InputDeviceType::Keyboard,
-    .keyCode = 32  // Space
+    void submitChat(const std::string& message) {
+        // Send the chat message
+    }
 };
-input->removeMapping(toRemove);
-
-// Remove all mappings
-input->clearMappings();
 ```
+
+**Important**: Text input captures UTF-8 characters, not key presses. Use actions for special keys (Enter, Backspace, Escape).
 
 ---
 
-## Input Rebinding
+## Input Listening and Rebinding
 
 Allow players to remap controls at runtime using the **input listening** system.
 
 ### Listening for Input
 
+When listening is active, the system captures the next input and makes it available via `getLastInput()`:
+
+```cpp
+// Start listening for input
+sys.input->startListeningForInput();
+
+// Check if currently listening
+bool listening = sys.input->isListeningForInput();
+
+// Get the last input captured (returns std::optional<InputBinding>)
+auto maybeInput = sys.input->getLastInput();
+if (maybeInput.has_value()) {
+    InputBinding newBinding = *maybeInput;
+    // Listening automatically stops after capturing input
+}
+
+// Stop listening manually
+sys.input->stopListeningForInput();
+```
+
+### Complete Rebinding Example
+
 ```cpp
 class RebindUI {
 public:
-    void startRebinding(IInputSystem* input, const std::string& action) {
+    void startRebinding(const std::string& action) {
+        auto& sys = engine_->systems();
         currentAction_ = action;
-        input->startListeningForInput();
+        sys.input->startListeningForInput();
         // Show UI: "Press any key to bind to 'jump'..."
     }
 
-    void update(IInputSystem* input) {
-        if (!input->isListeningForInput()) {
+    void update() {
+        auto& sys = engine_->systems();
+
+        if (!sys.input->isListeningForInput()) {
             return;  // Not rebinding
         }
 
         // Check if player pressed something
-        auto maybeInput = input->getLastInput();
+        auto maybeInput = sys.input->getLastInput();
         if (maybeInput.has_value()) {
             InputBinding newBinding = *maybeInput;
 
             // Remove old binding for this action
-            auto mappings = input->getMappings();
+            auto mappings = sys.input->getMappings();
             for (const auto& mapping : mappings) {
                 if (mapping.action == currentAction_) {
-                    input->removeMapping(mapping.binding);
+                    sys.input->removeMapping(mapping.binding);
                 }
             }
 
             // Add new binding
-            input->registerMapping({
+            sys.input->registerMapping({
                 .binding = newBinding,
                 .action = currentAction_
             });
 
-            // Stop listening
-            input->stopListeningForInput();
-
+            // Listening automatically stopped
             // Update UI: "Jump bound to Space"
         }
     }
@@ -538,74 +686,11 @@ private:
 
 ### Rebinding Workflow
 
-1. **Start listening**: `input->startListeningForInput()`
-2. **Wait for input**: Check `input->getLastInput()` each frame
+1. **Start listening**: `sys.input->startListeningForInput()`
+2. **Wait for input**: Check `sys.input->getLastInput()` each frame
 3. **Capture input**: When `getLastInput()` returns a value, listening automatically stops
 4. **Update mapping**: Remove old binding, register new binding
 5. **Save to config**: Persist mappings to JSON or Lua config
-
-```cpp
-// Example: Complete rebind flow
-void rebindAction(IInputSystem* input, const std::string& action) {
-    input->startListeningForInput();
-
-    while (input->isListeningForInput()) {
-        input->update();
-
-        auto maybeInput = input->getLastInput();
-        if (maybeInput) {
-            // Got input! Update mapping
-            input->registerMapping({
-                .binding = *maybeInput,
-                .action = action
-            });
-            break;
-        }
-    }
-}
-```
-
----
-
-## Text Input
-
-For text entry (chat, player names, console), enable text input mode:
-
-```cpp
-class ChatBox {
-public:
-    void open(IInputSystem* input) {
-        input->enableTextInput();
-        input->clearTextInput();
-    }
-
-    void close(IInputSystem* input) {
-        input->disableTextInput();
-    }
-
-    void update(IInputSystem* input) {
-        if (!input->isTextInputEnabled()) return;
-
-        std::string text = input->getTextInput();
-        if (!text.empty()) {
-            chatBuffer_ += text;
-            input->clearTextInput();  // Clear for next frame
-        }
-
-        // Handle backspace (not part of text input)
-        if (input->wasActionJustPressed("backspace")) {
-            if (!chatBuffer_.empty()) {
-                chatBuffer_.pop_back();
-            }
-        }
-    }
-
-private:
-    std::string chatBuffer_;
-};
-```
-
-**Important**: Text input captures UTF-8 characters, not key presses. Use actions for special keys (Enter, Backspace, Escape).
 
 ---
 
@@ -615,26 +700,24 @@ private:
 
 ```cpp
 // Good: Action-based
-if (input->isActionActive("jump")) {
+if (sys.input->isActionActive("jump")) {
     player.jump();
 }
 
-// Bad: Hard-coded keys
-if (/* raw key check */) {
-    player.jump();
-}
+// Bad: Hard-coded keys (system doesn't even expose this)
+// if (isKeyPressed(Key::Space)) { ... }  // NOT POSSIBLE
 ```
 
 ### 2. Call `update()` Once Per Frame
 
+The system needs to update state for "just pressed" and "just released" detection:
+
 ```cpp
-void gameLoop() {
-    while (running) {
-        input->update();  // First thing each frame
-        handleInput();
-        updatePhysics();
-        render();
-    }
+void updateFixed(DeltaTime dt) {
+    // Input update is handled by the engine automatically
+    // when you call engine.systems().input methods
+    handleInput();
+    updatePhysics(dt);
 }
 ```
 
@@ -642,12 +725,12 @@ void gameLoop() {
 
 ```cpp
 // Jump: Only on first frame of press
-if (input->wasActionJustPressed("jump")) {
+if (sys.input->wasActionJustPressed("jump")) {
     player.jump();
 }
 
 // Move: Continuous while held
-if (input->isActionActive("move_right")) {
+if (sys.input->isActionActive("move_right")) {
     player.velocity.x = 200.0f;
 }
 ```
@@ -657,15 +740,17 @@ if (input->isActionActive("move_right")) {
 Always provide keyboard, mouse, **and** gamepad bindings:
 
 ```cpp
-void setupUniversalControls(IInputSystem* input) {
+void setupUniversalControls() {
+    auto& sys = engine_->systems();
+
     // Keyboard
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32},
         .action = "jump"
     });
 
     // Gamepad
-    input->registerMapping({
+    sys.input->registerMapping({
         .binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0},
         .action = "jump"
     });
@@ -676,17 +761,19 @@ void setupUniversalControls(IInputSystem* input) {
 
 ```cpp
 // Default movement: ,AOE (Dvorak home row)
-void setupDefaultMovement(IInputSystem* input) {
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 44}, .action = "move_left"});   // ,
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 65}, .action = "move_down"});   // A
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79}, .action = "move_up"});     // O
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 69}, .action = "move_right"});  // E
+void setupDefaultMovement() {
+    auto& sys = engine_->systems();
+
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 44}, .action = "move_left"});   // ,
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 65}, .action = "move_down"});   // A
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79}, .action = "move_up"});     // O
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 69}, .action = "move_right"});  // E
 
     // Also support Arrow keys as alternative
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 263}, .action = "move_left"});  // Left Arrow
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 264}, .action = "move_down"});  // Down Arrow
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 265}, .action = "move_up"});    // Up Arrow
-    input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 262}, .action = "move_right"}); // Right Arrow
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 263}, .action = "move_left"});  // Left Arrow
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 264}, .action = "move_down"});  // Down Arrow
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 265}, .action = "move_up"});    // Up Arrow
+    sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 262}, .action = "move_right"}); // Right Arrow
 }
 ```
 
@@ -695,9 +782,11 @@ void setupDefaultMovement(IInputSystem* input) {
 ```cpp
 class InputBuffer {
 public:
-    void update(IInputSystem* input, float deltaTime) {
+    void update(float deltaTime) {
+        auto& sys = engine_->systems();
+
         // Track jump presses with a time window
-        if (input->wasActionJustPressed("jump")) {
+        if (sys.input->wasActionJustPressed("jump")) {
             jumpBufferTime_ = 0.1f;  // 100ms buffer
         }
         jumpBufferTime_ -= deltaTime;
@@ -723,42 +812,7 @@ if (player.isGrounded() && inputBuffer.consumeJumpBuffer()) {
 
 ### 7. Persist Mappings to Config
 
-```cpp
-// Save mappings to JSON
-void saveMappings(IInputSystem* input) {
-    nlohmann::json config;
-    auto mappings = input->getMappings();
-
-    for (const auto& mapping : mappings) {
-        config["mappings"].push_back({
-            {"action", mapping.action},
-            {"deviceType", static_cast<int>(mapping.binding.deviceType)},
-            {"keyCode", mapping.binding.keyCode},
-            {"scale", mapping.binding.scale},
-            {"deadzone", mapping.binding.deadzone}
-        });
-    }
-
-    // Write to file...
-}
-
-// Load mappings from JSON
-void loadMappings(IInputSystem* input, const nlohmann::json& config) {
-    input->clearMappings();
-
-    for (const auto& item : config["mappings"]) {
-        input->registerMapping({
-            .binding = {
-                .deviceType = static_cast<InputDeviceType>(item["deviceType"]),
-                .keyCode = item["keyCode"],
-                .scale = item["scale"],
-                .deadzone = item["deadzone"]
-            },
-            .action = item["action"]
-        });
-    }
-}
-```
+Save and load mappings from JSON or Lua config files for persistence.
 
 ### 8. Accessibility: Allow Multiple Bindings
 
@@ -766,9 +820,9 @@ Let players bind multiple keys to the same action for accessibility:
 
 ```cpp
 // Player can jump with Space OR Enter OR Gamepad A
-input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32}, .action = "jump"});   // Space
-input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 257}, .action = "jump"});  // Enter
-input->registerMapping({.binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0}, .action = "jump"});  // A button
+sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32}, .action = "jump"});   // Space
+sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 257}, .action = "jump"});  // Enter
+sys.input->registerMapping({.binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0}, .action = "jump"});  // A button
 ```
 
 ---
@@ -779,27 +833,34 @@ input->registerMapping({.binding = {.deviceType = InputDeviceType::Controller, .
 
 ```cpp
 import bestow;
+import bestow.core;
 
-class PlatformerGame : public IApplication {
+class PlatformerGame : public bestow::core::Application {
 public:
-    PlatformerGame(IInputSystem& input, IPhysicsSystem& physics)
-        : input_(&input), physics_(&physics) {}
-
-    void initialize() {
+    bool initialize(bestow::core::Engine& engine) override {
+        engine_ = &engine;
         setupDvorakControls();
         player_ = createPlayer();
+        return true;
     }
 
-    void update(float deltaTime) {
-        input_->update();
-        handleMovement(deltaTime);
+    void updateFixed(DeltaTime dt) override {
+        handleMovement(dt);
         handleJump();
     }
 
+    void render(float alpha) override {
+        // Rendering logic
+    }
+
+    void shutdown() override {}
+
 private:
     void setupDvorakControls() {
+        auto& sys = engine_->systems();
+
         // Dvorak home row movement: ,AOE
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {
                 .deviceType = InputDeviceType::Keyboard,
                 .keyCode = 44,  // Comma (,) - left
@@ -808,7 +869,7 @@ private:
             .action = "move_horizontal"
         });
 
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {
                 .deviceType = InputDeviceType::Keyboard,
                 .keyCode = 69,  // E - right
@@ -818,246 +879,79 @@ private:
         });
 
         // Jump: Space or O
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 32},
             .action = "jump"
         });
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79},  // O
             .action = "jump"
         });
 
         // Gamepad support
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {
                 .deviceType = InputDeviceType::Controller,
-                .keyCode = SDL_CONTROLLER_BUTTON_MAX + 0,  // Left Stick X
+                .keyCode = /* left stick X code */,
                 .scale = 1.0f,
                 .deadzone = 0.2f
             },
             .action = "move_horizontal"
         });
-        input_->registerMapping({
+        sys.input->registerMapping({
             .binding = {.deviceType = InputDeviceType::Controller, .keyCode = 0},  // A button
             .action = "jump"
         });
     }
 
-    void handleMovement(float deltaTime) {
-        float moveInput = input_->getActionValue("move_horizontal");
-        Vec2 velocity = physics_->getLinearVelocity(player_);
+    void handleMovement(DeltaTime dt) {
+        auto& sys = engine_->systems();
+        float moveInput = sys.input->getActionValue("move_horizontal");
 
-        // Immediate direction change for tight platformer feel
+        Vec2 velocity = sys.physics->getLinearVelocity(player_);
         velocity.x = moveInput * moveSpeed_;
-
-        physics_->setLinearVelocity(player_, velocity);
+        sys.physics->setLinearVelocity(player_, velocity);
     }
 
     void handleJump() {
-        if (input_->wasActionJustPressed("jump") && isGrounded()) {
-            Vec2 velocity = physics_->getLinearVelocity(player_);
+        auto& sys = engine_->systems();
+        if (sys.input->wasActionJustPressed("jump") && isGrounded()) {
+            Vec2 velocity = sys.physics->getLinearVelocity(player_);
             velocity.y = jumpForce_;
-            physics_->setLinearVelocity(player_, velocity);
+            sys.physics->setLinearVelocity(player_, velocity);
         }
     }
 
     bool isGrounded() {
-        // Check if player is touching ground (implementation varies)
-        return physics_->raycast(player_, {0, 1}, 0.1f).has_value();
+        // Check if player is touching ground
+        return true;  // Implementation varies
     }
 
     Entity createPlayer() {
-        // Entity creation logic...
-        return Entity{};
+        auto& sys = engine_->systems();
+        Entity player = sys.entities->createEntity();
+        // Setup player components...
+        return player;
     }
 
-    IInputSystem* input_;
-    IPhysicsSystem* physics_;
+    bestow::core::Engine* engine_ = nullptr;
     Entity player_;
     float moveSpeed_ = 300.0f;
     float jumpForce_ = -500.0f;
 };
 ```
 
-### Example 2: Advanced Jump with Coyote Time and Input Buffer
-
-```cpp
-class AdvancedPlatformerController {
-public:
-    void update(IInputSystem* input, IPhysicsSystem* physics, float deltaTime) {
-        // Update timers
-        if (isGrounded(physics)) {
-            coyoteTime_ = coyoteTimeWindow_;
-        } else {
-            coyoteTime_ -= deltaTime;
-        }
-
-        if (input->wasActionJustPressed("jump")) {
-            jumpBufferTime_ = jumpBufferWindow_;
-        } else {
-            jumpBufferTime_ -= deltaTime;
-        }
-
-        // Jump if:
-        // 1. Player recently left ground (coyote time), AND
-        // 2. Player recently pressed jump (input buffer)
-        if (coyoteTime_ > 0 && jumpBufferTime_ > 0 && !hasJumped_) {
-            performJump(physics);
-            coyoteTime_ = 0;
-            jumpBufferTime_ = 0;
-            hasJumped_ = true;
-        }
-
-        // Reset jump flag when grounded
-        if (isGrounded(physics)) {
-            hasJumped_ = false;
-        }
-
-        // Variable jump height: Release jump early for short hop
-        if (input->wasActionJustReleased("jump")) {
-            Vec2 velocity = physics->getLinearVelocity(player_);
-            if (velocity.y < 0) {  // Moving upward (negative Y)
-                velocity.y *= 0.5f;  // Cut upward velocity in half
-                physics->setLinearVelocity(player_, velocity);
-            }
-        }
-    }
-
-private:
-    void performJump(IPhysicsSystem* physics) {
-        Vec2 velocity = physics->getLinearVelocity(player_);
-        velocity.y = jumpForce_;
-        physics->setLinearVelocity(player_, velocity);
-    }
-
-    bool isGrounded(IPhysicsSystem* physics) {
-        return physics->raycast(player_, {0, 1}, 0.1f).has_value();
-    }
-
-    Entity player_;
-    float jumpForce_ = -500.0f;
-
-    // Coyote time: Grace period after leaving ground
-    float coyoteTime_ = 0;
-    float coyoteTimeWindow_ = 0.15f;  // 150ms
-
-    // Input buffer: Accept jump presses slightly before landing
-    float jumpBufferTime_ = 0;
-    float jumpBufferWindow_ = 0.1f;  // 100ms
-
-    bool hasJumped_ = false;
-};
-```
-
-### Example 3: Twin-Stick Shooter with Gamepad
-
-```cpp
-class TwinStickShooter {
-public:
-    void initialize(IInputSystem* input) {
-        // Movement: Left stick
-        input->registerMapping({
-            .binding = {
-                .deviceType = InputDeviceType::Controller,
-                .keyCode = SDL_CONTROLLER_BUTTON_MAX + 0,  // Left Stick X
-                .scale = 1.0f,
-                .deadzone = 0.2f
-            },
-            .action = "move_horizontal"
-        });
-        input->registerMapping({
-            .binding = {
-                .deviceType = InputDeviceType::Controller,
-                .keyCode = SDL_CONTROLLER_BUTTON_MAX + 1,  // Left Stick Y
-                .scale = 1.0f,
-                .deadzone = 0.2f
-            },
-            .action = "move_vertical"
-        });
-
-        // Aiming: Right stick
-        input->registerMapping({
-            .binding = {
-                .deviceType = InputDeviceType::Controller,
-                .keyCode = SDL_CONTROLLER_BUTTON_MAX + 2,  // Right Stick X
-                .scale = 1.0f,
-                .deadzone = 0.2f
-            },
-            .action = "aim_horizontal"
-        });
-        input->registerMapping({
-            .binding = {
-                .deviceType = InputDeviceType::Controller,
-                .keyCode = SDL_CONTROLLER_BUTTON_MAX + 3,  // Right Stick Y
-                .scale = 1.0f,
-                .deadzone = 0.2f
-            },
-            .action = "aim_vertical"
-        });
-
-        // Keyboard fallback: ,AOE for movement, Arrow keys for aim
-        setupKeyboardControls(input);
-    }
-
-    void update(IInputSystem* input, float deltaTime) {
-        // Movement
-        float moveX = input->getActionValue("move_horizontal");
-        float moveY = input->getActionValue("move_vertical");
-        player_.velocity = Vec2{moveX, moveY} * moveSpeed_;
-
-        // Aiming
-        float aimX = input->getActionValue("aim_horizontal");
-        float aimY = input->getActionValue("aim_vertical");
-
-        // Only update aim if stick is pushed
-        if (std::abs(aimX) > 0.01f || std::abs(aimY) > 0.01f) {
-            player_.aimAngle = std::atan2(aimY, aimX);
-
-            // Auto-fire when aiming
-            fireWeapon();
-        }
-    }
-
-private:
-    void setupKeyboardControls(IInputSystem* input) {
-        // Movement: ,AOE (Dvorak)
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 44, .scale = -1.0f}, .action = "move_horizontal"});  // ,
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 69, .scale = 1.0f}, .action = "move_horizontal"});   // E
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 65, .scale = 1.0f}, .action = "move_vertical"});     // A
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 79, .scale = -1.0f}, .action = "move_vertical"});    // O
-
-        // Aim: Arrow keys
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 263, .scale = -1.0f}, .action = "aim_horizontal"});  // Left
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 262, .scale = 1.0f}, .action = "aim_horizontal"});   // Right
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 264, .scale = 1.0f}, .action = "aim_vertical"});     // Down
-        input->registerMapping({.binding = {.deviceType = InputDeviceType::Keyboard, .keyCode = 265, .scale = -1.0f}, .action = "aim_vertical"});    // Up
-    }
-
-    void fireWeapon() {
-        // Weapon firing logic...
-    }
-
-    struct Player {
-        Vec2 velocity;
-        float aimAngle;
-    } player_;
-
-    float moveSpeed_ = 250.0f;
-};
-```
-
-### Example 4: Controls Rebinding Menu
+### Example 2: Controls Rebinding Menu
 
 ```cpp
 class ControlsMenu {
 public:
-    ControlsMenu(IInputSystem& input) : input_(&input) {
-        // List of rebindable actions
+    ControlsMenu(bestow::core::Engine& engine) : engine_(&engine) {
         actions_ = {"move_left", "move_right", "jump", "attack", "pause"};
     }
 
     void update() {
-        input_->update();
+        auto& sys = engine_->systems();
 
         if (isRebinding_) {
             updateRebinding();
@@ -1087,43 +981,46 @@ public:
 
 private:
     void updateMenu() {
+        auto& sys = engine_->systems();
+
         // Navigate menu
-        if (input_->wasActionJustPressed("move_up")) {
+        if (sys.input->wasActionJustPressed("move_up")) {
             selectedIndex_ = (selectedIndex_ - 1 + actions_.size()) % actions_.size();
         }
-        if (input_->wasActionJustPressed("move_down")) {
+        if (sys.input->wasActionJustPressed("move_down")) {
             selectedIndex_ = (selectedIndex_ + 1) % actions_.size();
         }
 
         // Start rebinding
-        if (input_->wasActionJustPressed("confirm")) {
+        if (sys.input->wasActionJustPressed("confirm")) {
             startRebinding();
         }
     }
 
     void updateRebinding() {
-        auto maybeInput = input_->getLastInput();
+        auto& sys = engine_->systems();
+
+        auto maybeInput = sys.input->getLastInput();
         if (maybeInput.has_value()) {
             // Got new input!
             InputBinding newBinding = *maybeInput;
             std::string action = actions_[selectedIndex_];
 
             // Remove old binding
-            auto mappings = input_->getMappings();
+            auto mappings = sys.input->getMappings();
             for (const auto& mapping : mappings) {
                 if (mapping.action == action) {
-                    input_->removeMapping(mapping.binding);
+                    sys.input->removeMapping(mapping.binding);
                 }
             }
 
             // Register new binding
-            input_->registerMapping({
+            sys.input->registerMapping({
                 .binding = newBinding,
                 .action = action
             });
 
-            // Stop rebinding
-            input_->stopListeningForInput();
+            // Listening automatically stopped
             isRebinding_ = false;
 
             // Save to config
@@ -1131,19 +1028,21 @@ private:
         }
 
         // Cancel rebinding
-        if (input_->wasActionJustPressed("cancel")) {
-            input_->stopListeningForInput();
+        if (sys.input->wasActionJustPressed("cancel")) {
+            sys.input->stopListeningForInput();
             isRebinding_ = false;
         }
     }
 
     void startRebinding() {
-        input_->startListeningForInput();
+        auto& sys = engine_->systems();
+        sys.input->startListeningForInput();
         isRebinding_ = true;
     }
 
     std::string getBindingForAction(const std::string& action) {
-        auto mappings = input_->getMappings();
+        auto& sys = engine_->systems();
+        auto mappings = sys.input->getMappings();
         for (const auto& mapping : mappings) {
             if (mapping.action == action) {
                 return bindingToString(mapping.binding);
@@ -1153,7 +1052,6 @@ private:
     }
 
     std::string bindingToString(const InputBinding& binding) {
-        // Convert binding to human-readable string
         if (binding.deviceType == InputDeviceType::Keyboard) {
             return "Key " + std::to_string(binding.keyCode);
         } else if (binding.deviceType == InputDeviceType::Mouse) {
@@ -1165,14 +1063,13 @@ private:
 
     void saveMappingsToFile() {
         // Save mappings to persistent storage
-        // (See Best Practices section for JSON serialization example)
     }
 
     void drawText(const std::string& text, int line = 0) {
         // Rendering implementation...
     }
 
-    IInputSystem* input_;
+    bestow::core::Engine* engine_;
     std::vector<std::string> actions_;
     size_t selectedIndex_ = 0;
     bool isRebinding_ = false;
@@ -1185,19 +1082,19 @@ private:
 
 The Bestow Input System provides:
 
-- **Universal input handling**: Keyboard, mouse, and gamepads
-- **Action mapping**: Decouple game logic from hardware
+- **Action-based architecture**: Map hardware inputs to logical actions
+- **Multi-device support**: Keyboard, mouse, and gamepads
 - **Runtime rebinding**: Let players customize controls
 - **Dvorak-first design**: Default to ,AOE movement for Dvorak users
 - **Accessibility**: Support multiple bindings and alternative input methods
 
 **Key Takeaways**:
-1. Always use action mapping instead of raw input checks
-2. Call `input->update()` once per frame, before gameplay logic
-3. Use `wasJustPressed()` for discrete actions, `isActionActive()` for continuous
-4. Default to Dvorak-friendly bindings (,AOE), but support alternatives
-5. Support keyboard, mouse, AND gamepad for all gameplay actions
-6. Implement input buffering and coyote time for responsive gameplay
+1. All input goes through action mapping - no raw key queries
+2. Use `wasJustPressed()` for discrete actions, `isActionActive()` for continuous
+3. Default to Dvorak-friendly bindings (,AOE), but support alternatives
+4. Support keyboard, mouse, AND gamepad for all gameplay actions
+5. Implement input buffering for responsive gameplay
+6. Persist mappings to config files for player customization
 
 For questions or issues, refer to the test suite at `/tests/unit/InputSystemTests.cpp`.
 

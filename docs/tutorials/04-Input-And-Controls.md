@@ -41,6 +41,8 @@ Benefits:
 
 ### Basic Keyboard Mapping
 
+**Note:** Bestow uses Dvorak-friendly controls by default (,AOE instead of WASD).
+
 ```cpp
 void setupInputMappings() {
     auto& input = *engine_->systems().input;
@@ -54,21 +56,21 @@ void setupInputMappings() {
         .action = "jump"
     });
 
-    // Move right with D
+    // Move right with E (Dvorak equivalent of D)
     input.registerMapping(bestow::InputMapping{
         .binding = bestow::InputBinding{
             .deviceType = bestow::InputDeviceType::Keyboard,
-            .keyCode = 68,  // D
+            .keyCode = 69,  // E
             .scale = 1.0f
         },
         .action = "move_horizontal"
     });
 
-    // Move left with A
+    // Move left with Comma (Dvorak equivalent of A)
     input.registerMapping(bestow::InputMapping{
         .binding = bestow::InputBinding{
             .deviceType = bestow::InputDeviceType::Keyboard,
-            .keyCode = 65,  // A
+            .keyCode = 44,  // ,
             .scale = -1.0f  // Negative for left
         },
         .action = "move_horizontal"
@@ -79,11 +81,13 @@ void setupInputMappings() {
 ### Common Key Codes
 
 ```cpp
+// Dvorak Movement Keys (,AOE)
+keyCode = 44;  // , (Comma - Move left)
+keyCode = 65;  // A (Move down in Dvorak)
+keyCode = 79;  // O (Move up in Dvorak)
+keyCode = 69;  // E (Move right)
+
 // Letters (A-Z): 65-90
-keyCode = 65;  // A
-keyCode = 68;  // D
-keyCode = 83;  // S
-keyCode = 87;  // W
 
 // Numbers (0-9): 48-57
 keyCode = 48;  // 0
@@ -327,29 +331,29 @@ if (input.isMouseButtonDown(0)) {
 
 ## Advanced Input Patterns
 
-### Composite Actions (WASD Movement)
+### Composite Actions (,AOE Movement - Dvorak-friendly)
 
 ```cpp
 void setupMovementInput() {
     auto& input = *engine_->systems().input;
 
-    // Horizontal movement
+    // Horizontal movement (Dvorak: comma/E)
     input.registerMapping(bestow::InputMapping{
-        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 65, .scale = -1.0f},
+        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 44, .scale = -1.0f},  // ,
         .action = "move_horizontal"
     });
     input.registerMapping(bestow::InputMapping{
-        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 68, .scale = 1.0f},
+        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 69, .scale = 1.0f},   // E
         .action = "move_horizontal"
     });
 
-    // Vertical movement
+    // Vertical movement (Dvorak: O/A)
     input.registerMapping(bestow::InputMapping{
-        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 87, .scale = 1.0f},
+        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 79, .scale = 1.0f},   // O (up)
         .action = "move_vertical"
     });
     input.registerMapping(bestow::InputMapping{
-        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 83, .scale = -1.0f},
+        .binding = {.deviceType = bestow::InputDeviceType::Keyboard, .keyCode = 65, .scale = -1.0f},  // A (down)
         .action = "move_vertical"
     });
 }
@@ -573,13 +577,14 @@ Define input in Lua for easy editing:
 
 ```lua
 -- data/config/input.lua
+-- Using Dvorak-friendly ,AOE layout for movement
 return {
     keyboard = {
-        -- Movement
-        {action = "move_horizontal", key = "A", scale = -1.0},
-        {action = "move_horizontal", key = "D", scale = 1.0},
-        {action = "move_vertical", key = "W", scale = 1.0},
-        {action = "move_vertical", key = "S", scale = -1.0},
+        -- Movement (Dvorak: ,AOE)
+        {action = "move_horizontal", key = ",", scale = -1.0},  -- Comma for left
+        {action = "move_horizontal", key = "E", scale = 1.0},   -- E for right
+        {action = "move_vertical", key = "O", scale = 1.0},     -- O for up
+        {action = "move_vertical", key = "A", scale = -1.0},    -- A for down
 
         -- Actions
         {action = "jump", key = "Space"},
@@ -650,16 +655,16 @@ void loadInputConfigFromLua(const std::string& path) {
 void setupPlatformerInput() {
     auto& input = *engine_->systems().input;
 
-    // Horizontal movement (A/D, Left/Right, Left Stick)
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 65, .scale = -1.0f}, .action = "move"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 68, .scale = 1.0f}, .action = "move"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 263, .scale = -1.0f}, .action = "move"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 262, .scale = 1.0f}, .action = "move"});
+    // Horizontal movement (Dvorak: comma/E, Arrow keys, Left Stick)
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 44, .scale = -1.0f}, .action = "move"});   // ,
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 69, .scale = 1.0f}, .action = "move"});    // E
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 263, .scale = -1.0f}, .action = "move"});  // Left Arrow
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 262, .scale = 1.0f}, .action = "move"});   // Right Arrow
     input.registerMapping({.binding = {.deviceType = Gamepad, .gamepadAxis = 0}, .action = "move"});
 
-    // Jump (Space, W, A button)
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 32}, .action = "jump"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 87}, .action = "jump"});
+    // Jump (Space, O, A button)
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 32}, .action = "jump"});   // Space
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 79}, .action = "jump"});   // O (Dvorak up)
     input.registerMapping({.binding = {.deviceType = Gamepad, .gamepadButton = 0}, .action = "jump"});
 
     // Attack
@@ -672,11 +677,11 @@ void setupPlatformerInput() {
 
 ```cpp
 void setupTopDownInput() {
-    // WASD + Arrow keys for 8-directional movement
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 65, .scale = -1.0f}, .action = "move_x"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 68, .scale = 1.0f}, .action = "move_x"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 87, .scale = 1.0f}, .action = "move_y"});
-    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 83, .scale = -1.0f}, .action = "move_y"});
+    // ,AOE (Dvorak-friendly) + Arrow keys for 8-directional movement
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 44, .scale = -1.0f}, .action = "move_x"});  // ,
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 69, .scale = 1.0f}, .action = "move_x"});   // E
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 79, .scale = 1.0f}, .action = "move_y"});   // O (up)
+    input.registerMapping({.binding = {.deviceType = Keyboard, .keyCode = 65, .scale = -1.0f}, .action = "move_y"});  // A (down)
 
     // Gamepad
     input.registerMapping({.binding = {.deviceType = Gamepad, .gamepadAxis = 0}, .action = "move_x"});

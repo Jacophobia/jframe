@@ -111,6 +111,15 @@ public:
     std::string getActiveProfile() const override;
     std::vector<std::string> getProfiles() const override;
 
+    // Game version & playtime tracking
+    void setGameVersion(const std::string& version) override;
+    std::string getGameVersion() const override;
+    std::uint64_t getSessionPlaytime() const override;
+    std::uint64_t getTotalPlaytime() const override;
+    void resetSessionPlaytime() override;
+    void setCompletionPercentage(float percentage) override;
+    void setCurrentLevel(const std::string& levelName) override;
+
 private:
     std::filesystem::path getSavePath(SaveSlot slot) const;
     std::filesystem::path getMetadataPath(SaveSlot slot) const;
@@ -121,6 +130,13 @@ private:
     float autoSaveTimer_ = 0.0f;
     bool autoSaveEnabled_ = false;
     std::filesystem::path savesDirectory_ = "saves";
+
+    // Game version & playtime tracking
+    std::string gameVersion_ = "1.0.0";
+    float sessionPlaytimeSeconds_ = 0.0f;
+    std::uint64_t loadedPlaytimeSeconds_ = 0;
+    float completionPercentage_ = 0.0f;
+    std::string currentLevel_;
 };
 
 // Kangaru service definitions

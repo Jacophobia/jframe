@@ -122,6 +122,31 @@ public:
     virtual void setActiveProfile(const std::string& profileId) = 0;
     virtual std::string getActiveProfile() const = 0;
     virtual std::vector<std::string> getProfiles() const = 0;
+
+    //======================================================================
+    // Game Version & Playtime Tracking
+    //======================================================================
+
+    /// Set the game version string to include in save metadata
+    virtual void setGameVersion(const std::string& version) = 0;
+
+    /// Get the current game version string
+    virtual std::string getGameVersion() const = 0;
+
+    /// Get the current session playtime in seconds
+    virtual std::uint64_t getSessionPlaytime() const = 0;
+
+    /// Get the total playtime (loaded from save + current session)
+    virtual std::uint64_t getTotalPlaytime() const = 0;
+
+    /// Reset session playtime (call when starting a new game)
+    virtual void resetSessionPlaytime() = 0;
+
+    /// Set the completion percentage (0.0 to 100.0) for metadata
+    virtual void setCompletionPercentage(float percentage) = 0;
+
+    /// Set the current level name for metadata
+    virtual void setCurrentLevel(const std::string& levelName) = 0;
 };
 
 }  // namespace bestow
