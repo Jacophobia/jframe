@@ -26,6 +26,7 @@ target_link_libraries(snake-game
         # Implementation libraries used by this game
         bestow-vulkan      # Vulkan 3D graphics
         bestow-input       # Input system
+        bestow-events      # Event system
         bestow-audio       # Audio system
         bestow-assets      # Asset system
         bestow-config      # Config system

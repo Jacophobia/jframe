@@ -127,9 +127,12 @@ private:
     SubscriptionId nextSubscriptionId_ = 1;
 
 public:
-    // Service type for Engine::use<IEventSystem, EventSystem>()
-    struct Service : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
+
+// Service type for Engine::use<IEventSystem, EventSystem>()
+struct EventSystem::Service : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
 
 // Backwards compatibility alias
 using EventSystemService = EventSystem::Service;

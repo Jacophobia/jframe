@@ -176,15 +176,18 @@ private:
     IEventSystem* pIEventSystem_ = nullptr;
 
 public:
-    // Service type for Engine::use<IConfigSystem, ConfigSystem>()
-    struct Service : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
-        static auto construct(
-            kgr::inject_t<IAssetSystemService> d1,
-            kgr::inject_t<IEventSystemService> d2)
-            -> kgr::inject_result<IAssetSystem*, IEventSystem*> {
-            return kgr::inject(&d1.service(), &d2.service());
-        }
-    };
+    // Forward declaration - defined after class is complete
+    struct Service;
+};
+
+// Service type for Engine::use<IConfigSystem, ConfigSystem>()
+struct ConfigSystem::Service : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
+    static auto construct(
+        kgr::inject_t<IAssetSystemService> d1,
+        kgr::inject_t<IEventSystemService> d2)
+        -> kgr::inject_result<IAssetSystem*, IEventSystem*> {
+        return kgr::inject(&d1.forward(), &d2.forward());
+    }
 };
 
 // Backwards compatibility alias

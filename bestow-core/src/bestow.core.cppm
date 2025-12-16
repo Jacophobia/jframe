@@ -171,7 +171,8 @@ public:
             app.run();
         } else if constexpr (requires { typename App::Dependencies; }) {
             // App has Dependencies type (from Application<> base) - use it
-            runWithDeps<App>(typename App::Dependencies{});
+            // Use pointer to avoid instantiating abstract types in tuple
+            runWithDeps<App>(static_cast<typename App::Dependencies*>(nullptr));
         } else {
             // Fallback to Engine& constructor
             App app(*this);
@@ -181,8 +182,9 @@ public:
 
 private:
     /// Helper to unpack tuple and inject dependencies
+    /// Takes a pointer to avoid instantiating abstract types in the tuple
     template<typename App, typename... Deps>
-    void runWithDeps(std::tuple<Deps...>) {
+    void runWithDeps(std::tuple<Deps...>*) {
         App app(get<Deps>()...);
         app.run();
     }

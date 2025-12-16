@@ -920,16 +920,19 @@ private:
     IConfigSystem* pIConfigSystem_ = nullptr;
 
 public:
-    // Service type for Engine::use<IGraphics3DSystem, VulkanGraphics3DSystem>()
-    struct Service : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
-        static auto construct(
-            kgr::inject_t<IAssetSystemService> d1,
-            kgr::inject_t<IShaderSystemService> d2,
-            kgr::inject_t<IConfigSystemService> d3)
-            -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
-            return kgr::inject(&d1.service(), &d2.service(), &d3.service());
-        }
-    };
+    // Forward declaration - defined after class is complete
+    struct Service;
+};
+
+// Service type for Engine::use<IGraphics3DSystem, VulkanGraphics3DSystem>()
+struct VulkanGraphics3DSystem::Service : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
+    static auto construct(
+        kgr::inject_t<IAssetSystemService> d1,
+        kgr::inject_t<IShaderSystemService> d2,
+        kgr::inject_t<IConfigSystemService> d3)
+        -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
+        return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward());
+    }
 };
 
 // Backwards compatibility alias

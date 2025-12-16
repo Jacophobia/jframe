@@ -131,13 +131,16 @@ private:
     void updateModifierState();
 
 public:
-    // Service type for Engine::use<IInputSystem, InputSystem>()
-    struct Service : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
-        static auto construct(kgr::inject_t<IAssetSystemService> d1)
-            -> kgr::inject_result<IAssetSystem*> {
-            return kgr::inject(&d1.service());
-        }
-    };
+    // Forward declaration - defined after class is complete
+    struct Service;
+};
+
+// Service type for Engine::use<IInputSystem, InputSystem>()
+struct InputSystem::Service : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
+    static auto construct(kgr::inject_t<IAssetSystemService> d1)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&d1.forward());
+    }
 };
 
 // Backwards compatibility alias

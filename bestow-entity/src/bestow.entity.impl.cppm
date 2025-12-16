@@ -145,9 +145,12 @@ private:
     entt::registry registry_;
 
 public:
-    // Service type for Engine::use<IEntitySystem, EntitySystem>()
-    struct Service : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
+
+// Service type for Engine::use<IEntitySystem, EntitySystem>()
+struct EntitySystem::Service : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
 
 // Backwards compatibility alias
 using EntitySystemService = EntitySystem::Service;

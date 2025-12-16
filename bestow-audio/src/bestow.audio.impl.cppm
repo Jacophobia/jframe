@@ -109,13 +109,16 @@ private:
 #endif
 
 public:
-    // Service type for Engine::use<IAudioSystem, AudioSystem>()
-    struct Service : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {
-        static auto construct(kgr::inject_t<IAssetSystemService> d1)
-            -> kgr::inject_result<IAssetSystem*> {
-            return kgr::inject(&d1.service());
-        }
-    };
+    // Forward declaration - defined after class is complete
+    struct Service;
+};
+
+// Service type for Engine::use<IAudioSystem, AudioSystem>()
+struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {
+    static auto construct(kgr::inject_t<IAssetSystemService> d1)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&d1.forward());
+    }
 };
 
 // Alias for cleaner API: AudioSystem instead of FMODAudioSystem
