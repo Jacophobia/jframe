@@ -24,6 +24,5 @@ target_link_libraries(bestow-animation
         ozz_animation_offline
         ozz_base
 )
-target_compile_definitions(bestow-animation PRIVATE BESTOW_HAS_OZZ)
 
 target_compile_features(bestow-animation PUBLIC cxx_std_23)

@@ -4,14 +4,8 @@
 // This implementation wraps ozz-animation to provide a clean, high-level API
 // while leveraging ozz's battle-tested, SIMD-optimized runtime.
 
-module bestow.animation.impl;
-
-import bestow.services;
-
-import std;
-
-// ozz-animation includes (in global module fragment would be ideal, but we import here)
-#ifdef BESTOW_HAS_OZZ
+// Global module fragment - third-party includes go here
+module;
 
 #include <ozz/animation/runtime/skeleton.h>
 #include <ozz/animation/runtime/animation.h>
@@ -30,7 +24,11 @@ import std;
 #include <ozz/base/maths/vec_float.h>
 #include <ozz/base/containers/vector.h>
 
-#endif // BESTOW_HAS_OZZ
+module bestow.animation.impl;
+
+import bestow.services;
+
+import std;
 
 namespace bestow {
 
@@ -39,8 +37,6 @@ namespace {
 //==========================================================================
 // Math Conversion Helpers (glm <-> ozz)
 //==========================================================================
-
-#ifdef BESTOW_HAS_OZZ
 
 ozz::math::Float3 toOzz(const Vec3& v) {
     return ozz::math::Float3(v.x, v.y, v.z);
@@ -80,10 +76,8 @@ ozz::math::Float4x4 toOzz(const Mat4& m) {
     return result;
 }
 
-#endif // BESTOW_HAS_OZZ
-
 //==========================================================================
-// Fallback Math Helpers (when ozz not available)
+// Math Utility Helpers
 //==========================================================================
 
 /// Linear interpolation
@@ -184,14 +178,11 @@ float wrapTime(float time, float duration, AnimationWrapMode mode) {
 
 struct SkeletonData {
     SkeletonHandle handle = 0;
-    std::vector<BoneInfo> bones;  // Our contract type (always available)
+    std::vector<BoneInfo> bones;  // Our contract type
     std::unordered_map<std::string, std::int32_t> boneNameToIndex;
     std::int32_t rootBoneIndex = 0;
     AABB3D bounds;
-
-#ifdef BESTOW_HAS_OZZ
     ozz::animation::Skeleton ozzSkeleton;  // ozz runtime skeleton
-#endif
 };
 
 struct AnimationKeyframe {
@@ -214,12 +205,9 @@ struct AnimationClipData {
     float ticksPerSecond = 30.0f;
     bool looping = true;
     bool hasRootMotion = false;
-    std::vector<AnimationChannel> channels;  // Fallback data
+    std::vector<AnimationChannel> channels;
     std::vector<AnimationEventDef> events;
-
-#ifdef BESTOW_HAS_OZZ
     ozz::animation::Animation ozzAnimation;  // ozz runtime animation
-#endif
 };
 
 struct AnimatorLayerData {
@@ -235,11 +223,8 @@ struct AnimatorLayerData {
     bool playing = false;
     bool paused = false;
     std::set<std::uint32_t> boneMask;
-
-#ifdef BESTOW_HAS_OZZ
     ozz::animation::SamplingJob::Context samplingContext;
     ozz::vector<ozz::math::SoaTransform> localTransforms;  // Per-layer sampled transforms
-#endif
 };
 
 struct AnimatorData {
@@ -247,7 +232,7 @@ struct AnimatorData {
     SkeletonHandle skeleton = 0;
     std::vector<AnimatorLayerData> layers;
     std::vector<Mat4> boneTransforms;      // Final model-space transforms (output)
-    std::vector<Mat4> localTransforms;     // Local transforms (for fallback)
+    std::vector<Mat4> localTransforms;     // Local transforms
     float globalSpeed = 1.0f;
     bool paused = false;
 
@@ -261,10 +246,8 @@ struct AnimatorData {
     Vec3 lastRootPosition{0.0f};
     Quat lastRootRotation{1.0f, 0.0f, 0.0f, 0.0f};
 
-#ifdef BESTOW_HAS_OZZ
     ozz::vector<ozz::math::SoaTransform> blendedLocals;   // Blended local transforms
     ozz::vector<ozz::math::Float4x4> modelMatrices;       // Model-space matrices from ozz
-#endif
 };
 
 struct SocketData {
@@ -410,15 +393,10 @@ void AnimationSystem::update(DeltaTime dt) {
                 animator.localTransforms[i] = skeleton.bones[i].localBindPose;
             }
 
-#ifdef BESTOW_HAS_OZZ
             const int numSoaJoints = skeleton.ozzSkeleton.num_soa_joints();
             animator.blendedLocals.resize(numSoaJoints);
             animator.modelMatrices.resize(skeleton.ozzSkeleton.num_joints());
-#endif
         }
-
-#ifdef BESTOW_HAS_OZZ
-        // === OZZ-BACKED UPDATE ===
 
         // Prepare blending layers
         std::vector<ozz::animation::BlendingJob::Layer> blendLayers;
@@ -550,11 +528,6 @@ void AnimationSystem::update(DeltaTime dt) {
         // Apply IK
         applyIK(animator, skeleton);
 
-#else
-        // === FALLBACK UPDATE (no ozz) ===
-        updateAnimatorFallback(animator, skeleton, dt);
-#endif
-
         // Extract root motion if enabled
         if (animator.rootMotionConfig.enabled) {
             extractRootMotion(animator, skeleton);
@@ -578,175 +551,7 @@ void AnimationSystem::update(DeltaTime dt) {
     impl_->stats_.updateTimeMs = std::chrono::duration<float, std::milli>(endTime - startTime).count();
 }
 
-#ifndef BESTOW_HAS_OZZ
-// Fallback update when ozz is not available
-void AnimationSystem::updateAnimatorFallback(AnimatorData& animator, SkeletonData& skeleton, DeltaTime dt) {
-    const std::size_t boneCount = skeleton.bones.size();
-
-    std::vector<std::vector<Mat4>> layerTransforms;
-    std::vector<float> layerWeights;
-
-    for (auto& layer : animator.layers) {
-        impl_->stats_.layersProcessed++;
-
-        if (!layer.playing || layer.clip == AnimationHandles::InvalidClip) continue;
-
-        // Update fade
-        if (layer.fadeSpeed != 0.0f) {
-            layer.fadeWeight += layer.fadeSpeed * dt;
-            if (layer.fadeWeight <= 0.0f) {
-                layer.fadeWeight = 0.0f;
-                layer.playing = false;
-                layer.fadeSpeed = 0.0f;
-                continue;
-            } else if (layer.fadeWeight >= 1.0f) {
-                layer.fadeWeight = 1.0f;
-                layer.fadeSpeed = 0.0f;
-            }
-        }
-
-        if (layer.paused) continue;
-
-        auto clipIt = impl_->clips_.find(layer.clip);
-        if (clipIt == impl_->clips_.end()) continue;
-        auto& clip = clipIt->second;
-
-        float prevTime = layer.time;
-        layer.time += dt * layer.speed * animator.globalSpeed;
-
-        // Check for events
-        for (const auto& event : clip.events) {
-            bool crossed = (prevTime <= event.time && layer.time > event.time) ||
-                           (layer.speed < 0 && prevTime >= event.time && layer.time < event.time);
-            if (crossed) {
-                AnimationEvent evt;
-                evt.animator = animator.handle;
-                evt.clip = layer.clip;
-                evt.layer = static_cast<std::uint32_t>(&layer - animator.layers.data());
-                evt.name = event.name;
-                evt.clipTime = event.time;
-                evt.normalizedTime = clip.duration > 0 ? event.time / clip.duration : 0;
-                evt.stringParam = event.stringParam;
-                evt.floatParam = event.floatParam;
-                evt.intParam = event.intParam;
-                impl_->pendingEvents_.push_back(evt);
-            }
-        }
-
-        float wrappedTime = wrapTime(layer.time, clip.duration, layer.wrapMode);
-
-        if (layer.wrapMode == AnimationWrapMode::Once && layer.time >= clip.duration) {
-            layer.playing = false;
-            layer.time = clip.duration;
-
-            std::uint32_t layerIdx = static_cast<std::uint32_t>(&layer - animator.layers.data());
-            for (auto& sub : impl_->subscriptions_) {
-                if (sub.animator == animator.handle && sub.type == EventSubscription::Type::Complete) {
-                    auto* cb = std::get_if<AnimationCompleteCallback>(&sub.callback);
-                    if (cb && *cb) {
-                        (*cb)(animator.handle, layer.clip, layerIdx);
-                    }
-                }
-            }
-        }
-
-        layer.time = wrappedTime;
-
-        // Sample animation
-        impl_->stats_.samplingJobs++;
-        std::vector<Mat4> sampledTransforms(boneCount, Mat4{1.0f});
-
-        for (const auto& channel : clip.channels) {
-            if (channel.boneIndex < 0 || static_cast<std::size_t>(channel.boneIndex) >= boneCount) continue;
-
-            if (!layer.boneMask.empty() &&
-                layer.boneMask.find(static_cast<std::uint32_t>(channel.boneIndex)) == layer.boneMask.end()) {
-                continue;
-            }
-
-            const AnimationKeyframe* prev = nullptr;
-            const AnimationKeyframe* next = nullptr;
-
-            for (const auto& kf : channel.keyframes) {
-                if (kf.time <= layer.time) {
-                    prev = &kf;
-                }
-                if (kf.time >= layer.time && !next) {
-                    next = &kf;
-                    break;
-                }
-            }
-
-            if (!prev && !next && !channel.keyframes.empty()) {
-                prev = &channel.keyframes[0];
-                next = &channel.keyframes[0];
-            } else if (!prev) {
-                prev = next;
-            } else if (!next) {
-                next = prev;
-            }
-
-            if (prev && next) {
-                float duration = next->time - prev->time;
-                float t = duration > 0.0001f ? (layer.time - prev->time) / duration : 0.0f;
-                t = std::clamp(t, 0.0f, 1.0f);
-
-                Vec3 position = lerp(prev->position, next->position, t);
-                Quat rotation = slerp(prev->rotation, next->rotation, t);
-                Vec3 scale = lerp(prev->scale, next->scale, t);
-
-                sampledTransforms[channel.boneIndex] = composeTransform(position, rotation, scale);
-            }
-        }
-
-        float effectiveWeight = layer.weight * layer.fadeWeight;
-        if (effectiveWeight > 0.001f) {
-            layerTransforms.push_back(std::move(sampledTransforms));
-            layerWeights.push_back(effectiveWeight);
-        }
-    }
-
-    // Blend layers
-    if (!layerTransforms.empty()) {
-        impl_->stats_.blendingJobs++;
-
-        for (std::size_t i = 0; i < boneCount; ++i) {
-            animator.localTransforms[i] = skeleton.bones[i].localBindPose;
-        }
-
-        for (std::size_t layerIdx = 0; layerIdx < layerTransforms.size(); ++layerIdx) {
-            float weight = layerWeights[layerIdx];
-            const auto& transforms = layerTransforms[layerIdx];
-
-            for (std::size_t boneIdx = 0; boneIdx < boneCount; ++boneIdx) {
-                Vec3 pos1, pos2, scale1, scale2;
-                Quat rot1, rot2;
-                decomposeTransform(animator.localTransforms[boneIdx], pos1, rot1, scale1);
-                decomposeTransform(transforms[boneIdx], pos2, rot2, scale2);
-
-                Vec3 blendPos = lerp(pos1, pos2, weight);
-                Quat blendRot = slerp(rot1, rot2, weight);
-                Vec3 blendScale = lerp(scale1, scale2, weight);
-
-                animator.localTransforms[boneIdx] = composeTransform(blendPos, blendRot, blendScale);
-            }
-        }
-    }
-
-    // Convert local to model space
-    for (std::size_t i = 0; i < boneCount; ++i) {
-        std::int32_t parentIdx = skeleton.bones[i].parentIndex;
-        if (parentIdx >= 0) {
-            animator.boneTransforms[i] = animator.boneTransforms[parentIdx] * animator.localTransforms[i];
-        } else {
-            animator.boneTransforms[i] = animator.localTransforms[i];
-        }
-    }
-}
-#endif
-
 void AnimationSystem::applyIK(AnimatorData& animator, SkeletonData& skeleton) {
-#ifdef BESTOW_HAS_OZZ
     // Apply two-bone IK
     auto chainIt = impl_->ikChains_.find(animator.skeleton);
     if (chainIt != impl_->ikChains_.end()) {
@@ -776,10 +581,7 @@ void AnimationSystem::applyIK(AnimatorData& animator, SkeletonData& skeleton) {
             ikJob.mid_joint_correction = &midCorrection;
             ikJob.reached = nullptr;
 
-            if (ikJob.Run()) {
-                // Apply corrections to model matrices (simplified - in production would update local transforms)
-                // For now, store the corrected model matrices back
-            }
+            ikJob.Run();
         }
     }
 
@@ -815,7 +617,6 @@ void AnimationSystem::applyIK(AnimatorData& animator, SkeletonData& skeleton) {
     for (std::size_t i = 0; i < animator.boneTransforms.size(); ++i) {
         animator.boneTransforms[i] = fromOzz(animator.modelMatrices[i]);
     }
-#endif
 }
 
 void AnimationSystem::extractRootMotion(AnimatorData& animator, SkeletonData& skeleton) {
@@ -867,7 +668,6 @@ void AnimationSystem::extractRootMotion(AnimatorData& animator, SkeletonData& sk
 
 Result<SkeletonHandle, AnimationError> AnimationSystem::createSkeleton(const ModelData& modelData) {
     // Extract bones from model data
-    // For now, this is a stub - in production, parse modelData.skeleton
     std::vector<BoneInfo> bones;
     // TODO: Extract from ModelData when asset pipeline supports it
     if (bones.empty()) {
@@ -892,7 +692,6 @@ Result<SkeletonHandle, AnimationError> AnimationSystem::createSkeleton(std::span
         }
     }
 
-#ifdef BESTOW_HAS_OZZ
     // Build ozz skeleton from our bone data
     ozz::animation::offline::RawSkeleton rawSkeleton;
 
@@ -934,7 +733,6 @@ Result<SkeletonHandle, AnimationError> AnimationSystem::createSkeleton(std::span
     }
 
     data.ozzSkeleton = std::move(*skeleton);
-#endif
 
     impl_->skeletons_[data.handle] = std::move(data);
     impl_->stats_.skeletonCount++;
@@ -1049,14 +847,14 @@ Result<AnimationClipHandle, AnimationError> AnimationSystem::createAnimationClip
     SkeletonHandle skeleton,
     const ModelData& modelData,
     std::string_view clipName) {
-    // Stub - extract from ModelData when asset pipeline supports it
+    // TODO: Extract from ModelData when asset pipeline supports it
     return std::unexpected(AnimationError::NoAnimationData);
 }
 
 std::vector<AnimationClipHandle> AnimationSystem::createAnimationClips(
     SkeletonHandle skeleton,
     const ModelData& modelData) {
-    // Stub - extract from ModelData when asset pipeline supports it
+    // TODO: Extract from ModelData when asset pipeline supports it
     return {};
 }
 
@@ -2215,7 +2013,7 @@ RootMotion AnimationSystem::getRootMotion(AnimatorHandle animator) const {
 
 RootMotion AnimationSystem::extractRootMotion(AnimationClipHandle clip, float fromTime, float toTime) const {
     RootMotion motion;
-    // Stub - would need to sample the animation at both times and compute delta
+    // TODO: Sample the animation at both times and compute delta
     return motion;
 }
 
@@ -2255,8 +2053,7 @@ Result<void, AnimationError> AnimationSystem::createRagdoll(Entity entity, const
 
     // Create physics bodies for each bone
     for (const auto& boneDef : def.bones) {
-        // Create body via physics system
-        // This is a simplified stub - full implementation would create actual physics bodies
+        // TODO: Create actual physics bodies via physics system
         data.state.boneIndices.push_back(boneDef.boneIndex);
     }
 
@@ -2388,8 +2185,7 @@ void AnimationSystem::syncToPhysics(AnimatorHandle animator, Entity entity, IPhy
 
     impl_->stats_.ragdollSyncs++;
 
-    // Sync animation transforms to kinematic bodies
-    // This would update physics body positions based on animation
+    // TODO: Sync animation transforms to kinematic bodies
 }
 
 void AnimationSystem::applyBoneImpulse(Entity entity, std::uint32_t boneIndex, const Vec3& impulse, IPhysics3DSystem& physics) {
@@ -2522,7 +2318,6 @@ Result<std::vector<Mat4>, AnimationError> AnimationSystem::sampleAnimation(
 
     std::vector<Mat4> transforms(boneCount, Mat4{1.0f});
 
-#ifdef BESTOW_HAS_OZZ
     // Use ozz for sampling
     ozz::animation::SamplingJob::Context context;
     context.Resize(clipData.ozzAnimation.num_tracks());
@@ -2549,44 +2344,6 @@ Result<std::vector<Mat4>, AnimationError> AnimationSystem::sampleAnimation(
             }
         }
     }
-#else
-    // Fallback sampling
-    for (const auto& channel : clipData.channels) {
-        if (channel.boneIndex < 0 || static_cast<std::size_t>(channel.boneIndex) >= boneCount) continue;
-
-        const AnimationKeyframe* prev = nullptr;
-        const AnimationKeyframe* next = nullptr;
-
-        for (const auto& kf : channel.keyframes) {
-            if (kf.time <= wrappedTime) prev = &kf;
-            if (kf.time >= wrappedTime && !next) {
-                next = &kf;
-                break;
-            }
-        }
-
-        if (!prev && !next && !channel.keyframes.empty()) {
-            prev = &channel.keyframes[0];
-            next = &channel.keyframes[0];
-        } else if (!prev) {
-            prev = next;
-        } else if (!next) {
-            next = prev;
-        }
-
-        if (prev && next) {
-            float duration = next->time - prev->time;
-            float t = duration > 0.0001f ? (wrappedTime - prev->time) / duration : 0.0f;
-            t = std::clamp(t, 0.0f, 1.0f);
-
-            Vec3 position = lerp(prev->position, next->position, t);
-            Quat rotation = slerp(prev->rotation, next->rotation, t);
-            Vec3 scale = lerp(prev->scale, next->scale, t);
-
-            transforms[channel.boneIndex] = composeTransform(position, rotation, scale);
-        }
-    }
-#endif
 
     return transforms;
 }
