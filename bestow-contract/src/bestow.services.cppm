@@ -266,6 +266,7 @@ export import bestow.blueprints;
 export import bestow.ui;
 export import bestow.gamestate;
 export import bestow.shader;
+export import bestow.animation;
 
 export namespace bestow {
 
@@ -333,6 +334,9 @@ struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
 // Blueprint Factory
 struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 
+// Animation System
+struct IAnimationSystemService : kgr::abstract_service<IAnimationSystem> {};
+
 //==========================================================================
 // Contract -> Service Type Mapping
 //
@@ -360,6 +364,7 @@ template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemSe
 template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
 template<> struct ServiceFor<IShaderSystem> { using type = IShaderSystemService; };
 template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
+template<> struct ServiceFor<IAnimationSystem> { using type = IAnimationSystemService; };
 
 //==========================================================================
 // Application Interface

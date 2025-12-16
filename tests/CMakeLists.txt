@@ -19,6 +19,7 @@ add_executable(bestow-tests
     unit/InputSystemTests.cpp
     unit/AssetSystemTests.cpp
     unit/AudioSystemTests.cpp
+    unit/AnimationSystemTests.cpp
     unit/GraphicsSystemTests.cpp
     unit/PhysicsSystemTests.cpp
     unit/LevelSystemTests.cpp
@@ -42,6 +43,7 @@ target_link_libraries(bestow-tests
         bestow-config
         bestow-input
         bestow-audio
+        bestow-animation
         bestow-opengl
         bestow-physics
         bestow-level
