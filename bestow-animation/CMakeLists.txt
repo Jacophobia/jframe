@@ -15,10 +15,15 @@ target_link_libraries(bestow-animation
         glm::glm
 )
 
-# ozz-animation for runtime animation sampling/blending
-if(TARGET ozz_animation)
-    target_link_libraries(bestow-animation PRIVATE ozz_animation)
-    target_compile_definitions(bestow-animation PRIVATE BESTOW_HAS_OZZ)
-endif()
+# ozz-animation for SIMD-optimized runtime animation sampling/blending
+find_package(ozz-animation CONFIG REQUIRED)
+
+target_link_libraries(bestow-animation
+    PRIVATE
+        ozz_animation
+        ozz_animation_offline
+        ozz_base
+)
+target_compile_definitions(bestow-animation PRIVATE BESTOW_HAS_OZZ)
 
 target_compile_features(bestow-animation PUBLIC cxx_std_23)
