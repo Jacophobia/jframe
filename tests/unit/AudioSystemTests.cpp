@@ -11,6 +11,8 @@
 
 import bestow.audio;
 import bestow.audio.impl;
+import bestow.assets.impl;   // For AssetSystemService (dependency of AudioSystem)
+import bestow.events.impl;   // For EventSystemService (dependency of AssetSystem)
 import bestow.types;
 
 namespace bestow::tests {
@@ -18,6 +20,12 @@ namespace bestow::tests {
 class AudioSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
+        // Register dependencies in order:
+        // 1. EventSystem (no dependencies)
+        // 2. AssetSystem (depends on EventSystem)
+        // 3. AudioSystem (depends on AssetSystem)
+        container_.service<EventSystemService>();
+        container_.service<AssetSystemService>();
         audio_ = &container_.service<AudioSystemService>();
 
         // Initialize the audio system through interface (works in stub mode)
@@ -1575,6 +1583,10 @@ TEST_F(AudioSystemTest, FadeOutExceedsDuration) {
 TEST_F(AudioSystemTest, KangaruServiceCanBeInstantiated) {
     kgr::container container;
 
+    // Register dependencies first (EventSystem -> AssetSystem -> AudioSystem)
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
+
     // Instantiate AudioSystemService through Kangaru
     auto& audioSystem = container.service<AudioSystemService>();
 
@@ -1584,6 +1596,10 @@ TEST_F(AudioSystemTest, KangaruServiceCanBeInstantiated) {
 
 TEST_F(AudioSystemTest, KangaruServiceIsSingleton) {
     kgr::container container;
+
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
 
     // Get service twice
     auto& audioSystem1 = container.service<AudioSystemService>();
@@ -1596,6 +1612,10 @@ TEST_F(AudioSystemTest, KangaruServiceIsSingleton) {
 TEST_F(AudioSystemTest, KangaruServiceCanInitialize) {
     kgr::container container;
 
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
+
     // Get service and initialize
     auto& audioSystem = container.service<AudioSystemService>();
     bool initialized = audioSystem.initialize();
@@ -1605,6 +1625,10 @@ TEST_F(AudioSystemTest, KangaruServiceCanInitialize) {
 
 TEST_F(AudioSystemTest, KangaruServiceCanPlaySound) {
     kgr::container container;
+
+    // Register dependencies first
+    container.service<EventSystemService>();
+    container.service<AssetSystemService>();
 
     auto& audioSystem = container.service<AudioSystemService>();
     audioSystem.initialize();

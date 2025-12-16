@@ -186,27 +186,6 @@ FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode
 #endif
 
 void FMODAudioSystem::update(DeltaTime dt) {
-    // Process stub-mode fade-outs (works regardless of FMOD availability)
-    for (auto& [channel, data] : channels_) {
-        // Process active fade-outs in stub mode (no fmodChannel)
-        if (data.fadeOut.active && !data.fmodChannel) {
-            data.fadeOut.currentTime += dt;
-
-            if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
-                // Fade complete - stop the channel
-                data.state.isPlaying = false;
-                data.state.volume = 0.0f;
-                data.fadeOut.active = false;
-            } else {
-                // Calculate fade progress (0.0 to 1.0)
-                float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
-                // Linear fade from start volume to 0
-                float newVolume = data.fadeOut.startVolume * (1.0f - progress);
-                data.state.volume = newVolume;
-            }
-        }
-    }
-
 #ifdef BESTOW_HAS_FMOD
     if (fmodSystem_) {
         // Update FMOD system (processes 3D audio, virtual channels, etc.)
@@ -214,24 +193,40 @@ void FMODAudioSystem::update(DeltaTime dt) {
 
         // Process fade-outs and update channel states
         for (auto& [channel, data] : channels_) {
-            // Process active fade-outs with FMOD channel
-            if (data.fadeOut.active && data.fmodChannel) {
-                data.fadeOut.currentTime += dt;
+            // Process active fade-outs
+            if (data.fadeOut.active) {
+                if (data.fmodChannel) {
+                    // FMOD channel fade-out
+                    data.fadeOut.currentTime += dt;
 
-                if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
-                    // Fade complete - stop the channel
-                    FMOD_Channel_Stop(data.fmodChannel);
-                    data.fmodChannel = nullptr;
-                    data.state.isPlaying = false;
-                    data.state.volume = 0.0f;
-                    data.fadeOut.active = false;
+                    if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
+                        // Fade complete - stop the channel
+                        FMOD_Channel_Stop(data.fmodChannel);
+                        data.fmodChannel = nullptr;
+                        data.state.isPlaying = false;
+                        data.state.volume = 0.0f;
+                        data.fadeOut.active = false;
+                    } else {
+                        // Calculate fade progress (0.0 to 1.0)
+                        float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
+                        // Linear fade from start volume to 0
+                        float newVolume = data.fadeOut.startVolume * (1.0f - progress);
+                        FMOD_Channel_SetVolume(data.fmodChannel, newVolume);
+                        data.state.volume = newVolume;
+                    }
                 } else {
-                    // Calculate fade progress (0.0 to 1.0)
-                    float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
-                    // Linear fade from start volume to 0
-                    float newVolume = data.fadeOut.startVolume * (1.0f - progress);
-                    FMOD_Channel_SetVolume(data.fmodChannel, newVolume);
-                    data.state.volume = newVolume;
+                    // Stub mode fade-out (no FMOD channel - e.g., sound failed to load)
+                    data.fadeOut.currentTime += dt;
+
+                    if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
+                        data.state.isPlaying = false;
+                        data.state.volume = 0.0f;
+                        data.fadeOut.active = false;
+                    } else {
+                        float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
+                        float newVolume = data.fadeOut.startVolume * (1.0f - progress);
+                        data.state.volume = newVolume;
+                    }
                 }
             }
 
@@ -272,6 +267,23 @@ void FMODAudioSystem::update(DeltaTime dt) {
         }
         for (auto handle : toRemove) {
             stopPositional(handle);
+        }
+    }
+#else
+    // Stub mode - process fade-outs manually
+    for (auto& [channel, data] : channels_) {
+        if (data.fadeOut.active) {
+            data.fadeOut.currentTime += dt;
+
+            if (data.fadeOut.currentTime >= data.fadeOut.targetTime) {
+                data.state.isPlaying = false;
+                data.state.volume = 0.0f;
+                data.fadeOut.active = false;
+            } else {
+                float progress = data.fadeOut.currentTime / data.fadeOut.targetTime;
+                float newVolume = data.fadeOut.startVolume * (1.0f - progress);
+                data.state.volume = newVolume;
+            }
         }
     }
 #endif

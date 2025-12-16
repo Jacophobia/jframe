@@ -75,10 +75,8 @@ if(BESTOW_BUILD_VULKAN)
     find_package(Vulkan QUIET)
     if(Vulkan_FOUND)
         add_subdirectory(bestow-vulkan)
-        # Runtime library (simple user-facing API) - requires Vulkan
-        add_subdirectory(bestow-runtime)
     else()
-        message(STATUS "Vulkan not found - skipping bestow-vulkan and bestow-runtime")
+        message(STATUS "Vulkan not found - skipping bestow-vulkan")
     endif()
 endif()
 
@@ -92,13 +90,13 @@ if(BESTOW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Games (must come after bestow-runtime for Vulkan games)
-if(BESTOW_BUILD_VULKAN AND TARGET bestow-runtime)
+# Example games (require Vulkan)
+if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
     add_subdirectory(games/game1)
 endif()
 
-# Examples and template removed - outdated API
-# TODO: Create new template using the simplified Engine composition root pattern
+# Template uses proper contract-based DI architecture
+# See template/README.md for usage
 
 # =============================================================================
 # Installation Configuration

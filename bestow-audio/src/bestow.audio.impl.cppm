@@ -107,10 +107,24 @@ private:
     std::unordered_map<std::string, FMOD_CHANNELGROUP*> fmodGroups_;
     std::unordered_map<AssetHandle, FMOD_SOUND*, AssetHandleHash> soundCache_;  // Cached FMOD sounds
 #endif
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Kangaru service definitions
-// Concrete service that provides FMODAudioSystem as IAudioSystem
-struct AudioSystemService : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {};
+// Service type for Engine::use<IAudioSystem, AudioSystem>()
+struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {
+    static auto construct(kgr::inject_t<IAssetSystemService> d1)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&d1.forward());
+    }
+};
+
+// Alias for cleaner API: AudioSystem instead of FMODAudioSystem
+using AudioSystem = FMODAudioSystem;
+
+// Backwards compatibility alias
+using AudioSystemService = FMODAudioSystem::Service;
 
 }  // namespace bestow

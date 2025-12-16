@@ -79,108 +79,118 @@ private:
 /// The Engine is the composition root that binds contracts to implementations
 /// and provides the client interface for running the application.
 ///
-/// Usage:
+/// Usage Option 1 - Application base class (RECOMMENDED):
 /// ```cpp
+/// class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem> {
+/// public:
+///     MyGame(IGraphics3DSystem& g, IInputSystem& i)
+///         : graphics_(&g), input_(&i) {}
+///     void run() override { /* game loop */ }
+/// private:
+///     IGraphics3DSystem* graphics_;
+///     IInputSystem* input_;
+/// };
+///
 /// int main() {
 ///     Engine engine;
-///
-///     // Register system implementations against contracts
-///     engine.registerSystem<IEventSystem, EventSystem>();
-///     engine.registerSystem<IEntitySystem, EntitySystem>();
-///     engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
-///
-///     // Run the client application (dependencies injected via constructor)
-///     engine.run<MyGameApp>();
+///     engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+///     engine.use<IInputSystem, InputSystem>();
+///     engine.run<MyGame>();  // Dependencies auto-detected!
 /// }
+/// ```
+///
+/// Usage Option 2 - Explicit deps in run<>():
+/// ```cpp
+/// engine.run<MyGame, IGraphics3DSystem, IInputSystem>();
+/// ```
+///
+/// Usage Option 3 - Engine& pattern (dynamic access):
+/// ```cpp
+/// class MyGame : public IApplication {
+///     MyGame(Engine& e) : graphics_(&e.get<IGraphics3DSystem>()) {}
+/// };
+/// engine.run<MyGame>();
 /// ```
 class Engine {
 public:
     Engine() = default;
     ~Engine() = default;
 
-    // Non-copyable, movable
     Engine(const Engine&) = delete;
     Engine& operator=(const Engine&) = delete;
     Engine(Engine&&) noexcept = default;
     Engine& operator=(Engine&&) noexcept = default;
 
-    /// Register an implementation type for a contract interface.
-    /// The implementation will be instantiated by Kangaru with its dependencies injected.
-    ///
-    /// Example:
-    /// ```cpp
-    /// engine.registerSystem<IGraphicsSystem, VulkanGraphicsSystem>();
-    /// ```
+    /// Register an implementation for a contract interface.
+    /// Example: engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
     template<typename Contract, typename Implementation>
-    void registerSystem() {
+    void use() {
         static_assert(std::is_base_of_v<Contract, Implementation>,
-            "Implementation must inherit from Contract interface");
-
-        // Register the service mapping in Kangaru
-        // The Implementation's Kangaru service definition handles the wiring
-        registrations_.push_back([this]() {
-            // This will be called when we need to resolve the service
-            // Kangaru services are auto-registered when their modules are imported
-        });
+            "Implementation must inherit from Contract");
+        container_.service<typename Implementation::Service>();
+        registered_.insert(typeid(Contract).hash_code());
     }
 
-    /// Register a factory function that creates an implementation.
-    /// Useful when the implementation requires custom initialization.
-    ///
-    /// Example:
-    /// ```cpp
-    /// engine.registerSystem<IAudioSystem>([]() {
-    ///     return std::make_unique<FMODAudioSystem>("config.json");
-    /// });
-    /// ```
+    /// Check if a system has been registered for a contract interface.
+    /// Useful for optional systems like audio.
+    /// Example: if (engine.has<IAudioSystem>()) { ... }
     template<typename Contract>
-    void registerSystem(std::function<std::unique_ptr<Contract>()> factory) {
-        factories_[std::type_index(typeid(Contract))] = [factory = std::move(factory)]() -> void* {
-            return factory().release();
-        };
+    bool has() const {
+        return registered_.contains(typeid(Contract).hash_code());
     }
 
-    /// Run the application. The App type must:
-    /// 1. Inherit from IApplication
-    /// 2. Have a constructor that accepts its dependencies (injected by Kangaru)
-    /// 3. Implement the run() method
-    ///
-    /// Example:
-    /// ```cpp
-    /// class MyGame : public IApplication {
-    /// public:
-    ///     MyGame(IGraphicsSystem& graphics, IInputSystem& input)
-    ///         : graphics_(&graphics), input_(&input) {}
-    ///
-    ///     void run() override {
-    ///         // Game loop
-    ///     }
-    /// };
-    ///
-    /// engine.run<MyGame>();
-    /// ```
-    template<typename App>
+    /// Get a system by its contract interface.
+    /// Throws if the system is not registered. Use has<>() to check first.
+    /// Example: engine.get<IGraphics3DSystem>()
+    template<typename Contract>
+    Contract& get() {
+        return container_.service<typename ServiceFor<Contract>::type>();
+    }
+
+    /// Get a system by its contract interface, or nullptr if not registered.
+    /// Example: auto* audio = engine.tryGet<IAudioSystem>();
+    template<typename Contract>
+    Contract* tryGet() {
+        if (!has<Contract>()) {
+            return nullptr;
+        }
+        return &container_.service<typename ServiceFor<Contract>::type>();
+    }
+
+    /// Run the application.
+    /// Dependencies are auto-detected if App inherits from Application<App, Deps...>,
+    /// or can be specified explicitly: engine.run<MyGame, IDep1, IDep2>()
+    template<typename App, typename... Contracts>
     void run() {
         static_assert(std::is_base_of_v<IApplication, App>,
-            "App must inherit from IApplication");
+            "App must inherit from IApplication or Application<>");
 
-        // Resolve the application from the DI container
-        // Kangaru will inject all constructor dependencies
-        auto& app = container_.service<typename App::service_type>();
+        if constexpr (sizeof...(Contracts) > 0) {
+            // Explicit contracts provided - use them
+            App app(get<Contracts>()...);
+            app.run();
+        } else if constexpr (requires { typename App::Dependencies; }) {
+            // App has Dependencies type (from Application<> base) - use it
+            // Use pointer to avoid instantiating abstract types in tuple
+            runWithDeps<App>(static_cast<typename App::Dependencies*>(nullptr));
+        } else {
+            // Fallback to Engine& constructor
+            App app(*this);
+            app.run();
+        }
+    }
 
-        // Run the application
+private:
+    /// Helper to unpack tuple and inject dependencies
+    /// Takes a pointer to avoid instantiating abstract types in the tuple
+    template<typename App, typename... Deps>
+    void runWithDeps(std::tuple<Deps...>*) {
+        App app(get<Deps>()...);
         app.run();
     }
 
-    /// Get the Kangaru container for advanced usage.
-    /// Prefer using registerSystem() and run() instead.
-    kgr::container& container() { return container_; }
-    const kgr::container& container() const { return container_; }
-
-private:
     kgr::container container_;
-    std::vector<std::function<void()>> registrations_;
-    std::unordered_map<std::type_index, std::function<void*()>> factories_;
+    std::unordered_set<std::size_t> registered_;  // Track registered contract types
 };
 
 }  // namespace bestow::core

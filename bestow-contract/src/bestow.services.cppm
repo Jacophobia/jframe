@@ -334,6 +334,34 @@ struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
 struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 
 //==========================================================================
+// Contract -> Service Type Mapping
+//
+// This trait maps contract interfaces to their abstract service types.
+// Used by Engine::get<Contract>() to resolve services.
+//==========================================================================
+
+template<typename Contract> struct ServiceFor;
+template<> struct ServiceFor<IEntitySystem> { using type = IEntitySystemService; };
+template<> struct ServiceFor<IEventSystem> { using type = IEventSystemService; };
+template<> struct ServiceFor<IConfigSystem> { using type = IConfigSystemService; };
+template<> struct ServiceFor<IAssetSystem> { using type = IAssetSystemService; };
+template<> struct ServiceFor<IInputSystem> { using type = IInputSystemService; };
+template<> struct ServiceFor<IAudioSystem> { using type = IAudioSystemService; };
+template<> struct ServiceFor<ISaveSystem> { using type = ISaveSystemService; };
+template<> struct ServiceFor<ILevelSystem> { using type = ILevelSystemService; };
+template<> struct ServiceFor<ICameraSystem> { using type = ICameraSystemService; };
+template<> struct ServiceFor<IGraphicsSystem> { using type = IGraphicsSystemService; };
+template<> struct ServiceFor<IGraphics3DSystem> { using type = IGraphics3DSystemService; };
+template<> struct ServiceFor<IPhysicsSystem> { using type = IPhysicsSystemService; };
+template<> struct ServiceFor<IPhysics3DSystem> { using type = IPhysics3DSystemService; };
+template<> struct ServiceFor<IAISystem> { using type = IAISystemService; };
+template<> struct ServiceFor<IUISystem> { using type = IUISystemService; };
+template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemService; };
+template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
+template<> struct ServiceFor<IShaderSystem> { using type = IShaderSystemService; };
+template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
+
+//==========================================================================
 // Application Interface
 //==========================================================================
 
@@ -342,14 +370,37 @@ struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 class IApplication {
 public:
     virtual ~IApplication() = default;
-    
+
     /// Called by the Engine to start the application.
     /// All systems have been initialized and are available via DI.
     virtual void run() = 0;
-    
+
     /// Called by the Engine when shutdown is requested.
     /// Application should clean up and exit gracefully.
     virtual void shutdown() {}
+};
+
+//==========================================================================
+// Application Base Class (CRTP)
+//
+// Use this base class to enable automatic dependency injection with
+// engine.run<MyGame>() - no need to list dependencies in the run call.
+//
+// Usage:
+//   class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem> {
+//   public:
+//       MyGame(IGraphics3DSystem& g, IInputSystem& i) : graphics_(&g), input_(&i) {}
+//       void run() override { /* game loop */ }
+//   };
+//
+//   engine.run<MyGame>();  // Dependencies auto-detected from base class
+//==========================================================================
+
+template<typename Derived, typename... Deps>
+class Application : public IApplication {
+public:
+    /// Type alias for Engine to detect dependencies
+    using Dependencies = std::tuple<Deps...>;
 };
 
 // Application Service for DI

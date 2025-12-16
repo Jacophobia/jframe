@@ -322,32 +322,20 @@ class EngineTest : public ::testing::Test {};
 TEST_F(EngineTest, DefaultConstruction) {
     // Engine should be default constructible
     core::Engine engine;
-    // Container should be accessible
-    EXPECT_NO_THROW(engine.container());
+    (void)engine;  // Suppress unused variable warning
 }
 
 TEST_F(EngineTest, MoveConstruction) {
     core::Engine engine1;
     core::Engine engine2 = std::move(engine1);
-    // Moved-to engine should be valid
-    EXPECT_NO_THROW(engine2.container());
+    (void)engine2;  // Suppress unused variable warning
 }
 
 TEST_F(EngineTest, MoveAssignment) {
     core::Engine engine1;
     core::Engine engine2;
     engine2 = std::move(engine1);
-    // Moved-to engine should be valid
-    EXPECT_NO_THROW(engine2.container());
-}
-
-TEST_F(EngineTest, ContainerAccess) {
-    core::Engine engine;
-    // Both const and non-const container access should work
-    kgr::container& container = engine.container();
-    const kgr::container& constContainer =
-        static_cast<const core::Engine&>(engine).container();
-    EXPECT_EQ(&container, &constContainer);
+    (void)engine2;  // Suppress unused variable warning
 }
 
 //==========================================================================

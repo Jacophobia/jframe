@@ -197,9 +197,21 @@ private:
 
     // Injected dependencies
     IEventSystem* pIEventSystem_ = nullptr;
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(AssetSystem, AssetSystem, EventSystem);
+// Service type for Engine::use<IAssetSystem, AssetSystem>()
+struct AssetSystem::Service : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {
+    static auto construct(kgr::inject_t<IEventSystemService> d1)
+        -> kgr::inject_result<IEventSystem*> {
+        return kgr::inject(&d1.forward());
+    }
+};
+
+// Backwards compatibility alias
+using AssetSystemService = AssetSystem::Service;
 
 }  // namespace bestow

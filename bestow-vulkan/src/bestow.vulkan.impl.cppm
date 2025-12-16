@@ -918,9 +918,29 @@ private:
     IAssetSystem* pIAssetSystem_ = nullptr;
     IShaderSystem* pIShaderSystem_ = nullptr;
     IConfigSystem* pIConfigSystem_ = nullptr;
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(VulkanGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
+// Service type for Engine::use<IGraphics3DSystem, VulkanGraphics3DSystem>()
+struct VulkanGraphics3DSystem::Service : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
+    static auto construct(
+        kgr::inject_t<IAssetSystemService> d1,
+        kgr::inject_t<IShaderSystemService> d2,
+        kgr::inject_t<IConfigSystemService> d3)
+        -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
+        return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward());
+    }
+};
+
+// Backwards compatibility alias
+using VulkanGraphics3DSystemService = VulkanGraphics3DSystem::Service;
 
 }  // namespace bestow::vulkan
+
+// Export to bestow namespace for cleaner API
+export namespace bestow {
+    using VulkanGraphics3DSystem = vulkan::VulkanGraphics3DSystem;
+}

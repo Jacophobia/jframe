@@ -1,6 +1,6 @@
 # Getting Started with Bestow
 
-Bestow is a modern C++23 game engine. This guide shows how to create a simple game.
+Bestow is a modern C++23 game engine with contract-based dependency injection. This guide shows how to create your first game.
 
 ## Prerequisites
 
@@ -15,61 +15,93 @@ See `docs/Installation.md` for detailed setup.
 
 ### 1. Create Your Game Class
 
+Your game inherits from `Application<>` and lists its dependencies as template parameters:
+
 ```cpp
-// src/MyGame.cppm
+// src/game.cppm
 export module my.game;
 
-import bestow.runtime;
+import bestow.services;   // Contracts + Application base
+import bestow.types;
+import bestow.graphics3d;
 
-export class MyGame : public bestow::Game {
+export class MyGame : public bestow::Application<MyGame,
+    bestow::IGraphics3DSystem,
+    bestow::IInputSystem>
+{
 public:
-    void onStart() override {
-        // Create a cube mesh
-        auto result = graphics3d()->createCubeMesh(1.0f);
-        if (result) {
-            cubeMesh_ = *result;
-        }
+    // Constructor params match template args
+    MyGame(bestow::IGraphics3DSystem& graphics, bestow::IInputSystem& input)
+        : graphics_(&graphics), input_(&input) {}
 
-        // Get default material
-        material_ = graphics3d()->getDefaultPBRMaterial();
+    void run() override {
+        initialize();
+        gameLoop();
+        cleanup();
+    }
+
+private:
+    bool initialize() {
+        // Setup graphics
+        bestow::Graphics3DConfig config{
+            .windowWidth = 1280,
+            .windowHeight = 720,
+            .windowTitle = "My First Game",
+            .vsync = true
+        };
+        if (!graphics_->initialize(config)) return false;
+
+        // Create a cube mesh
+        auto result = graphics_->createCubeMesh(1.0f);
+        if (result) cubeMesh_ = *result;
+
+        material_ = graphics_->getDefaultPBRMaterial();
 
         // Setup camera
         bestow::Camera3D cam;
-        cam.position = {5.0f, 5.0f, 5.0f};
-        cam.target = {0.0f, 0.0f, 0.0f};
-        cam.up = {0.0f, 1.0f, 0.0f};
-        cam.fov = 45.0f;
-        graphics3d()->setCamera(cam);
+        cam.fovY = 45.0f;
+        cam.transform.position = {5.0f, 5.0f, 5.0f};
+        graphics_->setCamera(cam);
 
         // Setup lighting
-        graphics3d()->setDirectionalLight({
+        graphics_->setDirectionalLight({
             .direction = {0.5f, -1.0f, 0.3f},
             .color = {1.0f, 1.0f, 1.0f},
             .intensity = 1.0f
         });
+
+        return true;
     }
 
-    void onUpdate(bestow::DeltaTime dt) override {
-        // Handle input (,AOE for Dvorak movement, arrow keys also work)
-        if (input()->isKeyDown(GLFW_KEY_ESCAPE)) {
-            quit();
+    void gameLoop() {
+        while (!graphics_->shouldClose()) {
+            input_->update();
+
+            // Handle input (ESC to quit)
+            if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) break;
+
+            // Rotate cube
+            rotation_ += 0.016f;
+
+            // Render
+            graphics_->beginFrame();
+            bestow::Mat4 transform = glm::rotate(
+                glm::identity<glm::mat4>(),
+                rotation_,
+                glm::vec3(0.0f, 1.0f, 0.0f)
+            );
+            graphics_->drawMesh(cubeMesh_, material_, transform);
+            graphics_->endFrame();
         }
-
-        // Rotate cube
-        rotation_ += dt;
     }
 
-    void onRender() override {
-        // Draw the cube
-        bestow::Mat4 transform = glm::rotate(
-            glm::identity<glm::mat4>(),
-            rotation_,
-            glm::vec3(0.0f, 1.0f, 0.0f)
-        );
-        graphics3d()->drawMesh(cubeMesh_, material_, transform);
+    void cleanup() {
+        input_->shutdown();
+        graphics_->shutdown();
     }
 
-private:
+    bestow::IGraphics3DSystem* graphics_;
+    bestow::IInputSystem* input_;
     bestow::MeshHandle cubeMesh_ = 0;
     bestow::MaterialHandle material_ = 0;
     float rotation_ = 0.0f;
@@ -80,16 +112,35 @@ private:
 
 ```cpp
 // src/main.cpp
-import bestow.runtime;
+import std;
+import bestow.core;           // Engine class
+import bestow.services;       // Contract interfaces
+
+// Import implementations you want to use
+import bestow.vulkan.impl;    // VulkanGraphics3DSystem
+import bestow.input.impl;     // InputSystem
+import bestow.events.impl;    // EventSystem (often needed as dependency)
+import bestow.assets.impl;    // AssetSystem (often needed as dependency)
+import bestow.config.impl;    // ConfigSystem
+import bestow.shader.impl;    // ShaderSystem
+
 import my.game;
 
 int main() {
-    return bestow::run<MyGame>({
-        .title = "My First Game",
-        .width = 1280,
-        .height = 720,
-        .vsync = true
-    });
+    bestow::core::Engine engine;
+
+    // Register system implementations
+    engine.use<bestow::IEventSystem, bestow::EventSystem>();
+    engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
+    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
+    engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
+    engine.use<bestow::IInputSystem, bestow::InputSystem>();
+
+    // Run your game - dependencies auto-injected!
+    engine.run<MyGame>();
+
+    return 0;
 }
 ```
 
@@ -106,10 +157,21 @@ add_executable(my-game src/main.cpp)
 
 target_sources(my-game
     PUBLIC FILE_SET CXX_MODULES FILES
-        src/MyGame.cppm
+        src/game.cppm
 )
 
-target_link_libraries(my-game PRIVATE bestow-runtime)
+target_link_libraries(my-game
+    PRIVATE
+        bestow-contract
+        bestow-core
+        bestow-vulkan
+        bestow-input
+        bestow-events
+        bestow-assets
+        bestow-config
+        bestow-shader
+)
+
 target_compile_features(my-game PRIVATE cxx_std_23)
 target_use_std_module(my-game)
 ```
@@ -122,36 +184,52 @@ cmake --build --preset macos-debug
 ./build/macos-debug/my-game
 ```
 
-## Game Lifecycle
+## The Application Pattern
 
-Your game class overrides these methods:
-
-| Method | When Called | Use For |
-|--------|-------------|---------|
-| `onStart()` | Once at startup | Create meshes, load assets, setup camera |
-| `onUpdate(dt)` | Fixed 60Hz | Game logic, physics, input handling |
-| `onRender()` | Every frame | Drawing meshes, sprites, UI |
-| `onShutdown()` | At exit | Save state, cleanup |
-
-## System Access
-
-Access engine systems via convenience methods:
+Bestow uses a CRTP base class for automatic dependency injection:
 
 ```cpp
-graphics3d()  // 3D rendering (Vulkan)
-input()       // Keyboard, mouse, gamepad
-entities()    // ECS (EnTT-based)
-audio()       // Sound (FMOD)
-assets()      // Asset loading
-events()      // Event bus
-camera()      // Camera control
+// Inherit from Application<YourClass, Dependencies...>
+class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem, IAudioSystem>
+{
+public:
+    // Constructor params must match template dependencies (in order)
+    MyGame(IGraphics3DSystem& g, IInputSystem& i, IAudioSystem& a)
+        : graphics_(&g), input_(&i), audio_(&a) {}
+
+    void run() override { /* your game loop */ }
+};
+
+// In main.cpp - just call run<>() without listing deps!
+engine.run<MyGame>();  // Dependencies auto-detected from base class
 ```
 
-Or via `systems()`:
+## Engine API
+
+### Registering Systems
 
 ```cpp
-systems().graphics3d->drawMesh(...);
-systems().input->isKeyDown(...);
+// Register implementation for a contract
+engine.use<IContract, Implementation>();
+
+// Examples
+engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+engine.use<IAudioSystem, AudioSystem>();
+```
+
+### Checking System Availability
+
+```cpp
+// Check if a system is registered
+if (engine.has<IAudioSystem>()) {
+    auto& audio = engine.get<IAudioSystem>();
+}
+
+// Get system or nullptr
+auto* audio = engine.tryGet<IAudioSystem>();
+if (audio) {
+    audio->playSound(...);
+}
 ```
 
 ## Controls
@@ -178,6 +256,7 @@ See `games/game1/` for a complete 3D Snake game example demonstrating:
 
 ## Next Steps
 
-- Read `docs/api/` for system API reference
+- Read `template/README.md` for detailed template documentation
 - Study `games/game1/` for a complete example
-- Check `CLAUDE.md` for development guidelines
+- Check `docs/api/` for system API reference
+- See `CLAUDE.md` for development guidelines

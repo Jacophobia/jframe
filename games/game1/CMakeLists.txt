@@ -1,9 +1,9 @@
 # games/game1 - 3D Isometric Snake Game
-# Demonstrates the simple bestow::Game API
+# Demonstrates the Bestow contract-based DI architecture
 
-# Only build if bestow-runtime is available (requires Vulkan)
-if(NOT TARGET bestow-runtime)
-    message(STATUS "Skipping game1 - bestow-runtime not available (enable BESTOW_BUILD_VULKAN)")
+# Only build if Vulkan is available
+if(NOT TARGET bestow-vulkan)
+    message(STATUS "Skipping game1 - bestow-vulkan not available (enable BESTOW_BUILD_VULKAN)")
     return()
 endif()
 
@@ -17,9 +17,20 @@ target_sources(snake-game
         src/snake.game.cppm
 )
 
+# Link against Bestow core and implementation libraries
 target_link_libraries(snake-game
     PRIVATE
-        bestow-runtime
+        # Core (includes Engine class and contracts)
+        bestow-core
+
+        # Implementation libraries used by this game
+        bestow-vulkan      # Vulkan 3D graphics
+        bestow-input       # Input system
+        bestow-events      # Event system
+        bestow-audio       # Audio system
+        bestow-assets      # Asset system
+        bestow-config      # Config system
+        bestow-shader      # Shader system
 )
 
 target_compile_features(snake-game PRIVATE cxx_std_23)

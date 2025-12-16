@@ -143,10 +143,16 @@ public:
 
 private:
     entt::registry registry_;
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Kangaru service definitions
-// Concrete service that provides EntitySystem as IEntitySystem
-struct EntitySystemService : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
+// Service type for Engine::use<IEntitySystem, EntitySystem>()
+struct EntitySystem::Service : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
+
+// Backwards compatibility alias
+using EntitySystemService = EntitySystem::Service;
 
 }  // namespace bestow

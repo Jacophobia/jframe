@@ -129,9 +129,21 @@ private:
 
     // Helper to update modifier state from GLFW
     void updateModifierState();
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(InputSystem, InputSystem, AssetSystem);
+// Service type for Engine::use<IInputSystem, InputSystem>()
+struct InputSystem::Service : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
+    static auto construct(kgr::inject_t<IAssetSystemService> d1)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&d1.forward());
+    }
+};
+
+// Backwards compatibility alias
+using InputSystemService = InputSystem::Service;
 
 }  // namespace bestow

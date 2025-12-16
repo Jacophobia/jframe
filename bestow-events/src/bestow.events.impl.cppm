@@ -125,10 +125,16 @@ private:
     std::queue<QueuedEvent> eventQueue_;
     mutable std::mutex queueMutex_;
     SubscriptionId nextSubscriptionId_ = 1;
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
-// Kangaru service definitions
-// Concrete service that provides EventSystem as IEventSystem
-struct EventSystemService : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
+// Service type for Engine::use<IEventSystem, EventSystem>()
+struct EventSystem::Service : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
+
+// Backwards compatibility alias
+using EventSystemService = EventSystem::Service;
 
 }  // namespace bestow

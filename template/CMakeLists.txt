@@ -10,11 +10,7 @@ set(BESTOW_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." CACHE PATH "Path to Bestow engi
 # Include Bestow
 add_subdirectory(${BESTOW_ROOT} bestow EXCLUDE_FROM_ALL)
 
-# Check if runtime is available
-if(NOT TARGET bestow-runtime)
-    message(FATAL_ERROR "bestow-runtime not available. Make sure BESTOW_BUILD_VULKAN=ON")
-endif()
-
+# Create executable
 add_executable(my-game src/main.cpp)
 
 target_sources(my-game
@@ -22,7 +18,29 @@ target_sources(my-game
         src/game.cppm
 )
 
-target_link_libraries(my-game PRIVATE bestow-runtime)
+# Link against Bestow contract and implementation libraries
+target_link_libraries(my-game
+    PRIVATE
+        # Core (includes Engine class and contracts)
+        bestow-core
+
+        # Implementation libraries - choose which ones you need:
+        bestow-entity      # EntitySystem (EnTT-based)
+        bestow-events      # EventSystem
+        bestow-config      # ConfigSystem
+        bestow-assets      # AssetSystem
+        bestow-input       # InputSystem (GLFW-based)
+        bestow-audio       # AudioSystem (FMOD-based)
+        bestow-shader      # ShaderSystem
+)
+
+# Vulkan renderer (if available)
+if(TARGET bestow-vulkan)
+    target_link_libraries(my-game PRIVATE bestow-vulkan)
+else()
+    message(WARNING "bestow-vulkan not available. Enable BESTOW_BUILD_VULKAN=ON")
+endif()
+
 target_compile_features(my-game PRIVATE cxx_std_23)
 target_use_std_module(my-game)
 
