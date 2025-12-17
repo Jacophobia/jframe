@@ -9,6 +9,7 @@ module;
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 export module bestow.assets;
@@ -192,6 +193,30 @@ struct DataAsset {
     bool isJson = false;
 };
 
+// Lua material data structure - parsed material definition from Lua files
+// Used by Graphics3DSystem to create GPU materials
+struct LuaMaterialData {
+    std::string name;
+    std::string vertexShaderPath;
+    std::string fragmentShaderPath;
+
+    // Uniforms stored as std::any - graphics system casts to expected types
+    // Common types: float, int, bool, Vec2, Vec3, Vec4, Mat3, Mat4
+    std::unordered_map<std::string, std::any> uniforms;
+
+    // Texture slot name -> texture file path
+    std::unordered_map<std::string, std::string> texturePaths;
+
+    // Render state
+    BlendMode blendMode = BlendMode::Opaque;
+    CullMode cullMode = CullMode::Back;
+    bool depthWrite = true;
+    bool depthTest = true;
+    bool hotReload = true;
+
+    std::string path;  // Source file path for hot reload
+};
+
 struct AssetMetadata {
     AssetHandle handle;
     std::filesystem::path sourcePath;
@@ -359,6 +384,25 @@ public:
         const std::filesystem::path& negY,
         const std::filesystem::path& posZ,
         const std::filesystem::path& negZ) = 0;
+
+    //======================================================================
+    // Lua Material Loading
+    //======================================================================
+    //
+    // Lua materials are material definitions written in Lua files.
+    // They specify shader paths, uniforms, textures, and render state.
+    // The AssetSystem parses the Lua and returns LuaMaterialData.
+    // Graphics systems use this data to create GPU resources.
+    //
+
+    /// Load a Lua material file (.lua) and parse it into LuaMaterialData
+    /// Returns an AssetHandle that can be used with getLuaMaterialData()
+    /// Hot reload is supported via AssetSystem subscriptions
+    virtual AssetHandle loadMaterial(const std::filesystem::path& luaPath) = 0;
+
+    /// Get parsed Lua material data from a handle returned by loadMaterial()
+    /// Returns nullptr if handle is invalid or asset not loaded
+    virtual const LuaMaterialData* getLuaMaterialData(AssetHandle handle) const = 0;
 };
 
 }  // namespace bestow

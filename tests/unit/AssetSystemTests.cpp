@@ -134,6 +134,11 @@ public:
         return registerAsset(AssetType::Cubemap, posX);
     }
 
+    AssetHandle loadMaterial(const std::filesystem::path& path) override {
+        return registerAsset(AssetType::Data, path);
+    }
+    const LuaMaterialData* getLuaMaterialData(AssetHandle /*handle*/) const override { return nullptr; }
+
 private:
     UUID nextId_ = 0;
     std::unordered_map<AssetHandle, MockAssetInfo, AssetHandleHash> assets_;

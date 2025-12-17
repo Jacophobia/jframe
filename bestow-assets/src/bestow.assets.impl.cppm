@@ -122,6 +122,10 @@ public:
         const std::filesystem::path& front,
         const std::filesystem::path& back) override;
 
+    // Lua material loading
+    AssetHandle loadMaterial(const std::filesystem::path& luaPath) override;
+    const LuaMaterialData* getLuaMaterialData(AssetHandle handle) const override;
+
 private:
     struct AssetEntry {
         AssetMetadata metadata;
@@ -170,6 +174,9 @@ private:
     bool tryLoadCachedSpirv(ShaderData& shaderData);  // Returns true if cache hit
     void cacheCompiledSpirv(const ShaderData& shaderData);
     void compileShaderToSpirv(ShaderData& shaderData);  // Synchronous compilation
+
+    // Lua material parsing helpers (internal use only)
+    bool parseLuaMaterialFile(const std::filesystem::path& luaPath, LuaMaterialData& outData);
 
     std::unordered_map<UUID, AssetEntry> assets_;
     std::vector<PendingLoad> pendingLoads_;

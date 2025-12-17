@@ -24,6 +24,10 @@ module;
 #include <efsw/efsw.hpp>
 #include <spdlog/spdlog.h>
 
+// Lua support for material parsing
+#define SOL_ALL_SAFETIES_ON 1
+#include <sol/sol.hpp>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #include <shaderc/shaderc.hpp>
@@ -1324,6 +1328,168 @@ const ShaderData* AssetSystem::getShaderData(AssetHandle handle) const {
     }
     try {
         return &std::any_cast<const ShaderData&>(it->second.data);
+    } catch (const std::bad_any_cast&) {
+        return nullptr;
+    }
+}
+
+//==========================================================================
+// Lua Material Loading Implementation
+//==========================================================================
+
+// Helper to get value with default from sol::table (avoids sol2 get_or ambiguity)
+template<typename T>
+static T getWithDefault(const sol::table& t, const char* key, T defaultVal) {
+    sol::optional<T> val = t[key];
+    return val.value_or(defaultVal);
+}
+
+template<typename T>
+static T getWithDefault(const sol::table& t, int key, T defaultVal) {
+    sol::optional<T> val = t[key];
+    return val.value_or(defaultVal);
+}
+
+static BlendMode parseBlendMode(const std::string& mode) {
+    if (mode == "alphaBlend" || mode == "alpha") return BlendMode::AlphaBlend;
+    if (mode == "additive") return BlendMode::Additive;
+    if (mode == "multiply") return BlendMode::Multiply;
+    if (mode == "alphaTest") return BlendMode::AlphaTest;
+    return BlendMode::Opaque;
+}
+
+static CullMode parseCullMode(const std::string& mode) {
+    if (mode == "none" || mode == "off") return CullMode::None;
+    if (mode == "front") return CullMode::Front;
+    return CullMode::Back;
+}
+
+bool AssetSystem::parseLuaMaterialFile(const std::filesystem::path& luaPath, LuaMaterialData& outData) {
+    sol::state lua;
+    lua.open_libraries(sol::lib::base, sol::lib::math, sol::lib::table);
+
+    // Sandbox: remove dangerous functions
+    lua["os"] = sol::lua_nil;
+    lua["io"] = sol::lua_nil;
+    lua["loadfile"] = sol::lua_nil;
+    lua["dofile"] = sol::lua_nil;
+    lua["load"] = sol::lua_nil;
+
+    try {
+        sol::protected_function_result result = lua.safe_script_file(luaPath.string());
+        if (!result.valid()) {
+            sol::error err = result;
+            spdlog::error("[AssetSystem] Failed to parse Lua material '{}': {}",
+                          luaPath.string(), err.what());
+            return false;
+        }
+
+        sol::table mat = result;
+
+        // Parse shader paths
+        if (mat["shader"].valid()) {
+            sol::table shader = mat["shader"];
+            outData.vertexShaderPath = getWithDefault<std::string>(shader, "vertex", "shaders/pbr.vert");
+            outData.fragmentShaderPath = getWithDefault<std::string>(shader, "fragment", "shaders/pbr.frag");
+        }
+
+        // Parse uniforms (stored as std::any)
+        if (mat["uniforms"].valid()) {
+            sol::table uniforms = mat["uniforms"];
+            for (auto& [key, val] : uniforms) {
+                std::string name = key.as<std::string>();
+                if (val.is<double>()) {
+                    outData.uniforms[name] = std::any(static_cast<float>(val.as<double>()));
+                } else if (val.is<bool>()) {
+                    outData.uniforms[name] = std::any(val.as<bool>());
+                } else if (val.is<int>()) {
+                    outData.uniforms[name] = std::any(val.as<int>());
+                } else if (val.is<sol::table>()) {
+                    sol::table t = val.as<sol::table>();
+                    size_t size = t.size();
+                    if (size == 2) {
+                        outData.uniforms[name] = std::any(Vec2{
+                            getWithDefault<float>(t, 1, 0.0f),
+                            getWithDefault<float>(t, 2, 0.0f)
+                        });
+                    } else if (size == 3) {
+                        outData.uniforms[name] = std::any(Vec3{
+                            getWithDefault<float>(t, 1, 0.0f),
+                            getWithDefault<float>(t, 2, 0.0f),
+                            getWithDefault<float>(t, 3, 0.0f)
+                        });
+                    } else if (size == 4) {
+                        outData.uniforms[name] = std::any(Vec4{
+                            getWithDefault<float>(t, 1, 0.0f),
+                            getWithDefault<float>(t, 2, 0.0f),
+                            getWithDefault<float>(t, 3, 0.0f),
+                            getWithDefault<float>(t, 4, 1.0f)
+                        });
+                    }
+                }
+            }
+        }
+
+        // Parse textures (sampler name -> texture path)
+        if (mat["textures"].valid()) {
+            sol::table textures = mat["textures"];
+            for (auto& [key, val] : textures) {
+                outData.texturePaths[key.as<std::string>()] = val.as<std::string>();
+            }
+        }
+
+        // Parse render state
+        outData.blendMode = parseBlendMode(getWithDefault<std::string>(mat, "blendMode", "opaque"));
+        outData.cullMode = parseCullMode(getWithDefault<std::string>(mat, "cullMode", "back"));
+        outData.depthWrite = getWithDefault<bool>(mat, "depthWrite", true);
+        outData.depthTest = getWithDefault<bool>(mat, "depthTest", true);
+        outData.hotReload = getWithDefault<bool>(mat, "hotReload", true);
+
+        // Set metadata
+        outData.path = luaPath.string();
+        outData.name = luaPath.stem().string();
+
+        return true;
+
+    } catch (const std::exception& e) {
+        spdlog::error("[AssetSystem] Exception parsing Lua material '{}': {}",
+                      luaPath.string(), e.what());
+        return false;
+    }
+}
+
+AssetHandle AssetSystem::loadMaterial(const std::filesystem::path& luaPath) {
+    // Register as a material-type asset (using Data asset type internally)
+    AssetHandle handle = registerAsset(AssetType::Data, luaPath);
+
+    // Parse the Lua file into LuaMaterialData
+    LuaMaterialData matData;
+    if (!parseLuaMaterialFile(luaPath, matData)) {
+        spdlog::error("[AssetSystem] Failed to load material: {}", luaPath.string());
+        return AssetHandle::invalid();
+    }
+
+    // Store the parsed material data
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it != assets_.end()) {
+            it->second.data = std::move(matData);
+            it->second.metadata.state = AssetState::Loaded;
+        }
+    }
+
+    return handle;
+}
+
+const LuaMaterialData* AssetSystem::getLuaMaterialData(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
+    auto it = assets_.find(handle.uuid);
+    if (it == assets_.end() || !it->second.data.has_value()) {
+        return nullptr;
+    }
+    try {
+        return &std::any_cast<const LuaMaterialData&>(it->second.data);
     } catch (const std::bad_any_cast&) {
         return nullptr;
     }

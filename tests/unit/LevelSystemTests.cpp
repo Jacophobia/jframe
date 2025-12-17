@@ -89,7 +89,13 @@ public:
         const std::filesystem::path& negZ) override {
         return registerAsset(AssetType::Cubemap, posX);
     }
-    
+
+    // Lua material loading
+    AssetHandle loadMaterial(const std::filesystem::path& path) override {
+        return registerAsset(AssetType::Data, path);
+    }
+    const LuaMaterialData* getLuaMaterialData(AssetHandle /*handle*/) const override { return nullptr; }
+
 private:
     UUID nextId_ = 1;
     std::unordered_map<AssetHandle, bool, AssetHandleHash> loaded_;

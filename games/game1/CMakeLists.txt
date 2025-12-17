@@ -30,7 +30,6 @@ target_link_libraries(snake-game
         bestow-audio       # Audio system
         bestow-assets      # Asset system
         bestow-config      # Config system
-        bestow-shader      # Shader system
 )
 
 target_compile_features(snake-game PRIVATE cxx_std_23)

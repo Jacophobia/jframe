@@ -332,22 +332,22 @@ These are already handled by AssetSystem - IShaderSystem just wraps them:
 ## Migration Checklist
 
 ### Phase 0: IShaderSystem Migration (BEFORE deletion)
-- [ ] Move Lua material parsing to AssetSystem (`loadMaterial()`)
-- [ ] Move built-in shader GLSL sources to Graphics3DSystem
-- [ ] Integrate `bindMaterial()` logic into Graphics3DSystem
-- [ ] Integrate `setUniform()` logic into Graphics3DSystem
-- [ ] Move texture caching to Graphics3DSystem
-- [ ] Update OpenGLGraphics3DSystem to not use IShaderSystem
+- [x] Move Lua material parsing to AssetSystem (`loadMaterial()`) ✅
+- [x] Move built-in shader GLSL sources to Graphics3DSystem ✅ (already had them)
+- [x] Integrate `bindMaterial()` logic into Graphics3DSystem ✅ (via drawMeshWithLuaMaterial)
+- [x] Integrate `setUniform()` logic into Graphics3DSystem ✅ (via internal ShaderProgram)
+- [x] Move texture caching to Graphics3DSystem ✅
+- [x] Update OpenGLGraphics3DSystem to not use IShaderSystem ✅
 - [x] Remove IShaderSystem dependency from VulkanGraphics3DSystem ✅
-- [ ] Remove `engine.use<IShaderSystem>()` from game templates
+- [x] Remove `engine.use<IShaderSystem>()` from game templates ✅
 
 ### Phase 1: Contract Updates
 - [x] Remove `compileShaderAsync()` from IAssetSystem ✅
 - [x] Remove `isShaderCompilationSupported()` from IAssetSystem ✅
 - [x] Add `loadShaderCompiled()` to IAssetSystem ✅
-- [ ] Add `loadMaterial()` to IAssetSystem (migrated from IShaderSystem)
-- [ ] Delete `bestow.shader.cppm` contract
-- [ ] Update `bestow.cppm` to remove shader module export
+- [x] Add `loadMaterial()` to IAssetSystem (migrated from IShaderSystem) ✅
+- [x] Delete `bestow.shader.cppm` contract ✅
+- [x] Update `bestow.cppm` to remove shader module export ✅
 
 ### Phase 2: AssetSystem Implementation
 - [x] Implement `loadShaderCompiled()` with caching ✅
@@ -357,14 +357,14 @@ These are already handled by AssetSystem - IShaderSystem just wraps them:
 - [x] Implement hash-based cache invalidation ✅
 
 ### Phase 3: Graphics System Updates
-- [ ] VulkanGraphics3DSystem: Use `loadShaderCompiled()` + event subscription
-- [ ] OpenGL 3D: Use `loadShader()` + event subscription
-- [ ] OpenGL 2D (bestow-shader): Refactor to use AssetSystem for file I/O
+- [x] VulkanGraphics3DSystem: Use `loadShaderCompiled()` + event subscription ✅
+- [x] OpenGL 3D: Use `loadShader()` + event subscription ✅ (uses AssetSystem)
+- [x] OpenGL 2D: Independent (doesn't use IShaderSystem) ✅
 
 ### Phase 4: Cleanup
 - [x] Remove Vulkan CMake subprocess shader compilation ✅
 - [x] Remove IShaderSystem dependency from VulkanGraphics3D ✅
-- [ ] Delete bestow-shader system if fully absorbed
+- [x] Delete bestow-shader system (fully absorbed) ✅
 
 ---
 

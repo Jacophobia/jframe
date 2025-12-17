@@ -629,8 +629,6 @@ public:
         const Mat4& worldMatrix,
         const Vec4& colorOverride) override;
 
-    void updateShaders() override;
-
     //======================================================================
     // Asset System Integration
     //======================================================================
