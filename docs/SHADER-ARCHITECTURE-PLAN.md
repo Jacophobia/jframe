@@ -281,19 +281,71 @@ AssetHandle AssetSystem::loadShaderCompiled(const std::filesystem::path& path) {
 |---------|--------------|----------------------|------------|
 | **OpenGL 2D** | ✅ Use this | ❌ Unnecessary | `glShaderSource` + `glCompileShader` |
 | **OpenGL 3D** | ✅ Use this | ❌ Unnecessary | `glShaderSource` + `glCompileShader` |
+| **Vulkan 2D** | ❌ No SPIR-V | ✅ Use this | `vkCreateShaderModule` with SPIR-V |
 | **Vulkan 3D** | ❌ No SPIR-V | ✅ Use this | `vkCreateShaderModule` with SPIR-V |
 
 OpenGL compiles GLSL on the GPU driver, so it only needs source.
 Vulkan requires pre-compiled SPIR-V, so it uses `loadShaderCompiled()`.
 
+**Existing Implementations:**
+- `VulkanGraphicsSystem` (2D) - `bestow-vulkan/src/VulkanGraphicsSystem.cpp`
+- `VulkanGraphics3DSystem` (3D) - `bestow-vulkan/src/VulkanGraphics3DSystem.cpp`
+- `OpenGLGraphicsSystem` (2D) - `bestow-opengl/src/GraphicsSystem.cpp`
+- `OpenGLGraphics3DSystem` (3D) - `bestow-opengl/src/bestow.opengl.impl.cppm`
+
+---
+
+## IShaderSystem Migration (Pre-Deletion)
+
+Before deleting IShaderSystem, migrate these critical pieces:
+
+### Functionality Currently in IShaderSystem
+
+| Functionality | Lines of Code | Migration Target | Priority |
+|---------------|---------------|------------------|----------|
+| Material binding (`bindMaterial`) | ~100 lines | Graphics3DSystem | HIGH |
+| Uniform setting (`setUniform`) | ~150 lines | Graphics3DSystem | HIGH |
+| Lua material parsing | ~80 lines | AssetSystem | HIGH |
+| Built-in shaders (PBR, Unlit, Debug, Skybox) | ~260 lines GLSL | Graphics3DSystem | MEDIUM |
+| Texture caching by AssetHandle | ~70 lines | Graphics3DSystem | MEDIUM |
+| Material property setters | ~50 lines | Graphics3DSystem | LOW |
+| Statistics tracking | ~30 lines | Optional/Remove | LOW |
+
+### Already Delegated (No Migration Needed)
+
+These are already handled by AssetSystem - IShaderSystem just wraps them:
+- Hot reload (`update()` method is **empty** - uses AssetSystem subscriptions)
+- File I/O (uses AssetSystem)
+- Path resolution (uses PathResolver)
+- Asset caching (uses AssetSystem)
+
+### Current Usage
+
+| System | How It Uses IShaderSystem | Migration |
+|--------|---------------------------|-----------|
+| OpenGLGraphics3DSystem | `bindMaterial`, `setUniform`, `loadMaterial` | Integrate directly |
+| VulkanGraphics3DSystem | Only calls `update()` (does nothing) | Remove dependency |
+| Games (game1, template) | `engine.use<IShaderSystem>()` | Remove registration |
+
 ---
 
 ## Migration Checklist
+
+### Phase 0: IShaderSystem Migration (BEFORE deletion)
+- [ ] Move Lua material parsing to AssetSystem (`loadMaterial()`)
+- [ ] Move built-in shader GLSL sources to Graphics3DSystem
+- [ ] Integrate `bindMaterial()` logic into Graphics3DSystem
+- [ ] Integrate `setUniform()` logic into Graphics3DSystem
+- [ ] Move texture caching to Graphics3DSystem
+- [ ] Update OpenGLGraphics3DSystem to not use IShaderSystem
+- [ ] Remove IShaderSystem dependency from VulkanGraphics3DSystem
+- [ ] Remove `engine.use<IShaderSystem>()` from game templates
 
 ### Phase 1: Contract Updates
 - [ ] Remove `compileShaderAsync()` from IAssetSystem
 - [ ] Remove `isShaderCompilationSupported()` from IAssetSystem
 - [ ] Add `loadShaderCompiled()` to IAssetSystem
+- [ ] Add `loadMaterial()` to IAssetSystem (migrated from IShaderSystem)
 - [ ] Delete `bestow.shader.cppm` contract
 - [ ] Update `bestow.cppm` to remove shader module export
 
