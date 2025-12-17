@@ -338,23 +338,23 @@ These are already handled by AssetSystem - IShaderSystem just wraps them:
 - [ ] Integrate `setUniform()` logic into Graphics3DSystem
 - [ ] Move texture caching to Graphics3DSystem
 - [ ] Update OpenGLGraphics3DSystem to not use IShaderSystem
-- [ ] Remove IShaderSystem dependency from VulkanGraphics3DSystem
+- [x] Remove IShaderSystem dependency from VulkanGraphics3DSystem ✅
 - [ ] Remove `engine.use<IShaderSystem>()` from game templates
 
 ### Phase 1: Contract Updates
-- [ ] Remove `compileShaderAsync()` from IAssetSystem
-- [ ] Remove `isShaderCompilationSupported()` from IAssetSystem
-- [ ] Add `loadShaderCompiled()` to IAssetSystem
+- [x] Remove `compileShaderAsync()` from IAssetSystem ✅
+- [x] Remove `isShaderCompilationSupported()` from IAssetSystem ✅
+- [x] Add `loadShaderCompiled()` to IAssetSystem ✅
 - [ ] Add `loadMaterial()` to IAssetSystem (migrated from IShaderSystem)
 - [ ] Delete `bestow.shader.cppm` contract
 - [ ] Update `bestow.cppm` to remove shader module export
 
 ### Phase 2: AssetSystem Implementation
-- [ ] Implement `loadShaderCompiled()` with caching
-- [ ] Add .spv file warning
-- [ ] Subscribe to `Events::FileChanged` for hot reload
-- [ ] Emit `Events::AssetReloaded` on shader reload
-- [ ] Implement hash-based cache invalidation
+- [x] Implement `loadShaderCompiled()` with caching ✅
+- [x] Add .spv file warning ✅
+- [x] Subscribe to `Events::FileChanged` for hot reload ✅ (already implemented via efsw)
+- [x] Emit `Events::AssetReloaded` on shader reload ✅ (via notifySubscribers)
+- [x] Implement hash-based cache invalidation ✅
 
 ### Phase 3: Graphics System Updates
 - [ ] VulkanGraphics3DSystem: Use `loadShaderCompiled()` + event subscription
@@ -362,8 +362,8 @@ These are already handled by AssetSystem - IShaderSystem just wraps them:
 - [ ] OpenGL 2D (bestow-shader): Refactor to use AssetSystem for file I/O
 
 ### Phase 4: Cleanup
-- [ ] Remove Vulkan CMake subprocess shader compilation
-- [ ] Remove IShaderSystem dependency from VulkanGraphics3D
+- [x] Remove Vulkan CMake subprocess shader compilation ✅
+- [x] Remove IShaderSystem dependency from VulkanGraphics3D ✅
 - [ ] Delete bestow-shader system if fully absorbed
 
 ---
