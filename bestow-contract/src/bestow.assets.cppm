@@ -50,9 +50,10 @@ struct ShaderData {
     enum class Stage { Vertex, Fragment, Geometry, Compute, TessControl, TessEval };
     Stage stage = Stage::Vertex;
 
-    // Compilation status
+    // Compilation status (internal use - clients should not rely on these)
     bool compiled = false;
     std::string compileError;                    // Error message if compilation failed
+    std::uint64_t sourceHash = 0;                // Hash of GLSL source for cache invalidation
 };
 
 //==========================================================================
@@ -300,23 +301,30 @@ public:
     virtual void unsubscribe(SubscriptionId id) = 0;
 
     //======================================================================
-    // Shader Loading and Compilation
+    // Shader Loading
     //======================================================================
+    //
+    // IMPORTANT: Only GLSL source files are supported (.vert, .frag, .geom, .comp, .tesc, .tese)
+    // Direct .spv (SPIR-V) file loading is NOT supported - provide GLSL source instead.
+    // The engine compiles to SPIR-V internally when needed (for Vulkan backends).
+    //
+    // For OpenGL backends: use loadShader() - OpenGL compiles GLSL on the GPU
+    // For Vulkan backends: use loadShaderCompiled() - returns GLSL + pre-compiled SPIR-V
+    //
 
-    /// Load a GLSL shader file (reads source, optionally compiles to SPIR-V)
-    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp)
-    virtual AssetHandle loadShader(const std::filesystem::path& path) = 0;
+    /// Load a GLSL shader file (source only - for OpenGL backends)
+    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp, .tesc, .tese)
+    /// Returns ShaderData with glslSource populated, spirvBytecode empty
+    virtual AssetHandle loadShader(const std::filesystem::path& glslPath) = 0;
 
-    /// Get compiled shader data (GLSL source + SPIR-V bytecode)
+    /// Load a GLSL shader file with SPIR-V compilation (for Vulkan backends)
+    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp, .tesc, .tese)
+    /// Returns ShaderData with both glslSource and spirvBytecode populated
+    /// Compilation is cached - only recompiles if GLSL source hash changes
+    virtual AssetHandle loadShaderCompiled(const std::filesystem::path& glslPath) = 0;
+
+    /// Get shader data (source always present, SPIR-V only if loadShaderCompiled was used)
     virtual const ShaderData* getShaderData(AssetHandle handle) const = 0;
-
-    /// Compile a GLSL shader to SPIR-V asynchronously
-    /// The callback is invoked when compilation completes (success or failure)
-    virtual void compileShaderAsync(AssetHandle handle,
-                                    AssetLoadCallback callback = nullptr) = 0;
-
-    /// Check if shader compilation is supported (shaderc available)
-    virtual bool isShaderCompilationSupported() const = 0;
 
     //======================================================================
     // 3D Asset Loading

@@ -101,11 +101,10 @@ public:
     SubscriptionId subscribeToType(AssetType type, AssetChangeCallback callback) override;
     void unsubscribe(SubscriptionId id) override;
 
-    // Shader loading and compilation
-    AssetHandle loadShader(const std::filesystem::path& path) override;
+    // Shader loading
+    AssetHandle loadShader(const std::filesystem::path& glslPath) override;
+    AssetHandle loadShaderCompiled(const std::filesystem::path& glslPath) override;
     const ShaderData* getShaderData(AssetHandle handle) const override;
-    void compileShaderAsync(AssetHandle handle, AssetLoadCallback callback = nullptr) override;
-    bool isShaderCompilationSupported() const override;
 
     // 3D Asset loading and access
     const MeshData* getMeshData(AssetHandle handle) const override;
@@ -164,6 +163,13 @@ private:
     void loadAssetImpl(AssetHandle handle);  // Thread-safe loading implementation
     void processFileChanges();               // Process queued file change events
     void handleFileChange(const FileChangeEvent& event);  // Handle a single file change
+
+    // Shader compilation helpers (internal use only)
+    bool warnIfSpvFile(const std::filesystem::path& path) const;  // Returns true if .spv, logs warning
+    std::filesystem::path getShaderCachePath(const std::filesystem::path& glslPath) const;
+    bool tryLoadCachedSpirv(ShaderData& shaderData);  // Returns true if cache hit
+    void cacheCompiledSpirv(const ShaderData& shaderData);
+    void compileShaderToSpirv(ShaderData& shaderData);  // Synchronous compilation
 
     std::unordered_map<UUID, AssetEntry> assets_;
     std::vector<PendingLoad> pendingLoads_;

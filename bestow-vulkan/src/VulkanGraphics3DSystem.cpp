@@ -2251,9 +2251,8 @@ Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
 }
 
 void VulkanGraphics3DSystem::updateShaders() {
-    if (pIShaderSystem_) {
-        pIShaderSystem_->update();
-    }
+    // Hot reload is now handled via AssetSystem event subscriptions
+    // No polling needed - AssetSystem will notify via Events::AssetReloaded
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {

@@ -109,9 +109,10 @@ public:
     AssetHandle loadShader(const std::filesystem::path& path) override {
         return registerAsset(AssetType::Shader, path);
     }
+    AssetHandle loadShaderCompiled(const std::filesystem::path& path) override {
+        return registerAsset(AssetType::Shader, path);
+    }
     const ShaderData* getShaderData(AssetHandle handle) const override { return nullptr; }
-    void compileShaderAsync(AssetHandle handle, AssetLoadCallback callback) override {}
-    bool isShaderCompilationSupported() const override { return false; }
 
     const MeshData* getMeshData(AssetHandle handle) const override { return nullptr; }
     const ModelData* getModelData(AssetHandle handle) const override { return nullptr; }

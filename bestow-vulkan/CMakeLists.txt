@@ -5,31 +5,17 @@ find_package(Vulkan REQUIRED)
 find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(vk-bootstrap CONFIG REQUIRED)
 
-# Find glslc for runtime shader compilation
-find_program(GLSLC_EXECUTABLE glslc HINTS ${Vulkan_SDK}/bin $ENV{VULKAN_SDK}/bin /usr/local/bin)
-if(GLSLC_EXECUTABLE)
-    message(STATUS "glslc found: ${GLSLC_EXECUTABLE} - runtime GLSL compilation enabled")
-    add_compile_definitions(BESTOW_HAS_GLSLC="${GLSLC_EXECUTABLE}")
-else()
-    message(WARNING "glslc not found - runtime GLSL compilation disabled")
-endif()
-
 #=============================================================================
-# Shader Compilation
+# Shader Sources (GLSL)
 #=============================================================================
-
-# Find glslc or glslangValidator for shader compilation
-find_program(GLSLC glslc HINTS ${Vulkan_SDK}/bin $ENV{VULKAN_SDK}/bin)
-find_program(GLSLANG_VALIDATOR glslangValidator HINTS ${Vulkan_SDK}/bin $ENV{VULKAN_SDK}/bin)
-
-set(SHADER_COMPILER "")
-if(GLSLC)
-    set(SHADER_COMPILER ${GLSLC})
-    set(SHADER_COMPILE_FLAGS -c)
-elseif(GLSLANG_VALIDATOR)
-    set(SHADER_COMPILER ${GLSLANG_VALIDATOR})
-    set(SHADER_COMPILE_FLAGS -V)
-endif()
+# NOTE: Shaders are NO LONGER pre-compiled to SPIR-V at build time.
+# Instead, they are compiled at runtime via AssetSystem using the shaderc library.
+# This enables:
+# - Hot reload of shaders during development
+# - Single source of truth (GLSL files only)
+# - No external compiler dependency for end users
+#
+# The GLSL sources are copied to the build directory for runtime access.
 
 # Shader source files
 set(VULKAN_SHADER_SOURCES
@@ -41,31 +27,27 @@ set(VULKAN_SHADER_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/shaders/sprite2d.frag
 )
 
-# Output directory for compiled shaders
+# Output directory for shader sources (runtime access)
 set(SHADER_OUTPUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/shaders)
 file(MAKE_DIRECTORY ${SHADER_OUTPUT_DIR})
 
-# Compile each shader to SPIR-V
-set(COMPILED_SHADERS "")
-if(SHADER_COMPILER)
-    foreach(SHADER_SOURCE ${VULKAN_SHADER_SOURCES})
-        get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
-        set(SHADER_OUTPUT ${SHADER_OUTPUT_DIR}/${SHADER_NAME}.spv)
-        list(APPEND COMPILED_SHADERS ${SHADER_OUTPUT})
+# Copy GLSL sources to build directory (for runtime loading via AssetSystem)
+set(COPIED_SHADERS "")
+foreach(SHADER_SOURCE ${VULKAN_SHADER_SOURCES})
+    get_filename_component(SHADER_NAME ${SHADER_SOURCE} NAME)
+    set(SHADER_OUTPUT ${SHADER_OUTPUT_DIR}/${SHADER_NAME})
+    list(APPEND COPIED_SHADERS ${SHADER_OUTPUT})
 
-        add_custom_command(
-            OUTPUT ${SHADER_OUTPUT}
-            COMMAND ${SHADER_COMPILER} ${SHADER_COMPILE_FLAGS} ${SHADER_SOURCE} -o ${SHADER_OUTPUT}
-            DEPENDS ${SHADER_SOURCE}
-            COMMENT "Compiling shader ${SHADER_NAME}"
-        )
-    endforeach()
+    add_custom_command(
+        OUTPUT ${SHADER_OUTPUT}
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHADER_SOURCE} ${SHADER_OUTPUT}
+        DEPENDS ${SHADER_SOURCE}
+        COMMENT "Copying shader source ${SHADER_NAME}"
+    )
+endforeach()
 
-    # Custom target for all shaders
-    add_custom_target(bestow-vulkan-shaders ALL DEPENDS ${COMPILED_SHADERS})
-else()
-    message(WARNING "No SPIR-V compiler found. Vulkan shaders will not be compiled.")
-endif()
+# Custom target for all shader sources
+add_custom_target(bestow-vulkan-shaders ALL DEPENDS ${COPIED_SHADERS})
 
 #=============================================================================
 # Library

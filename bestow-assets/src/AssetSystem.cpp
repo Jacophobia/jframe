@@ -350,7 +350,7 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                     shaderData.stage = ShaderData::Stage::TessEval;
                 }
 
-                // SPIR-V compilation happens on demand via compileShaderAsync
+                // SPIR-V compilation happens on demand via loadShaderCompiled()
                 shaderData.compiled = false;
 
                 loadedData = std::move(shaderData);
@@ -735,26 +735,42 @@ void AssetSystem::handleFileChange(const FileChangeEvent& event) {
 
     spdlog::info("[AssetSystem] File changed, reloading: {}", event.path.string());
 
-    // For shaders, reload and recompile automatically
+    // For shaders, reload and recompile if it was previously compiled
     if (handle.type == AssetType::Shader) {
+        // Check if shader was previously compiled (had SPIR-V)
+        bool wasCompiled = false;
+        {
+            std::lock_guard<std::mutex> lock(assetsMutex_);
+            auto it = assets_.find(handle.uuid);
+            if (it != assets_.end()) {
+                const ShaderData* oldData = std::any_cast<ShaderData>(&it->second.data);
+                wasCompiled = oldData && oldData->compiled;
+            }
+        }
+
         // Reload the GLSL source
         unloadAsset(handle);
         loadAsset(handle);
 
-        // Automatically compile shader to SPIR-V
-        compileShaderAsync(handle, [this, handle](AssetHandle h, AssetState state) {
-            if (state == AssetState::Loaded) {
-                // Get compilation result
-                const ShaderData* shaderData = getShaderData(h);
-                if (shaderData && shaderData->compiled) {
-                    spdlog::info("[AssetSystem] Shader compiled successfully: {}", shaderData->path);
-                    // Notify subscribers that the shader has been updated
-                    notifySubscribers(handle, handle.type);
-                } else if (shaderData && !shaderData->compileError.empty()) {
-                    spdlog::error("[AssetSystem] Shader compilation failed: {}", shaderData->compileError);
+        // Recompile if it was previously compiled
+        if (wasCompiled) {
+            std::lock_guard<std::mutex> lock(assetsMutex_);
+            auto it = assets_.find(handle.uuid);
+            if (it != assets_.end()) {
+                ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
+                if (shaderData && !shaderData->glslSource.empty()) {
+                    compileShaderToSpirv(*shaderData);
+                    if (shaderData->compiled) {
+                        spdlog::info("[AssetSystem] Shader recompiled successfully: {}", shaderData->path);
+                    } else {
+                        spdlog::error("[AssetSystem] Shader recompilation failed: {}", shaderData->compileError);
+                    }
                 }
             }
-        });
+        }
+
+        // Notify subscribers that the shader has been updated
+        notifySubscribers(handle, handle.type);
     } else {
         // For other assets, just reload
         reloadAsset(handle);
@@ -1093,9 +1109,210 @@ namespace {
     }
 }  // anonymous namespace
 
+//==========================================================================
+// Shader Loading - Public API
+//==========================================================================
+
+bool AssetSystem::warnIfSpvFile(const std::filesystem::path& path) const {
+    if (path.extension() == ".spv") {
+        spdlog::warn(
+            "[AssetSystem] Direct SPIR-V loading is not supported: '{}'. "
+            "Please provide GLSL source (.vert, .frag, .geom, .comp, .tesc, .tese). "
+            "The engine compiles to SPIR-V internally when needed for Vulkan backends.",
+            path.string()
+        );
+        return true;
+    }
+    return false;
+}
+
+std::filesystem::path AssetSystem::getShaderCachePath(const std::filesystem::path& glslPath) const {
+    // Cache location: .shader_cache/ directory next to the shader
+    auto cacheDir = glslPath.parent_path() / ".shader_cache";
+    auto cacheName = glslPath.filename().string() + ".spv";
+    return cacheDir / cacheName;
+}
+
+bool AssetSystem::tryLoadCachedSpirv(ShaderData& shaderData) {
+    if (shaderData.path.empty() || shaderData.glslSource.empty()) {
+        return false;
+    }
+
+    auto cachePath = getShaderCachePath(shaderData.path);
+    auto metaPath = std::filesystem::path(cachePath.string() + ".meta");
+
+    // Check if cache files exist
+    if (!std::filesystem::exists(cachePath) || !std::filesystem::exists(metaPath)) {
+        return false;
+    }
+
+    try {
+        // Read metadata to check hash
+        std::ifstream metaFile(metaPath);
+        if (!metaFile.is_open()) {
+            return false;
+        }
+
+        nlohmann::json meta;
+        metaFile >> meta;
+        metaFile.close();
+
+        // Compute current source hash
+        std::uint64_t currentHash = std::hash<std::string>{}(shaderData.glslSource);
+
+        // Check if hash matches
+        if (!meta.contains("sourceHash") || meta["sourceHash"].get<std::uint64_t>() != currentHash) {
+            spdlog::debug("[AssetSystem] Shader cache miss (hash mismatch): {}", shaderData.path);
+            return false;
+        }
+
+        // Load cached SPIR-V
+        std::ifstream spvFile(cachePath, std::ios::binary | std::ios::ate);
+        if (!spvFile.is_open()) {
+            return false;
+        }
+
+        auto size = spvFile.tellg();
+        spvFile.seekg(0, std::ios::beg);
+
+        // SPIR-V is stored as uint32_t words
+        std::size_t wordCount = static_cast<std::size_t>(size) / sizeof(std::uint32_t);
+        shaderData.spirvBytecode.resize(wordCount);
+        spvFile.read(reinterpret_cast<char*>(shaderData.spirvBytecode.data()), size);
+        spvFile.close();
+
+        shaderData.compiled = true;
+        shaderData.sourceHash = currentHash;
+        shaderData.compileError.clear();
+
+        spdlog::debug("[AssetSystem] Shader cache hit: {}", shaderData.path);
+        return true;
+
+    } catch (const std::exception& e) {
+        spdlog::warn("[AssetSystem] Failed to read shader cache: {}", e.what());
+        return false;
+    }
+}
+
+void AssetSystem::cacheCompiledSpirv(const ShaderData& shaderData) {
+    if (shaderData.path.empty() || shaderData.spirvBytecode.empty()) {
+        return;
+    }
+
+    auto cachePath = getShaderCachePath(shaderData.path);
+    auto metaPath = std::filesystem::path(cachePath.string() + ".meta");
+
+    try {
+        // Create cache directory if it doesn't exist
+        auto cacheDir = cachePath.parent_path();
+        if (!std::filesystem::exists(cacheDir)) {
+            std::filesystem::create_directories(cacheDir);
+        }
+
+        // Write SPIR-V bytecode
+        std::ofstream spvFile(cachePath, std::ios::binary);
+        if (!spvFile.is_open()) {
+            spdlog::warn("[AssetSystem] Failed to write shader cache: {}", cachePath.string());
+            return;
+        }
+        spvFile.write(
+            reinterpret_cast<const char*>(shaderData.spirvBytecode.data()),
+            static_cast<std::streamsize>(shaderData.spirvBytecode.size() * sizeof(std::uint32_t))
+        );
+        spvFile.close();
+
+        // Write metadata
+        nlohmann::json meta;
+        meta["sourceHash"] = shaderData.sourceHash;
+        meta["sourcePath"] = shaderData.path;
+        meta["stage"] = static_cast<int>(shaderData.stage);
+
+        std::ofstream metaFile(metaPath);
+        if (metaFile.is_open()) {
+            metaFile << meta.dump(2);
+            metaFile.close();
+        }
+
+        spdlog::debug("[AssetSystem] Cached compiled shader: {}", cachePath.string());
+
+    } catch (const std::exception& e) {
+        spdlog::warn("[AssetSystem] Failed to cache shader: {}", e.what());
+    }
+}
+
+void AssetSystem::compileShaderToSpirv(ShaderData& shaderData) {
+    if (shaderData.glslSource.empty()) {
+        shaderData.compileError = "No GLSL source to compile";
+        shaderData.compiled = false;
+        return;
+    }
+
+    // Compute source hash for caching
+    shaderData.sourceHash = std::hash<std::string>{}(shaderData.glslSource);
+
+    // Try to load from cache first
+    if (tryLoadCachedSpirv(shaderData)) {
+        return;  // Cache hit
+    }
+
+    // Compile using shaderc
+    std::string errorOut;
+    auto spirv = compileGlslToSpirv(
+        shaderData.glslSource,
+        shaderData.path,
+        shaderData.stage,
+        errorOut
+    );
+
+    if (spirv.empty()) {
+        shaderData.compileError = errorOut;
+        shaderData.compiled = false;
+        spdlog::error("[AssetSystem] Shader compilation failed: {} - {}", shaderData.path, errorOut);
+    } else {
+        shaderData.spirvBytecode = std::move(spirv);
+        shaderData.compileError.clear();
+        shaderData.compiled = true;
+
+        // Cache the result
+        cacheCompiledSpirv(shaderData);
+
+        spdlog::debug("[AssetSystem] Shader compiled successfully: {}", shaderData.path);
+    }
+}
+
 AssetHandle AssetSystem::loadShader(const std::filesystem::path& path) {
+    // Warn and reject .spv files
+    if (warnIfSpvFile(path)) {
+        return AssetHandle::invalid();
+    }
+
     AssetHandle handle = registerAsset(AssetType::Shader, path);
     loadAsset(handle);
+    return handle;
+}
+
+AssetHandle AssetSystem::loadShaderCompiled(const std::filesystem::path& glslPath) {
+    // Warn and reject .spv files
+    if (warnIfSpvFile(glslPath)) {
+        return AssetHandle::invalid();
+    }
+
+    // Register and load the shader (source only first)
+    AssetHandle handle = registerAsset(AssetType::Shader, glslPath);
+    loadAsset(handle);
+
+    // Now compile to SPIR-V
+    {
+        std::lock_guard<std::mutex> lock(assetsMutex_);
+        auto it = assets_.find(handle.uuid);
+        if (it != assets_.end()) {
+            ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
+            if (shaderData && !shaderData->glslSource.empty()) {
+                compileShaderToSpirv(*shaderData);
+            }
+        }
+    }
+
     return handle;
 }
 
@@ -1110,90 +1327,6 @@ const ShaderData* AssetSystem::getShaderData(AssetHandle handle) const {
     } catch (const std::bad_any_cast&) {
         return nullptr;
     }
-}
-
-void AssetSystem::compileShaderAsync(AssetHandle handle, AssetLoadCallback callback) {
-    // Verify asset exists and is a shader
-    {
-        std::lock_guard<std::mutex> lock(assetsMutex_);
-        auto it = assets_.find(handle.uuid);
-        if (it == assets_.end() || handle.type != AssetType::Shader) {
-            if (callback) {
-                callback(handle, AssetState::Failed);
-            }
-            return;
-        }
-    }
-
-    // Add pending load entry
-    pendingLoads_.emplace_back(handle, std::move(callback));
-
-    // Get shared_ptr to the completed flag for the lambda to update
-    auto completedFlag = pendingLoads_.back().completed;
-
-    // Define the compilation task
-    auto compileTask = [this, handle, completedFlag]() {
-        // Extract shader data while holding lock
-        std::string glslSource;
-        std::string sourcePath;
-        ShaderData::Stage stage;
-
-        {
-            std::lock_guard<std::mutex> lock(assetsMutex_);
-            auto it = assets_.find(handle.uuid);
-            if (it == assets_.end()) {
-                completedFlag->store(true, std::memory_order_release);
-                return;
-            }
-
-            ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
-            if (!shaderData || shaderData->glslSource.empty()) {
-                completedFlag->store(true, std::memory_order_release);
-                return;
-            }
-
-            glslSource = shaderData->glslSource;
-            sourcePath = shaderData->path;
-            stage = shaderData->stage;
-        }
-
-        // Compile outside the lock (this is the slow part)
-        std::string errorMessage;
-        std::vector<std::uint32_t> spirv = compileGlslToSpirv(glslSource, sourcePath, stage, errorMessage);
-
-        // Update shader data with result
-        {
-            std::lock_guard<std::mutex> lock(assetsMutex_);
-            auto it = assets_.find(handle.uuid);
-            if (it == assets_.end()) {
-                completedFlag->store(true, std::memory_order_release);
-                return;
-            }
-
-            ShaderData* shaderData = std::any_cast<ShaderData>(&it->second.data);
-            if (shaderData) {
-                if (spirv.empty()) {
-                    shaderData->compileError = errorMessage;
-                    shaderData->compiled = false;
-                } else {
-                    shaderData->spirvBytecode = std::move(spirv);
-                    shaderData->compileError.clear();
-                    shaderData->compiled = true;
-                }
-            }
-        }
-
-        completedFlag->store(true, std::memory_order_release);
-    };
-
-    // Compile asynchronously using std::thread
-    // TODO: Consider integrating with a proper JobSystem for better thread pooling
-    std::thread(std::move(compileTask)).detach();
-}
-
-bool AssetSystem::isShaderCompilationSupported() const {
-    // shaderc is linked at compile time, always available
-    return true;
 }
 
 }  // namespace bestow
