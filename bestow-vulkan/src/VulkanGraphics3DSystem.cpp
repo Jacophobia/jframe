@@ -1897,6 +1897,22 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
         return 0;
     }
 
+    // Compile shaders to SPIR-V (AssetSystem loads GLSL but doesn't auto-compile)
+    auto compileAndWait = [this](AssetHandle handle) {
+        std::atomic<bool> done{false};
+        pIAssetSystem_->compileShaderAsync(handle, [&done](AssetHandle, AssetState) {
+            done.store(true, std::memory_order_release);
+        });
+        // Wait for compilation with timeout
+        for (int i = 0; i < 1000 && !done.load(std::memory_order_acquire); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            pIAssetSystem_->update();
+        }
+    };
+
+    compileAndWait(vertHandle);
+    compileAndWait(fragHandle);
+
     const ShaderData* vertShader = pIAssetSystem_->getShaderData(vertHandle);
     const ShaderData* fragShader = pIAssetSystem_->getShaderData(fragHandle);
 
@@ -1911,6 +1927,12 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
     auto fragSpirv = fragShader->spirvBytecode;
 
     if (vertSpirv.empty() || fragSpirv.empty()) {
+        if (!vertShader->compileError.empty()) {
+            std::fprintf(stderr, "[Vulkan] Vertex shader compile error: %s\n", vertShader->compileError.c_str());
+        }
+        if (!fragShader->compileError.empty()) {
+            std::fprintf(stderr, "[Vulkan] Fragment shader compile error: %s\n", fragShader->compileError.c_str());
+        }
         return 0;
     }
 
@@ -2632,91 +2654,116 @@ void VulkanGraphics3DSystem::createPipelines() {
         return;
     }
 
+    // Helper to load and compile shader, returning SPIR-V bytecode
+    auto loadAndCompileShader = [this](const std::string& path) -> std::vector<std::uint32_t> {
+        auto handle = pIAssetSystem_->loadShader(path);
+        if (!pIAssetSystem_->isLoaded(handle)) {
+            std::fprintf(stderr, "[Vulkan] Failed to load shader: %s\n", path.c_str());
+            return {};
+        }
+
+        // Compile GLSL to SPIR-V
+        std::atomic<bool> done{false};
+        pIAssetSystem_->compileShaderAsync(handle, [&done](AssetHandle, AssetState) {
+            done.store(true, std::memory_order_release);
+        });
+
+        // Wait for compilation with timeout
+        for (int i = 0; i < 1000 && !done.load(std::memory_order_acquire); ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            pIAssetSystem_->update();
+        }
+
+        const ShaderData* data = pIAssetSystem_->getShaderData(handle);
+        if (!data) {
+            std::fprintf(stderr, "[Vulkan] Failed to get shader data: %s\n", path.c_str());
+            return {};
+        }
+
+        if (!data->compiled || data->spirvBytecode.empty()) {
+            std::fprintf(stderr, "[Vulkan] Shader compilation failed: %s - %s\n",
+                         path.c_str(), data->compileError.c_str());
+            return {};
+        }
+
+        return data->spirvBytecode;
+    };
+
     // Load debug pipeline shaders (for debug line rendering)
-    auto debugVertHandle = pIAssetSystem_->loadShader("debug.vert");
-    auto debugFragHandle = pIAssetSystem_->loadShader("debug.frag");
+    auto debugVertSpirv = loadAndCompileShader("debug.vert");
+    auto debugFragSpirv = loadAndCompileShader("debug.frag");
 
-    if (pIAssetSystem_->isLoaded(debugVertHandle) && pIAssetSystem_->isLoaded(debugFragHandle)) {
-        const ShaderData* debugVert = pIAssetSystem_->getShaderData(debugVertHandle);
-        const ShaderData* debugFrag = pIAssetSystem_->getShaderData(debugFragHandle);
+    if (!debugVertSpirv.empty() && !debugFragSpirv.empty()) {
+        VulkanPipelineDef debugDef;
+        debugDef.shaderStages = {
+            {VK_SHADER_STAGE_VERTEX_BIT, debugVertSpirv, "main"},
+            {VK_SHADER_STAGE_FRAGMENT_BIT, debugFragSpirv, "main"}
+        };
 
-        if (debugVert && debugFrag && !debugVert->spirvBytecode.empty() && !debugFrag->spirvBytecode.empty()) {
-            VulkanPipelineDef debugDef;
-            debugDef.shaderStages = {
-                {VK_SHADER_STAGE_VERTEX_BIT, debugVert->spirvBytecode, "main"},
-                {VK_SHADER_STAGE_FRAGMENT_BIT, debugFrag->spirvBytecode, "main"}
-            };
+        // Debug vertex layout: position (vec3) + color (vec4)
+        debugDef.vertexBindings = {
+            {0, sizeof(float) * 7, VK_VERTEX_INPUT_RATE_VERTEX}  // pos(3) + color(4)
+        };
+        debugDef.vertexAttributes = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},                       // position
+            {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 3}     // color
+        };
 
-            // Debug vertex layout: position (vec3) + color (vec4)
-            debugDef.vertexBindings = {
-                {0, sizeof(float) * 7, VK_VERTEX_INPUT_RATE_VERTEX}  // pos(3) + color(4)
-            };
-            debugDef.vertexAttributes = {
-                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},                       // position
-                {1, 0, VK_FORMAT_R32G32B32A32_SFLOAT, sizeof(float) * 3}     // color
-            };
+        // Push constants: mat4 viewProjection (64 bytes)
+        debugDef.pushConstantRanges = {
+            {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)}
+        };
 
-            // Push constants: mat4 viewProjection (64 bytes)
-            debugDef.pushConstantRanges = {
-                {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)}
-            };
+        debugDef.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        debugDef.depthTestEnable = true;
+        debugDef.depthWriteEnable = false;
+        debugDef.cullMode = VK_CULL_MODE_NONE;
 
-            debugDef.topology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-            debugDef.depthTestEnable = true;
-            debugDef.depthWriteEnable = false;
-            debugDef.cullMode = VK_CULL_MODE_NONE;
-
-            auto result = context_.createPipeline(debugDef);
-            if (result) {
-                debugPipeline_ = *result;
-            } else {
-                std::fprintf(stderr, "[Vulkan] Failed to create debug pipeline\n");
-            }
+        auto result = context_.createPipeline(debugDef);
+        if (result) {
+            debugPipeline_ = *result;
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to create debug pipeline\n");
         }
     }
 
     // Load basic 3D pipeline shaders (for mesh rendering)
-    auto basic3dVertHandle = pIAssetSystem_->loadShader("basic3d.vert");
-    auto basic3dFragHandle = pIAssetSystem_->loadShader("basic3d.frag");
+    auto basic3dVertSpirv = loadAndCompileShader("basic3d.vert");
+    auto basic3dFragSpirv = loadAndCompileShader("basic3d.frag");
 
-    if (pIAssetSystem_->isLoaded(basic3dVertHandle) && pIAssetSystem_->isLoaded(basic3dFragHandle)) {
-        const ShaderData* basic3dVert = pIAssetSystem_->getShaderData(basic3dVertHandle);
-        const ShaderData* basic3dFrag = pIAssetSystem_->getShaderData(basic3dFragHandle);
+    if (!basic3dVertSpirv.empty() && !basic3dFragSpirv.empty()) {
+        VulkanPipelineDef pbrDef;
+        pbrDef.shaderStages = {
+            {VK_SHADER_STAGE_VERTEX_BIT, basic3dVertSpirv, "main"},
+            {VK_SHADER_STAGE_FRAGMENT_BIT, basic3dFragSpirv, "main"}
+        };
 
-        if (basic3dVert && basic3dFrag && !basic3dVert->spirvBytecode.empty() && !basic3dFrag->spirvBytecode.empty()) {
-            VulkanPipelineDef pbrDef;
-            pbrDef.shaderStages = {
-                {VK_SHADER_STAGE_VERTEX_BIT, basic3dVert->spirvBytecode, "main"},
-                {VK_SHADER_STAGE_FRAGMENT_BIT, basic3dFrag->spirvBytecode, "main"}
-            };
+        // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
+        pbrDef.vertexBindings = {
+            {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
+        };
+        pbrDef.vertexAttributes = {
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+            {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
+        };
 
-            // 3D vertex layout: position (vec3) + normal (vec3) + texcoord (vec2)
-            pbrDef.vertexBindings = {
-                {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
-            };
-            pbrDef.vertexAttributes = {
-                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
-                {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
-                {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)}
-            };
+        // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
+        pbrDef.pushConstantRanges = {
+            {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+        };
 
-            // Push constants: model + viewProjection + baseColor + lightDir + lightColor + ambientColor + cameraPos = 208 bytes
-            pbrDef.pushConstantRanges = {
-                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
-            };
+        pbrDef.depthTestEnable = true;
+        pbrDef.depthWriteEnable = true;
+        pbrDef.cullMode = VK_CULL_MODE_BACK_BIT;
+        pbrDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 
-            pbrDef.depthTestEnable = true;
-            pbrDef.depthWriteEnable = true;
-            pbrDef.cullMode = VK_CULL_MODE_BACK_BIT;
-            pbrDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-
-            auto result = context_.createPipeline(pbrDef);
-            if (result) {
-                pbrPipeline_ = *result;
-                unlitPipeline_ = *result;  // Use same pipeline for now
-            } else {
-                std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
-            }
+        auto result = context_.createPipeline(pbrDef);
+        if (result) {
+            pbrPipeline_ = *result;
+            unlitPipeline_ = *result;  // Use same pipeline for now
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
         }
     }
 }

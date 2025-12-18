@@ -6,6 +6,7 @@
 import std;
 import bestow.core;       // Engine class
 import bestow.services;   // Contract interfaces
+import bestow.types;      // PathResolver
 
 // Import Bestow's default implementations
 import bestow.vulkan.impl;     // VulkanGraphics3DSystem
@@ -19,7 +20,17 @@ import bestow.shader.impl;     // OpenGLShaderSystem
 // Import the snake game
 import snake.game;
 
-int main() {
+int main(int argc, char* argv[]) {
+    // Change working directory to executable directory so shaders can be found
+    // Shaders are copied to the output directory by CMake post-build step
+    auto exeDir = std::filesystem::path(argv[0]).parent_path();
+    if (!exeDir.empty() && std::filesystem::exists(exeDir)) {
+        std::filesystem::current_path(exeDir);
+    }
+
+    // Initialize PathResolver with the executable path
+    bestow::PathResolver::initialize(argv[0]);
+
     // Create the Engine - the composition root
     bestow::core::Engine engine;
 
