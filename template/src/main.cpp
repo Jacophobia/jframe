@@ -16,7 +16,6 @@ import bestow.events.impl;     // EventSystem
 import bestow.audio.impl;      // AudioSystem
 import bestow.assets.impl;     // AssetSystem
 import bestow.config.impl;     // ConfigSystem
-import bestow.shader.impl;     // OpenGLShaderSystem
 
 // Import your game
 import my.game;
@@ -42,10 +41,7 @@ int main() {
     // Config system (depends on assets, events)
     engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
 
-    // Shader system (depends on assets, events)
-    engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
-
-    // Graphics system (depends on assets, shaders, config)
+    // Graphics system (depends on assets, config)
     engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
 
     // Input system (depends on assets)

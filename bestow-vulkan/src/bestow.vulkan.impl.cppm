@@ -390,10 +390,8 @@ BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 class VulkanGraphics3DSystem : public IGraphics3DSystem {
 public:
     explicit VulkanGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
-                                     IShaderSystem* pIShaderSystem = nullptr,
                                      IConfigSystem* pIConfigSystem = nullptr)
         : pIAssetSystem_(pIAssetSystem)
-        , pIShaderSystem_(pIShaderSystem)
         , pIConfigSystem_(pIConfigSystem) {}
     ~VulkanGraphics3DSystem() override;
 
@@ -630,8 +628,6 @@ public:
         std::string_view materialPath,
         const Mat4& worldMatrix,
         const Vec4& colorOverride) override;
-
-    void updateShaders() override;
 
     //======================================================================
     // Asset System Integration
@@ -916,7 +912,6 @@ private:
 
     // Injected dependencies
     IAssetSystem* pIAssetSystem_ = nullptr;
-    IShaderSystem* pIShaderSystem_ = nullptr;
     IConfigSystem* pIConfigSystem_ = nullptr;
 
 public:
@@ -928,10 +923,9 @@ public:
 struct VulkanGraphics3DSystem::Service : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
     static auto construct(
         kgr::inject_t<IAssetSystemService> d1,
-        kgr::inject_t<IShaderSystemService> d2,
-        kgr::inject_t<IConfigSystemService> d3)
-        -> kgr::inject_result<IAssetSystem*, IShaderSystem*, IConfigSystem*> {
-        return kgr::inject(&d1.forward(), &d2.forward(), &d3.forward());
+        kgr::inject_t<IConfigSystemService> d2)
+        -> kgr::inject_result<IAssetSystem*, IConfigSystem*> {
+        return kgr::inject(&d1.forward(), &d2.forward());
     }
 };
 

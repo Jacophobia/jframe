@@ -9,6 +9,7 @@ module;
 #include <functional>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 export module bestow.assets;
@@ -50,9 +51,10 @@ struct ShaderData {
     enum class Stage { Vertex, Fragment, Geometry, Compute, TessControl, TessEval };
     Stage stage = Stage::Vertex;
 
-    // Compilation status
+    // Compilation status (internal use - clients should not rely on these)
     bool compiled = false;
     std::string compileError;                    // Error message if compilation failed
+    std::uint64_t sourceHash = 0;                // Hash of GLSL source for cache invalidation
 };
 
 //==========================================================================
@@ -191,6 +193,30 @@ struct DataAsset {
     bool isJson = false;
 };
 
+// Lua material data structure - parsed material definition from Lua files
+// Used by Graphics3DSystem to create GPU materials
+struct LuaMaterialData {
+    std::string name;
+    std::string vertexShaderPath;
+    std::string fragmentShaderPath;
+
+    // Uniforms stored as std::any - graphics system casts to expected types
+    // Common types: float, int, bool, Vec2, Vec3, Vec4, Mat3, Mat4
+    std::unordered_map<std::string, std::any> uniforms;
+
+    // Texture slot name -> texture file path
+    std::unordered_map<std::string, std::string> texturePaths;
+
+    // Render state
+    BlendMode blendMode = BlendMode::Opaque;
+    CullMode cullMode = CullMode::Back;
+    bool depthWrite = true;
+    bool depthTest = true;
+    bool hotReload = true;
+
+    std::string path;  // Source file path for hot reload
+};
+
 struct AssetMetadata {
     AssetHandle handle;
     std::filesystem::path sourcePath;
@@ -300,23 +326,30 @@ public:
     virtual void unsubscribe(SubscriptionId id) = 0;
 
     //======================================================================
-    // Shader Loading and Compilation
+    // Shader Loading
     //======================================================================
+    //
+    // IMPORTANT: Only GLSL source files are supported (.vert, .frag, .geom, .comp, .tesc, .tese)
+    // Direct .spv (SPIR-V) file loading is NOT supported - provide GLSL source instead.
+    // The engine compiles to SPIR-V internally when needed (for Vulkan backends).
+    //
+    // For OpenGL backends: use loadShader() - OpenGL compiles GLSL on the GPU
+    // For Vulkan backends: use loadShaderCompiled() - returns GLSL + pre-compiled SPIR-V
+    //
 
-    /// Load a GLSL shader file (reads source, optionally compiles to SPIR-V)
-    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp)
-    virtual AssetHandle loadShader(const std::filesystem::path& path) = 0;
+    /// Load a GLSL shader file (source only - for OpenGL backends)
+    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp, .tesc, .tese)
+    /// Returns ShaderData with glslSource populated, spirvBytecode empty
+    virtual AssetHandle loadShader(const std::filesystem::path& glslPath) = 0;
 
-    /// Get compiled shader data (GLSL source + SPIR-V bytecode)
+    /// Load a GLSL shader file with SPIR-V compilation (for Vulkan backends)
+    /// Shader stage is inferred from file extension (.vert, .frag, .geom, .comp, .tesc, .tese)
+    /// Returns ShaderData with both glslSource and spirvBytecode populated
+    /// Compilation is cached - only recompiles if GLSL source hash changes
+    virtual AssetHandle loadShaderCompiled(const std::filesystem::path& glslPath) = 0;
+
+    /// Get shader data (source always present, SPIR-V only if loadShaderCompiled was used)
     virtual const ShaderData* getShaderData(AssetHandle handle) const = 0;
-
-    /// Compile a GLSL shader to SPIR-V asynchronously
-    /// The callback is invoked when compilation completes (success or failure)
-    virtual void compileShaderAsync(AssetHandle handle,
-                                    AssetLoadCallback callback = nullptr) = 0;
-
-    /// Check if shader compilation is supported (shaderc available)
-    virtual bool isShaderCompilationSupported() const = 0;
 
     //======================================================================
     // 3D Asset Loading
@@ -351,6 +384,25 @@ public:
         const std::filesystem::path& negY,
         const std::filesystem::path& posZ,
         const std::filesystem::path& negZ) = 0;
+
+    //======================================================================
+    // Lua Material Loading
+    //======================================================================
+    //
+    // Lua materials are material definitions written in Lua files.
+    // They specify shader paths, uniforms, textures, and render state.
+    // The AssetSystem parses the Lua and returns LuaMaterialData.
+    // Graphics systems use this data to create GPU resources.
+    //
+
+    /// Load a Lua material file (.lua) and parse it into LuaMaterialData
+    /// Returns an AssetHandle that can be used with getLuaMaterialData()
+    /// Hot reload is supported via AssetSystem subscriptions
+    virtual AssetHandle loadMaterial(const std::filesystem::path& luaPath) = 0;
+
+    /// Get parsed Lua material data from a handle returned by loadMaterial()
+    /// Returns nullptr if handle is invalid or asset not loaded
+    virtual const LuaMaterialData* getLuaMaterialData(AssetHandle handle) const = 0;
 };
 
 }  // namespace bestow
