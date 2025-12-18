@@ -57,7 +57,8 @@ struct BestowEngine {
     }
 
     bool hasShaderSupport() const {
-        return shaders != nullptr;
+        // Shader support is now part of AssetSystem
+        return assets != nullptr;
     }
 };
 
