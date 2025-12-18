@@ -24,6 +24,8 @@ target_link_libraries(bestow-opengl
         glm::glm
         Freetype::Freetype
         imgui::imgui
+    PRIVATE
+        spdlog::spdlog
 )
 
 if(TARGET stb)

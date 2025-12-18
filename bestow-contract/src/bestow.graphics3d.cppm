@@ -15,7 +15,6 @@ export module bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
-import bestow.shader;
 import bestow.config;
 
 export namespace bestow {
@@ -661,9 +660,6 @@ public:
         std::string_view materialPath,
         const Mat4& worldMatrix,
         const Vec4& colorOverride) = 0;
-
-    /// Update shader system (call each frame for hot reload)
-    virtual void updateShaders() = 0;
 
     //======================================================================
     // Asset System Integration

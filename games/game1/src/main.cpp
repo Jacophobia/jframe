@@ -15,7 +15,6 @@ import bestow.events.impl;     // EventSystem
 import bestow.audio.impl;      // AudioSystem
 import bestow.assets.impl;     // AssetSystem
 import bestow.config.impl;     // ConfigSystem
-import bestow.shader.impl;     // OpenGLShaderSystem
 
 // Import the snake game
 import snake.game;
@@ -38,7 +37,6 @@ int main(int argc, char* argv[]) {
     engine.use<bestow::IEventSystem, bestow::EventSystem>();
     engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
     engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
-    engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
     engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
     engine.use<bestow::IInputSystem, bestow::InputSystem>();
 

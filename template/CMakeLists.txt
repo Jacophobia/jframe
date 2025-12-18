@@ -31,7 +31,6 @@ target_link_libraries(my-game
         bestow-assets      # AssetSystem
         bestow-input       # InputSystem (GLFW-based)
         bestow-audio       # AudioSystem (FMOD-based)
-        bestow-shader      # ShaderSystem
 )
 
 # Vulkan renderer (if available)
