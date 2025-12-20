@@ -112,6 +112,14 @@ private:
     int totalSegmentsInWorld_ = 0;  // Accumulated for boss fight
 
     //======================================================================
+    // World Map State
+    //======================================================================
+    int selectedNodeIndex_ = 0;
+    float worldMapCursorBob_ = 0.0f;  // Animation for cursor bobbing
+    bestow::Vec3 worldMapCameraTarget_{0.0f, 0.0f, 0.0f};
+    float worldMapCameraDistance_ = 15.0f;
+
+    //======================================================================
     // Snake State
     //======================================================================
     std::vector<SnakeSegment> snake_;
@@ -205,22 +213,29 @@ private:
             groundMaterial_ = *groundResult;
         }
 
-        // Try to load level from file, fall back to default if not found
-        if (loadLevel("data/worlds/world1/level01.lua")) {
-            applyLevelToGame();
+        // Load world configuration
+        if (loadWorld("data/worlds/world1/world.lua")) {
+            // Start on the world map for level selection
+            transitionTo(GamePhase::WorldMap);
         } else {
-            // Fallback: Initialize snake with gradient green colors (default setup)
-            std::cerr << "Using default level setup\n";
-            snake_.clear();
-            snake_.push_back({{gridSize_ / 2, gridSize_ / 2}, {0.2f, 0.9f, 0.3f, 1.0f}});
-            snake_.push_back({{gridSize_ / 2 - 1, gridSize_ / 2}, {0.25f, 0.85f, 0.35f, 1.0f}});
-            snake_.push_back({{gridSize_ / 2 - 2, gridSize_ / 2}, {0.3f, 0.8f, 0.4f, 1.0f}});
+            // Fallback: load level01 directly if world config fails
+            std::cerr << "Failed to load world config, loading level directly\n";
+            if (loadLevel("data/worlds/world1/level01.lua")) {
+                applyLevelToGame();
+            } else {
+                // Fallback: Initialize snake with gradient green colors (default setup)
+                std::cerr << "Using default level setup\n";
+                snake_.clear();
+                snake_.push_back({{gridSize_ / 2, gridSize_ / 2}, {0.2f, 0.9f, 0.3f, 1.0f}});
+                snake_.push_back({{gridSize_ / 2 - 1, gridSize_ / 2}, {0.25f, 0.85f, 0.35f, 1.0f}});
+                snake_.push_back({{gridSize_ / 2 - 2, gridSize_ / 2}, {0.3f, 0.8f, 0.4f, 1.0f}});
 
-            direction_ = Direction::Right;
-            nextDirection_ = Direction::Right;
+                direction_ = Direction::Right;
+                nextDirection_ = Direction::Right;
 
-            // Spawn initial food
-            spawnFood();
+                // Spawn initial food
+                spawnFood();
+            }
         }
 
         // Setup camera
@@ -296,17 +311,22 @@ private:
                 accumulator -= fixedDt;
             }
 
-            // Render
+            // Render based on current phase
             graphics_->beginFrame();
-            drawGround();
-            drawObstacles();
-            drawEnemies();
-            drawSnake();
-            drawDetachedSegments();
-            drawFoodPickups();
-            drawFood();
-            drawGridBorder();
-            drawHUD();
+            if (currentPhase_ == GamePhase::WorldMap) {
+                updateWorldMap(fixedDt);
+                drawWorldMap();
+            } else {
+                drawGround();
+                drawObstacles();
+                drawEnemies();
+                drawSnake();
+                drawDetachedSegments();
+                drawFoodPickups();
+                drawFood();
+                drawGridBorder();
+                drawHUD();
+            }
             graphics_->endFrame();
         }
     }
@@ -360,7 +380,7 @@ private:
                 // Show main menu
                 break;
             case GamePhase::WorldMap:
-                // Initialize world map view
+                initializeWorldMap();
                 break;
             case GamePhase::Playing:
                 gameOver_ = false;
@@ -480,6 +500,101 @@ private:
                   << " with " << currentLevel_.walls.size() << " walls, "
                   << currentLevel_.foodSpawnPoints.size() << " spawn points, "
                   << currentLevel_.enemyZones.size() << " enemy zones\n";
+
+        return true;
+    }
+
+    bool loadWorld(const std::string& worldPath) {
+        if (!config_) {
+            std::cerr << "Config system not available for world loading\n";
+            return false;
+        }
+
+        // Read world file
+        std::ifstream file(worldPath);
+        if (!file) {
+            std::cerr << "Failed to open world file: " << worldPath << "\n";
+            return false;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        std::string luaContent = buffer.str();
+
+        // Parse Lua
+        auto result = config_->parseLuaString(luaContent, worldPath);
+        if (!result) {
+            std::cerr << "Failed to parse world Lua: " << worldPath << "\n";
+            return false;
+        }
+
+        // Extract world data from sol::object
+        sol::table worldTable = result->as<sol::table>();
+        return parseWorldTable(worldTable);
+    }
+
+    bool parseWorldTable(const sol::table& table) {
+        // Clear current world
+        currentWorld_ = WorldConfig{};
+
+        // Basic properties
+        currentWorld_.name = table.get_or("name", std::string("Unnamed World"));
+        currentWorld_.theme = table.get_or("theme", std::string("default"));
+
+        // Level files
+        if (sol::table levels = table["levels"]; levels.valid()) {
+            for (auto& pair : levels) {
+                currentWorld_.levelFiles.push_back(pair.second.as<std::string>());
+            }
+        }
+
+        // Unlock requirements
+        if (sol::table unlocks = table["unlockRequirements"]; unlocks.valid()) {
+            for (auto& pair : unlocks) {
+                int idx = pair.first.as<int>() - 1;  // Lua is 1-indexed
+                int requirement = pair.second.as<int>();
+                while (static_cast<int>(currentWorld_.unlockRequirements.size()) <= idx) {
+                    currentWorld_.unlockRequirements.push_back(0);
+                }
+                currentWorld_.unlockRequirements[idx] = requirement;
+            }
+        }
+
+        // Map nodes
+        if (sol::table nodes = table["nodes"]; nodes.valid()) {
+            for (auto& pair : nodes) {
+                sol::table nodeDef = pair.second.as<sol::table>();
+                WorldMapNode node;
+                node.gridPos.x = nodeDef.get_or("x", 0);
+                node.gridPos.z = nodeDef.get_or("z", 0);
+                node.levelIndex = nodeDef.get_or("levelIndex", 0) - 1;  // Lua 1-indexed
+                node.displayName = nodeDef.get_or("name", std::string("Level"));
+                node.isBoss = nodeDef.get_or("isBoss", false);
+                currentWorld_.nodes.push_back(node);
+            }
+        }
+
+        // Paths (connections between nodes)
+        if (sol::table paths = table["paths"]; paths.valid()) {
+            for (auto& pair : paths) {
+                sol::table pathDef = pair.second.as<sol::table>();
+                int a = pathDef[1].get<int>() - 1;  // Lua 1-indexed
+                int b = pathDef[2].get<int>() - 1;
+                currentWorld_.paths.push_back({a, b});
+            }
+        }
+
+        // Boss config
+        if (sol::table boss = table["boss"]; boss.valid()) {
+            currentWorld_.bossName = boss.get_or("name", std::string("Boss"));
+            currentWorld_.bossType = boss.get_or("type", std::string("default"));
+            currentWorld_.bossHealth = boss.get_or("health", 10);
+        }
+
+        std::cerr << "Loaded world: " << currentWorld_.name
+                  << " with " << currentWorld_.levelFiles.size() << " levels, "
+                  << currentWorld_.nodes.size() << " nodes, "
+                  << currentWorld_.paths.size() << " paths\n";
 
         return true;
     }
@@ -1056,6 +1171,12 @@ private:
     void handleInput() {
         if (!input_) return;
 
+        // Handle world map phase
+        if (currentPhase_ == GamePhase::WorldMap) {
+            handleWorldMapInput();
+            return;
+        }
+
         // Handle level complete phase
         if (currentPhase_ == GamePhase::LevelComplete) {
             if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
@@ -1195,9 +1316,13 @@ private:
     }
 
     void spawnFood() {
+        // Minimum distance from previous food position (in grid cells)
+        constexpr int MIN_FOOD_DISTANCE = 5;
+        GridPos previousFood = foodPos_;  // Save current position before spawning new
+
         // Try level-defined spawn points first (transformed to current grid coords)
         if (!currentLevel_.foodSpawnPoints.empty()) {
-            // Shuffle spawn points and try each one
+            // Gather and shuffle spawn points
             std::vector<GridPos> candidates;
             for (const auto& levelPos : currentLevel_.foodSpawnPoints) {
                 // Transform from level coords to current grid coords
@@ -1214,6 +1339,21 @@ private:
 
             std::shuffle(candidates.begin(), candidates.end(), rng_);
 
+            // First pass: try to find spawn point that meets distance requirement
+            for (const auto& pos : candidates) {
+                int dx = pos.x - previousFood.x;
+                int dz = pos.z - previousFood.z;
+                int distSq = dx * dx + dz * dz;
+
+                if (distSq >= MIN_FOOD_DISTANCE * MIN_FOOD_DISTANCE &&
+                    isValidFoodPosition(pos) && isFoodReachable(pos)) {
+                    foodPos_ = pos;
+                    foodColor_ = generateRandomColor();
+                    return;
+                }
+            }
+
+            // Second pass: relax distance requirement if no suitable spawn found
             for (const auto& pos : candidates) {
                 if (isValidFoodPosition(pos) && isFoodReachable(pos)) {
                     foodPos_ = pos;
@@ -1228,6 +1368,24 @@ private:
         int attempts = 0;
         constexpr int MAX_ATTEMPTS = 100;
 
+        // Try to find a position that meets distance requirement
+        do {
+            GridPos candidate = {posDist(rng_), posDist(rng_)};
+            int dx = candidate.x - previousFood.x;
+            int dz = candidate.z - previousFood.z;
+            int distSq = dx * dx + dz * dz;
+
+            if (distSq >= MIN_FOOD_DISTANCE * MIN_FOOD_DISTANCE &&
+                isValidFoodPosition(candidate) && isFoodReachable(candidate)) {
+                foodPos_ = candidate;
+                foodColor_ = generateRandomColor();
+                return;
+            }
+            attempts++;
+        } while (attempts < MAX_ATTEMPTS);
+
+        // Fallback: any valid position
+        attempts = 0;
         do {
             foodPos_ = {posDist(rng_), posDist(rng_)};
             attempts++;
@@ -1456,6 +1614,312 @@ private:
 
         int required = currentWorld_.unlockRequirements[levelIndex];
         return getTotalFoodInCurrentWorld() >= required;
+    }
+
+    //======================================================================
+    // World Map
+    //======================================================================
+
+    void handleWorldMapInput() {
+        if (!input_ || currentWorld_.nodes.empty()) return;
+
+        // Find connected nodes from current selection
+        std::vector<int> connected;
+        for (const auto& [a, b] : currentWorld_.paths) {
+            if (a == selectedNodeIndex_) connected.push_back(b);
+            if (b == selectedNodeIndex_) connected.push_back(a);
+        }
+
+        // Navigation - find node in the pressed direction
+        const auto& currentNode = currentWorld_.nodes[selectedNodeIndex_];
+
+        auto findNodeInDirection = [&](int dx, int dz) -> int {
+            int bestNode = -1;
+            float bestDist = 999999.0f;
+            for (int idx : connected) {
+                const auto& node = currentWorld_.nodes[idx];
+                int nodeDx = node.gridPos.x - currentNode.gridPos.x;
+                int nodeDz = node.gridPos.z - currentNode.gridPos.z;
+
+                // Check if the node is roughly in the desired direction
+                bool matchesX = (dx == 0) || (dx > 0 && nodeDx > 0) || (dx < 0 && nodeDx < 0);
+                bool matchesZ = (dz == 0) || (dz > 0 && nodeDz > 0) || (dz < 0 && nodeDz < 0);
+
+                // If both match, or if we're only checking one direction
+                if ((dx != 0 && matchesX) || (dz != 0 && matchesZ)) {
+                    float dist = std::abs(nodeDx) + std::abs(nodeDz);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestNode = idx;
+                    }
+                }
+            }
+            return bestNode;
+        };
+
+        // Up: Comma (Dvorak W) or Up Arrow - decrease Z (forward in isometric view)
+        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
+            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+            int node = findNodeInDirection(0, -1);
+            if (node >= 0) selectedNodeIndex_ = node;
+        }
+        // Down: O (Dvorak S) or Down Arrow - increase Z
+        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
+            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+            int node = findNodeInDirection(0, 1);
+            if (node >= 0) selectedNodeIndex_ = node;
+        }
+        // Left: A or Left Arrow
+        if (input_->wasKeyJustPressed(GLFW_KEY_A) ||
+            input_->wasKeyJustPressed(GLFW_KEY_LEFT)) {
+            int node = findNodeInDirection(-1, 0);
+            if (node >= 0) selectedNodeIndex_ = node;
+        }
+        // Right: E (Dvorak D) or Right Arrow
+        if (input_->wasKeyJustPressed(GLFW_KEY_E) ||
+            input_->wasKeyJustPressed(GLFW_KEY_RIGHT)) {
+            int node = findNodeInDirection(1, 0);
+            if (node >= 0) selectedNodeIndex_ = node;
+        }
+
+        // Select level with Enter/Space
+        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
+            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            const auto& node = currentWorld_.nodes[selectedNodeIndex_];
+            if (node.levelIndex >= 0 && isLevelUnlocked(node.levelIndex)) {
+                currentLevelIndex_ = node.levelIndex;
+                std::string levelPath = "data/worlds/world1/" + currentWorld_.levelFiles[currentLevelIndex_];
+                if (loadLevel(levelPath)) {
+                    applyLevelToGame();
+                    transitionTo(GamePhase::Playing);
+                }
+            }
+        }
+
+        // Exit with Escape
+        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+            running_ = false;  // Exit game from world map
+        }
+    }
+
+    void updateWorldMap(float dt) {
+        // Animate cursor bob
+        worldMapCursorBob_ += dt * 4.0f;
+
+        // Update camera to look at selected node
+        if (!currentWorld_.nodes.empty() && selectedNodeIndex_ < static_cast<int>(currentWorld_.nodes.size())) {
+            const auto& node = currentWorld_.nodes[selectedNodeIndex_];
+            float targetX = static_cast<float>(node.gridPos.x);
+            float targetZ = static_cast<float>(node.gridPos.z);
+
+            // Smooth camera follow
+            worldMapCameraTarget_.x += (targetX - worldMapCameraTarget_.x) * dt * 3.0f;
+            worldMapCameraTarget_.z += (targetZ - worldMapCameraTarget_.z) * dt * 3.0f;
+        }
+    }
+
+    void drawWorldMap() {
+        // Set up isometric camera for world map
+        bestow::Camera3D cam = graphics_->getCamera();
+        float angleRad = glm::radians(45.0f);
+        bestow::Vec3 cameraPos = {
+            worldMapCameraTarget_.x + worldMapCameraDistance_ * std::sin(angleRad),
+            worldMapCameraDistance_ * 0.8f,  // Height
+            worldMapCameraTarget_.z + worldMapCameraDistance_ * std::cos(angleRad)
+        };
+        cam.transform.position = cameraPos;
+        cam.fovY = 45.0f;
+        cam.aspectRatio = 16.0f / 9.0f;
+        cam.nearPlane = 0.1f;
+        cam.farPlane = 100.0f;
+
+        // Calculate rotation to look at target
+        glm::vec3 lookDir = glm::normalize(glm::vec3(
+            worldMapCameraTarget_.x - cameraPos.x,
+            worldMapCameraTarget_.y - cameraPos.y,
+            worldMapCameraTarget_.z - cameraPos.z
+        ));
+        glm::vec3 up(0.0f, 1.0f, 0.0f);
+        glm::quat rotation = glm::quatLookAt(lookDir, up);
+        cam.transform.rotation = {rotation.w, rotation.x, rotation.y, rotation.z};
+
+        graphics_->setCamera(cam);
+
+        // Draw ground plane (larger for world map)
+        bestow::PBRMaterial groundMat;
+        groundMat.baseColorFactor = {0.2f, 0.5f, 0.25f, 1.0f};  // Forest green
+        groundMat.roughnessFactor = 0.9f;
+        auto groundMatResult = graphics_->createMaterial(groundMat);
+
+        bestow::Transform3D groundTransform;
+        groundTransform.position = {worldMapCameraTarget_.x, -0.1f, worldMapCameraTarget_.z};
+        groundTransform.scale = {50.0f, 0.1f, 50.0f};
+        if (groundMatResult) {
+            graphics_->drawMesh(cubeMesh_, *groundMatResult, groundTransform, true, true);
+        }
+
+        // Draw paths between nodes
+        bestow::Color pathColor{139, 90, 43, 255};  // Brown for paths
+        for (const auto& [a, b] : currentWorld_.paths) {
+            if (a >= static_cast<int>(currentWorld_.nodes.size()) ||
+                b >= static_cast<int>(currentWorld_.nodes.size())) continue;
+
+            const auto& nodeA = currentWorld_.nodes[a];
+            const auto& nodeB = currentWorld_.nodes[b];
+
+            bestow::Vec3 posA{static_cast<float>(nodeA.gridPos.x), 0.05f, static_cast<float>(nodeA.gridPos.z)};
+            bestow::Vec3 posB{static_cast<float>(nodeB.gridPos.x), 0.05f, static_cast<float>(nodeB.gridPos.z)};
+
+            // Draw thicker path by drawing multiple lines
+            for (float offset = -0.1f; offset <= 0.1f; offset += 0.05f) {
+                graphics_->debugDrawLine(
+                    {posA.x + offset, posA.y, posA.z},
+                    {posB.x + offset, posB.y, posB.z},
+                    pathColor, 0.0f, false
+                );
+            }
+        }
+
+        // Draw nodes
+        for (size_t i = 0; i < currentWorld_.nodes.size(); ++i) {
+            const auto& node = currentWorld_.nodes[i];
+            float x = static_cast<float>(node.gridPos.x);
+            float z = static_cast<float>(node.gridPos.z);
+            bool isSelected = (static_cast<int>(i) == selectedNodeIndex_);
+            bool unlocked = isLevelUnlocked(node.levelIndex);
+
+            // Node base (platform)
+            bestow::Transform3D nodeTransform;
+            nodeTransform.position = {x, 0.1f, z};
+            nodeTransform.scale = {0.8f, 0.2f, 0.8f};
+
+            bestow::PBRMaterial nodeMat;
+            if (node.isBoss) {
+                nodeMat.baseColorFactor = {0.6f, 0.1f, 0.1f, 1.0f};  // Red for boss
+            } else if (!unlocked) {
+                nodeMat.baseColorFactor = {0.3f, 0.3f, 0.3f, 1.0f};  // Gray for locked
+            } else if (node.isCompleted) {
+                nodeMat.baseColorFactor = {0.2f, 0.6f, 0.2f, 1.0f};  // Green for completed
+            } else {
+                nodeMat.baseColorFactor = {0.5f, 0.4f, 0.2f, 1.0f};  // Brown for available
+            }
+            nodeMat.roughnessFactor = 0.6f;
+
+            auto nodeMatResult = graphics_->createMaterial(nodeMat);
+            if (nodeMatResult) {
+                graphics_->drawMesh(cubeMesh_, *nodeMatResult, nodeTransform, true, true);
+            }
+
+            // Draw level indicator on top
+            if (node.levelIndex >= 0) {
+                bestow::Transform3D indicatorTransform;
+                float bobY = isSelected ? 0.5f + std::sin(worldMapCursorBob_) * 0.15f : 0.4f;
+                indicatorTransform.position = {x, bobY, z};
+                indicatorTransform.scale = {0.3f, 0.3f, 0.3f};
+
+                bestow::PBRMaterial indicatorMat;
+                if (node.isBoss) {
+                    indicatorMat.baseColorFactor = {1.0f, 0.3f, 0.3f, 1.0f};
+                    indicatorMat.emissiveFactor = {0.5f, 0.1f, 0.1f};
+                } else if (!unlocked) {
+                    indicatorMat.baseColorFactor = {0.5f, 0.5f, 0.5f, 1.0f};
+                } else {
+                    indicatorMat.baseColorFactor = {1.0f, 0.85f, 0.0f, 1.0f};  // Gold
+                    indicatorMat.emissiveFactor = {0.3f, 0.25f, 0.0f};
+                }
+
+                if (isSelected) {
+                    indicatorMat.emissiveFactor = {0.5f, 0.5f, 0.5f};  // Glow when selected
+                }
+
+                auto indicatorMatResult = graphics_->createMaterial(indicatorMat);
+                if (indicatorMatResult) {
+                    graphics_->drawMesh(cubeMesh_, *indicatorMatResult, indicatorTransform, true, true);
+                }
+            }
+
+            // Selection ring for selected node
+            if (isSelected) {
+                float ringRadius = 0.6f;
+                bestow::Color ringColor{255, 255, 100, 255};
+                int segments = 16;
+                for (int s = 0; s < segments; ++s) {
+                    float angle1 = (static_cast<float>(s) / segments) * 3.14159f * 2.0f;
+                    float angle2 = (static_cast<float>(s + 1) / segments) * 3.14159f * 2.0f;
+                    graphics_->debugDrawLine(
+                        {x + std::cos(angle1) * ringRadius, 0.05f, z + std::sin(angle1) * ringRadius},
+                        {x + std::cos(angle2) * ringRadius, 0.05f, z + std::sin(angle2) * ringRadius},
+                        ringColor, 0.0f, false
+                    );
+                }
+            }
+        }
+
+        // Draw HUD info for selected node
+        if (!currentWorld_.nodes.empty() && selectedNodeIndex_ < static_cast<int>(currentWorld_.nodes.size())) {
+            const auto& node = currentWorld_.nodes[selectedNodeIndex_];
+            bool unlocked = isLevelUnlocked(node.levelIndex);
+
+            // Draw unlock requirement indicator if locked
+            if (!unlocked && node.levelIndex < static_cast<int>(currentWorld_.unlockRequirements.size())) {
+                int required = currentWorld_.unlockRequirements[node.levelIndex];
+                int current = getTotalFoodInCurrentWorld();
+
+                // Draw a progress bar above the camera
+                float barWidth = 3.0f;
+                float progress = static_cast<float>(current) / static_cast<float>(required);
+                progress = std::min(1.0f, progress);
+
+                float barX = worldMapCameraTarget_.x;
+                float barY = 3.0f;
+                float barZ = worldMapCameraTarget_.z - 2.0f;
+
+                // Background
+                bestow::Color bgColor{60, 60, 60, 255};
+                graphics_->debugDrawLine({barX - barWidth/2, barY, barZ}, {barX + barWidth/2, barY, barZ}, bgColor, 0.0f, false);
+
+                // Progress
+                bestow::Color progressColor{100, 200, 100, 255};
+                graphics_->debugDrawLine(
+                    {barX - barWidth/2, barY, barZ},
+                    {barX - barWidth/2 + barWidth * progress, barY, barZ},
+                    progressColor, 0.0f, false
+                );
+            }
+        }
+
+        // Title indicator
+        bestow::Color titleColor{255, 255, 200, 255};
+        float titleY = 4.0f;
+        graphics_->debugDrawLine(
+            {worldMapCameraTarget_.x - 2.0f, titleY, worldMapCameraTarget_.z - 3.0f},
+            {worldMapCameraTarget_.x + 2.0f, titleY, worldMapCameraTarget_.z - 3.0f},
+            titleColor, 0.0f, false
+        );
+    }
+
+    void initializeWorldMap() {
+        // Update node states from save data
+        if (currentWorldIndex_ < static_cast<int>(saveData_.worldProgress.size())) {
+            const auto& progress = saveData_.worldProgress[currentWorldIndex_];
+            for (size_t i = 0; i < currentWorld_.nodes.size(); ++i) {
+                auto& node = currentWorld_.nodes[i];
+                node.isUnlocked = isLevelUnlocked(node.levelIndex);
+                if (node.levelIndex >= 0 && node.levelIndex < static_cast<int>(progress.levelsCompleted.size())) {
+                    node.isCompleted = progress.levelsCompleted[node.levelIndex];
+                }
+            }
+        }
+
+        // Start at first unlocked but incomplete level, or first level
+        selectedNodeIndex_ = 0;
+        for (size_t i = 0; i < currentWorld_.nodes.size(); ++i) {
+            const auto& node = currentWorld_.nodes[i];
+            if (node.isUnlocked && !node.isCompleted) {
+                selectedNodeIndex_ = static_cast<int>(i);
+                break;
+            }
+        }
     }
 
     void restartGame() {
@@ -1856,8 +2320,9 @@ private:
         // Level complete screen - draw relative to snake head so it's always visible
         if (currentPhase_ == GamePhase::LevelComplete && !snake_.empty()) {
             // Get snake head position for drawing victory visuals
-            float headX = snake_.back().pos.x * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
-            float headZ = snake_.back().pos.z * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
+            // Head is at front() - that's where new segments are inserted during movement
+            float headX = snake_.front().pos.x * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
+            float headZ = snake_.front().pos.z * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
 
             // Celebratory golden border - pulsing (around the whole grid)
             float flash = std::sin(gameTime_ * 4.0f) * 0.3f + 0.7f;
