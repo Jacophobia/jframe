@@ -108,6 +108,8 @@ private:
     //======================================================================
     WorldConfig currentWorld_;
     GameSaveData saveData_;
+    int segmentsEarnedThisLevel_ = 0;
+    int totalSegmentsInWorld_ = 0;  // Accumulated for boss fight
 
     //======================================================================
     // Snake State
@@ -275,15 +277,20 @@ private:
             // Fixed timestep updates
             while (accumulator >= fixedDt) {
                 gameTime_ += fixedDt;
-                moveTimer_ += fixedDt;
-                if (moveTimer_ >= moveInterval_) {
-                    moveTimer_ = 0.0f;
-                    applyBufferedInput();
-                    moveSnake();
+
+                // Only run gameplay during Playing phase
+                if (currentPhase_ == GamePhase::Playing) {
+                    moveTimer_ += fixedDt;
+                    if (moveTimer_ >= moveInterval_) {
+                        moveTimer_ = 0.0f;
+                        applyBufferedInput();
+                        moveSnake();
+                    }
+                    updateEnemies(fixedDt);
+                    updateDetachedSegments(fixedDt);
+                    checkFoodPickups();
                 }
-                updateEnemies(fixedDt);
-                updateDetachedSegments(fixedDt);
-                checkFoodPickups();
+
                 updateAnimations(fixedDt);
                 updateCamera(fixedDt);
                 accumulator -= fixedDt;
@@ -1049,6 +1056,20 @@ private:
     void handleInput() {
         if (!input_) return;
 
+        // Handle level complete phase
+        if (currentPhase_ == GamePhase::LevelComplete) {
+            if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
+                input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+                // Accumulate segments for boss fight
+                totalSegmentsInWorld_ += segmentsEarnedThisLevel_;
+                proceedToNextLevel();
+            }
+            if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+                returnToWorldMap();
+            }
+            return;
+        }
+
         if (gameOver_) {
             if (input_->wasKeyJustPressed(GLFW_KEY_R)) {
                 restartGame();
@@ -1149,6 +1170,16 @@ private:
             score_++;
             foodCollected_++;
 
+            // Add the segment first
+            snake_.insert(snake_.begin(), newSegment);
+
+            // Check for level completion
+            if (foodCollected_ >= foodRequired_) {
+                std::cerr << "Level complete! Food collected: " << foodCollected_ << "/" << foodRequired_ << "\n";
+                completeLevel();
+                return;
+            }
+
             // Expand the grid to reveal more of the level
             startExpansion();
 
@@ -1158,10 +1189,7 @@ private:
         } else {
             // Inherit color from previous head (slight fade)
             newSegment.color = snake_[0].color;
-        }
-        snake_.insert(snake_.begin(), newSegment);
-
-        if (!ateFood) {
+            snake_.insert(snake_.begin(), newSegment);
             snake_.pop_back();
         }
     }
@@ -1349,6 +1377,85 @@ private:
         if (attempts < 50) {
             obstacles_.push_back(gridPos);
         }
+    }
+
+    //======================================================================
+    // Level Progression
+    //======================================================================
+
+    void completeLevel() {
+        // Record progress
+        updateWorldProgress();
+
+        // Transition to level complete phase
+        transitionTo(GamePhase::LevelComplete);
+
+        // Store the snake length for potential boss fight accumulation
+        segmentsEarnedThisLevel_ = static_cast<int>(snake_.size());
+    }
+
+    void updateWorldProgress() {
+        // Ensure we have progress for this world
+        while (saveData_.worldProgress.size() <= static_cast<size_t>(currentWorldIndex_)) {
+            WorldProgress wp;
+            wp.levelsCompleted.resize(4, false);  // Assume 4 levels per world
+            wp.foodCollected.resize(4, 0);
+            saveData_.worldProgress.push_back(wp);
+        }
+
+        auto& worldProg = saveData_.worldProgress[currentWorldIndex_];
+
+        // Mark level as completed
+        if (currentLevelIndex_ < static_cast<int>(worldProg.levelsCompleted.size())) {
+            worldProg.levelsCompleted[currentLevelIndex_] = true;
+            worldProg.foodCollected[currentLevelIndex_] = foodCollected_;
+        }
+
+        // Update total food earned in world
+        worldProg.totalFoodEarned = 0;
+        for (int food : worldProg.foodCollected) {
+            worldProg.totalFoodEarned += food;
+        }
+    }
+
+    void proceedToNextLevel() {
+        currentLevelIndex_++;
+
+        // Check if we've completed all levels in the world
+        if (currentLevelIndex_ >= static_cast<int>(currentWorld_.levelFiles.size())) {
+            // World complete! Go to world map
+            transitionTo(GamePhase::WorldMap);
+            return;
+        }
+
+        // Load next level
+        std::string levelPath = "data/worlds/world1/" + currentWorld_.levelFiles[currentLevelIndex_];
+        if (loadLevel(levelPath)) {
+            applyLevelToGame();
+            transitionTo(GamePhase::Playing);
+        }
+    }
+
+    void returnToWorldMap() {
+        transitionTo(GamePhase::WorldMap);
+    }
+
+    int getTotalFoodInCurrentWorld() const {
+        if (currentWorldIndex_ < static_cast<int>(saveData_.worldProgress.size())) {
+            return saveData_.worldProgress[currentWorldIndex_].totalFoodEarned;
+        }
+        return 0;
+    }
+
+    bool isLevelUnlocked(int levelIndex) const {
+        if (levelIndex == 0) return true;  // First level always unlocked
+
+        if (levelIndex >= static_cast<int>(currentWorld_.unlockRequirements.size())) {
+            return false;
+        }
+
+        int required = currentWorld_.unlockRequirements[levelIndex];
+        return getTotalFoodInCurrentWorld() >= required;
     }
 
     void restartGame() {
@@ -1746,18 +1853,71 @@ private:
             );
         }
 
-        // Level complete indicator
-        if (foodCollected_ >= foodRequired_ && !gameOver_) {
-            // Flash a victory border
-            float flash = std::sin(gameTime_ * 8.0f) * 0.5f + 0.5f;
-            uint8_t brightness = static_cast<uint8_t>(150 + flash * 105);
-            bestow::Color victoryColor{brightness, brightness, 50, 255};
+        // Level complete screen - draw relative to snake head so it's always visible
+        if (currentPhase_ == GamePhase::LevelComplete && !snake_.empty()) {
+            // Get snake head position for drawing victory visuals
+            float headX = snake_.back().pos.x * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
+            float headZ = snake_.back().pos.z * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
 
-            float vBorder = halfGrid + 0.1f;
-            graphics_->debugDrawLine({-vBorder, 0.1f, -vBorder}, {vBorder, 0.1f, -vBorder}, victoryColor, 0.0f, false);
-            graphics_->debugDrawLine({vBorder, 0.1f, -vBorder}, {vBorder, 0.1f, vBorder}, victoryColor, 0.0f, false);
-            graphics_->debugDrawLine({vBorder, 0.1f, vBorder}, {-vBorder, 0.1f, vBorder}, victoryColor, 0.0f, false);
-            graphics_->debugDrawLine({-vBorder, 0.1f, vBorder}, {-vBorder, 0.1f, -vBorder}, victoryColor, 0.0f, false);
+            // Celebratory golden border - pulsing (around the whole grid)
+            float flash = std::sin(gameTime_ * 4.0f) * 0.3f + 0.7f;
+            uint8_t brightness = static_cast<uint8_t>(200 * flash + 55);
+            bestow::Color victoryColor{brightness, static_cast<uint8_t>(brightness * 0.85f), 50, 255};
+
+            // Draw multiple concentric borders for emphasis
+            for (float offset = 0.0f; offset < 0.3f; offset += 0.1f) {
+                float vBorder = halfGrid + 0.1f + offset;
+                graphics_->debugDrawLine({-vBorder, 0.15f + offset, -vBorder}, {vBorder, 0.15f + offset, -vBorder}, victoryColor, 0.0f, false);
+                graphics_->debugDrawLine({vBorder, 0.15f + offset, -vBorder}, {vBorder, 0.15f + offset, vBorder}, victoryColor, 0.0f, false);
+                graphics_->debugDrawLine({vBorder, 0.15f + offset, vBorder}, {-vBorder, 0.15f + offset, vBorder}, victoryColor, 0.0f, false);
+                graphics_->debugDrawLine({-vBorder, 0.15f + offset, vBorder}, {-vBorder, 0.15f + offset, -vBorder}, victoryColor, 0.0f, false);
+            }
+
+            // Draw checkmark ABOVE the snake head so it's always visible
+            float checkSize = 2.0f;
+            float checkY = 2.0f;  // High above the snake
+            bestow::Color checkColor{100, 255, 100, 255};
+
+            // Make the checkmark thicker by drawing multiple lines offset slightly
+            for (float thickness = -0.05f; thickness <= 0.05f; thickness += 0.025f) {
+                // Left part of check
+                graphics_->debugDrawLine(
+                    {headX - checkSize * 0.5f + thickness, checkY + thickness, headZ},
+                    {headX, checkY - checkSize * 0.3f + thickness, headZ},
+                    checkColor, 0.0f, false
+                );
+                // Right part of check
+                graphics_->debugDrawLine(
+                    {headX, checkY - checkSize * 0.3f + thickness, headZ},
+                    {headX + checkSize * 0.7f + thickness, checkY + checkSize * 0.5f + thickness, headZ},
+                    checkColor, 0.0f, false
+                );
+            }
+
+            // Draw floating cubes around the snake head as celebration
+            float starRadius = 1.5f;
+            int numStars = 8;
+            for (int i = 0; i < numStars; ++i) {
+                float angle = (static_cast<float>(i) / numStars) * 3.14159f * 2.0f + gameTime_ * 2.0f;
+                float starX = headX + std::cos(angle) * starRadius;
+                float starZ = headZ + std::sin(angle) * starRadius;
+                float starY = 0.5f + std::sin(gameTime_ * 3.0f + i) * 0.3f;
+
+                bestow::Transform3D starTransform;
+                starTransform.position = {starX, starY, starZ};
+                starTransform.scale = {0.15f, 0.15f, 0.15f};
+
+                bestow::PBRMaterial starMat;
+                starMat.baseColorFactor = {1.0f, 0.84f, 0.0f, 1.0f};  // Gold
+                starMat.roughnessFactor = 0.3f;
+                starMat.metallicFactor = 0.8f;
+                starMat.emissiveFactor = {0.5f, 0.4f, 0.0f};
+
+                auto matResult = graphics_->createMaterial(starMat);
+                if (matResult) {
+                    graphics_->drawMesh(cubeMesh_, *matResult, starTransform, true, true);
+                }
+            }
         }
 
         // Game over indicator

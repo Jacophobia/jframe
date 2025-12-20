@@ -5,7 +5,7 @@ return {
     name = "Forest Gate",
     width = 200,
     height = 200,
-    foodRequired = 50,
+    foodRequired = 5,  -- Low for testing, increase later
 
     -- Player starts in the center
     playerStart = { x = 100, z = 100 },
