@@ -111,6 +111,7 @@ public:
     const ModelData* getModelData(AssetHandle handle) const override;
     const MaterialData* getMaterialData(AssetHandle handle) const override;
     const CubemapData* getCubemapData(AssetHandle handle) const override;
+    const SoundData* getSoundData(AssetHandle handle) const override;
     AssetHandle loadMesh(const std::filesystem::path& path) override;
     AssetHandle loadModel(const std::filesystem::path& path) override;
     AssetHandle loadCubemap(const std::filesystem::path& path) override;

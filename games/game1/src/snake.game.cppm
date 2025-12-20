@@ -36,17 +36,20 @@ class SnakeGame : public bestow::Application<SnakeGame,
     bestow::IGraphics3DSystem,
     bestow::IInputSystem,
     bestow::IAudioSystem,
-    bestow::IConfigSystem>
+    bestow::IConfigSystem,
+    bestow::IAssetSystem>
 {
 public:
     SnakeGame(bestow::IGraphics3DSystem& graphics,
               bestow::IInputSystem& input,
               bestow::IAudioSystem& audio,
-              bestow::IConfigSystem& config)
+              bestow::IConfigSystem& config,
+              bestow::IAssetSystem& assets)
         : graphics_(&graphics)
         , input_(&input)
         , audio_(&audio)
-        , config_(&config) {}
+        , config_(&config)
+        , assets_(&assets) {}
 
     ~SnakeGame() override = default;
 
@@ -70,6 +73,7 @@ private:
     bestow::IInputSystem* input_ = nullptr;
     bestow::IAudioSystem* audio_ = nullptr;
     bestow::IConfigSystem* config_ = nullptr;
+    bestow::IAssetSystem* assets_ = nullptr;
 
     //======================================================================
     // Meshes & Materials
@@ -77,6 +81,12 @@ private:
     bestow::MeshHandle cubeMesh_ = 0;
     bestow::MeshHandle groundMesh_ = 0;
     bestow::MaterialHandle groundMaterial_ = 0;
+
+    //======================================================================
+    // Font for Text Rendering
+    //======================================================================
+    bestow::Font3DHandle gameFont_ = 0;
+    bestow::Font3DHandle titleFont_ = 0;
 
     //======================================================================
     // Game Phase / State Machine
@@ -120,6 +130,36 @@ private:
     float worldMapCameraDistance_ = 15.0f;
 
     //======================================================================
+    // Menu State
+    //======================================================================
+    int mainMenuSelection_ = 0;
+    int pauseMenuSelection_ = 0;
+    float menuAnimTime_ = 0.0f;
+    static constexpr int MAIN_MENU_PLAY = 0;
+    static constexpr int MAIN_MENU_QUIT = 1;
+    static constexpr int MAIN_MENU_COUNT = 2;
+    static constexpr int PAUSE_MENU_RESUME = 0;
+    static constexpr int PAUSE_MENU_RESTART = 1;
+    static constexpr int PAUSE_MENU_QUIT = 2;
+    static constexpr int PAUSE_MENU_COUNT = 3;
+
+    //======================================================================
+    // Audio State
+    //======================================================================
+    bestow::AssetHandle soundEat_{};
+    bestow::AssetHandle soundDeath_{};
+    bestow::AssetHandle soundLevelComplete_{};
+    bestow::AssetHandle soundMenuSelect_{};
+    bestow::AssetHandle soundMenuMove_{};
+    bestow::AssetHandle soundEnemyHit_{};
+    bestow::AssetHandle soundChainBreak_{};
+    bestow::AssetHandle soundPause_{};
+    bestow::AssetHandle soundGameOver_{};
+    bestow::AssetHandle musicGame_{};
+    bestow::AssetHandle musicMenu_{};
+    bool soundsLoaded_ = false;
+
+    //======================================================================
     // Snake State
     //======================================================================
     std::vector<SnakeSegment> snake_;
@@ -158,6 +198,19 @@ private:
     float cameraAngle_ = 45.0f;
 
     //======================================================================
+    // Screen Shake & Visual Effects
+    //======================================================================
+    float screenShakeIntensity_ = 0.0f;
+    float screenShakeTimer_ = 0.0f;
+    float screenShakeDuration_ = 0.0f;
+    bestow::Vec3 screenShakeOffset_{0.0f, 0.0f, 0.0f};
+
+    // Food collection pop effect
+    float foodPopScale_ = 0.0f;
+    float foodPopTimer_ = 0.0f;
+    bestow::Vec3 lastFoodPos_{0.0f, 0.0f, 0.0f};
+
+    //======================================================================
     // Initialization
     //======================================================================
 
@@ -194,6 +247,17 @@ private:
             config_->initialize();
         }
 
+        // Initialize audio system
+        if (audio_) {
+            audio_->initialize();
+        }
+
+        // Load sound configuration
+        loadSoundConfig();
+
+        // Load fonts for text rendering
+        loadFonts();
+
         // Create cube mesh
         auto cubeResult = graphics_->createCubeMesh(CELL_SIZE * 0.85f);
         if (cubeResult) {
@@ -215,8 +279,8 @@ private:
 
         // Load world configuration
         if (loadWorld("data/worlds/world1/world.lua")) {
-            // Start on the world map for level selection
-            transitionTo(GamePhase::WorldMap);
+            // Start on the main menu
+            transitionTo(GamePhase::MainMenu);
         } else {
             // Fallback: load level01 directly if world config fails
             std::cerr << "Failed to load world config, loading level directly\n";
@@ -313,9 +377,24 @@ private:
 
             // Render based on current phase
             graphics_->beginFrame();
-            if (currentPhase_ == GamePhase::WorldMap) {
+            if (currentPhase_ == GamePhase::MainMenu) {
+                menuAnimTime_ += fixedDt;
+                drawMainMenu();
+            } else if (currentPhase_ == GamePhase::WorldMap) {
                 updateWorldMap(fixedDt);
                 drawWorldMap();
+            } else if (currentPhase_ == GamePhase::Paused) {
+                // Draw game underneath (frozen)
+                drawGround();
+                drawObstacles();
+                drawEnemies();
+                drawSnake();
+                drawDetachedSegments();
+                drawFoodPickups();
+                drawFood();
+                drawGridBorder();
+                // Overlay pause menu
+                drawPauseMenu();
             } else {
                 drawGround();
                 drawObstacles();
@@ -324,6 +403,7 @@ private:
                 drawDetachedSegments();
                 drawFoodPickups();
                 drawFood();
+                drawFoodPopEffect();
                 drawGridBorder();
                 drawHUD();
             }
@@ -377,16 +457,20 @@ private:
     void enterPhase(GamePhase phase) {
         switch (phase) {
             case GamePhase::MainMenu:
-                // Show main menu
+                // Start menu music
+                playMusicTrack(musicMenu_);
                 break;
             case GamePhase::WorldMap:
                 initializeWorldMap();
+                // Continue menu music (already playing from MainMenu)
                 break;
             case GamePhase::Playing:
                 gameOver_ = false;
+                // Switch to game music
+                playMusicTrack(musicGame_);
                 break;
             case GamePhase::Paused:
-                // Pause timers
+                // Pause timers - keep music playing but could lower volume
                 break;
             case GamePhase::BossFight:
                 // Initialize boss fight (accumulated segments!)
@@ -396,6 +480,8 @@ private:
                 break;
             case GamePhase::GameOver:
                 gameOver_ = true;
+                // Play game over sound
+                playSound(soundGameOver_);
                 break;
         }
     }
@@ -504,6 +590,183 @@ private:
         return true;
     }
 
+    //======================================================================
+    // Sound System
+    //======================================================================
+
+    void loadSoundConfig() {
+        if (!config_ || !audio_) {
+            std::cerr << "Config or audio system not available for sound loading\n";
+            return;
+        }
+
+        // Read sounds config file
+        std::ifstream file("data/config/sounds.lua");
+        if (!file) {
+            std::cerr << "No sounds.lua config found, audio disabled\n";
+            return;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        std::string luaContent = buffer.str();
+
+        auto result = config_->parseLuaString(luaContent);
+        if (!result) {
+            std::cerr << "Failed to parse sounds.lua\n";
+            return;
+        }
+
+        sol::table soundsTable = *result;
+
+        // Load volume settings
+        if (soundsTable["volumes"].valid()) {
+            sol::table volumes = soundsTable["volumes"];
+            if (volumes["master"].valid()) {
+                audio_->setMasterVolume(volumes["master"].get<float>());
+            }
+            if (volumes["sfx"].valid()) {
+                audio_->setGroupVolume("SFX", volumes["sfx"].get<float>());
+            }
+            if (volumes["music"].valid()) {
+                audio_->setGroupVolume("Music", volumes["music"].get<float>());
+            }
+        }
+
+        // Load sound effects
+        if (soundsTable["sfx"].valid()) {
+            sol::table sfx = soundsTable["sfx"];
+            soundEat_ = tryLoadSound(sfx, "eat");
+            soundDeath_ = tryLoadSound(sfx, "death");
+            soundLevelComplete_ = tryLoadSound(sfx, "level_complete");
+            soundMenuSelect_ = tryLoadSound(sfx, "menu_select");
+            soundMenuMove_ = tryLoadSound(sfx, "menu_move");
+            soundEnemyHit_ = tryLoadSound(sfx, "enemy_hit");
+            soundChainBreak_ = tryLoadSound(sfx, "chain_break");
+            soundPause_ = tryLoadSound(sfx, "pause");
+            soundGameOver_ = tryLoadSound(sfx, "game_over");
+        }
+
+        // Load music
+        if (soundsTable["music"].valid()) {
+            sol::table music = soundsTable["music"];
+            musicGame_ = tryLoadMusic(music, "game");
+            musicMenu_ = tryLoadMusic(music, "menu");
+        }
+
+        soundsLoaded_ = true;
+        std::cerr << "Sound config loaded successfully\n";
+    }
+
+    bestow::AssetHandle tryLoadSound(sol::table& table, const std::string& key) {
+        if (!table[key].valid() || !assets_) return {};
+
+        std::string path = table[key].get<std::string>();
+        std::cerr << "Loading sound: " << key << " -> " << path << "\n";
+
+        // Register and load the sound asset
+        bestow::AssetHandle handle = assets_->registerAsset(bestow::AssetType::Sound, path);
+        if (handle.isValid()) {
+            assets_->loadAsset(handle);
+        }
+        return handle;
+    }
+
+    bestow::AssetHandle tryLoadMusic(sol::table& table, const std::string& key) {
+        if (!table[key].valid() || !assets_) return {};
+
+        std::string path = table[key].get<std::string>();
+        std::cerr << "Loading music: " << key << " -> " << path << "\n";
+
+        // Register and load the music asset
+        bestow::AssetHandle handle = assets_->registerAsset(bestow::AssetType::Sound, path);
+        if (handle.isValid()) {
+            assets_->loadAsset(handle);
+        }
+        return handle;
+    }
+
+    void playSound(bestow::AssetHandle sound, float volume = 1.0f) {
+        if (!audio_ || !soundsLoaded_ || !sound.isValid()) return;
+        audio_->playOnChannel(bestow::Channels::UI, {
+            .asset = sound,
+            .volume = volume,
+            .pitch = 1.0f,
+            .looping = false
+        });
+    }
+
+    void playSoundPositional(bestow::AssetHandle sound, const bestow::Vec3& pos, float volume = 1.0f) {
+        if (!audio_ || !soundsLoaded_ || !sound.isValid()) return;
+
+        audio_->playPositional({
+            .asset = sound,
+            .position = pos,
+            .volume = volume,
+            .minDistance = 5.0f,
+            .maxDistance = 50.0f
+        });
+    }
+
+    void playMusicTrack(bestow::AssetHandle music, bool loop = true, float fadeIn = 1.0f) {
+        if (!audio_ || !soundsLoaded_ || !music.isValid()) return;
+
+        audio_->playOnChannel(bestow::Channels::Music, {
+            .asset = music,
+            .volume = 1.0f,
+            .looping = loop,
+            .fadeInTime = fadeIn
+        });
+    }
+
+    void stopMusic(float fadeOut = 1.0f) {
+        if (!audio_) return;
+        audio_->stopChannel(bestow::Channels::Music, fadeOut);
+    }
+
+    //======================================================================
+    // Font Loading
+    //======================================================================
+
+    void loadFonts() {
+        if (!assets_ || !graphics_) {
+            std::cerr << "Assets or graphics not available for font loading\n";
+            return;
+        }
+
+        // Load Press Start 2P for retro game feel (menus)
+        auto gameFontAsset = assets_->registerAsset(
+            bestow::AssetType::Font,
+            ":library:/fonts/Press_Start_2P/PressStart2P-Regular.ttf"
+        );
+        if (gameFontAsset.isValid()) {
+            assets_->loadAsset(gameFontAsset);
+            auto fontResult = graphics_->loadFont3D(gameFontAsset);
+            if (fontResult) {
+                gameFont_ = *fontResult;
+                std::cerr << "Loaded game font: PressStart2P\n";
+            } else {
+                std::cerr << "Failed to create Font3D from PressStart2P\n";
+            }
+        }
+
+        // Load Orbitron for titles (more stylized)
+        auto titleFontAsset = assets_->registerAsset(
+            bestow::AssetType::Font,
+            ":library:/fonts/Orbitron/static/Orbitron-Bold.ttf"
+        );
+        if (titleFontAsset.isValid()) {
+            assets_->loadAsset(titleFontAsset);
+            auto fontResult = graphics_->loadFont3D(titleFontAsset);
+            if (fontResult) {
+                titleFont_ = *fontResult;
+                std::cerr << "Loaded title font: Orbitron-Bold\n";
+            } else {
+                std::cerr << "Failed to create Font3D from Orbitron-Bold\n";
+            }
+        }
+    }
+
     bool loadWorld(const std::string& worldPath) {
         if (!config_) {
             std::cerr << "Config system not available for world loading\n";
@@ -610,8 +873,12 @@ private:
         // We start centered in the level
         updateLevelOffset();
 
-        // Clear and reset snake at center of current grid
+        // Clear all transient game state
         snake_.clear();
+        detachedSegments_.clear();
+        foodPickups_.clear();
+
+        // Reset snake at center of current grid
         int centerX = gridSize_ / 2;
         int centerZ = gridSize_ / 2;
         snake_.push_back({{centerX, centerZ}, {0.2f, 0.9f, 0.3f, 1.0f}});
@@ -981,6 +1248,9 @@ private:
         enemy.damageFlashTimer = 0.3f;  // Flash for 0.3 seconds
         enemy.showHealthBar = true;
         enemy.healthBarTimer = HEALTH_BAR_DURATION;
+
+        // Play hit sound
+        playSound(soundEnemyHit_);
     }
 
     //======================================================================
@@ -989,6 +1259,9 @@ private:
 
     void triggerChainBreak(int breakIndex) {
         if (breakIndex <= 0 || breakIndex >= static_cast<int>(snake_.size())) return;
+
+        // Play chain break sound
+        playSound(soundChainBreak_);
 
         // Detach all segments after break point
         for (size_t i = static_cast<size_t>(breakIndex + 1); i < snake_.size(); ++i) {
@@ -1015,6 +1288,12 @@ private:
     void explodeSnake() {
         if (snake_.empty()) return;
 
+        // Play death sound
+        playSound(soundDeath_);
+
+        // Trigger screen shake for death
+        triggerScreenShake(0.5f, 0.4f);
+
         // Calculate center of snake for explosion direction
         float centerX = 0.0f, centerZ = 0.0f;
         for (const auto& seg : snake_) {
@@ -1027,8 +1306,10 @@ private:
         // Random distributions for particle variation
         std::uniform_real_distribution<float> velDist(-1.0f, 1.0f);
         std::uniform_real_distribution<float> offsetDist(-0.3f, 0.3f);
-        std::uniform_real_distribution<float> scaleDist(0.08f, 0.18f);
-        std::uniform_real_distribution<float> timerDist(0.8f, 1.5f);
+        // For 8 particles per segment, each should be ~0.5 scale (cube root of 1/8)
+        // Use slight variation for visual interest
+        std::uniform_real_distribution<float> scaleDist(0.4f, 0.55f);
+        std::uniform_real_distribution<float> timerDist(2.0f, 4.0f);  // Longer life for bounce/scatter
 
         // Convert each snake segment into many tiny exploding cubes
         constexpr int PARTICLES_PER_SEGMENT = 8;
@@ -1072,6 +1353,11 @@ private:
                     dz * speed + velDist(rng_) * 3.0f
                 };
 
+                // Random angular velocity for tumbling
+                particle.angularVel = velDist(rng_) * 15.0f;
+                particle.bounceCount = 0;
+                particle.isResting = false;
+
                 detachedSegments_.push_back(particle);
             }
         }
@@ -1081,8 +1367,14 @@ private:
     }
 
     void updateDetachedSegments(float dt) {
+        // Collect new particles from breaking
+        std::vector<DetachedSegment> newParticles;
+
         for (auto& segment : detachedSegments_) {
             segment.timer -= dt;
+
+            // Skip resting particles (just waiting to fade)
+            if (segment.isResting) continue;
 
             // Apply physics for explosion animation
             segment.velocity.y -= 15.0f * dt;  // Gravity
@@ -1093,14 +1385,85 @@ private:
                 segment.worldPos.y += segment.velocity.y * dt;
                 segment.worldPos.z += segment.velocity.z * dt;
 
-                // Stop at ground level
-                if (segment.worldPos.y < 0.05f) {
-                    segment.worldPos.y = 0.05f;
-                    segment.velocity.y = 0.0f;
-                    segment.velocity.x *= 0.8f;  // Friction
-                    segment.velocity.z *= 0.8f;
+                // Ground height depends on particle scale
+                float groundLevel = segment.scale * CELL_SIZE * 0.5f;
+
+                // Bounce when hitting ground
+                if (segment.worldPos.y < groundLevel) {
+                    segment.worldPos.y = groundLevel;
+                    segment.bounceCount++;
+
+                    // Check if particle should break on impact
+                    if (segment.bounceCount == 1 && segment.scale > 0.2f) {
+                        // First bounce: chance to break into smaller pieces
+                        std::uniform_real_distribution<float> breakChance(0.0f, 1.0f);
+                        if (breakChance(rng_) < 0.4f) {  // 40% chance to shatter
+                            // Spawn 3-4 smaller fragments
+                            std::uniform_int_distribution<int> fragCount(3, 4);
+                            std::uniform_real_distribution<float> velDist(-2.0f, 2.0f);
+                            int numFrags = fragCount(rng_);
+
+                            for (int f = 0; f < numFrags; ++f) {
+                                DetachedSegment frag;
+                                frag.isParticle = true;
+                                frag.scale = segment.scale * 0.4f;  // Fragments are smaller
+                                frag.color = segment.color;
+                                frag.timer = segment.timer * 0.6f;
+                                frag.worldPos = segment.worldPos;
+                                frag.worldPos.x += velDist(rng_) * 0.1f;
+                                frag.worldPos.z += velDist(rng_) * 0.1f;
+                                frag.worldPos.y = frag.scale * CELL_SIZE * 0.5f;
+                                frag.velocity = {
+                                    segment.velocity.x * 0.3f + velDist(rng_) * 1.5f,
+                                    std::abs(segment.velocity.y) * 0.2f + 1.0f,
+                                    segment.velocity.z * 0.3f + velDist(rng_) * 1.5f
+                                };
+                                frag.angularVel = velDist(rng_) * 20.0f;
+                                frag.bounceCount = 1;  // Skip further breaking
+                                frag.pos = segment.pos;
+                                frag.willShatter = true;  // Fragments don't spawn food
+                                newParticles.push_back(frag);
+                            }
+
+                            // Mark original as done
+                            segment.timer = 0.0f;
+                            segment.willShatter = true;
+                            continue;
+                        }
+                    }
+
+                    // Bounce with energy loss
+                    float bounciness = 0.5f;
+                    if (segment.bounceCount > 2) bounciness = 0.3f;
+                    if (segment.bounceCount > 4) bounciness = 0.1f;
+
+                    segment.velocity.y = -segment.velocity.y * bounciness;
+
+                    // Friction on horizontal movement
+                    float friction = 0.7f;
+                    segment.velocity.x *= friction;
+                    segment.velocity.z *= friction;
+
+                    // Reduce spin on bounce
+                    segment.angularVel *= 0.6f;
+
+                    // Come to rest after enough bounces or low velocity
+                    float speed = std::sqrt(
+                        segment.velocity.x * segment.velocity.x +
+                        segment.velocity.y * segment.velocity.y +
+                        segment.velocity.z * segment.velocity.z
+                    );
+                    if (speed < 0.3f || segment.bounceCount > 5) {
+                        segment.isResting = true;
+                        segment.velocity = {0.0f, 0.0f, 0.0f};
+                    }
                 }
             }
+        }
+
+        // Add newly spawned fragments
+        for (auto& p : newParticles) {
+            detachedSegments_.push_back(p);
         }
 
         // Process completed segments
@@ -1246,6 +1609,41 @@ private:
 
         currentCameraDistance_ += (targetDistance - currentCameraDistance_) * ANIMATION_SMOOTH * dt;
         currentCameraHeight_ += (targetHeight - currentCameraHeight_) * ANIMATION_SMOOTH * dt;
+
+        // Update screen shake
+        if (screenShakeTimer_ > 0.0f) {
+            screenShakeTimer_ -= dt;
+            float progress = screenShakeTimer_ / screenShakeDuration_;
+            float currentIntensity = screenShakeIntensity_ * progress;
+
+            // Random shake offset
+            std::uniform_real_distribution<float> shakeDist(-1.0f, 1.0f);
+            screenShakeOffset_ = {
+                shakeDist(rng_) * currentIntensity,
+                shakeDist(rng_) * currentIntensity * 0.5f,
+                shakeDist(rng_) * currentIntensity
+            };
+        } else {
+            screenShakeOffset_ = {0.0f, 0.0f, 0.0f};
+        }
+
+        // Update food pop effect
+        if (foodPopTimer_ > 0.0f) {
+            foodPopTimer_ -= dt;
+            foodPopScale_ = foodPopTimer_ / 0.3f;  // 0.3 second pop duration
+        }
+    }
+
+    void triggerScreenShake(float intensity, float duration) {
+        screenShakeIntensity_ = intensity;
+        screenShakeDuration_ = duration;
+        screenShakeTimer_ = duration;
+    }
+
+    void triggerFoodPop(const bestow::Vec3& pos) {
+        lastFoodPos_ = pos;
+        foodPopTimer_ = 0.3f;
+        foodPopScale_ = 1.0f;
     }
 
     //======================================================================
@@ -1254,6 +1652,18 @@ private:
 
     void handleInput() {
         if (!input_) return;
+
+        // Handle main menu phase
+        if (currentPhase_ == GamePhase::MainMenu) {
+            handleMainMenuInput();
+            return;
+        }
+
+        // Handle pause menu phase
+        if (currentPhase_ == GamePhase::Paused) {
+            handlePauseMenuInput();
+            return;
+        }
 
         // Handle world map phase
         if (currentPhase_ == GamePhase::WorldMap) {
@@ -1319,9 +1729,11 @@ private:
             }
         }
 
-        // ESC to quit
+        // ESC to pause
         if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
-            running_ = false;
+            pauseMenuSelection_ = 0;
+            playSound(soundPause_);
+            transitionTo(GamePhase::Paused);
         }
     }
 
@@ -1375,6 +1787,11 @@ private:
             newSegment.color = foodColor_;
             score_++;
             foodCollected_++;
+
+            // Visual feedback for eating
+            triggerFoodPop(gridToWorld(foodPos_));
+            triggerScreenShake(0.1f, 0.1f);  // Small satisfying bump
+            playSound(soundEat_);
 
             // Add the segment first
             snake_.insert(snake_.begin(), newSegment);
@@ -1630,6 +2047,9 @@ private:
         // Record progress
         updateWorldProgress();
 
+        // Play victory sound
+        playSound(soundLevelComplete_);
+
         // Transition to level complete phase
         transitionTo(GamePhase::LevelComplete);
 
@@ -1742,6 +2162,8 @@ private:
             return bestNode;
         };
 
+        int prevSelection = selectedNodeIndex_;
+
         // Up: Comma (Dvorak W) or Up Arrow - decrease Z (forward in isometric view)
         if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
             input_->wasKeyJustPressed(GLFW_KEY_UP)) {
@@ -1767,11 +2189,17 @@ private:
             if (node >= 0) selectedNodeIndex_ = node;
         }
 
+        // Play sound if selection changed
+        if (selectedNodeIndex_ != prevSelection) {
+            playSound(soundMenuMove_);
+        }
+
         // Select level with Enter/Space
         if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
             input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
             const auto& node = currentWorld_.nodes[selectedNodeIndex_];
             if (node.levelIndex >= 0 && isLevelUnlocked(node.levelIndex)) {
+                playSound(soundMenuSelect_);
                 currentLevelIndex_ = node.levelIndex;
                 std::string levelPath = "data/worlds/world1/" + currentWorld_.levelFiles[currentLevelIndex_];
                 if (loadLevel(levelPath)) {
@@ -1781,9 +2209,68 @@ private:
             }
         }
 
-        // Exit with Escape
+        // Exit to main menu with Escape
         if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
-            running_ = false;  // Exit game from world map
+            transitionTo(GamePhase::MainMenu);
+        }
+    }
+
+    void handleMainMenuInput() {
+        // Navigate with Up/Down (Dvorak: Comma/O)
+        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
+            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+            mainMenuSelection_ = (mainMenuSelection_ - 1 + MAIN_MENU_COUNT) % MAIN_MENU_COUNT;
+            playSound(soundMenuMove_);
+        }
+        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
+            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+            mainMenuSelection_ = (mainMenuSelection_ + 1) % MAIN_MENU_COUNT;
+            playSound(soundMenuMove_);
+        }
+
+        // Select with Enter/Space
+        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
+            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            playSound(soundMenuSelect_);
+            if (mainMenuSelection_ == MAIN_MENU_PLAY) {
+                transitionTo(GamePhase::WorldMap);
+            } else if (mainMenuSelection_ == MAIN_MENU_QUIT) {
+                running_ = false;
+            }
+        }
+    }
+
+    void handlePauseMenuInput() {
+        // Navigate with Up/Down (Dvorak: Comma/O)
+        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
+            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+            pauseMenuSelection_ = (pauseMenuSelection_ - 1 + PAUSE_MENU_COUNT) % PAUSE_MENU_COUNT;
+            playSound(soundMenuMove_);
+        }
+        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
+            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+            pauseMenuSelection_ = (pauseMenuSelection_ + 1) % PAUSE_MENU_COUNT;
+            playSound(soundMenuMove_);
+        }
+
+        // Select with Enter/Space
+        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
+            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            playSound(soundMenuSelect_);
+            if (pauseMenuSelection_ == PAUSE_MENU_RESUME) {
+                transitionTo(GamePhase::Playing);
+            } else if (pauseMenuSelection_ == PAUSE_MENU_RESTART) {
+                restartGame();
+                transitionTo(GamePhase::Playing);
+            } else if (pauseMenuSelection_ == PAUSE_MENU_QUIT) {
+                transitionTo(GamePhase::WorldMap);
+            }
+        }
+
+        // ESC to resume
+        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+            playSound(soundMenuSelect_);
+            transitionTo(GamePhase::Playing);
         }
     }
 
@@ -2063,6 +2550,11 @@ private:
             cameraTarget_.z + currentCameraDistance_ * std::cos(angleRad)
         };
 
+        // Apply screen shake offset
+        cameraPos.x += screenShakeOffset_.x;
+        cameraPos.y += screenShakeOffset_.y;
+        cameraPos.z += screenShakeOffset_.z;
+
         cam.transform.position = cameraPos;
 
         glm::vec3 lookDir = glm::normalize(glm::vec3(
@@ -2243,13 +2735,18 @@ private:
                 // Particles use their own worldPos directly (updated by physics)
                 worldPos = segment.worldPos;
 
-                // Particles use their own scale, shrinking as timer runs out
-                float timerRatio = segment.timer / (DETACH_ANIMATION_TIME * 1.2f);
-                scale = segment.scale * timerRatio;
+                // Only shrink in the last second of lifetime
+                float fadeStart = 1.0f;
+                if (segment.timer < fadeStart) {
+                    scale = segment.scale * (segment.timer / fadeStart);
+                } else {
+                    scale = segment.scale;
+                }
 
-                // Spin faster for particles
-                float progress = 1.0f - timerRatio;
-                spin = progress * 30.0f + segment.velocity.x * 5.0f;  // Spin based on velocity
+                // Use angular velocity for proper tumbling
+                // Accumulate rotation based on time alive (approximate)
+                float timeAlive = 3.0f - segment.timer;  // Rough estimate
+                spin = segment.angularVel * timeAlive;
             } else {
                 // Regular detached segments use grid position with velocity offset
                 worldPos = gridToWorld(segment.pos);
@@ -2271,15 +2768,17 @@ private:
             // Color: particles keep their original color, regular segments flash
             bestow::PBRMaterial mat;
             if (segment.isParticle) {
-                // Particles keep segment color but fade out
-                float alpha = segment.timer / (DETACH_ANIMATION_TIME * 1.2f);
+                // Particles keep segment color, fade to ember glow near end
+                float fadeStart = 1.0f;
+                float colorAlpha = segment.timer < fadeStart ? (segment.timer / fadeStart) : 1.0f;
+                float emberBlend = 1.0f - colorAlpha;
                 mat.baseColorFactor = {
-                    segment.color.x * alpha + 0.8f * (1.0f - alpha),
-                    segment.color.y * alpha * 0.3f,
-                    segment.color.z * alpha * 0.3f,
+                    segment.color.x * colorAlpha + 0.8f * emberBlend,
+                    segment.color.y * colorAlpha + 0.2f * emberBlend,
+                    segment.color.z * colorAlpha + 0.1f * emberBlend,
                     1.0f
                 };
-                mat.emissiveFactor = {0.3f, 0.1f, 0.0f};  // Glowing embers
+                mat.emissiveFactor = {0.2f * emberBlend, 0.05f * emberBlend, 0.0f};  // Glowing embers at end
             } else if (segment.willShatter) {
                 float progress = 1.0f - (segment.timer / DETACH_ANIMATION_TIME);
                 float flash = std::sin(progress * 30.0f) > 0 ? 1.0f : 0.3f;
@@ -2335,6 +2834,8 @@ private:
 
     void drawFood() {
         if (!cubeMesh_) return;
+        // Don't draw food when level is complete (it was just collected)
+        if (currentPhase_ == GamePhase::LevelComplete) return;
 
         bestow::Vec3 worldPos = gridToWorld(foodPos_);
 
@@ -2365,6 +2866,40 @@ private:
         auto matResult = graphics_->createMaterial(mat);
         if (matResult) {
             graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+        }
+    }
+
+    void drawFoodPopEffect() {
+        if (foodPopTimer_ <= 0.0f) return;
+
+        // Draw expanding burst lines from where food was collected
+        float progress = 1.0f - foodPopScale_;  // 0 to 1 as effect progresses
+        float radius = 0.3f + progress * 1.5f;  // Expanding radius
+        float alpha = foodPopScale_;  // Fade out
+
+        bestow::Color popColor{
+            static_cast<uint8_t>(255 * alpha),
+            static_cast<uint8_t>(200 * alpha),
+            static_cast<uint8_t>(50 * alpha),
+            255
+        };
+
+        // Draw 8 burst lines radiating outward
+        constexpr int NUM_RAYS = 8;
+        for (int i = 0; i < NUM_RAYS; ++i) {
+            float angle = static_cast<float>(i) * (2.0f * 3.14159f / NUM_RAYS);
+            float dx = std::cos(angle) * radius;
+            float dz = std::sin(angle) * radius;
+
+            float innerRadius = radius * 0.3f;
+            float innerDx = std::cos(angle) * innerRadius;
+            float innerDz = std::sin(angle) * innerRadius;
+
+            graphics_->debugDrawLine(
+                {lastFoodPos_.x + innerDx, lastFoodPos_.y + 0.5f, lastFoodPos_.z + innerDz},
+                {lastFoodPos_.x + dx, lastFoodPos_.y + 0.5f, lastFoodPos_.z + dz},
+                popColor, 0.0f, false
+            );
         }
     }
 
@@ -2507,6 +3042,364 @@ private:
             float xSize = halfGrid * 0.7f;
             graphics_->debugDrawLine({-xSize, 0.5f, -xSize}, {xSize, 0.5f, xSize}, deathColor, 0.0f, false);
             graphics_->debugDrawLine({xSize, 0.5f, -xSize}, {-xSize, 0.5f, xSize}, deathColor, 0.0f, false);
+
+            // Game Over text
+            if (gameFont_ != 0) {
+                graphics_->drawText3D(
+                    "GAME OVER",
+                    {0.0f, 2.0f, 0.0f},
+                    gameFont_,
+                    0.6f,
+                    bestow::Color{255, 100, 100, 255}
+                );
+                graphics_->drawText3D(
+                    "PRESS O TO RESTART",
+                    {0.0f, 1.2f, 0.0f},
+                    gameFont_,
+                    0.25f,
+                    bestow::Color{200, 200, 200, 255}
+                );
+            }
+        }
+
+        // ==================== HUD TEXT LABELS ====================
+        if (gameFont_ != 0 && currentPhase_ == GamePhase::Playing && !gameOver_) {
+            // Food counter text (above the food bar)
+            std::string foodText = std::to_string(foodCollected_) + "/" + std::to_string(foodRequired_);
+            graphics_->drawText3D(
+                foodText,
+                {0.0f, hudY + 0.5f, hudZ - 0.5f},
+                gameFont_,
+                0.25f,
+                bestow::Color{255, 200, 50, 255}  // Gold
+            );
+
+            // Snake length counter (next to segment bar)
+            std::string segmentText = std::to_string(snake_.size());
+            graphics_->drawText3D(
+                segmentText,
+                {segmentBarX - 0.5f, hudY + segmentBarHeight + 0.5f, -halfGrid},
+                gameFont_,
+                0.2f,
+                bestow::Color{100, 255, 100, 255}  // Green
+            );
+
+            // Level name (top of screen)
+            if (!currentLevel_.name.empty()) {
+                graphics_->drawText3D(
+                    currentLevel_.name,
+                    {0.0f, 4.0f, -halfGrid - 1.0f},
+                    gameFont_,
+                    0.3f,
+                    bestow::Color{200, 200, 255, 255}
+                );
+            }
+        }
+    }
+
+    void drawMainMenu() {
+        // Set up camera for menu view - more top-down angle
+        bestow::Camera3D cam = graphics_->getCamera();
+        cam.fovY = 45.0f;
+        cam.transform.position = {0.0f, 20.0f, 8.0f};
+        cam.transform.rotation = glm::quatLookAt(
+            glm::normalize(glm::vec3(0.0f, -0.9f, -0.3f)),  // More top-down
+            glm::vec3(0.0f, 1.0f, 0.0f)
+        );
+        graphics_->setCamera(cam);
+
+        // Draw ground plane - darker, more atmospheric for menu
+        {
+            bestow::PBRMaterial groundMat;
+            groundMat.baseColorFactor = {0.08f, 0.06f, 0.12f, 1.0f};  // Dark purple-ish
+            auto matResult = graphics_->createMaterial(groundMat);
+            if (matResult && groundMesh_) {
+                bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(0.0f, -0.5f, 0.0f));
+                transform = glm::scale(transform, glm::vec3(30.0f, 1.0f, 30.0f));  // Larger
+                graphics_->drawMesh(groundMesh_, *matResult, transform, true, true);
+            }
+        }
+
+        // Add some ambient decorative cubes scattered around
+        std::mt19937 menuRng(42);  // Fixed seed for consistent placement
+        std::uniform_real_distribution<float> posDist(-12.0f, 12.0f);
+        std::uniform_real_distribution<float> scaleDist(0.2f, 0.5f);
+        std::uniform_real_distribution<float> hueDist(0.0f, 1.0f);
+
+        for (int i = 0; i < 15; ++i) {
+            float x = posDist(menuRng);
+            float z = posDist(menuRng);
+            // Skip if too close to menu area
+            if (std::abs(x) < 4.0f && z > 0.0f && z < 6.0f) continue;
+
+            float scale = scaleDist(menuRng);
+            float y = scale * 0.5f + std::sin(menuAnimTime_ * 0.5f + static_cast<float>(i)) * 0.1f;
+
+            bestow::PBRMaterial mat;
+            float hue = hueDist(menuRng);
+            // Muted colors - purples and blues
+            mat.baseColorFactor = {0.2f + hue * 0.15f, 0.15f, 0.25f + (1.0f - hue) * 0.2f, 1.0f};
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
+            transform = glm::scale(transform, glm::vec3(scale));
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult && cubeMesh_) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        }
+
+        // Draw decorative snake in background - far left side
+        float snakeAnim = menuAnimTime_ * 0.5f;
+        for (int i = 0; i < 8; ++i) {
+            float offset = static_cast<float>(i) * 0.3f;
+            float x = std::sin(snakeAnim + offset) * 2.0f - 10.0f;  // Moved far left
+            float z = static_cast<float>(i) - 2.0f;
+            float y = 0.5f + std::sin(snakeAnim * 2.0f + offset) * 0.2f;
+
+            float green = 0.9f - static_cast<float>(i) * 0.08f;
+            bestow::PBRMaterial mat;
+            mat.baseColorFactor = {0.2f, green, 0.3f, 1.0f};
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
+            transform = glm::scale(transform, glm::vec3(0.8f));
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult && cubeMesh_) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        }
+
+        // Draw menu options as 3D cube rows
+        float menuZ = 2.0f;
+        float menuSpacing = 2.5f;
+
+        for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
+            float z = menuZ + static_cast<float>(i) * menuSpacing;
+            bool selected = (i == mainMenuSelection_);
+
+            // Number of cubes for each option (PLAY = 4 cubes, QUIT = 4 cubes)
+            int numCubes = 4;
+            float cubeSpacing = 1.2f;
+            float startX = -static_cast<float>(numCubes - 1) * cubeSpacing * 0.5f;
+
+            for (int c = 0; c < numCubes; ++c) {
+                float x = startX + static_cast<float>(c) * cubeSpacing;
+                float y = 0.5f;
+
+                // Animate selected row
+                if (selected) {
+                    float bounce = std::sin(menuAnimTime_ * 4.0f + static_cast<float>(c) * 0.5f) * 0.2f;
+                    y += bounce + 0.3f;
+                }
+
+                bestow::PBRMaterial mat;
+                if (selected) {
+                    // Bright golden color for selected
+                    float pulse = std::sin(menuAnimTime_ * 3.0f) * 0.2f + 0.8f;
+                    mat.baseColorFactor = {1.0f, 0.8f * pulse, 0.2f, 1.0f};
+                    mat.emissiveFactor = {0.3f, 0.2f, 0.0f};
+                } else {
+                    // Dim gray for unselected
+                    mat.baseColorFactor = {0.4f, 0.4f, 0.5f, 1.0f};
+                }
+
+                bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
+                float scale = selected ? 0.9f : 0.7f;
+                transform = glm::scale(transform, glm::vec3(scale));
+
+                auto matResult = graphics_->createMaterial(mat);
+                if (matResult && cubeMesh_) {
+                    graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+                }
+            }
+
+            // Draw selection arrows on sides
+            if (selected) {
+                float arrowX = startX - 1.5f;
+                float pulse = std::sin(menuAnimTime_ * 5.0f) * 0.3f;
+
+                bestow::PBRMaterial arrowMat;
+                arrowMat.baseColorFactor = {1.0f, 1.0f, 0.3f, 1.0f};
+                arrowMat.emissiveFactor = {0.5f, 0.5f, 0.0f};
+
+                // Left arrow (triangle of cubes pointing right)
+                for (int a = 0; a < 3; ++a) {
+                    float ax = arrowX - static_cast<float>(a) * 0.4f + pulse;
+                    float ay = 0.5f + (a == 1 ? 0.4f : (a == 2 ? 0.0f : -0.4f));
+                    if (a == 0) ay = 0.5f;
+
+                    bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(ax, 0.5f, z));
+                    transform = glm::scale(transform, glm::vec3(0.4f));
+                    auto matResult = graphics_->createMaterial(arrowMat);
+                    if (matResult && cubeMesh_) {
+                        graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+                    }
+                }
+
+                // Right arrow
+                arrowX = startX + static_cast<float>(numCubes - 1) * cubeSpacing + 1.5f;
+                for (int a = 0; a < 3; ++a) {
+                    float ax = arrowX + static_cast<float>(a) * 0.4f - pulse;
+                    bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(ax, 0.5f, z));
+                    transform = glm::scale(transform, glm::vec3(0.4f));
+                    auto matResult = graphics_->createMaterial(arrowMat);
+                    if (matResult && cubeMesh_) {
+                        graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+                    }
+                }
+            }
+        }
+
+        // Draw title as a row of cubes at the front
+        float titleZ = -2.0f;
+        int titleCubes = 7;
+        float titleSpacing = 0.8f;
+        float titleStartX = -static_cast<float>(titleCubes - 1) * titleSpacing * 0.5f;
+
+        for (int t = 0; t < titleCubes; ++t) {
+            float x = titleStartX + static_cast<float>(t) * titleSpacing;
+            float y = 0.5f + std::sin(menuAnimTime_ * 2.0f + static_cast<float>(t) * 0.4f) * 0.15f;
+
+            bestow::PBRMaterial mat;
+            float hue = static_cast<float>(t) / static_cast<float>(titleCubes);
+            mat.baseColorFactor = {0.2f + hue * 0.3f, 0.8f, 0.3f + (1.0f - hue) * 0.3f, 1.0f};
+            mat.emissiveFactor = {0.1f, 0.2f, 0.1f};
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, titleZ));
+            transform = glm::scale(transform, glm::vec3(0.6f));
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult && cubeMesh_) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        }
+
+        // Instructions hint - small cubes indicating controls
+        // Arrow pattern on the right side
+        float hintX = 6.0f;
+        float hintZ = 3.0f;
+        bestow::PBRMaterial hintMat;
+        hintMat.baseColorFactor = {0.6f, 0.6f, 0.7f, 1.0f};
+
+        // Up arrow hint
+        auto drawHintCube = [&](float x, float y, float z) {
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
+            transform = glm::scale(transform, glm::vec3(0.3f));
+            auto matResult = graphics_->createMaterial(hintMat);
+            if (matResult && cubeMesh_) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        };
+
+        // Vertical arrow (up/down navigation)
+        drawHintCube(hintX, 0.3f, hintZ - 0.5f);
+        drawHintCube(hintX, 0.3f, hintZ);
+        drawHintCube(hintX, 0.3f, hintZ + 0.5f);
+
+        // ==================== TEXT LABELS ====================
+        if (gameFont_ != 0) {
+            // Title text
+            graphics_->drawText3D(
+                "SNAKE",
+                {0.0f, 1.5f, titleZ},
+                titleFont_ != 0 ? titleFont_ : gameFont_,
+                1.5f,
+                bestow::Color{100, 255, 150, 255}
+            );
+
+            // Menu option labels
+            std::array<const char*, MAIN_MENU_COUNT> menuLabels = {"PLAY", "QUIT"};
+            for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
+                float z = menuZ + static_cast<float>(i) * menuSpacing;
+                bool selected = (i == mainMenuSelection_);
+
+                bestow::Color textColor = selected
+                    ? bestow::Color{255, 220, 100, 255}  // Gold for selected
+                    : bestow::Color{180, 180, 200, 255}; // Gray for unselected
+
+                float textY = selected ? 1.5f : 1.2f;
+
+                graphics_->drawText3D(
+                    menuLabels[i],
+                    {0.0f, textY, z},
+                    gameFont_,
+                    selected ? 0.8f : 0.5f,
+                    textColor
+                );
+            }
+
+            // Controls hint text
+            graphics_->drawText3D(
+                ", O SELECT",
+                {hintX, 0.8f, hintZ + 1.5f},
+                gameFont_,
+                0.25f,
+                bestow::Color{150, 150, 170, 255}
+            );
+        }
+    }
+
+    void drawPauseMenu() {
+        // Darken overlay - draw large dark rectangle using multiple lines
+        bestow::Color overlayColor{20, 20, 30, 200};
+        float halfGrid = gridSize_ * CELL_SIZE * 0.5f;
+        for (float z = -halfGrid; z <= halfGrid; z += 0.5f) {
+            graphics_->debugDrawLine({-halfGrid, 0.1f, z}, {halfGrid, 0.1f, z}, overlayColor, 0.0f, false);
+        }
+
+        // Draw menu in world space, centered on camera target
+        float menuY = 2.0f;
+        float menuSpacing = 1.0f;
+        float cx = cameraTarget_.x;
+        float cz = cameraTarget_.z;
+
+        std::array<const char*, PAUSE_MENU_COUNT> options = {"RESUME", "RESTART", "QUIT"};
+
+        for (int i = 0; i < PAUSE_MENU_COUNT; ++i) {
+            float y = menuY - static_cast<float>(i) * menuSpacing;
+            bool selected = (i == pauseMenuSelection_);
+
+            // Selection indicator
+            if (selected) {
+                float pulse = std::sin(gameTime_ * 4.0f) * 0.1f + 0.9f;
+                bestow::Color selectColor{255, 200, 50, 255};
+                graphics_->debugDrawLine({cx - 2.5f * pulse, y, cz}, {cx - 1.5f, y, cz}, selectColor, 0.0f, false);
+                graphics_->debugDrawLine({cx + 1.5f, y, cz}, {cx + 2.5f * pulse, y, cz}, selectColor, 0.0f, false);
+            }
+
+            // Draw text label if font is available
+            if (gameFont_ != 0) {
+                bestow::Color textColor = selected
+                    ? bestow::Color{255, 220, 100, 255}
+                    : bestow::Color{150, 150, 160, 255};
+
+                graphics_->drawText3D(
+                    options[i],
+                    {cx, y, cz},
+                    gameFont_,
+                    selected ? 0.5f : 0.35f,
+                    textColor
+                );
+            } else {
+                // Fallback: debug lines
+                uint8_t brightness = selected ? 255 : 100;
+                bestow::Color textColor{brightness, brightness, brightness, 255};
+                float width = 0.8f + static_cast<float>(i) * 0.2f;
+                graphics_->debugDrawLine({cx - width, y + 0.08f, cz}, {cx + width, y + 0.08f, cz}, textColor, 0.0f, false);
+                graphics_->debugDrawLine({cx - width, y - 0.08f, cz}, {cx + width, y - 0.08f, cz}, textColor, 0.0f, false);
+            }
+        }
+
+        // PAUSED title
+        if (gameFont_ != 0) {
+            graphics_->drawText3D(
+                "PAUSED",
+                {cx, menuY + 1.5f, cz},
+                gameFont_,
+                0.7f,
+                bestow::Color{255, 255, 100, 255}
+            );
+        } else {
+            bestow::Color pauseColor{255, 255, 100, 255};
+            graphics_->debugDrawLine({cx - 2.0f, menuY + 2.0f, cz}, {cx + 2.0f, menuY + 2.0f, cz}, pauseColor, 0.0f, false);
         }
     }
 

@@ -108,9 +108,12 @@ void AssetSystem::update() {
 AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::path& path) {
     AssetHandle handle{generateUUID(), type};
 
+    // Resolve path prefixes (:library:/, :assets:/) to actual filesystem paths
+    std::filesystem::path resolvedPath = PathResolver::resolve(path.string());
+
     AssetEntry entry;
     entry.metadata.handle = handle;
-    entry.metadata.sourcePath = path;
+    entry.metadata.sourcePath = resolvedPath;
     entry.metadata.state = AssetState::Unloaded;
 
     assets_[handle.uuid] = std::move(entry);
@@ -118,14 +121,14 @@ AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::pa
     // Track path -> handle mapping for file watcher lookups
     {
         std::error_code ec;
-        auto canonicalPath = std::filesystem::canonical(path, ec);
+        auto canonicalPath = std::filesystem::canonical(resolvedPath, ec);
         if (!ec) {
             std::lock_guard<std::mutex> lock(pathMapMutex_);
             pathToHandle_[canonicalPath.string()] = handle;
         } else {
             // If canonical fails (file doesn't exist yet), use absolute path
             std::lock_guard<std::mutex> lock(pathMapMutex_);
-            pathToHandle_[std::filesystem::absolute(path).string()] = handle;
+            pathToHandle_[std::filesystem::absolute(resolvedPath).string()] = handle;
         }
     }
 
@@ -133,8 +136,8 @@ AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::pa
     // IMPORTANT: Use canonical path so we watch the REAL directory, not symlinks
     if (hotReloadEnabled_) {
         std::error_code ec;
-        auto canonicalPath = std::filesystem::canonical(path, ec);
-        auto parentDir = ec ? path.parent_path() : canonicalPath.parent_path();
+        auto canonicalPath = std::filesystem::canonical(resolvedPath, ec);
+        auto parentDir = ec ? resolvedPath.parent_path() : canonicalPath.parent_path();
         std::string dirStr = parentDir.string();
 
         std::lock_guard<std::mutex> lock(pathMapMutex_);
@@ -844,6 +847,19 @@ const CubemapData* AssetSystem::getCubemapData(AssetHandle handle) const {
     }
     try {
         return &std::any_cast<const CubemapData&>(it->second.data);
+    } catch (const std::bad_any_cast&) {
+        return nullptr;
+    }
+}
+
+const SoundData* AssetSystem::getSoundData(AssetHandle handle) const {
+    std::lock_guard<std::mutex> lock(assetsMutex_);
+    auto it = assets_.find(handle.uuid);
+    if (it == assets_.end() || !it->second.data.has_value()) {
+        return nullptr;
+    }
+    try {
+        return &std::any_cast<const SoundData&>(it->second.data);
     } catch (const std::bad_any_cast&) {
         return nullptr;
     }

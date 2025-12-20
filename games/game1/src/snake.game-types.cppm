@@ -167,6 +167,9 @@ struct DetachedSegment {
     bestow::Vec3 worldPos{0, 0, 0};  // Precise world position for particles
     float scale = 1.0f;              // Size multiplier (small for explosion particles)
     bool isParticle = false;         // True for tiny explosion cubes
+    int bounceCount = 0;             // Number of ground bounces
+    float angularVel = 0.0f;         // Spin speed for rolling
+    bool isResting = false;          // True when settled on ground
 };
 
 //==========================================================================

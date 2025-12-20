@@ -57,3 +57,13 @@ add_custom_command(TARGET snake-game POST_BUILD
         "$<TARGET_FILE_DIR:snake-game>/"
     COMMENT "Copying Vulkan shaders to output directory"
 )
+
+# Copy asset-library to output directory as "library" (for :library:/ path resolution)
+if(EXISTS "${CMAKE_SOURCE_DIR}/asset-library")
+    add_custom_command(TARGET snake-game POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/asset-library"
+            "$<TARGET_FILE_DIR:snake-game>/library"
+        COMMENT "Copying asset-library to output directory"
+    )
+endif()

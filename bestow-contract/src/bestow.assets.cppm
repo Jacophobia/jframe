@@ -386,6 +386,14 @@ public:
         const std::filesystem::path& negZ) = 0;
 
     //======================================================================
+    // Audio Asset Loading
+    //======================================================================
+
+    /// Get loaded sound data (WAV, OGG, etc.) for a Sound/Music asset
+    /// Returns nullptr if handle is invalid, asset not loaded, or wrong type
+    virtual const SoundData* getSoundData(AssetHandle handle) const = 0;
+
+    //======================================================================
     // Lua Material Loading
     //======================================================================
     //
