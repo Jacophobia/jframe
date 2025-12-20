@@ -30,9 +30,17 @@ target_link_libraries(snake-game
         bestow-audio       # Audio system
         bestow-assets      # Asset system
         bestow-config      # Config system
+
+        # Required for MSVC C++23 modules - kangaru inline constexpr values
+        kangaru::kangaru
 )
 
 target_compile_features(snake-game PRIVATE cxx_std_23)
+
+# MSVC workaround: force include kangaru_compat.hpp to fix inline constexpr issues with C++23 modules
+if(MSVC)
+    target_compile_options(snake-game PRIVATE /FI"bestow/kangaru_compat.hpp")
+endif()
 
 # Enable import std; support
 target_use_std_module(snake-game)
