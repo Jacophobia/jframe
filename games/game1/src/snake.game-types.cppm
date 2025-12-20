@@ -164,6 +164,9 @@ struct DetachedSegment {
     float timer = DETACH_ANIMATION_TIME;
     bool willShatter = false;        // Determined at detach time (1/6 chance)
     bestow::Vec3 velocity{0, 0, 0};  // For explosion animation
+    bestow::Vec3 worldPos{0, 0, 0};  // Precise world position for particles
+    float scale = 1.0f;              // Size multiplier (small for explosion particles)
+    bool isParticle = false;         // True for tiny explosion cubes
 };
 
 //==========================================================================

@@ -1024,32 +1024,59 @@ private:
         centerX /= snake_.size();
         centerZ /= snake_.size();
 
-        // Convert all snake segments into exploding detached segments
-        for (size_t i = 0; i < snake_.size(); ++i) {
-            DetachedSegment detached;
-            detached.pos = snake_[i].pos;
-            detached.color = snake_[i].color;
-            detached.timer = DETACH_ANIMATION_TIME * 1.5f;  // Longer animation for death
-            detached.willShatter = true;  // All segments shatter on death
+        // Random distributions for particle variation
+        std::uniform_real_distribution<float> velDist(-1.0f, 1.0f);
+        std::uniform_real_distribution<float> offsetDist(-0.3f, 0.3f);
+        std::uniform_real_distribution<float> scaleDist(0.08f, 0.18f);
+        std::uniform_real_distribution<float> timerDist(0.8f, 1.5f);
 
-            // Calculate outward velocity from center
+        // Convert each snake segment into many tiny exploding cubes
+        constexpr int PARTICLES_PER_SEGMENT = 8;
+
+        for (size_t i = 0; i < snake_.size(); ++i) {
+            // Get world position of this segment
+            float segWorldX = snake_[i].pos.x * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
+            float segWorldZ = snake_[i].pos.z * CELL_SIZE - gridSize_ * CELL_SIZE * 0.5f + CELL_SIZE * 0.5f;
+            float segWorldY = CELL_SIZE * 0.5f;
+
+            // Calculate base outward direction from snake center
             float dx = static_cast<float>(snake_[i].pos.x) - centerX;
             float dz = static_cast<float>(snake_[i].pos.z) - centerZ;
             float dist = std::sqrt(dx * dx + dz * dz);
             if (dist < 0.1f) dist = 0.1f;
+            dx /= dist;
+            dz /= dist;
 
-            // Normalize and scale - segments fly outward dramatically
-            float speed = 5.0f + (static_cast<float>(i) / snake_.size()) * 3.0f;
-            detached.velocity = {
-                (dx / dist) * speed + (static_cast<float>(i % 3) - 1.0f) * 2.0f,
-                4.0f + static_cast<float>(i % 5) * 1.5f,  // Upward with variation
-                (dz / dist) * speed + (static_cast<float>(i % 4) - 1.5f) * 2.0f
-            };
+            // Spawn multiple tiny particles per segment
+            for (int p = 0; p < PARTICLES_PER_SEGMENT; ++p) {
+                DetachedSegment particle;
+                particle.pos = snake_[i].pos;
+                particle.color = snake_[i].color;
+                particle.timer = DETACH_ANIMATION_TIME * timerDist(rng_);
+                particle.willShatter = true;
+                particle.isParticle = true;
+                particle.scale = scaleDist(rng_);
 
-            detachedSegments_.push_back(detached);
+                // Start position with slight random offset within the segment
+                particle.worldPos = {
+                    segWorldX + offsetDist(rng_),
+                    segWorldY + offsetDist(rng_),
+                    segWorldZ + offsetDist(rng_)
+                };
+
+                // Explosive velocity - outward from center with randomness
+                float speed = 4.0f + velDist(rng_) * 2.0f;
+                particle.velocity = {
+                    dx * speed + velDist(rng_) * 3.0f,
+                    3.0f + std::abs(velDist(rng_)) * 4.0f,  // Always some upward
+                    dz * speed + velDist(rng_) * 3.0f
+                };
+
+                detachedSegments_.push_back(particle);
+            }
         }
 
-        // Clear the snake (it's now all detached segments)
+        // Clear the snake (it's now all particles)
         snake_.clear();
     }
 
@@ -1059,6 +1086,21 @@ private:
 
             // Apply physics for explosion animation
             segment.velocity.y -= 15.0f * dt;  // Gravity
+
+            // Move particles by velocity
+            if (segment.isParticle) {
+                segment.worldPos.x += segment.velocity.x * dt;
+                segment.worldPos.y += segment.velocity.y * dt;
+                segment.worldPos.z += segment.velocity.z * dt;
+
+                // Stop at ground level
+                if (segment.worldPos.y < 0.05f) {
+                    segment.worldPos.y = 0.05f;
+                    segment.velocity.y = 0.0f;
+                    segment.velocity.x *= 0.8f;  // Friction
+                    segment.velocity.z *= 0.8f;
+                }
+            }
         }
 
         // Process completed segments
@@ -2193,28 +2235,53 @@ private:
         if (!cubeMesh_) return;
 
         for (const auto& segment : detachedSegments_) {
-            bestow::Vec3 worldPos = gridToWorld(segment.pos);
+            bestow::Vec3 worldPos;
+            float scale;
+            float spin;
 
-            // Animation: apply velocity offset based on remaining time
-            float progress = 1.0f - (segment.timer / DETACH_ANIMATION_TIME);
-            worldPos.x += segment.velocity.x * progress * 0.3f;
-            worldPos.y += segment.velocity.y * progress * 0.3f;
-            worldPos.z += segment.velocity.z * progress * 0.3f;
+            if (segment.isParticle) {
+                // Particles use their own worldPos directly (updated by physics)
+                worldPos = segment.worldPos;
 
-            // Shrink as timer runs out
-            float scale = segment.timer / DETACH_ANIMATION_TIME;
+                // Particles use their own scale, shrinking as timer runs out
+                float timerRatio = segment.timer / (DETACH_ANIMATION_TIME * 1.2f);
+                scale = segment.scale * timerRatio;
 
-            // Spin wildly
-            float spin = progress * 20.0f;
+                // Spin faster for particles
+                float progress = 1.0f - timerRatio;
+                spin = progress * 30.0f + segment.velocity.x * 5.0f;  // Spin based on velocity
+            } else {
+                // Regular detached segments use grid position with velocity offset
+                worldPos = gridToWorld(segment.pos);
+
+                float progress = 1.0f - (segment.timer / DETACH_ANIMATION_TIME);
+                worldPos.x += segment.velocity.x * progress * 0.3f;
+                worldPos.y += segment.velocity.y * progress * 0.3f;
+                worldPos.z += segment.velocity.z * progress * 0.3f;
+
+                scale = (segment.timer / DETACH_ANIMATION_TIME) * 0.85f;
+                spin = progress * 20.0f;
+            }
 
             bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(),
                 glm::vec3(worldPos.x, worldPos.y, worldPos.z));
             transform = glm::rotate(transform, spin, glm::vec3(0.3f, 1.0f, 0.5f));
-            transform = glm::scale(transform, glm::vec3(scale * 0.85f));
+            transform = glm::scale(transform, glm::vec3(scale));
 
-            // Color: flash red if shattering, otherwise keep original
+            // Color: particles keep their original color, regular segments flash
             bestow::PBRMaterial mat;
-            if (segment.willShatter) {
+            if (segment.isParticle) {
+                // Particles keep segment color but fade out
+                float alpha = segment.timer / (DETACH_ANIMATION_TIME * 1.2f);
+                mat.baseColorFactor = {
+                    segment.color.x * alpha + 0.8f * (1.0f - alpha),
+                    segment.color.y * alpha * 0.3f,
+                    segment.color.z * alpha * 0.3f,
+                    1.0f
+                };
+                mat.emissiveFactor = {0.3f, 0.1f, 0.0f};  // Glowing embers
+            } else if (segment.willShatter) {
+                float progress = 1.0f - (segment.timer / DETACH_ANIMATION_TIME);
                 float flash = std::sin(progress * 30.0f) > 0 ? 1.0f : 0.3f;
                 mat.baseColorFactor = {flash, 0.1f, 0.1f, 1.0f};
             } else {
@@ -2222,9 +2289,11 @@ private:
             }
             mat.roughnessFactor = 0.4f;
             mat.metallicFactor = 0.1f;
-            mat.emissiveFactor = {mat.baseColorFactor.x * 0.2f,
-                                  mat.baseColorFactor.y * 0.2f,
-                                  mat.baseColorFactor.z * 0.2f};
+            if (!segment.isParticle) {
+                mat.emissiveFactor = {mat.baseColorFactor.x * 0.2f,
+                                      mat.baseColorFactor.y * 0.2f,
+                                      mat.baseColorFactor.z * 0.2f};
+            }
 
             auto matResult = graphics_->createMaterial(mat);
             if (matResult) {
