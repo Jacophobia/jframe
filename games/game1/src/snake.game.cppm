@@ -822,7 +822,8 @@ private:
         const GridPos& headPos = snake_[0].pos;
         for (const auto& enemy : enemies_) {
             if (enemy.pos == headPos) {
-                // Snake head hit enemy = game over
+                // Snake head hit enemy = game over with explosion!
+                explodeSnake();
                 gameOver_ = true;
                 return;
             }
@@ -1009,6 +1010,47 @@ private:
 
         // Trim snake to break point (keep segment at breakIndex as new tail)
         snake_.resize(static_cast<size_t>(breakIndex + 1));
+    }
+
+    void explodeSnake() {
+        if (snake_.empty()) return;
+
+        // Calculate center of snake for explosion direction
+        float centerX = 0.0f, centerZ = 0.0f;
+        for (const auto& seg : snake_) {
+            centerX += static_cast<float>(seg.pos.x);
+            centerZ += static_cast<float>(seg.pos.z);
+        }
+        centerX /= snake_.size();
+        centerZ /= snake_.size();
+
+        // Convert all snake segments into exploding detached segments
+        for (size_t i = 0; i < snake_.size(); ++i) {
+            DetachedSegment detached;
+            detached.pos = snake_[i].pos;
+            detached.color = snake_[i].color;
+            detached.timer = DETACH_ANIMATION_TIME * 1.5f;  // Longer animation for death
+            detached.willShatter = true;  // All segments shatter on death
+
+            // Calculate outward velocity from center
+            float dx = static_cast<float>(snake_[i].pos.x) - centerX;
+            float dz = static_cast<float>(snake_[i].pos.z) - centerZ;
+            float dist = std::sqrt(dx * dx + dz * dz);
+            if (dist < 0.1f) dist = 0.1f;
+
+            // Normalize and scale - segments fly outward dramatically
+            float speed = 5.0f + (static_cast<float>(i) / snake_.size()) * 3.0f;
+            detached.velocity = {
+                (dx / dist) * speed + (static_cast<float>(i % 3) - 1.0f) * 2.0f,
+                4.0f + static_cast<float>(i % 5) * 1.5f,  // Upward with variation
+                (dz / dist) * speed + (static_cast<float>(i % 4) - 1.5f) * 2.0f
+            };
+
+            detachedSegments_.push_back(detached);
+        }
+
+        // Clear the snake (it's now all detached segments)
+        snake_.clear();
     }
 
     void updateDetachedSegments(float dt) {
@@ -1275,6 +1317,7 @@ private:
 
         // Check obstacle collision
         if (isObstacleAt(newHead)) {
+            explodeSnake();
             gameOver_ = true;
             return;
         }
