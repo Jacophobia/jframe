@@ -211,6 +211,123 @@ private:
     bestow::Vec3 lastFoodPos_{0.0f, 0.0f, 0.0f};
 
     //======================================================================
+    // Pixel Font Rendering (since drawText3D is not implemented)
+    //======================================================================
+
+    // 5x7 pixel font - each char is 5 columns x 7 rows packed into bytes
+    // Each byte represents one column (bottom bit = top row)
+    static constexpr int FONT_WIDTH = 5;
+    static constexpr int FONT_HEIGHT = 7;
+
+    // Get pixel pattern for a character (returns 5 bytes, one per column)
+    static std::array<uint8_t, 5> getCharPattern(char c) {
+        // Simple 5x7 pixel font patterns
+        switch (c) {
+            case 'A': return {0x7E, 0x11, 0x11, 0x11, 0x7E};
+            case 'B': return {0x7F, 0x49, 0x49, 0x49, 0x36};
+            case 'C': return {0x3E, 0x41, 0x41, 0x41, 0x22};
+            case 'D': return {0x7F, 0x41, 0x41, 0x41, 0x3E};
+            case 'E': return {0x7F, 0x49, 0x49, 0x49, 0x41};
+            case 'F': return {0x7F, 0x09, 0x09, 0x09, 0x01};
+            case 'G': return {0x3E, 0x41, 0x49, 0x49, 0x7A};
+            case 'H': return {0x7F, 0x08, 0x08, 0x08, 0x7F};
+            case 'I': return {0x00, 0x41, 0x7F, 0x41, 0x00};
+            case 'J': return {0x20, 0x40, 0x41, 0x3F, 0x01};
+            case 'K': return {0x7F, 0x08, 0x14, 0x22, 0x41};
+            case 'L': return {0x7F, 0x40, 0x40, 0x40, 0x40};
+            case 'M': return {0x7F, 0x02, 0x0C, 0x02, 0x7F};
+            case 'N': return {0x7F, 0x04, 0x08, 0x10, 0x7F};
+            case 'O': return {0x3E, 0x41, 0x41, 0x41, 0x3E};
+            case 'P': return {0x7F, 0x09, 0x09, 0x09, 0x06};
+            case 'Q': return {0x3E, 0x41, 0x51, 0x21, 0x5E};
+            case 'R': return {0x7F, 0x09, 0x19, 0x29, 0x46};
+            case 'S': return {0x46, 0x49, 0x49, 0x49, 0x31};
+            case 'T': return {0x01, 0x01, 0x7F, 0x01, 0x01};
+            case 'U': return {0x3F, 0x40, 0x40, 0x40, 0x3F};
+            case 'V': return {0x1F, 0x20, 0x40, 0x20, 0x1F};
+            case 'W': return {0x3F, 0x40, 0x38, 0x40, 0x3F};
+            case 'X': return {0x63, 0x14, 0x08, 0x14, 0x63};
+            case 'Y': return {0x07, 0x08, 0x70, 0x08, 0x07};
+            case 'Z': return {0x61, 0x51, 0x49, 0x45, 0x43};
+            case '0': return {0x3E, 0x51, 0x49, 0x45, 0x3E};
+            case '1': return {0x00, 0x42, 0x7F, 0x40, 0x00};
+            case '2': return {0x42, 0x61, 0x51, 0x49, 0x46};
+            case '3': return {0x21, 0x41, 0x45, 0x4B, 0x31};
+            case '4': return {0x18, 0x14, 0x12, 0x7F, 0x10};
+            case '5': return {0x27, 0x45, 0x45, 0x45, 0x39};
+            case '6': return {0x3C, 0x4A, 0x49, 0x49, 0x30};
+            case '7': return {0x01, 0x71, 0x09, 0x05, 0x03};
+            case '8': return {0x36, 0x49, 0x49, 0x49, 0x36};
+            case '9': return {0x06, 0x49, 0x49, 0x29, 0x1E};
+            case '/': return {0x20, 0x10, 0x08, 0x04, 0x02};
+            case ':': return {0x00, 0x36, 0x36, 0x00, 0x00};
+            case ',': return {0x00, 0x00, 0x58, 0x38, 0x00};
+            case '-': return {0x08, 0x08, 0x08, 0x08, 0x08};
+            case '.': return {0x00, 0x60, 0x60, 0x00, 0x00};
+            case '!': return {0x00, 0x00, 0x5F, 0x00, 0x00};
+            case '?': return {0x02, 0x01, 0x51, 0x09, 0x06};
+            case '>': return {0x41, 0x22, 0x14, 0x08, 0x00};
+            case '<': return {0x00, 0x08, 0x14, 0x22, 0x41};
+            case ' ': return {0x00, 0x00, 0x00, 0x00, 0x00};
+            default:  return {0x00, 0x00, 0x00, 0x00, 0x00};
+        }
+    }
+
+    // Draw a single character at 3D world position using debug lines
+    void drawPixelChar(char c, float x, float y, float z, float pixelSize,
+                       const bestow::Color& color, bool screenSpace = false) {
+        auto pattern = getCharPattern(c);
+        float depth = screenSpace ? 0.0f : z;
+
+        for (int col = 0; col < FONT_WIDTH; ++col) {
+            uint8_t colBits = pattern[col];
+            for (int row = 0; row < FONT_HEIGHT; ++row) {
+                if (colBits & (1 << row)) {
+                    // Draw this pixel as a small square (4 lines)
+                    float px = x + col * pixelSize;
+                    float py = y + (FONT_HEIGHT - 1 - row) * pixelSize;
+                    float halfPx = pixelSize * 0.45f;
+
+                    // Draw filled pixel using horizontal lines
+                    for (float dy = -halfPx; dy <= halfPx; dy += pixelSize * 0.2f) {
+                        graphics_->debugDrawLine(
+                            {px - halfPx, py + dy, depth},
+                            {px + halfPx, py + dy, depth},
+                            color, 0.0f, false
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // Draw text string centered at position
+    void drawPixelText(const std::string& text, float centerX, float y, float z,
+                       float pixelSize, const bestow::Color& color, bool centered = true) {
+        float charWidth = FONT_WIDTH * pixelSize + pixelSize; // Char width + spacing
+        float totalWidth = text.length() * charWidth - pixelSize; // No trailing space
+
+        float startX = centered ? centerX - totalWidth * 0.5f : centerX;
+
+        for (size_t i = 0; i < text.length(); ++i) {
+            float x = startX + i * charWidth;
+            drawPixelChar(std::toupper(text[i]), x, y, z, pixelSize, color);
+        }
+    }
+
+    // Draw text with shadow for better visibility
+    void drawPixelTextShadow(const std::string& text, float centerX, float y, float z,
+                             float pixelSize, const bestow::Color& color, bool centered = true) {
+        // Shadow (slightly offset and darker)
+        bestow::Color shadowColor{20, 20, 20, 200};
+        float shadowOffset = pixelSize * 0.5f;
+        drawPixelText(text, centerX + shadowOffset, y - shadowOffset, z + 0.01f,
+                      pixelSize, shadowColor, centered);
+        // Main text
+        drawPixelText(text, centerX, y, z, pixelSize, color, centered);
+    }
+
+    //======================================================================
     // Initialization
     //======================================================================
 
@@ -480,8 +597,9 @@ private:
                 break;
             case GamePhase::GameOver:
                 gameOver_ = true;
-                // Play game over sound
+                // Play game over sound and switch to menu music
                 playSound(soundGameOver_);
+                playMusicTrack(musicMenu_);  // Switch back to calm menu music
                 break;
         }
     }
@@ -1091,7 +1209,7 @@ private:
             if (enemy.pos == headPos) {
                 // Snake head hit enemy = game over with explosion!
                 explodeSnake();
-                gameOver_ = true;
+                transitionTo(GamePhase::GameOver);
                 return;
             }
         }
@@ -1772,7 +1890,7 @@ private:
         // Check obstacle collision
         if (isObstacleAt(newHead)) {
             explodeSnake();
-            gameOver_ = true;
+            transitionTo(GamePhase::GameOver);
             return;
         }
 
@@ -3043,56 +3161,29 @@ private:
             graphics_->debugDrawLine({-xSize, 0.5f, -xSize}, {xSize, 0.5f, xSize}, deathColor, 0.0f, false);
             graphics_->debugDrawLine({xSize, 0.5f, -xSize}, {-xSize, 0.5f, xSize}, deathColor, 0.0f, false);
 
-            // Game Over text
-            if (gameFont_ != 0) {
-                graphics_->drawText3D(
-                    "GAME OVER",
-                    {0.0f, 2.0f, 0.0f},
-                    gameFont_,
-                    0.6f,
-                    bestow::Color{255, 100, 100, 255}
-                );
-                graphics_->drawText3D(
-                    "PRESS O TO RESTART",
-                    {0.0f, 1.2f, 0.0f},
-                    gameFont_,
-                    0.25f,
-                    bestow::Color{200, 200, 200, 255}
-                );
-            }
+            // Game Over text using pixel font
+            drawPixelTextShadow("GAME OVER", 0.0f, 2.5f, 0.0f, 0.12f,
+                                bestow::Color{255, 100, 100, 255});
+            drawPixelTextShadow("PRESS O TO RESTART", 0.0f, 1.5f, 0.0f, 0.04f,
+                                bestow::Color{200, 200, 200, 255});
         }
 
-        // ==================== HUD TEXT LABELS ====================
-        if (gameFont_ != 0 && currentPhase_ == GamePhase::Playing && !gameOver_) {
-            // Food counter text (above the food bar)
+        // ==================== HUD TEXT LABELS (Pixel Font) ====================
+        if (currentPhase_ == GamePhase::Playing && !gameOver_) {
+            // Food counter text (above the food bar) - e.g., "3/5"
             std::string foodText = std::to_string(foodCollected_) + "/" + std::to_string(foodRequired_);
-            graphics_->drawText3D(
-                foodText,
-                {0.0f, hudY + 0.5f, hudZ - 0.5f},
-                gameFont_,
-                0.25f,
-                bestow::Color{255, 200, 50, 255}  // Gold
-            );
+            drawPixelTextShadow(foodText, 0.0f, hudY + 0.6f, hudZ - 0.3f, 0.04f,
+                                bestow::Color{255, 200, 50, 255});
 
             // Snake length counter (next to segment bar)
             std::string segmentText = std::to_string(snake_.size());
-            graphics_->drawText3D(
-                segmentText,
-                {segmentBarX - 0.5f, hudY + segmentBarHeight + 0.5f, -halfGrid},
-                gameFont_,
-                0.2f,
-                bestow::Color{100, 255, 100, 255}  // Green
-            );
+            drawPixelTextShadow(segmentText, segmentBarX - 0.3f, hudY + segmentBarHeight + 0.3f, -halfGrid, 0.03f,
+                                bestow::Color{100, 255, 100, 255});
 
             // Level name (top of screen)
             if (!currentLevel_.name.empty()) {
-                graphics_->drawText3D(
-                    currentLevel_.name,
-                    {0.0f, 4.0f, -halfGrid - 1.0f},
-                    gameFont_,
-                    0.3f,
-                    bestow::Color{200, 200, 255, 255}
-                );
+                drawPixelTextShadow(currentLevel_.name, 0.0f, 3.0f, -halfGrid - 0.5f, 0.05f,
+                                    bestow::Color{200, 200, 255, 255});
             }
         }
     }
@@ -3101,76 +3192,53 @@ private:
         // Set up camera for menu view - more top-down angle
         bestow::Camera3D cam = graphics_->getCamera();
         cam.fovY = 45.0f;
-        cam.transform.position = {0.0f, 20.0f, 8.0f};
+        cam.transform.position = {0.0f, 15.0f, 10.0f};
         cam.transform.rotation = glm::quatLookAt(
-            glm::normalize(glm::vec3(0.0f, -0.9f, -0.3f)),  // More top-down
+            glm::normalize(glm::vec3(0.0f, -0.8f, -0.4f)),
             glm::vec3(0.0f, 1.0f, 0.0f)
         );
         graphics_->setCamera(cam);
 
-        // Draw ground plane - darker, more atmospheric for menu
+        // Draw simple dark ground plane
         {
             bestow::PBRMaterial groundMat;
-            groundMat.baseColorFactor = {0.08f, 0.06f, 0.12f, 1.0f};  // Dark purple-ish
+            groundMat.baseColorFactor = {0.05f, 0.08f, 0.05f, 1.0f};  // Very dark green
             auto matResult = graphics_->createMaterial(groundMat);
             if (matResult && groundMesh_) {
                 bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(0.0f, -0.5f, 0.0f));
-                transform = glm::scale(transform, glm::vec3(30.0f, 1.0f, 30.0f));  // Larger
+                transform = glm::scale(transform, glm::vec3(25.0f, 1.0f, 25.0f));
                 graphics_->drawMesh(groundMesh_, *matResult, transform, true, true);
             }
         }
 
-        // Add some ambient decorative cubes scattered around
-        std::mt19937 menuRng(42);  // Fixed seed for consistent placement
-        std::uniform_real_distribution<float> posDist(-12.0f, 12.0f);
-        std::uniform_real_distribution<float> scaleDist(0.2f, 0.5f);
-        std::uniform_real_distribution<float> hueDist(0.0f, 1.0f);
+        // Draw a coiled serpent in the center as decoration
+        float snakeAnim = menuAnimTime_ * 0.8f;
+        int coilSegments = 20;
+        for (int i = 0; i < coilSegments; ++i) {
+            float t = static_cast<float>(i) / coilSegments;
+            float angle = t * 6.28f * 2.5f + snakeAnim;  // 2.5 coils
+            float radius = 2.0f + t * 1.5f;  // Spiral outward
+            float x = std::cos(angle) * radius;
+            float z = std::sin(angle) * radius;
+            float y = 0.4f + std::sin(snakeAnim * 2.0f + t * 6.28f) * 0.1f;
 
-        for (int i = 0; i < 15; ++i) {
-            float x = posDist(menuRng);
-            float z = posDist(menuRng);
-            // Skip if too close to menu area
-            if (std::abs(x) < 4.0f && z > 0.0f && z < 6.0f) continue;
-
-            float scale = scaleDist(menuRng);
-            float y = scale * 0.5f + std::sin(menuAnimTime_ * 0.5f + static_cast<float>(i)) * 0.1f;
-
+            float green = 0.9f - t * 0.4f;
             bestow::PBRMaterial mat;
-            float hue = hueDist(menuRng);
-            // Muted colors - purples and blues
-            mat.baseColorFactor = {0.2f + hue * 0.15f, 0.15f, 0.25f + (1.0f - hue) * 0.2f, 1.0f};
+            mat.baseColorFactor = {0.15f, green, 0.2f, 1.0f};
+            mat.emissiveFactor = {0.0f, green * 0.1f, 0.0f};
 
+            float segmentScale = 0.6f - t * 0.2f;  // Smaller toward tail
             bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
-            transform = glm::scale(transform, glm::vec3(scale));
+            transform = glm::scale(transform, glm::vec3(segmentScale));
             auto matResult = graphics_->createMaterial(mat);
             if (matResult && cubeMesh_) {
                 graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
             }
         }
 
-        // Draw decorative snake in background - far left side
-        float snakeAnim = menuAnimTime_ * 0.5f;
-        for (int i = 0; i < 8; ++i) {
-            float offset = static_cast<float>(i) * 0.3f;
-            float x = std::sin(snakeAnim + offset) * 2.0f - 10.0f;  // Moved far left
-            float z = static_cast<float>(i) - 2.0f;
-            float y = 0.5f + std::sin(snakeAnim * 2.0f + offset) * 0.2f;
-
-            float green = 0.9f - static_cast<float>(i) * 0.08f;
-            bestow::PBRMaterial mat;
-            mat.baseColorFactor = {0.2f, green, 0.3f, 1.0f};
-
-            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(), glm::vec3(x, y, z));
-            transform = glm::scale(transform, glm::vec3(0.8f));
-            auto matResult = graphics_->createMaterial(mat);
-            if (matResult && cubeMesh_) {
-                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
-            }
-        }
-
-        // Draw menu options as 3D cube rows
-        float menuZ = 2.0f;
-        float menuSpacing = 2.5f;
+        // Menu options - simple cubes with selection indicator
+        float menuZ = 5.0f;
+        float menuSpacing = 2.0f;
 
         for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
             float z = menuZ + static_cast<float>(i) * menuSpacing;
@@ -3294,47 +3362,31 @@ private:
         drawHintCube(hintX, 0.3f, hintZ);
         drawHintCube(hintX, 0.3f, hintZ + 0.5f);
 
-        // ==================== TEXT LABELS ====================
-        if (gameFont_ != 0) {
-            // Title text
-            graphics_->drawText3D(
-                "SNAKE",
-                {0.0f, 1.5f, titleZ},
-                titleFont_ != 0 ? titleFont_ : gameFont_,
-                1.5f,
-                bestow::Color{100, 255, 150, 255}
-            );
+        // ==================== TEXT LABELS (Pixel Font) ====================
+        // Title text - "SERPENT"
+        float titlePixelSize = 0.15f;
+        drawPixelTextShadow("SERPENT", 0.0f, 2.0f, titleZ, titlePixelSize,
+                            bestow::Color{100, 255, 150, 255});
 
-            // Menu option labels
-            std::array<const char*, MAIN_MENU_COUNT> menuLabels = {"PLAY", "QUIT"};
-            for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
-                float z = menuZ + static_cast<float>(i) * menuSpacing;
-                bool selected = (i == mainMenuSelection_);
+        // Menu option labels
+        std::array<const char*, MAIN_MENU_COUNT> menuLabels = {"PLAY", "QUIT"};
+        for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
+            float z = menuZ + static_cast<float>(i) * menuSpacing;
+            bool selected = (i == mainMenuSelection_);
 
-                bestow::Color textColor = selected
-                    ? bestow::Color{255, 220, 100, 255}  // Gold for selected
-                    : bestow::Color{180, 180, 200, 255}; // Gray for unselected
+            bestow::Color textColor = selected
+                ? bestow::Color{255, 220, 100, 255}  // Gold for selected
+                : bestow::Color{180, 180, 200, 255}; // Gray for unselected
 
-                float textY = selected ? 1.5f : 1.2f;
+            float textY = selected ? 1.5f : 1.2f;
+            float pixelSize = selected ? 0.08f : 0.05f;
 
-                graphics_->drawText3D(
-                    menuLabels[i],
-                    {0.0f, textY, z},
-                    gameFont_,
-                    selected ? 0.8f : 0.5f,
-                    textColor
-                );
-            }
-
-            // Controls hint text
-            graphics_->drawText3D(
-                ", O SELECT",
-                {hintX, 0.8f, hintZ + 1.5f},
-                gameFont_,
-                0.25f,
-                bestow::Color{150, 150, 170, 255}
-            );
+            drawPixelTextShadow(menuLabels[i], 0.0f, textY, z, pixelSize, textColor);
         }
+
+        // Controls hint text
+        drawPixelText(",O SELECT", hintX, 0.8f, hintZ + 1.5f, 0.03f,
+                      bestow::Color{150, 150, 170, 255}, false);
     }
 
     void drawPauseMenu() {
@@ -3365,42 +3417,18 @@ private:
                 graphics_->debugDrawLine({cx + 1.5f, y, cz}, {cx + 2.5f * pulse, y, cz}, selectColor, 0.0f, false);
             }
 
-            // Draw text label if font is available
-            if (gameFont_ != 0) {
-                bestow::Color textColor = selected
-                    ? bestow::Color{255, 220, 100, 255}
-                    : bestow::Color{150, 150, 160, 255};
+            // Draw text label using pixel font
+            bestow::Color textColor = selected
+                ? bestow::Color{255, 220, 100, 255}
+                : bestow::Color{150, 150, 160, 255};
 
-                graphics_->drawText3D(
-                    options[i],
-                    {cx, y, cz},
-                    gameFont_,
-                    selected ? 0.5f : 0.35f,
-                    textColor
-                );
-            } else {
-                // Fallback: debug lines
-                uint8_t brightness = selected ? 255 : 100;
-                bestow::Color textColor{brightness, brightness, brightness, 255};
-                float width = 0.8f + static_cast<float>(i) * 0.2f;
-                graphics_->debugDrawLine({cx - width, y + 0.08f, cz}, {cx + width, y + 0.08f, cz}, textColor, 0.0f, false);
-                graphics_->debugDrawLine({cx - width, y - 0.08f, cz}, {cx + width, y - 0.08f, cz}, textColor, 0.0f, false);
-            }
+            float pixelSize = selected ? 0.06f : 0.04f;
+            drawPixelTextShadow(options[i], cx, y, cz, pixelSize, textColor);
         }
 
         // PAUSED title
-        if (gameFont_ != 0) {
-            graphics_->drawText3D(
-                "PAUSED",
-                {cx, menuY + 1.5f, cz},
-                gameFont_,
-                0.7f,
-                bestow::Color{255, 255, 100, 255}
-            );
-        } else {
-            bestow::Color pauseColor{255, 255, 100, 255};
-            graphics_->debugDrawLine({cx - 2.0f, menuY + 2.0f, cz}, {cx + 2.0f, menuY + 2.0f, cz}, pauseColor, 0.0f, false);
-        }
+        drawPixelTextShadow("PAUSED", cx, menuY + 1.5f, cz, 0.1f,
+                            bestow::Color{255, 255, 100, 255});
     }
 
     void drawGridBorder() {
