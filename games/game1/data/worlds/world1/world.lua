@@ -6,34 +6,33 @@ return {
     theme = "forest",
 
     -- Level files in this world (relative paths)
+    -- TODO: Add more levels (level02.lua, level03.lua, boss.lua)
     levels = {
-        "level01.lua",
-        "level02.lua",
-        "level03.lua",
-        "boss.lua"
+        "level01.lua"
     },
 
     -- Unlock requirements (cumulative food from previous levels in world)
     unlockRequirements = {
-        [1] = 0,    -- Level 1 always unlocked
-        [2] = 5,    -- Need 5 food to unlock level 2
-        [3] = 15,   -- Need 15 food to unlock level 3
-        [4] = 30    -- Need 30 food to unlock boss
+        [1] = 0     -- Level 1 always unlocked
+        -- [2] = 5,    -- Need 5 food to unlock level 2
+        -- [3] = 15,   -- Need 15 food to unlock level 3
+        -- [4] = 30    -- Need 30 food to unlock boss
     },
 
     -- World map layout (isometric grid positions)
+    -- TODO: Add more nodes when levels are created
     nodes = {
-        { x = 5, z = 12, levelIndex = 1, name = "Forest Gate" },
-        { x = 7, z = 9, levelIndex = 2, name = "Deep Woods" },
-        { x = 10, z = 7, levelIndex = 3, name = "Ancient Tree" },
-        { x = 12, z = 4, levelIndex = 4, name = "Forest King", isBoss = true }
+        { x = 5, z = 12, levelIndex = 1, name = "Forest Gate" }
+        -- { x = 7, z = 9, levelIndex = 2, name = "Deep Woods" },
+        -- { x = 10, z = 7, levelIndex = 3, name = "Ancient Tree" },
+        -- { x = 12, z = 4, levelIndex = 4, name = "Forest King", isBoss = true }
     },
 
     -- Paths connecting nodes (pairs of node indices, 1-based)
     paths = {
-        { 1, 2 },
-        { 2, 3 },
-        { 3, 4 }
+        -- { 1, 2 },
+        -- { 2, 3 },
+        -- { 3, 4 }
     },
 
     -- Boss configuration for this world
