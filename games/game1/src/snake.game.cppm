@@ -1,7 +1,7 @@
 // games/game1/src/snake.game.cppm
 // 3D Isometric Snake Game
 //
-// A colorful snake game where each segment inherits the color of the food eaten.
+// A level-based snake game with predefined maps, roaming enemies, and ring attacks.
 // Uses 3D isometric view with camera following the snake head.
 // Controls: ,AOE (Dvorak) or Arrow Keys for movement
 
@@ -13,8 +13,13 @@ module;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
+#define SOL_ALL_SAFETIES_ON 1
+#include <sol/sol.hpp>
 
 export module snake.game;
+
+// Import the types partition
+export import :types;
 
 import std;
 import bestow.services;   // All contract interfaces
@@ -24,85 +29,24 @@ import bestow.graphics3d;
 export namespace snake {
 
 //==========================================================================
-// Game Constants
-//==========================================================================
-
-constexpr int INITIAL_GRID_SIZE = 10;     // Start small (10x10)
-constexpr float CELL_SIZE = 1.0f;          // Each cell is 1 unit
-constexpr float INITIAL_MOVE_INTERVAL = 0.12f;  // Starting speed
-constexpr float MIN_MOVE_INTERVAL = 0.04f;      // Maximum speed (minimum interval)
-constexpr float SPEED_INCREASE = 0.003f;        // Speed up per food eaten
-constexpr float BASE_CAMERA_DISTANCE = 12.0f;   // Base camera distance
-constexpr float BASE_CAMERA_HEIGHT = 10.0f;     // Base camera height
-constexpr float CAMERA_SCALE = 0.3f;            // Camera scales with grid size (very gentle zoom)
-constexpr float ANIMATION_SMOOTH = 3.0f;        // Animation smoothing factor
-constexpr float FOOD_SPIN_SPEED = 2.0f;         // Food rotation speed (radians/sec)
-constexpr float OBSTACLE_SPAWN_CHANCE = 0.4f;   // 40% chance to spawn obstacle when eating
-constexpr float EXPANSION_WAIT_TIME = 1.0f;     // Wait 1 second before merging borders
-
-//==========================================================================
-// Direction Enum
-//==========================================================================
-
-enum class Direction {
-    Up,     // -Z
-    Down,   // +Z
-    Left,   // -X
-    Right   // +X
-};
-
-//==========================================================================
-// Grid Position
-//==========================================================================
-
-struct GridPos {
-    int x = 0;
-    int z = 0;
-
-    bool operator==(const GridPos& other) const {
-        return x == other.x && z == other.z;
-    }
-
-    GridPos operator+(const GridPos& other) const {
-        return {x + other.x, z + other.z};
-    }
-};
-
-GridPos directionToOffset(Direction dir) {
-    switch (dir) {
-        case Direction::Up:    return {0, -1};
-        case Direction::Down:  return {0, 1};
-        case Direction::Left:  return {-1, 0};
-        case Direction::Right: return {1, 0};
-    }
-    return {0, 0};
-}
-
-//==========================================================================
-// Snake Segment - stores position and color
-//==========================================================================
-
-struct SnakeSegment {
-    GridPos pos;
-    bestow::Vec4 color{0.2f, 0.8f, 0.3f, 1.0f};  // Default green
-};
-
-//==========================================================================
 // Snake Game Application
 //==========================================================================
 
 class SnakeGame : public bestow::Application<SnakeGame,
     bestow::IGraphics3DSystem,
     bestow::IInputSystem,
-    bestow::IAudioSystem>
+    bestow::IAudioSystem,
+    bestow::IConfigSystem>
 {
 public:
     SnakeGame(bestow::IGraphics3DSystem& graphics,
               bestow::IInputSystem& input,
-              bestow::IAudioSystem& audio)
+              bestow::IAudioSystem& audio,
+              bestow::IConfigSystem& config)
         : graphics_(&graphics)
         , input_(&input)
-        , audio_(&audio) {}
+        , audio_(&audio)
+        , config_(&config) {}
 
     ~SnakeGame() override = default;
 
@@ -125,6 +69,7 @@ private:
     bestow::IGraphics3DSystem* graphics_ = nullptr;
     bestow::IInputSystem* input_ = nullptr;
     bestow::IAudioSystem* audio_ = nullptr;
+    bestow::IConfigSystem* config_ = nullptr;
 
     //======================================================================
     // Meshes & Materials
@@ -134,10 +79,41 @@ private:
     bestow::MaterialHandle groundMaterial_ = 0;
 
     //======================================================================
-    // Game State
+    // Game Phase / State Machine
+    //======================================================================
+    GamePhase currentPhase_ = GamePhase::Playing;  // TODO: Start with MainMenu later
+    GamePhase previousPhase_ = GamePhase::Playing;
+
+    //======================================================================
+    // Level State
+    //======================================================================
+    LevelMap currentLevel_;
+    int currentLevelIndex_ = 0;
+    int currentWorldIndex_ = 0;
+    int foodCollected_ = 0;
+    int foodRequired_ = 5;
+    int levelMaxSize_ = 15;      // Full level dimensions
+    int levelOffsetX_ = 0;       // Offset from current grid to level coords
+    int levelOffsetZ_ = 0;
+
+    //======================================================================
+    // Enemy State
+    //======================================================================
+    std::vector<Enemy> enemies_;
+    std::vector<DetachedSegment> detachedSegments_;
+    std::vector<FoodPickup> foodPickups_;
+
+    //======================================================================
+    // World/Progress State
+    //======================================================================
+    WorldConfig currentWorld_;
+    GameSaveData saveData_;
+
+    //======================================================================
+    // Snake State
     //======================================================================
     std::vector<SnakeSegment> snake_;
-    std::vector<GridPos> obstacles_;  // Obstacles as grid positions (move with grid)
+    std::vector<GridPos> obstacles_;  // Legacy obstacles (will be replaced by level walls)
     GridPos foodPos_;
     bestow::Vec4 foodColor_{1.0f, 0.0f, 0.0f, 1.0f};
     Direction direction_ = Direction::Right;
@@ -203,6 +179,11 @@ private:
             input_->initialize(graphics_->getNativeWindowHandle());
         }
 
+        // Initialize config system for Lua parsing
+        if (config_) {
+            config_->initialize();
+        }
+
         // Create cube mesh
         auto cubeResult = graphics_->createCubeMesh(CELL_SIZE * 0.85f);
         if (cubeResult) {
@@ -222,17 +203,23 @@ private:
             groundMaterial_ = *groundResult;
         }
 
-        // Initialize snake with gradient green colors
-        snake_.clear();
-        snake_.push_back({{gridSize_ / 2, gridSize_ / 2}, {0.2f, 0.9f, 0.3f, 1.0f}});
-        snake_.push_back({{gridSize_ / 2 - 1, gridSize_ / 2}, {0.25f, 0.85f, 0.35f, 1.0f}});
-        snake_.push_back({{gridSize_ / 2 - 2, gridSize_ / 2}, {0.3f, 0.8f, 0.4f, 1.0f}});
+        // Try to load level from file, fall back to default if not found
+        if (loadLevel("data/worlds/world1/level01.lua")) {
+            applyLevelToGame();
+        } else {
+            // Fallback: Initialize snake with gradient green colors (default setup)
+            std::cerr << "Using default level setup\n";
+            snake_.clear();
+            snake_.push_back({{gridSize_ / 2, gridSize_ / 2}, {0.2f, 0.9f, 0.3f, 1.0f}});
+            snake_.push_back({{gridSize_ / 2 - 1, gridSize_ / 2}, {0.25f, 0.85f, 0.35f, 1.0f}});
+            snake_.push_back({{gridSize_ / 2 - 2, gridSize_ / 2}, {0.3f, 0.8f, 0.4f, 1.0f}});
 
-        direction_ = Direction::Right;
-        nextDirection_ = Direction::Right;
+            direction_ = Direction::Right;
+            nextDirection_ = Direction::Right;
 
-        // Spawn initial food
-        spawnFood();
+            // Spawn initial food
+            spawnFood();
+        }
 
         // Setup camera
         setupCamera();
@@ -294,6 +281,9 @@ private:
                     applyBufferedInput();
                     moveSnake();
                 }
+                updateEnemies(fixedDt);
+                updateDetachedSegments(fixedDt);
+                checkFoodPickups();
                 updateAnimations(fixedDt);
                 updateCamera(fixedDt);
                 accumulator -= fixedDt;
@@ -303,9 +293,13 @@ private:
             graphics_->beginFrame();
             drawGround();
             drawObstacles();
+            drawEnemies();
             drawSnake();
+            drawDetachedSegments();
+            drawFoodPickups();
             drawFood();
             drawGridBorder();
+            drawHUD();
             graphics_->endFrame();
         }
     }
@@ -317,6 +311,631 @@ private:
         if (graphics_) {
             graphics_->shutdown();
         }
+    }
+
+    //======================================================================
+    // State Machine
+    //======================================================================
+
+    void transitionTo(GamePhase newPhase) {
+        if (newPhase == currentPhase_) return;
+
+        // Exit current state
+        exitPhase(currentPhase_);
+
+        // Transition
+        previousPhase_ = currentPhase_;
+        currentPhase_ = newPhase;
+
+        // Enter new state
+        enterPhase(newPhase);
+    }
+
+    void exitPhase(GamePhase phase) {
+        switch (phase) {
+            case GamePhase::Playing:
+                // Nothing special on exit
+                break;
+            case GamePhase::Paused:
+                // Resume timers, etc.
+                break;
+            case GamePhase::LevelComplete:
+                // Save progress
+                break;
+            default:
+                break;
+        }
+    }
+
+    void enterPhase(GamePhase phase) {
+        switch (phase) {
+            case GamePhase::MainMenu:
+                // Show main menu
+                break;
+            case GamePhase::WorldMap:
+                // Initialize world map view
+                break;
+            case GamePhase::Playing:
+                gameOver_ = false;
+                break;
+            case GamePhase::Paused:
+                // Pause timers
+                break;
+            case GamePhase::BossFight:
+                // Initialize boss fight (accumulated segments!)
+                break;
+            case GamePhase::LevelComplete:
+                // Show victory screen, update progress
+                break;
+            case GamePhase::GameOver:
+                gameOver_ = true;
+                break;
+        }
+    }
+
+    //======================================================================
+    // Level Loading
+    //======================================================================
+
+    bool loadLevel(const std::string& levelPath) {
+        if (!config_) {
+            std::cerr << "Config system not available for level loading\n";
+            return false;
+        }
+
+        // Read level file
+        std::ifstream file(levelPath);
+        if (!file) {
+            std::cerr << "Failed to open level file: " << levelPath << "\n";
+            return false;
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        std::string luaContent = buffer.str();
+
+        // Parse Lua
+        auto result = config_->parseLuaString(luaContent, levelPath);
+        if (!result) {
+            std::cerr << "Failed to parse level Lua: " << levelPath << "\n";
+            return false;
+        }
+
+        // Extract level data from sol::object
+        sol::table levelTable = result->as<sol::table>();
+        return parseLevelTable(levelTable);
+    }
+
+    bool parseLevelTable(const sol::table& table) {
+        // Clear current level
+        currentLevel_ = LevelMap{};
+
+        // Basic properties
+        currentLevel_.name = table.get_or("name", std::string("Unnamed Level"));
+        currentLevel_.width = table.get_or("width", 15);
+        currentLevel_.height = table.get_or("height", 15);
+        currentLevel_.foodRequired = table.get_or("foodRequired", 5);
+        currentLevel_.isBossLevel = table.get_or("isBossLevel", false);
+
+        // Player start position
+        if (sol::table playerStart = table["playerStart"]; playerStart.valid()) {
+            currentLevel_.playerStart.x = playerStart.get_or("x", currentLevel_.width / 2);
+            currentLevel_.playerStart.z = playerStart.get_or("z", currentLevel_.height / 2);
+        }
+
+        // Walls
+        if (sol::table walls = table["walls"]; walls.valid()) {
+            for (auto& pair : walls) {
+                sol::table wallPos = pair.second.as<sol::table>();
+                currentLevel_.walls.push_back({
+                    wallPos.get_or("x", 0),
+                    wallPos.get_or("z", 0)
+                });
+            }
+        }
+
+        // Food spawn points
+        if (sol::table spawnPoints = table["foodSpawnPoints"]; spawnPoints.valid()) {
+            for (auto& pair : spawnPoints) {
+                sol::table pos = pair.second.as<sol::table>();
+                currentLevel_.foodSpawnPoints.push_back({
+                    pos.get_or("x", 0),
+                    pos.get_or("z", 0)
+                });
+            }
+        }
+
+        // Enemy zones
+        if (sol::table enemies = table["enemies"]; enemies.valid()) {
+            for (auto& pair : enemies) {
+                sol::table enemyDef = pair.second.as<sol::table>();
+                sol::table zone = enemyDef["zone"];
+
+                EnemyZone ez;
+                ez.bounds.min.x = zone.get_or("minX", 0);
+                ez.bounds.min.z = zone.get_or("minZ", 0);
+                ez.bounds.max.x = zone.get_or("maxX", 0);
+                ez.bounds.max.z = zone.get_or("maxZ", 0);
+                ez.enemyCount = enemyDef.get_or("count", 1);
+                ez.moveInterval = enemyDef.get_or("moveInterval", static_cast<double>(ENEMY_MOVE_INTERVAL));
+                ez.health = enemyDef.get_or("health", 1);
+
+                currentLevel_.enemyZones.push_back(ez);
+            }
+        }
+
+        // Update grid size from level
+        gridSize_ = currentLevel_.width;
+        foodRequired_ = currentLevel_.foodRequired;
+
+        std::cerr << "Loaded level: " << currentLevel_.name
+                  << " (" << currentLevel_.width << "x" << currentLevel_.height << ")"
+                  << " with " << currentLevel_.walls.size() << " walls, "
+                  << currentLevel_.foodSpawnPoints.size() << " spawn points, "
+                  << currentLevel_.enemyZones.size() << " enemy zones\n";
+
+        return true;
+    }
+
+    void applyLevelToGame() {
+        // Store the level's max size, but start with initial small grid
+        levelMaxSize_ = currentLevel_.width;
+        gridSize_ = INITIAL_GRID_SIZE;
+        targetGridSize_ = INITIAL_GRID_SIZE;
+        rebuildGroundMesh();
+
+        // Calculate offset: how far into the level our current view is
+        // We start centered in the level
+        updateLevelOffset();
+
+        // Clear and reset snake at center of current grid
+        snake_.clear();
+        int centerX = gridSize_ / 2;
+        int centerZ = gridSize_ / 2;
+        snake_.push_back({{centerX, centerZ}, {0.2f, 0.9f, 0.3f, 1.0f}});
+        snake_.push_back({{centerX - 1, centerZ}, {0.25f, 0.85f, 0.35f, 1.0f}});
+        snake_.push_back({{centerX - 2, centerZ}, {0.3f, 0.8f, 0.4f, 1.0f}});
+
+        // Build visible obstacles from level walls
+        rebuildVisibleObstacles();
+
+        // Reset game state
+        direction_ = Direction::Right;
+        nextDirection_ = Direction::Right;
+        foodCollected_ = 0;
+        score_ = 0;
+        gameOver_ = false;
+        moveInterval_ = INITIAL_MOVE_INTERVAL;
+
+        // Spawn enemies from zones (only those in current view)
+        spawnEnemiesFromZones();
+
+        // Spawn initial food
+        spawnFood();
+    }
+
+    void updateLevelOffset() {
+        // Offset from current grid origin to level origin
+        // As grid expands, offset decreases (we see more of the level)
+        levelOffsetX_ = (levelMaxSize_ - gridSize_) / 2;
+        levelOffsetZ_ = (levelMaxSize_ - gridSize_) / 2;
+    }
+
+    void rebuildVisibleObstacles() {
+        obstacles_.clear();
+
+        // Convert level walls to current grid coordinates
+        // Only include walls that are within current grid bounds
+        for (const auto& wall : currentLevel_.walls) {
+            // Transform from level coords to current grid coords
+            int gridX = wall.x - levelOffsetX_;
+            int gridZ = wall.z - levelOffsetZ_;
+
+            // Only include if within current playable area
+            if (gridX >= 0 && gridX < gridSize_ && gridZ >= 0 && gridZ < gridSize_) {
+                obstacles_.push_back({gridX, gridZ});
+            }
+        }
+    }
+
+    void spawnEnemiesFromZones() {
+        enemies_.clear();
+        for (const auto& zone : currentLevel_.enemyZones) {
+            // Transform zone bounds from level coords to current grid coords
+            AABB2Di gridZone;
+            gridZone.min.x = zone.bounds.min.x - levelOffsetX_;
+            gridZone.min.z = zone.bounds.min.z - levelOffsetZ_;
+            gridZone.max.x = zone.bounds.max.x - levelOffsetX_;
+            gridZone.max.z = zone.bounds.max.z - levelOffsetZ_;
+
+            // Skip zones that are entirely outside current grid
+            if (gridZone.max.x < 0 || gridZone.min.x >= gridSize_ ||
+                gridZone.max.z < 0 || gridZone.min.z >= gridSize_) {
+                continue;
+            }
+
+            // Clamp zone to current grid bounds
+            gridZone.min.x = std::max(0, gridZone.min.x);
+            gridZone.min.z = std::max(0, gridZone.min.z);
+            gridZone.max.x = std::min(gridSize_ - 1, gridZone.max.x);
+            gridZone.max.z = std::min(gridSize_ - 1, gridZone.max.z);
+
+            for (int i = 0; i < zone.enemyCount; ++i) {
+                Enemy enemy;
+                enemy.patrolZone = gridZone;
+                enemy.moveInterval = zone.moveInterval;
+                enemy.maxHealth = zone.health;
+                enemy.currentHealth = zone.health;
+
+                // Spawn at random position within the visible part of the zone
+                std::uniform_int_distribution<int> xDist(gridZone.min.x, gridZone.max.x);
+                std::uniform_int_distribution<int> zDist(gridZone.min.z, gridZone.max.z);
+                enemy.pos = {xDist(rng_), zDist(rng_)};
+
+                // Initialize visual position to match grid position
+                enemy.visualX = static_cast<float>(enemy.pos.x);
+                enemy.visualZ = static_cast<float>(enemy.pos.z);
+                enemy.visualInitialized = true;
+
+                // Random starting direction
+                std::uniform_int_distribution<int> dirDist(0, 3);
+                enemy.currentDir = static_cast<Direction>(dirDist(rng_));
+
+                enemies_.push_back(enemy);
+            }
+        }
+    }
+
+    //======================================================================
+    // Enemy AI and Update
+    //======================================================================
+
+    void updateEnemies(float dt) {
+        if (gameOver_) return;
+
+        constexpr float ENEMY_LERP_SPEED = 8.0f;  // How fast enemies glide to new position
+
+        for (auto& enemy : enemies_) {
+            // Initialize visual position if needed
+            if (!enemy.visualInitialized) {
+                enemy.visualX = static_cast<float>(enemy.pos.x);
+                enemy.visualZ = static_cast<float>(enemy.pos.z);
+                enemy.visualInitialized = true;
+            }
+
+            // Smoothly interpolate visual position toward grid position
+            float targetX = static_cast<float>(enemy.pos.x);
+            float targetZ = static_cast<float>(enemy.pos.z);
+            enemy.visualX += (targetX - enemy.visualX) * ENEMY_LERP_SPEED * dt;
+            enemy.visualZ += (targetZ - enemy.visualZ) * ENEMY_LERP_SPEED * dt;
+
+            // Update damage flash timer
+            if (enemy.isDamaged) {
+                enemy.damageFlashTimer -= dt;
+                if (enemy.damageFlashTimer <= 0.0f) {
+                    enemy.isDamaged = false;
+                }
+            }
+
+            // Update health bar visibility timer
+            if (enemy.showHealthBar) {
+                enemy.healthBarTimer -= dt;
+                if (enemy.healthBarTimer <= 0.0f) {
+                    enemy.showHealthBar = false;
+                }
+            }
+
+            // Update movement timer
+            enemy.moveTimer += dt;
+            if (enemy.moveTimer >= enemy.moveInterval) {
+                enemy.moveTimer = 0.0f;
+                moveEnemy(enemy);
+            }
+        }
+
+        // Check enemy-snake collision
+        checkEnemySnakeCollision();
+    }
+
+    void moveEnemy(Enemy& enemy) {
+        // Collect valid moves within patrol zone
+        std::vector<Direction> validMoves;
+        for (int d = 0; d < 4; ++d) {
+            Direction dir = static_cast<Direction>(d);
+            GridPos offset = directionToOffset(dir);
+            GridPos newPos = enemy.pos + offset;
+
+            // Check if within patrol zone
+            if (enemy.patrolZone.contains(newPos)) {
+                // Check if not blocked by wall or other enemy
+                if (!isObstacleAt(newPos) && !isEnemyAt(newPos, &enemy)) {
+                    validMoves.push_back(dir);
+                }
+            }
+        }
+
+        if (validMoves.empty()) return;
+
+        // 85% chance to continue in current direction if valid (less random)
+        std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
+        bool preferCurrent = chanceDist(rng_) < 0.85f;
+
+        Direction chosenDir = enemy.currentDir;
+        bool currentIsValid = false;
+
+        for (Direction dir : validMoves) {
+            if (dir == enemy.currentDir) {
+                currentIsValid = true;
+                break;
+            }
+        }
+
+        if (preferCurrent && currentIsValid) {
+            chosenDir = enemy.currentDir;
+        } else {
+            // Pick random valid direction
+            std::uniform_int_distribution<size_t> moveDist(0, validMoves.size() - 1);
+            chosenDir = validMoves[moveDist(rng_)];
+        }
+
+        // Apply movement
+        GridPos offset = directionToOffset(chosenDir);
+        enemy.pos = enemy.pos + offset;
+        enemy.currentDir = chosenDir;
+    }
+
+    bool isEnemyAt(const GridPos& pos, const Enemy* exclude = nullptr) const {
+        for (const auto& enemy : enemies_) {
+            if (&enemy != exclude && enemy.pos == pos) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void checkEnemySnakeCollision() {
+        if (snake_.empty()) return;
+
+        // Check if snake head hit any enemy
+        const GridPos& headPos = snake_[0].pos;
+        for (const auto& enemy : enemies_) {
+            if (enemy.pos == headPos) {
+                // Snake head hit enemy = game over
+                gameOver_ = true;
+                return;
+            }
+        }
+
+        // Check if any enemy hit the snake body - trigger chain break
+        for (const auto& enemy : enemies_) {
+            for (size_t i = 1; i < snake_.size(); ++i) {
+                if (enemy.pos == snake_[i].pos) {
+                    // Chain break at collision point!
+                    triggerChainBreak(static_cast<int>(i));
+                    return;  // Only one break per frame
+                }
+            }
+        }
+    }
+
+    //======================================================================
+    // Ring Attack System
+    //======================================================================
+
+    RingResult detectRing(const GridPos& headPos) {
+        RingResult result;
+
+        // Check if head would touch any body segment
+        for (size_t i = 2; i < snake_.size(); ++i) {  // Start at 2, skip neck
+            if (headPos == snake_[i].pos) {
+                result.formed = true;
+                result.ringStartIndex = static_cast<int>(i);
+                result.enclosedCells = calculateEnclosedCells(static_cast<int>(i));
+                return result;
+            }
+        }
+
+        return result;
+    }
+
+    std::vector<GridPos> calculateEnclosedCells(int ringEndIndex) {
+        // Ring boundary = segments [0..ringEndIndex]
+        // Use flood fill from outside to find exterior cells
+        // Everything not exterior and not boundary is interior
+
+        std::set<GridPos> boundary;
+        for (int i = 0; i <= ringEndIndex; ++i) {
+            boundary.insert(snake_[i].pos);
+        }
+
+        // Also add obstacles to prevent flood fill through them
+        std::set<GridPos> blocked = boundary;
+        for (const auto& obstacle : obstacles_) {
+            blocked.insert(obstacle);
+        }
+
+        // Flood fill from all edge cells to find exterior
+        std::vector<std::vector<bool>> exterior(gridSize_, std::vector<bool>(gridSize_, false));
+        std::queue<GridPos> queue;
+
+        // Start flood fill from all edge cells that aren't blocked
+        for (int x = 0; x < gridSize_; ++x) {
+            GridPos top{x, 0};
+            GridPos bottom{x, gridSize_ - 1};
+            if (blocked.find(top) == blocked.end()) {
+                queue.push(top);
+                exterior[top.x][top.z] = true;
+            }
+            if (blocked.find(bottom) == blocked.end()) {
+                queue.push(bottom);
+                exterior[bottom.x][bottom.z] = true;
+            }
+        }
+        for (int z = 1; z < gridSize_ - 1; ++z) {
+            GridPos left{0, z};
+            GridPos right{gridSize_ - 1, z};
+            if (blocked.find(left) == blocked.end()) {
+                queue.push(left);
+                exterior[left.x][left.z] = true;
+            }
+            if (blocked.find(right) == blocked.end()) {
+                queue.push(right);
+                exterior[right.x][right.z] = true;
+            }
+        }
+
+        // BFS to fill exterior
+        while (!queue.empty()) {
+            GridPos current = queue.front();
+            queue.pop();
+
+            for (int d = 0; d < 4; ++d) {
+                Direction dir = static_cast<Direction>(d);
+                GridPos offset = directionToOffset(dir);
+                GridPos next = current + offset;
+
+                // Don't wrap around for ring detection
+                if (next.x < 0 || next.x >= gridSize_ ||
+                    next.z < 0 || next.z >= gridSize_) {
+                    continue;
+                }
+
+                if (!exterior[next.x][next.z] && blocked.find(next) == blocked.end()) {
+                    exterior[next.x][next.z] = true;
+                    queue.push(next);
+                }
+            }
+        }
+
+        // Collect interior cells (not exterior, not boundary)
+        std::vector<GridPos> interior;
+        for (int x = 0; x < gridSize_; ++x) {
+            for (int z = 0; z < gridSize_; ++z) {
+                GridPos pos{x, z};
+                if (!exterior[x][z] && boundary.find(pos) == boundary.end()) {
+                    interior.push_back(pos);
+                }
+            }
+        }
+
+        return interior;
+    }
+
+    void executeRingAttack(const RingResult& ring) {
+        if (!ring.formed || ring.enclosedCells.empty()) return;
+
+        // Find and damage enemies inside the ring
+        std::set<GridPos> enclosed(ring.enclosedCells.begin(), ring.enclosedCells.end());
+
+        for (auto& enemy : enemies_) {
+            if (enclosed.count(enemy.pos) > 0) {
+                damageEnemy(enemy, 1);
+            }
+        }
+
+        // Remove dead enemies
+        enemies_.erase(
+            std::remove_if(enemies_.begin(), enemies_.end(),
+                [](const Enemy& e) { return e.currentHealth <= 0; }),
+            enemies_.end()
+        );
+
+        // Check if any enemies are ON the ring boundary (not inside, but on snake body)
+        // This triggers chain break
+        for (const auto& enemy : enemies_) {
+            for (int i = 1; i <= ring.ringStartIndex && i < static_cast<int>(snake_.size()); ++i) {
+                if (enemy.pos == snake_[i].pos) {
+                    triggerChainBreak(i);
+                    return;  // Only one break
+                }
+            }
+        }
+    }
+
+    void damageEnemy(Enemy& enemy, int damage) {
+        enemy.currentHealth -= damage;
+        enemy.isDamaged = true;
+        enemy.damageFlashTimer = 0.3f;  // Flash for 0.3 seconds
+        enemy.showHealthBar = true;
+        enemy.healthBarTimer = HEALTH_BAR_DURATION;
+    }
+
+    //======================================================================
+    // Chain Break Mechanic
+    //======================================================================
+
+    void triggerChainBreak(int breakIndex) {
+        if (breakIndex <= 0 || breakIndex >= static_cast<int>(snake_.size())) return;
+
+        // Detach all segments after break point
+        for (size_t i = static_cast<size_t>(breakIndex + 1); i < snake_.size(); ++i) {
+            DetachedSegment detached;
+            detached.pos = snake_[i].pos;
+            detached.color = snake_[i].color;
+            detached.timer = DETACH_ANIMATION_TIME;
+
+            // Roll for shatter chance (1/6)
+            std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
+            detached.willShatter = chanceDist(rng_) < SHATTER_CHANCE;
+
+            // Give random explosion velocity
+            std::uniform_real_distribution<float> velDist(-3.0f, 3.0f);
+            detached.velocity = {velDist(rng_), std::abs(velDist(rng_)) + 2.0f, velDist(rng_)};
+
+            detachedSegments_.push_back(detached);
+        }
+
+        // Trim snake to break point (keep segment at breakIndex as new tail)
+        snake_.resize(static_cast<size_t>(breakIndex + 1));
+    }
+
+    void updateDetachedSegments(float dt) {
+        for (auto& segment : detachedSegments_) {
+            segment.timer -= dt;
+
+            // Apply physics for explosion animation
+            segment.velocity.y -= 15.0f * dt;  // Gravity
+        }
+
+        // Process completed segments
+        std::vector<DetachedSegment> remaining;
+        for (auto& segment : detachedSegments_) {
+            if (segment.timer <= 0.0f) {
+                if (!segment.willShatter) {
+                    // Spawn food pickup
+                    FoodPickup food;
+                    food.pos = segment.pos;
+                    food.color = segment.color;
+                    food.spawnTime = gameTime_;
+                    foodPickups_.push_back(food);
+                }
+                // If willShatter, just disappear (could add particle effect)
+            } else {
+                remaining.push_back(segment);
+            }
+        }
+        detachedSegments_ = remaining;
+    }
+
+    void checkFoodPickups() {
+        if (snake_.empty()) return;
+
+        const GridPos& headPos = snake_[0].pos;
+        std::vector<FoodPickup> remaining;
+
+        for (const auto& pickup : foodPickups_) {
+            if (pickup.pos == headPos) {
+                // Collect the food - add segment with pickup's color
+                SnakeSegment newSegment;
+                newSegment.pos = snake_.back().pos;  // Will be at tail
+                newSegment.color = pickup.color;
+                snake_.push_back(newSegment);
+                score_++;
+            } else {
+                remaining.push_back(pickup);
+            }
+        }
+        foodPickups_ = remaining;
     }
 
     //======================================================================
@@ -342,27 +961,61 @@ private:
     //======================================================================
 
     void startExpansion() {
+        // Don't expand beyond the level's max size
+        if (gridSize_ >= levelMaxSize_) {
+            return;
+        }
+
         isExpanding_ = true;
         expansionTimer_ = 0.0f;
-        targetGridSize_ = gridSize_ + 2;  // Expand by 2 (one cell on each side)
+        targetGridSize_ = std::min(gridSize_ + 2, levelMaxSize_);  // Expand by 2, capped at level size
         // New border snaps into existence immediately
     }
 
     void finalizeExpansion() {
-        // Shift all existing positions by +1 to center the expansion
-        // This makes the grid expand in ALL directions (not just positive side)
+        // Calculate how much we're expanding (should be 2 for symmetrical growth)
+        int expansion = targetGridSize_ - gridSize_;
+        int shift = expansion / 2;  // How much to shift existing items
+
+        // Shift all existing positions to center the expansion
         for (auto& segment : snake_) {
-            segment.pos.x += 1;
-            segment.pos.z += 1;
+            segment.pos.x += shift;
+            segment.pos.z += shift;
         }
-        for (auto& obstacle : obstacles_) {
-            obstacle.x += 1;
-            obstacle.z += 1;
+        foodPos_.x += shift;
+        foodPos_.z += shift;
+
+        // Shift enemies
+        for (auto& enemy : enemies_) {
+            enemy.pos.x += shift;
+            enemy.pos.z += shift;
+            enemy.visualX += static_cast<float>(shift);
+            enemy.visualZ += static_cast<float>(shift);
+            // Also shift patrol zone
+            enemy.patrolZone.min.x += shift;
+            enemy.patrolZone.min.z += shift;
+            enemy.patrolZone.max.x += shift;
+            enemy.patrolZone.max.z += shift;
         }
-        foodPos_.x += 1;
-        foodPos_.z += 1;
+
+        // Shift food pickups
+        for (auto& pickup : foodPickups_) {
+            pickup.pos.x += shift;
+            pickup.pos.z += shift;
+        }
+
+        // Shift detached segments
+        for (auto& segment : detachedSegments_) {
+            segment.pos.x += shift;
+            segment.pos.z += shift;
+        }
 
         gridSize_ = targetGridSize_;
+
+        // Update level offset and rebuild visible obstacles from level data
+        updateLevelOffset();
+        rebuildVisibleObstacles();
+
         rebuildGroundMesh();
     }
 
@@ -470,12 +1123,12 @@ private:
         if (newHead.z < 0) newHead.z = gridSize_ - 1;
         if (newHead.z >= gridSize_) newHead.z = 0;
 
-        // Check self-collision
-        for (const auto& segment : snake_) {
-            if (newHead == segment.pos) {
-                gameOver_ = true;
-                return;
-            }
+        // Check self-collision - now triggers ring attack instead of death!
+        RingResult ring = detectRing(newHead);
+        if (ring.formed) {
+            // Execute ring attack (damage enemies inside)
+            executeRingAttack(ring);
+            // The snake continues - ring attack is not death
         }
 
         // Check obstacle collision
@@ -494,15 +1147,10 @@ private:
             // New head gets the food's color!
             newSegment.color = foodColor_;
             score_++;
+            foodCollected_++;
 
-            // Start expansion animation instead of immediate expansion
+            // Expand the grid to reveal more of the level
             startExpansion();
-
-            // Maybe spawn an obstacle for extra challenge
-            std::uniform_real_distribution<float> chanceDist(0.0f, 1.0f);
-            if (chanceDist(rng_) < OBSTACLE_SPAWN_CHANCE) {
-                spawnObstacle();
-            }
 
             spawnFood();
             // Speed up! (decrease interval, but not below minimum)
@@ -519,14 +1167,126 @@ private:
     }
 
     void spawnFood() {
-        std::uniform_int_distribution<> posDist(0, gridSize_ - 1);
+        // Try level-defined spawn points first (transformed to current grid coords)
+        if (!currentLevel_.foodSpawnPoints.empty()) {
+            // Shuffle spawn points and try each one
+            std::vector<GridPos> candidates;
+            for (const auto& levelPos : currentLevel_.foodSpawnPoints) {
+                // Transform from level coords to current grid coords
+                GridPos gridPos = {
+                    levelPos.x - levelOffsetX_,
+                    levelPos.z - levelOffsetZ_
+                };
+                // Only include if within current grid
+                if (gridPos.x >= 0 && gridPos.x < gridSize_ &&
+                    gridPos.z >= 0 && gridPos.z < gridSize_) {
+                    candidates.push_back(gridPos);
+                }
+            }
+
+            std::shuffle(candidates.begin(), candidates.end(), rng_);
+
+            for (const auto& pos : candidates) {
+                if (isValidFoodPosition(pos) && isFoodReachable(pos)) {
+                    foodPos_ = pos;
+                    foodColor_ = generateRandomColor();
+                    return;
+                }
+            }
+        }
+
+        // Fallback: random position with edge margin and reachability check
+        std::uniform_int_distribution<> posDist(1, gridSize_ - 2);  // 1-cell edge margin
+        int attempts = 0;
+        constexpr int MAX_ATTEMPTS = 100;
 
         do {
             foodPos_ = {posDist(rng_), posDist(rng_)};
-        } while (isSnakeAt(foodPos_) || isObstacleAt(foodPos_));
+            attempts++;
+        } while (attempts < MAX_ATTEMPTS &&
+                 (!isValidFoodPosition(foodPos_) || !isFoodReachable(foodPos_)));
 
-        // Generate vibrant random color for food
+        // If still no valid position, relax constraints (just avoid snake/obstacles)
+        if (attempts >= MAX_ATTEMPTS) {
+            std::uniform_int_distribution<> fullDist(0, gridSize_ - 1);
+            do {
+                foodPos_ = {fullDist(rng_), fullDist(rng_)};
+            } while (isSnakeAt(foodPos_) || isObstacleAt(foodPos_) || isEnemyAt(foodPos_));
+        }
+
         foodColor_ = generateRandomColor();
+    }
+
+    bool isValidFoodPosition(const GridPos& pos) const {
+        // Not on snake
+        if (isSnakeAt(pos)) return false;
+        // Not on obstacle/wall
+        if (isObstacleAt(pos)) return false;
+        // Not on enemy
+        if (isEnemyAt(pos)) return false;
+        // Edge margin: at least 1 cell from boundary
+        if (pos.x <= 0 || pos.x >= gridSize_ - 1) return false;
+        if (pos.z <= 0 || pos.z >= gridSize_ - 1) return false;
+        return true;
+    }
+
+    bool isFoodReachable(const GridPos& target) const {
+        if (snake_.empty()) return true;
+
+        // BFS from snake head to target
+        const GridPos& start = snake_[0].pos;
+        if (start == target) return true;
+
+        std::vector<std::vector<bool>> visited(gridSize_, std::vector<bool>(gridSize_, false));
+        std::queue<GridPos> queue;
+
+        queue.push(start);
+        visited[start.x][start.z] = true;
+
+        // Mark snake body and obstacles as blocked
+        for (const auto& segment : snake_) {
+            if (segment.pos.x >= 0 && segment.pos.x < gridSize_ &&
+                segment.pos.z >= 0 && segment.pos.z < gridSize_) {
+                visited[segment.pos.x][segment.pos.z] = true;
+            }
+        }
+        for (const auto& obstacle : obstacles_) {
+            if (obstacle.x >= 0 && obstacle.x < gridSize_ &&
+                obstacle.z >= 0 && obstacle.z < gridSize_) {
+                visited[obstacle.x][obstacle.z] = true;
+            }
+        }
+        // Reset start so BFS can begin
+        visited[start.x][start.z] = false;
+        queue.push(start);
+        visited[start.x][start.z] = true;
+
+        while (!queue.empty()) {
+            GridPos current = queue.front();
+            queue.pop();
+
+            // Check all 4 directions
+            for (int d = 0; d < 4; ++d) {
+                Direction dir = static_cast<Direction>(d);
+                GridPos offset = directionToOffset(dir);
+                GridPos next = current + offset;
+
+                // Handle wrap-around
+                if (next.x < 0) next.x = gridSize_ - 1;
+                if (next.x >= gridSize_) next.x = 0;
+                if (next.z < 0) next.z = gridSize_ - 1;
+                if (next.z >= gridSize_) next.z = 0;
+
+                if (next == target) return true;
+
+                if (!visited[next.x][next.z]) {
+                    visited[next.x][next.z] = true;
+                    queue.push(next);
+                }
+            }
+        }
+
+        return false;  // Target not reachable
     }
 
     bestow::Vec4 generateRandomColor() {
@@ -592,35 +1352,25 @@ private:
     }
 
     void restartGame() {
-        // Reset grid size
-        gridSize_ = INITIAL_GRID_SIZE;
-        targetGridSize_ = INITIAL_GRID_SIZE;
-        rebuildGroundMesh();
-
         // Reset animation state
-        visualGridSize_ = static_cast<float>(INITIAL_GRID_SIZE);
-        currentCameraDistance_ = BASE_CAMERA_DISTANCE;
-        currentCameraHeight_ = BASE_CAMERA_HEIGHT;
+        visualGridSize_ = static_cast<float>(gridSize_);
+        currentCameraDistance_ = BASE_CAMERA_DISTANCE + (gridSize_ - INITIAL_GRID_SIZE) * CAMERA_SCALE;
+        currentCameraHeight_ = BASE_CAMERA_HEIGHT + (gridSize_ - INITIAL_GRID_SIZE) * CAMERA_SCALE * 0.8f;
         isExpanding_ = false;
         expansionTimer_ = 0.0f;
 
-        // Clear obstacles
-        obstacles_.clear();
+        // Clear transient state
+        detachedSegments_.clear();
+        foodPickups_.clear();
 
-        snake_.clear();
-        snake_.push_back({{gridSize_ / 2, gridSize_ / 2}, {0.2f, 0.9f, 0.3f, 1.0f}});
-        snake_.push_back({{gridSize_ / 2 - 1, gridSize_ / 2}, {0.25f, 0.85f, 0.35f, 1.0f}});
-        snake_.push_back({{gridSize_ / 2 - 2, gridSize_ / 2}, {0.3f, 0.8f, 0.4f, 1.0f}});
-
+        // Reset input state
         direction_ = Direction::Right;
         nextDirection_ = Direction::Right;
         inputDirection_ = Direction::Right;
         hasBufferedInput_ = false;
-        moveInterval_ = INITIAL_MOVE_INTERVAL;  // Reset speed
-        score_ = 0;
-        gameOver_ = false;
 
-        spawnFood();
+        // Reload the current level
+        applyLevelToGame();
     }
 
     //======================================================================
@@ -680,6 +1430,16 @@ private:
             pos.x * CELL_SIZE - halfGrid + CELL_SIZE * 0.5f,
             CELL_SIZE * 0.5f,
             pos.z * CELL_SIZE - halfGrid + CELL_SIZE * 0.5f
+        };
+    }
+
+    // Float version for smooth interpolated positions
+    bestow::Vec3 gridToWorldFloat(float x, float z) const {
+        float halfGrid = gridSize_ * CELL_SIZE * 0.5f;
+        return {
+            x * CELL_SIZE - halfGrid + CELL_SIZE * 0.5f,
+            CELL_SIZE * 0.5f,
+            z * CELL_SIZE - halfGrid + CELL_SIZE * 0.5f
         };
     }
 
@@ -744,6 +1504,152 @@ private:
         }
     }
 
+    void drawEnemies() {
+        if (!cubeMesh_) return;
+
+        for (const auto& enemy : enemies_) {
+            // Use interpolated visual position for smooth movement
+            bestow::Vec3 worldPos = gridToWorldFloat(enemy.visualX, enemy.visualZ);
+
+            // Enemy animation - slight bobbing
+            float bob = 0.05f * std::sin(gameTime_ * 3.0f + enemy.visualX * 0.5f);
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(),
+                glm::vec3(worldPos.x, worldPos.y + bob, worldPos.z));
+
+            // Slightly smaller than snake segments
+            transform = glm::scale(transform, glm::vec3(0.8f));
+
+            // Enemy color: red/purple, flashing white when damaged
+            bestow::PBRMaterial mat;
+            if (enemy.isDamaged) {
+                // Flash white when damaged
+                float flash = std::sin(enemy.damageFlashTimer * 30.0f) > 0 ? 1.0f : 0.0f;
+                mat.baseColorFactor = {1.0f, flash, flash, 1.0f};
+            } else {
+                // Normal color: red-purple
+                mat.baseColorFactor = {0.8f, 0.2f, 0.3f, 1.0f};
+            }
+            mat.roughnessFactor = 0.5f;
+            mat.metallicFactor = 0.2f;
+
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+
+            // Draw health bar if visible
+            if (enemy.showHealthBar && enemy.maxHealth > 1) {
+                drawEnemyHealthBar(enemy, worldPos);
+            }
+        }
+    }
+
+    void drawEnemyHealthBar(const Enemy& enemy, const bestow::Vec3& worldPos) {
+        // Health bar above enemy
+        float barWidth = CELL_SIZE * 0.8f;
+        float barHeight = worldPos.y + CELL_SIZE * 0.8f;
+        float healthPercent = static_cast<float>(enemy.currentHealth) / static_cast<float>(enemy.maxHealth);
+
+        // Background (dark red)
+        bestow::Color bgColor{80, 20, 20, 255};
+        // Foreground (green to yellow to red based on health)
+        uint8_t r = static_cast<uint8_t>((1.0f - healthPercent) * 255);
+        uint8_t g = static_cast<uint8_t>(healthPercent * 255);
+        bestow::Color fgColor{r, g, 0, 255};
+
+        // Draw background bar
+        float halfBar = barWidth * 0.5f;
+        graphics_->debugDrawLine(
+            {worldPos.x - halfBar, barHeight, worldPos.z},
+            {worldPos.x + halfBar, barHeight, worldPos.z},
+            bgColor, 0.0f, false
+        );
+
+        // Draw foreground (health remaining)
+        float healthWidth = barWidth * healthPercent;
+        graphics_->debugDrawLine(
+            {worldPos.x - halfBar, barHeight + 0.02f, worldPos.z},
+            {worldPos.x - halfBar + healthWidth, barHeight + 0.02f, worldPos.z},
+            fgColor, 0.0f, false
+        );
+    }
+
+    void drawDetachedSegments() {
+        if (!cubeMesh_) return;
+
+        for (const auto& segment : detachedSegments_) {
+            bestow::Vec3 worldPos = gridToWorld(segment.pos);
+
+            // Animation: apply velocity offset based on remaining time
+            float progress = 1.0f - (segment.timer / DETACH_ANIMATION_TIME);
+            worldPos.x += segment.velocity.x * progress * 0.3f;
+            worldPos.y += segment.velocity.y * progress * 0.3f;
+            worldPos.z += segment.velocity.z * progress * 0.3f;
+
+            // Shrink as timer runs out
+            float scale = segment.timer / DETACH_ANIMATION_TIME;
+
+            // Spin wildly
+            float spin = progress * 20.0f;
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(),
+                glm::vec3(worldPos.x, worldPos.y, worldPos.z));
+            transform = glm::rotate(transform, spin, glm::vec3(0.3f, 1.0f, 0.5f));
+            transform = glm::scale(transform, glm::vec3(scale * 0.85f));
+
+            // Color: flash red if shattering, otherwise keep original
+            bestow::PBRMaterial mat;
+            if (segment.willShatter) {
+                float flash = std::sin(progress * 30.0f) > 0 ? 1.0f : 0.3f;
+                mat.baseColorFactor = {flash, 0.1f, 0.1f, 1.0f};
+            } else {
+                mat.baseColorFactor = segment.color;
+            }
+            mat.roughnessFactor = 0.4f;
+            mat.metallicFactor = 0.1f;
+            mat.emissiveFactor = {mat.baseColorFactor.x * 0.2f,
+                                  mat.baseColorFactor.y * 0.2f,
+                                  mat.baseColorFactor.z * 0.2f};
+
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        }
+    }
+
+    void drawFoodPickups() {
+        if (!cubeMesh_) return;
+
+        for (const auto& pickup : foodPickups_) {
+            bestow::Vec3 worldPos = gridToWorld(pickup.pos);
+
+            // Spawn animation: pop in and gentle bounce
+            float age = gameTime_ - pickup.spawnTime;
+            float spawnScale = std::min(1.0f, age * 5.0f);  // Pop in over 0.2s
+            float bounce = 0.1f * std::abs(std::sin(age * 5.0f));
+
+            bestow::Mat4 transform = glm::translate(glm::identity<glm::mat4>(),
+                glm::vec3(worldPos.x, worldPos.y + bounce, worldPos.z));
+            transform = glm::scale(transform, glm::vec3(spawnScale * 0.7f));
+
+            // Slightly different from regular food - more sparkly
+            bestow::PBRMaterial mat;
+            mat.baseColorFactor = pickup.color;
+            mat.roughnessFactor = 0.2f;
+            mat.metallicFactor = 0.4f;
+            mat.emissiveFactor = {pickup.color.x * 0.4f,
+                                  pickup.color.y * 0.4f,
+                                  pickup.color.z * 0.4f};
+
+            auto matResult = graphics_->createMaterial(mat);
+            if (matResult) {
+                graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+            }
+        }
+    }
+
     void drawFood() {
         if (!cubeMesh_) return;
 
@@ -776,6 +1682,94 @@ private:
         auto matResult = graphics_->createMaterial(mat);
         if (matResult) {
             graphics_->drawMesh(cubeMesh_, *matResult, transform, true, true);
+        }
+    }
+
+    void drawHUD() {
+        float halfGrid = gridSize_ * CELL_SIZE * 0.5f;
+        float hudY = 0.05f;  // Just above ground
+        float hudZ = -halfGrid - 0.5f;  // Behind the play area
+
+        // Food progress bar (how many food collected vs required)
+        float foodBarWidth = gridSize_ * CELL_SIZE * 0.6f;
+        float foodProgress = static_cast<float>(foodCollected_) / static_cast<float>(foodRequired_);
+        foodProgress = std::min(1.0f, foodProgress);
+
+        // Background (dark)
+        bestow::Color bgColor{40, 40, 40, 255};
+        graphics_->debugDrawLine(
+            {-foodBarWidth * 0.5f, hudY, hudZ},
+            {foodBarWidth * 0.5f, hudY, hudZ},
+            bgColor, 0.0f, false
+        );
+
+        // Foreground (gold/yellow for food)
+        bestow::Color foodColor{255, 200, 50, 255};
+        if (foodProgress > 0.0f) {
+            graphics_->debugDrawLine(
+                {-foodBarWidth * 0.5f, hudY + 0.02f, hudZ},
+                {-foodBarWidth * 0.5f + foodBarWidth * foodProgress, hudY + 0.02f, hudZ},
+                foodColor, 0.0f, false
+            );
+        }
+
+        // Segment count indicator (snake length) - vertical bar on left side
+        float segmentBarHeight = 3.0f;
+        float segmentBarX = -halfGrid - 0.5f;
+        float segmentProgress = std::min(1.0f, static_cast<float>(snake_.size()) / 20.0f);  // Cap at 20 for display
+
+        // Background
+        graphics_->debugDrawLine(
+            {segmentBarX, hudY, -halfGrid},
+            {segmentBarX, hudY + segmentBarHeight, -halfGrid},
+            bgColor, 0.0f, false
+        );
+
+        // Foreground (green for snake)
+        bestow::Color snakeColor{100, 255, 100, 255};
+        if (segmentProgress > 0.0f) {
+            graphics_->debugDrawLine(
+                {segmentBarX - 0.02f, hudY, -halfGrid},
+                {segmentBarX - 0.02f, hudY + segmentBarHeight * segmentProgress, -halfGrid},
+                snakeColor, 0.0f, false
+            );
+        }
+
+        // Draw segment count as small markers
+        for (size_t i = 0; i < snake_.size() && i < 20; ++i) {
+            float markerY = hudY + (static_cast<float>(i) / 20.0f) * segmentBarHeight;
+            bestow::Color markerColor = (i == 0) ? bestow::Color{255, 255, 100, 255} : snakeColor;
+            graphics_->debugDrawLine(
+                {segmentBarX - 0.1f, markerY, -halfGrid},
+                {segmentBarX + 0.05f, markerY, -halfGrid},
+                markerColor, 0.0f, false
+            );
+        }
+
+        // Level complete indicator
+        if (foodCollected_ >= foodRequired_ && !gameOver_) {
+            // Flash a victory border
+            float flash = std::sin(gameTime_ * 8.0f) * 0.5f + 0.5f;
+            uint8_t brightness = static_cast<uint8_t>(150 + flash * 105);
+            bestow::Color victoryColor{brightness, brightness, 50, 255};
+
+            float vBorder = halfGrid + 0.1f;
+            graphics_->debugDrawLine({-vBorder, 0.1f, -vBorder}, {vBorder, 0.1f, -vBorder}, victoryColor, 0.0f, false);
+            graphics_->debugDrawLine({vBorder, 0.1f, -vBorder}, {vBorder, 0.1f, vBorder}, victoryColor, 0.0f, false);
+            graphics_->debugDrawLine({vBorder, 0.1f, vBorder}, {-vBorder, 0.1f, vBorder}, victoryColor, 0.0f, false);
+            graphics_->debugDrawLine({-vBorder, 0.1f, vBorder}, {-vBorder, 0.1f, -vBorder}, victoryColor, 0.0f, false);
+        }
+
+        // Game over indicator
+        if (gameOver_) {
+            // Red flashing X across the play area
+            float flash = std::sin(gameTime_ * 4.0f) * 0.5f + 0.5f;
+            uint8_t brightness = static_cast<uint8_t>(100 + flash * 155);
+            bestow::Color deathColor{brightness, 30, 30, 255};
+
+            float xSize = halfGrid * 0.7f;
+            graphics_->debugDrawLine({-xSize, 0.5f, -xSize}, {xSize, 0.5f, xSize}, deathColor, 0.0f, false);
+            graphics_->debugDrawLine({xSize, 0.5f, -xSize}, {-xSize, 0.5f, xSize}, deathColor, 0.0f, false);
         }
     }
 

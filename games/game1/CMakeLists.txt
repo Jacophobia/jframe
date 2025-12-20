@@ -11,10 +11,11 @@ add_executable(snake-game
     src/main.cpp
 )
 
-# The game module
+# The game modules (partitions must come before primary interface)
 target_sources(snake-game
     PUBLIC FILE_SET CXX_MODULES FILES
-        src/snake.game.cppm
+        src/snake.game-types.cppm    # Types partition (must be first)
+        src/snake.game.cppm          # Primary module interface
 )
 
 # Link against Bestow core and implementation libraries
