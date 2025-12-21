@@ -23,6 +23,8 @@ module;
 // Lua/sol2 for runtime configuration
 #include <bestow/sol2_compat.hpp>
 
+#include <spdlog/spdlog.h>
+
 export module bestow.opengl.impl;
 
 import std;
@@ -577,10 +579,8 @@ void main() {
 class OpenGLGraphics3DSystem : public IGraphics3DSystem {
 public:
     explicit OpenGLGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
-                                     IShaderSystem* pIShaderSystem = nullptr,
                                      IConfigSystem* pIConfigSystem = nullptr)
         : pIAssetSystem_(pIAssetSystem)
-        , pIShaderSystem_(pIShaderSystem)
         , pIConfigSystem_(pIConfigSystem) {}
     ~OpenGLGraphics3DSystem() override;
 
@@ -850,8 +850,6 @@ public:
         const Mat4& worldMatrix,
         const Vec4& colorOverride) override;
 
-    void updateShaders() override;
-
     //======================================================================
     // Asset System Integration
     //======================================================================
@@ -1082,8 +1080,11 @@ private:
     // Statistics
     mutable RenderStats stats_;
 
-    // Lua material caching
-    std::unordered_map<std::string, MaterialHandle> luaMaterialCache_;
+    // Lua material caching (stores asset handle UUIDs for Lua materials)
+    std::unordered_map<std::string, UUID> luaMaterialCache_;
+
+    // Texture cache (AssetHandle -> OpenGL texture ID)
+    std::unordered_map<AssetHandle, GLuint, AssetHandleHash> textureCache_;
 
     // Runtime configuration
     Graphics3DRuntimeConfig runtimeConfig_;
@@ -1119,12 +1120,11 @@ private:
 
     // Injected dependencies
     IAssetSystem* pIAssetSystem_ = nullptr;
-    IShaderSystem* pIShaderSystem_ = nullptr;
     IConfigSystem* pIConfigSystem_ = nullptr;
 };
 
 // Service definition - must be after class is complete
-BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ShaderSystem, ConfigSystem);
+BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ConfigSystem);
 
 //==========================================================================
 // Implementation
@@ -2553,50 +2553,18 @@ float OpenGLGraphics3DSystem::getRenderScale() const {
 
 void OpenGLGraphics3DSystem::drawMeshWithShaderMaterial(
     MeshHandle mesh,
-    ShaderProgramHandle shader,
+    ShaderProgramHandle /*shader*/,
     const Mat4& worldMatrix,
-    bool /*castShadow*/,
-    bool /*receiveShadow*/)
+    bool castShadow,
+    bool receiveShadow)
 {
-    if (!pIShaderSystem_) return;
+    // DEPRECATED: This method required IShaderSystem which has been removed.
+    // Use drawMesh() with internal materials instead, or drawMeshWithLuaMaterial().
+    // For now, fall back to default PBR material.
+    spdlog::warn("[OpenGLGraphics3DSystem] drawMeshWithShaderMaterial is deprecated. "
+                 "Using default PBR material instead.");
 
-    auto meshIt = meshes_.find(mesh);
-    if (meshIt == meshes_.end()) return;
-
-    const auto& meshRes = meshIt->second;
-
-    // Bind the shader
-    pIShaderSystem_->bindShader(shader);
-
-    // Set standard uniforms that all shaders expect
-    pIShaderSystem_->setUniform("uModel", worldMatrix);
-    pIShaderSystem_->setUniform("uView", viewMatrix_);
-    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
-
-    // Calculate normal matrix
-    Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
-
-    // Set camera and lighting uniforms
-    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
-    if (directionalLight_) {
-        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
-    } else {
-        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
-    }
-    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
-
-    // Draw the mesh
-    glBindVertexArray(meshRes.vao);
-    glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
-    glBindVertexArray(0);
-
-    stats_.drawCalls++;
-    stats_.triangles += meshRes.indexCount / 3;
-    stats_.vertices += meshRes.vertexCount;
+    drawMesh(mesh, defaultPBRMaterial_, worldMatrix, castShadow, receiveShadow);
 }
 
 Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
@@ -2604,66 +2572,7 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     std::string_view materialPath,
     const Mat4& worldMatrix)
 {
-    if (!pIShaderSystem_) {
-        return std::unexpected(Graphics3DError::InvalidShader);
-    }
-
-    // Check cache first
-    std::string pathStr(materialPath);
-    auto cacheIt = luaMaterialCache_.find(pathStr);
-    MaterialHandle material = 0;
-
-    if (cacheIt != luaMaterialCache_.end()) {
-        material = cacheIt->second;
-    } else {
-        // Load the material
-        auto result = pIShaderSystem_->loadMaterial(materialPath);
-        if (!result) {
-            return std::unexpected(Graphics3DError::InvalidShader);
-        }
-        material = *result;
-        luaMaterialCache_[pathStr] = material;
-    }
-
-    // Bind the material (sets shader and all uniforms)
-    pIShaderSystem_->bindMaterial(material);
-
-    // Now draw with the material's shader
-    auto meshIt = meshes_.find(mesh);
-    if (meshIt == meshes_.end()) {
-        return std::unexpected(Graphics3DError::InvalidMesh);
-    }
-
-    const auto& meshRes = meshIt->second;
-
-    // Set standard uniforms
-    pIShaderSystem_->setUniform("uModel", worldMatrix);
-    pIShaderSystem_->setUniform("uView", viewMatrix_);
-    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
-
-    Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
-    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
-    if (directionalLight_) {
-        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
-    } else {
-        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
-    }
-    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
-
-    // Draw
-    glBindVertexArray(meshRes.vao);
-    glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
-    glBindVertexArray(0);
-
-    stats_.drawCalls++;
-    stats_.triangles += meshRes.indexCount / 3;
-    stats_.vertices += meshRes.vertexCount;
-
-    return {};
+    return drawMeshWithLuaMaterial(mesh, materialPath, worldMatrix, Vec4{1.0f, 1.0f, 1.0f, 1.0f});
 }
 
 Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
@@ -2672,75 +2581,166 @@ Result<void, Graphics3DError> OpenGLGraphics3DSystem::drawMeshWithLuaMaterial(
     const Mat4& worldMatrix,
     const Vec4& colorOverride)
 {
-    if (!pIShaderSystem_) {
+    if (!pIAssetSystem_) {
         return std::unexpected(Graphics3DError::InvalidShader);
     }
 
-    // Check cache first
-    std::string pathStr(materialPath);
-    auto cacheIt = luaMaterialCache_.find(pathStr);
-    MaterialHandle material = 0;
-
-    if (cacheIt != luaMaterialCache_.end()) {
-        material = cacheIt->second;
-    } else {
-        // Load the material
-        auto result = pIShaderSystem_->loadMaterial(materialPath);
-        if (!result) {
-            return std::unexpected(Graphics3DError::InvalidShader);
-        }
-        material = *result;
-        luaMaterialCache_[pathStr] = material;
-    }
-
-    // Bind the material (sets shader and all uniforms from Lua)
-    pIShaderSystem_->bindMaterial(material);
-
-    // Override the base color with per-object color
-    pIShaderSystem_->setUniform("uBaseColor", colorOverride);
-
-    // Now draw with the material's shader
+    // Find the mesh
     auto meshIt = meshes_.find(mesh);
     if (meshIt == meshes_.end()) {
         return std::unexpected(Graphics3DError::InvalidMesh);
     }
-
     const auto& meshRes = meshIt->second;
 
+    // Load material via AssetSystem (cached internally by AssetSystem)
+    std::string pathStr(materialPath);
+    const LuaMaterialData* matData = nullptr;
+
+    // Check our local cache of asset handles
+    auto cacheIt = luaMaterialCache_.find(pathStr);
+    AssetHandle matHandle;
+
+    if (cacheIt != luaMaterialCache_.end()) {
+        matHandle = AssetHandle{cacheIt->second};
+        matData = pIAssetSystem_->getLuaMaterialData(matHandle);
+    } else {
+        // Load the material
+        matHandle = pIAssetSystem_->loadMaterial(std::filesystem::path(pathStr));
+        if (!matHandle.isValid()) {
+            spdlog::error("[OpenGLGraphics3DSystem] Failed to load Lua material: {}", pathStr);
+            return std::unexpected(Graphics3DError::InvalidShader);
+        }
+        luaMaterialCache_[pathStr] = matHandle.uuid;
+        matData = pIAssetSystem_->getLuaMaterialData(matHandle);
+    }
+
+    if (!matData) {
+        return std::unexpected(Graphics3DError::InvalidShader);
+    }
+
+    // Determine which internal shader to use based on material shader path
+    // For now, use PBR shader for most materials, Unlit for materials with "unlit" in path
+    ShaderProgram* shader = &pbrShader_;
+    if (matData->fragmentShaderPath.find("unlit") != std::string::npos ||
+        matData->name.find("unlit") != std::string::npos) {
+        shader = &unlitShader_;
+    }
+
+    // Apply render state from Lua material
+    applyBlendMode(matData->blendMode);
+    applyCullMode(matData->cullMode);
+
+    if (matData->depthTest) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+    glDepthMask(matData->depthWrite ? GL_TRUE : GL_FALSE);
+
+    // Bind the shader
+    shader->use();
+
     // Set standard uniforms
-    pIShaderSystem_->setUniform("uModel", worldMatrix);
-    pIShaderSystem_->setUniform("uView", viewMatrix_);
-    pIShaderSystem_->setUniform("uProjection", projectionMatrix_);
+    shader->setMat4("uModel", worldMatrix);
+    shader->setMat4("uView", viewMatrix_);
+    shader->setMat4("uProjection", projectionMatrix_);
 
     Mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldMatrix)));
-    pIShaderSystem_->setUniform("uNormalMatrix", normalMatrix);
-    pIShaderSystem_->setUniform("uCameraPos", camera_.transform.position);
-    if (directionalLight_) {
-        pIShaderSystem_->setUniform("uLightDir", directionalLight_->direction);
-        pIShaderSystem_->setUniform("uLightColor", directionalLight_->color * directionalLight_->intensity);
-    } else {
-        pIShaderSystem_->setUniform("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
-        pIShaderSystem_->setUniform("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
-    }
-    pIShaderSystem_->setUniform("uAmbientColor", ambientColor_);
-    pIShaderSystem_->setUniform("uTime", static_cast<float>(glfwGetTime()));
+    shader->setMat3("uNormalMatrix", normalMatrix);
+    shader->setVec3("uCameraPos", camera_.transform.position);
 
-    // Draw
+    // Set lighting uniforms
+    if (directionalLight_) {
+        shader->setVec3("uLightDir", directionalLight_->direction);
+        shader->setVec3("uLightColor", directionalLight_->color * directionalLight_->intensity);
+    } else {
+        shader->setVec3("uLightDir", Vec3(0.0f, -1.0f, 0.0f));
+        shader->setVec3("uLightColor", Vec3(1.0f, 1.0f, 1.0f));
+    }
+    shader->setVec3("uAmbientColor", ambientColor_);
+    shader->setFloat("uTime", static_cast<float>(glfwGetTime()));
+
+    // Apply uniforms from Lua material
+    for (const auto& [name, value] : matData->uniforms) {
+        if (auto* f = std::any_cast<float>(&value)) {
+            shader->setFloat(name, *f);
+        } else if (auto* i = std::any_cast<int>(&value)) {
+            shader->setInt(name, *i);
+        } else if (auto* v2 = std::any_cast<Vec2>(&value)) {
+            GLint loc = shader->getUniformLocation(name);
+            if (loc != -1) glUniform2fv(loc, 1, glm::value_ptr(*v2));
+        } else if (auto* v3 = std::any_cast<Vec3>(&value)) {
+            shader->setVec3(name, *v3);
+        } else if (auto* v4 = std::any_cast<Vec4>(&value)) {
+            shader->setVec4(name, *v4);
+        }
+    }
+
+    // Apply color override (multiply with base color if specified in uniforms)
+    shader->setVec4("uBaseColor", colorOverride);
+
+    // Load and bind textures from Lua material
+    int textureUnit = 0;
+    for (const auto& [slotName, texPath] : matData->texturePaths) {
+        if (texPath.empty()) continue;
+
+        // Load texture via AssetSystem
+        AssetHandle texHandle = pIAssetSystem_->registerAsset(AssetType::Texture, texPath);
+        if (texHandle.isValid()) {
+            pIAssetSystem_->loadAsset(texHandle);
+
+            // Get or create OpenGL texture
+            GLuint texId = 0;
+            auto texIt = textureCache_.find(texHandle);
+            if (texIt != textureCache_.end()) {
+                texId = texIt->second;
+            } else {
+                const TextureData* texData = pIAssetSystem_->getAsset<TextureData>(texHandle);
+                if (texData && !texData->pixels.empty()) {
+                    glGenTextures(1, &texId);
+                    glBindTexture(GL_TEXTURE_2D, texId);
+
+                    GLenum format = GL_RGBA;
+                    if (texData->channels == 1) format = GL_RED;
+                    else if (texData->channels == 3) format = GL_RGB;
+
+                    glTexImage2D(GL_TEXTURE_2D, 0, format, texData->width, texData->height,
+                                 0, format, GL_UNSIGNED_BYTE, texData->pixels.data());
+                    glGenerateMipmap(GL_TEXTURE_2D);
+
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+                    textureCache_[texHandle] = texId;
+                }
+            }
+
+            if (texId != 0) {
+                glActiveTexture(GL_TEXTURE0 + textureUnit);
+                glBindTexture(GL_TEXTURE_2D, texId);
+                shader->setInt(slotName, textureUnit);
+                ++textureUnit;
+            }
+        }
+    }
+
+    // Draw the mesh
     glBindVertexArray(meshRes.vao);
     glDrawElements(GL_TRIANGLES, meshRes.indexCount, GL_UNSIGNED_INT, nullptr);
     glBindVertexArray(0);
+
+    // Restore default render state
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
 
     stats_.drawCalls++;
     stats_.triangles += meshRes.indexCount / 3;
     stats_.vertices += meshRes.vertexCount;
 
     return {};
-}
-
-void OpenGLGraphics3DSystem::updateShaders() {
-    if (pIShaderSystem_) {
-        pIShaderSystem_->update();  // Check for hot reload
-    }
 }
 
 Result<MeshHandle, Graphics3DError> OpenGLGraphics3DSystem::createMeshFromData(const MeshData& data) {

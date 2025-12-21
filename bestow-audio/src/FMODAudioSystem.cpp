@@ -7,6 +7,7 @@ module;
 #include <fmod.h>
 #include <fmod_errors.h>
 #endif
+#include <spdlog/spdlog.h>
 
 module bestow.audio.impl;
 
@@ -139,7 +140,7 @@ FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode
 
     // Try to get sound data from asset system
     if (assetSystem_) {
-        const SoundData* soundData = assetSystem_->getAsset<SoundData>(handle);
+        const SoundData* soundData = assetSystem_->getSoundData(handle);
         if (soundData && !soundData->fileData.empty()) {
             // Create FMOD sound from memory
             FMOD_CREATESOUNDEXINFO exinfo = {};
@@ -180,7 +181,6 @@ FMOD_SOUND* FMODAudioSystem::getOrCreateSound(AssetHandle handle, FMOD_MODE mode
         }
     }
 
-    std::cerr << "Failed to load audio asset" << std::endl;
     return nullptr;
 }
 #endif
@@ -297,7 +297,6 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
         channelData.state.isPlaying = true;
         channelData.state.isPaused = false;
         channelData.state.volume = sound.volume;
-        // Clear any active fade-out
         channelData.fadeOut.active = false;
         return;
     }

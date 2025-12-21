@@ -631,6 +631,7 @@ struct Vertex3D {
 
 using MeshHandle = std::uint64_t;
 using MaterialHandle = std::uint64_t;
+using ShaderProgramHandle = std::uint64_t;  // Handle to a compiled shader program
 
 enum class BlendMode : std::uint8_t {
     Opaque,

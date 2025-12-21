@@ -1886,9 +1886,9 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
         return 0;
     }
 
-    // Load shaders through AssetSystem
-    auto vertHandle = pIAssetSystem_->loadShader(std::string(vertPath));
-    auto fragHandle = pIAssetSystem_->loadShader(std::string(fragPath));
+    // Load shaders through AssetSystem with SPIR-V compilation
+    auto vertHandle = pIAssetSystem_->loadShaderCompiled(std::string(vertPath));
+    auto fragHandle = pIAssetSystem_->loadShaderCompiled(std::string(fragPath));
 
     if (!pIAssetSystem_->isLoaded(vertHandle) || !pIAssetSystem_->isLoaded(fragHandle)) {
         std::fprintf(stderr, "[Vulkan] Failed to load shaders: %.*s, %.*s\n",
@@ -1963,13 +1963,13 @@ VulkanPipelineHandle VulkanGraphics3DSystem::loadShaderPipeline(
             info.fragGlslPath = fragGlsl;
 
             // Register vertex shader - AssetSystem handles existence checking
-            info.vertShaderAsset = pIAssetSystem_->loadShader(vertGlsl);
+            info.vertShaderAsset = pIAssetSystem_->loadShaderCompiled(vertGlsl);
             if (info.vertShaderAsset.uuid != 0) {
                 shaderAssetToPipelines_[info.vertShaderAsset.uuid].push_back(pipeline);
             }
 
             // Register fragment shader
-            info.fragShaderAsset = pIAssetSystem_->loadShader(fragGlsl);
+            info.fragShaderAsset = pIAssetSystem_->loadShaderCompiled(fragGlsl);
             if (info.fragShaderAsset.uuid != 0) {
                 shaderAssetToPipelines_[info.fragShaderAsset.uuid].push_back(pipeline);
             }
@@ -2248,12 +2248,6 @@ Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
     });
 
     return {};
-}
-
-void VulkanGraphics3DSystem::updateShaders() {
-    if (pIShaderSystem_) {
-        pIShaderSystem_->update();
-    }
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {
@@ -2633,8 +2627,8 @@ void VulkanGraphics3DSystem::createPipelines() {
     }
 
     // Load debug pipeline shaders (for debug line rendering)
-    auto debugVertHandle = pIAssetSystem_->loadShader("debug.vert");
-    auto debugFragHandle = pIAssetSystem_->loadShader("debug.frag");
+    auto debugVertHandle = pIAssetSystem_->loadShaderCompiled("debug.vert");
+    auto debugFragHandle = pIAssetSystem_->loadShaderCompiled("debug.frag");
 
     if (pIAssetSystem_->isLoaded(debugVertHandle) && pIAssetSystem_->isLoaded(debugFragHandle)) {
         const ShaderData* debugVert = pIAssetSystem_->getShaderData(debugVertHandle);
@@ -2676,8 +2670,8 @@ void VulkanGraphics3DSystem::createPipelines() {
     }
 
     // Load basic 3D pipeline shaders (for mesh rendering)
-    auto basic3dVertHandle = pIAssetSystem_->loadShader("basic3d.vert");
-    auto basic3dFragHandle = pIAssetSystem_->loadShader("basic3d.frag");
+    auto basic3dVertHandle = pIAssetSystem_->loadShaderCompiled("basic3d.vert");
+    auto basic3dFragHandle = pIAssetSystem_->loadShaderCompiled("basic3d.frag");
 
     if (pIAssetSystem_->isLoaded(basic3dVertHandle) && pIAssetSystem_->isLoaded(basic3dFragHandle)) {
         const ShaderData* basic3dVert = pIAssetSystem_->getShaderData(basic3dVertHandle);

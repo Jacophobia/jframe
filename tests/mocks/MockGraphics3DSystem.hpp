@@ -10,7 +10,6 @@ import bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
-import bestow.shader;
 
 namespace bestow::tests {
 
@@ -518,8 +517,6 @@ public:
         return {};
     }
 
-    void updateShaders() override {}
-
     //==========================================================================
     // Asset System Integration
     //==========================================================================
@@ -882,7 +879,6 @@ private:
 
     // Systems
     IAssetSystem* assetSystem_ = nullptr;
-    IShaderSystem* shaderSystem_ = nullptr;
 
     // Frame tracking
     int frameCount_ = 0;

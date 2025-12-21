@@ -22,7 +22,6 @@ export import bestow.gas;
 export import bestow.blueprints;
 export import bestow.ui;
 export import bestow.gamestate;
-export import bestow.shader;
 export import bestow.services;
 
 export namespace bestow {
@@ -47,7 +46,6 @@ struct BestowEngine {
     IBlueprintFactory* blueprints = nullptr;
     IUISystem* ui = nullptr;
     IGameStateSystem* gameStates = nullptr;
-    IShaderSystem* shaders = nullptr;
 
     bool isValid() const {
         return events && assets && entities && graphics &&
@@ -59,7 +57,8 @@ struct BestowEngine {
     }
 
     bool hasShaderSupport() const {
-        return shaders != nullptr;
+        // Shader support is now part of AssetSystem
+        return assets != nullptr;
     }
 };
 

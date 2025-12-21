@@ -328,9 +328,6 @@ struct IGameStateSystemService : kgr::abstract_service<IGameStateSystem> {};
 // Gameplay Ability System (GAS)
 struct IGASSystemService : kgr::abstract_service<IGASSystem> {};
 
-// Shader System
-struct IShaderSystemService : kgr::abstract_service<IShaderSystem> {};
-
 // Blueprint Factory
 struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 
@@ -362,7 +359,6 @@ template<> struct ServiceFor<IAISystem> { using type = IAISystemService; };
 template<> struct ServiceFor<IUISystem> { using type = IUISystemService; };
 template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemService; };
 template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
-template<> struct ServiceFor<IShaderSystem> { using type = IShaderSystemService; };
 template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
 template<> struct ServiceFor<IAnimationSystem> { using type = IAnimationSystemService; };
 
