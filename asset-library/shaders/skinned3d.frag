@@ -17,35 +17,30 @@ layout(push_constant) uniform PushConstants {
     vec4 cameraPos;        // offset 192
 } pc;
 
-// Base color texture (set 1, binding 0) - optional
+// Base color texture (set 1, binding 0)
 layout(set = 1, binding = 0) uniform sampler2D baseColorTex;
 
 void main() {
-    // Sample texture - use texCoord UV
+    // Sample diffuse texture
     vec4 texColor = texture(baseColorTex, fragTexCoord);
 
-    // Blend texture with base color (texture modulates the base color)
+    // Blend texture with base color
     vec4 albedo = texColor * pc.baseColor;
 
-    // Normalize inputs
+    // Normalize the interpolated normal
     vec3 N = normalize(fragNormal);
     vec3 L = normalize(-pc.lightDir.xyz);
-    vec3 V = normalize(pc.cameraPos.xyz - fragWorldPos);
-    vec3 H = normalize(L + V);
 
-    // Diffuse lighting (Lambert)
-    float NdotL = max(dot(N, L), 0.0);
+    // Simple directional lighting with wrap
+    float NdotL = dot(N, L);
+    float wrap = 0.5;  // How much light wraps around (0 = none, 1 = full)
+    float diffuse = max(0.0, (NdotL + wrap) / (1.0 + wrap));
 
-    // Simple specular (Blinn-Phong)
-    float NdotH = max(dot(N, H), 0.0);
-    float specular = pow(NdotH, 32.0) * 0.3;
+    // Strong ambient to fill shadows
+    vec3 ambient = vec3(0.4);  // Fixed ambient, ignore passed value for now
 
-    // Combine lighting
-    vec3 diffuse = albedo.rgb * pc.lightColor.rgb * NdotL;
-    vec3 ambient = albedo.rgb * pc.ambientColor.rgb * pc.ambientColor.a;
-    vec3 spec = pc.lightColor.rgb * specular;
+    // Combine
+    vec3 litColor = albedo.rgb * (pc.lightColor.rgb * diffuse + ambient);
 
-    vec3 color = diffuse + ambient + spec;
-
-    outColor = vec4(color, albedo.a);
+    outColor = vec4(litColor, albedo.a);
 }

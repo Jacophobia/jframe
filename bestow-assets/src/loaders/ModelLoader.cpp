@@ -485,7 +485,8 @@ ModelData AssetSystem::loadModelFromFile(const std::filesystem::path& path) {
         aiProcess_CalcTangentSpace |
         aiProcess_JoinIdenticalVertices |
         aiProcess_LimitBoneWeights |
-        aiProcess_PopulateArmatureData;
+        aiProcess_PopulateArmatureData |
+        aiProcess_FlipUVs;  // Flip V coordinate for Vulkan (top-left origin)
 
     Assimp::Importer importer;
 
