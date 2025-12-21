@@ -43,7 +43,8 @@
         "rmlui",
         "kangaru",
         "shaderc",
-        "ozz-animation"
+        "ozz-animation",
+        "assimp"
     ],
     "features": {
         "vulkan": {

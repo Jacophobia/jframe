@@ -156,7 +156,8 @@ struct ModelData {
     };
 
     struct AnimationChannel {
-        int boneIndex = -1;
+        std::string boneName;  // Name of the bone this channel animates
+        int boneIndex = -1;    // Index into skeleton (may be -1 for animation-only files)
         std::vector<AnimationKeyframe> keyframes;
     };
 

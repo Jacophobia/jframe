@@ -848,11 +848,28 @@ private:
     // Render queue
     std::vector<RenderItem> renderQueue_;
 
+    // Skinned mesh render queue (separate because it needs bone transforms)
+    struct SkinnedRenderItem {
+        MeshHandle mesh;
+        MaterialHandle material;
+        Mat4 worldMatrix;
+        std::vector<Mat4> boneTransforms;
+    };
+    std::vector<SkinnedRenderItem> skinnedRenderQueue_;
+
     // Pipelines
     VulkanPipelineHandle pbrPipeline_ = 0;
     VulkanPipelineHandle unlitPipeline_ = 0;
     VulkanPipelineHandle debugPipeline_ = 0;
     VulkanPipelineHandle skyboxPipeline_ = 0;
+    VulkanPipelineHandle skinnedPipeline_ = 0;  // For skeletal animation
+
+    // Bone matrix buffer for skinned mesh rendering
+    static constexpr std::size_t MAX_BONES = 100;
+    VulkanBufferHandle boneUBO_ = 0;
+    VkDescriptorSetLayout boneDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSet boneDescriptorSet_ = VK_NULL_HANDLE;
+    VkDescriptorPool boneDescriptorPool_ = VK_NULL_HANDLE;
 
     // Lua material pipeline cache (material name -> pipeline handle)
     std::unordered_map<std::string, VulkanPipelineHandle> materialPipelineCache_;

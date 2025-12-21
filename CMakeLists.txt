@@ -95,6 +95,11 @@ if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
     add_subdirectory(games/game1)
 endif()
 
+# Demos (require Vulkan)
+if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
+    add_subdirectory(demos/animation-showcase)
+endif()
+
 # Template uses proper contract-based DI architecture
 # See template/README.md for usage
 

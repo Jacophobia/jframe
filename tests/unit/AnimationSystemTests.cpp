@@ -1093,13 +1093,13 @@ TEST_F(AnimationSystemTest, ConsumeRootMotionResetsDeltas) {
 //==========================================================================
 
 TEST_F(AnimationSystemTest, HasRagdollReturnsFalseByDefault) {
-    Entity testEntity{1, 0};
+    Entity testEntity{1};
 
     EXPECT_FALSE(animation_->hasRagdoll(testEntity));
 }
 
 TEST_F(AnimationSystemTest, GetRagdollStateForNonExistentReturnsDefault) {
-    Entity testEntity{1, 0};
+    Entity testEntity{1};
 
     RagdollState state = animation_->getRagdollState(testEntity);
 
@@ -1108,13 +1108,13 @@ TEST_F(AnimationSystemTest, GetRagdollStateForNonExistentReturnsDefault) {
 }
 
 TEST_F(AnimationSystemTest, IsRagdollActiveReturnsFalseWithoutRagdoll) {
-    Entity testEntity{1, 0};
+    Entity testEntity{1};
 
     EXPECT_FALSE(animation_->isRagdollActive(testEntity));
 }
 
 TEST_F(AnimationSystemTest, SetRagdollBlendWeightWithoutRagdoll) {
-    Entity testEntity{1, 0};
+    Entity testEntity{1};
 
     // Should not crash
     animation_->setRagdollBlendWeight(testEntity, 0.5f);

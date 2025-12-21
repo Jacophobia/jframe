@@ -7,6 +7,14 @@
 // Global module fragment - third-party includes go here
 module;
 
+#include <spdlog/spdlog.h>
+
+// GLM math library - MUST be before ozz to ensure operator* resolution
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+// ozz-animation headers
 #include <ozz/animation/runtime/skeleton.h>
 #include <ozz/animation/runtime/animation.h>
 #include <ozz/animation/runtime/sampling_job.h>
@@ -20,6 +28,7 @@ module;
 #include <ozz/animation/offline/raw_animation.h>
 #include <ozz/animation/offline/animation_builder.h>
 #include <ozz/base/maths/simd_math.h>
+#include <ozz/base/maths/simd_quaternion.h>
 #include <ozz/base/maths/soa_transform.h>
 #include <ozz/base/maths/vec_float.h>
 #include <ozz/base/containers/vector.h>
@@ -172,165 +181,7 @@ float wrapTime(float time, float duration, AnimationWrapMode mode) {
 
 }  // anonymous namespace
 
-//==========================================================================
-// Internal Data Structures
-//==========================================================================
-
-struct SkeletonData {
-    SkeletonHandle handle = 0;
-    std::vector<BoneInfo> bones;  // Our contract type
-    std::unordered_map<std::string, std::int32_t> boneNameToIndex;
-    std::int32_t rootBoneIndex = 0;
-    AABB3D bounds;
-    ozz::animation::Skeleton ozzSkeleton;  // ozz runtime skeleton
-};
-
-struct AnimationKeyframe {
-    float time = 0.0f;
-    Vec3 position{0.0f};
-    Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
-    Vec3 scale{1.0f};
-};
-
-struct AnimationChannel {
-    std::int32_t boneIndex = -1;
-    std::vector<AnimationKeyframe> keyframes;
-};
-
-struct AnimationClipData {
-    AnimationClipHandle handle = 0;
-    SkeletonHandle skeleton = 0;
-    std::string name;
-    float duration = 0.0f;
-    float ticksPerSecond = 30.0f;
-    bool looping = true;
-    bool hasRootMotion = false;
-    std::vector<AnimationChannel> channels;
-    std::vector<AnimationEventDef> events;
-    ozz::animation::Animation ozzAnimation;  // ozz runtime animation
-};
-
-struct AnimatorLayerData {
-    AnimationClipHandle clip = AnimationHandles::InvalidClip;
-    std::string clipName;
-    float time = 0.0f;
-    float speed = 1.0f;
-    float weight = 1.0f;
-    float fadeWeight = 1.0f;
-    float fadeSpeed = 0.0f;
-    AnimationWrapMode wrapMode = AnimationWrapMode::Loop;
-    AnimationBlendMode blendMode = AnimationBlendMode::Override;
-    bool playing = false;
-    bool paused = false;
-    std::set<std::uint32_t> boneMask;
-    ozz::animation::SamplingJob::Context samplingContext;
-    ozz::vector<ozz::math::SoaTransform> localTransforms;  // Per-layer sampled transforms
-};
-
-struct AnimatorData {
-    AnimatorHandle handle = 0;
-    SkeletonHandle skeleton = 0;
-    std::vector<AnimatorLayerData> layers;
-    std::vector<Mat4> boneTransforms;      // Final model-space transforms (output)
-    std::vector<Mat4> localTransforms;     // Local transforms
-    float globalSpeed = 1.0f;
-    bool paused = false;
-
-    // IK targets
-    std::unordered_map<std::string, IKTwoBoneTarget> twoBoneTargets;
-    std::unordered_map<std::string, IKAimTarget> aimTargets;
-
-    // Root motion
-    RootMotionConfig rootMotionConfig;
-    RootMotion currentRootMotion;
-    Vec3 lastRootPosition{0.0f};
-    Quat lastRootRotation{1.0f, 0.0f, 0.0f, 0.0f};
-
-    ozz::vector<ozz::math::SoaTransform> blendedLocals;   // Blended local transforms
-    ozz::vector<ozz::math::Float4x4> modelMatrices;       // Model-space matrices from ozz
-};
-
-struct SocketData {
-    SocketHandle handle = 0;
-    SkeletonHandle skeleton = 0;
-    std::string name;
-    std::uint32_t boneIndex = 0;
-    Vec3 localPosition{0.0f};
-    Quat localRotation{1.0f, 0.0f, 0.0f, 0.0f};
-    Vec3 localScale{1.0f};
-    SocketAttachMode attachMode = SocketAttachMode::FollowBone;
-    bool enabled = true;
-};
-
-struct IKChainData {
-    std::string name;
-    std::int32_t rootBoneIndex = -1;
-    std::int32_t midBoneIndex = -1;
-    std::int32_t tipBoneIndex = -1;
-};
-
-struct IKAimData {
-    std::string name;
-    std::int32_t boneIndex = -1;
-    Vec3 aimAxis{0.0f, 0.0f, 1.0f};
-    Vec3 upAxis{0.0f, 1.0f, 0.0f};
-    float horizontalLimit = 90.0f;
-    float verticalLimit = 60.0f;
-};
-
-struct RagdollData {
-    Entity entity;
-    SkeletonHandle skeleton = 0;
-    AnimatorHandle animator = 0;
-    RagdollState state;
-    RagdollDef definition;
-};
-
-struct EventSubscription {
-    SubscriptionId id = 0;
-    AnimatorHandle animator = 0;
-    enum class Type { Event, Complete, LayerChange } type;
-    std::variant<
-        AnimationEventCallback,
-        AnimationCompleteCallback,
-        AnimationLayerCallback
-    > callback;
-};
-
-//==========================================================================
-// AnimationSystem Implementation Data
-//==========================================================================
-
-class AnimationSystemImpl {
-public:
-    // Handle generators
-    SkeletonHandle nextSkeletonHandle_ = 1;
-    AnimationClipHandle nextClipHandle_ = 1;
-    AnimatorHandle nextAnimatorHandle_ = 1;
-    SocketHandle nextSocketHandle_ = 1;
-    SubscriptionId nextSubscriptionId_ = 1;
-
-    // Storage
-    std::unordered_map<SkeletonHandle, SkeletonData> skeletons_;
-    std::unordered_map<AnimationClipHandle, AnimationClipData> clips_;
-    std::unordered_map<AnimatorHandle, AnimatorData> animators_;
-    std::unordered_map<SocketHandle, SocketData> sockets_;
-    std::unordered_map<SkeletonHandle, std::vector<IKChainData>> ikChains_;
-    std::unordered_map<SkeletonHandle, std::vector<IKAimData>> ikAims_;
-    std::unordered_map<Entity, RagdollData> ragdolls_;
-    std::vector<EventSubscription> subscriptions_;
-
-    // Skeleton to clip/socket/animator mappings
-    std::unordered_map<SkeletonHandle, std::vector<AnimationClipHandle>> skeletonClips_;
-    std::unordered_map<SkeletonHandle, std::vector<SocketHandle>> skeletonSockets_;
-
-    // Statistics
-    AnimationStats stats_;
-    bool debugVisualization_ = false;
-
-    // Pending events to dispatch
-    std::vector<AnimationEvent> pendingEvents_;
-};
+// Internal data structures are defined in bestow.animation.impl.cppm
 
 // Static storage for implementation data
 static std::unique_ptr<AnimationSystemImpl> impl_;
@@ -373,14 +224,31 @@ void AnimationSystem::update(DeltaTime dt) {
     impl_->stats_.eventsDispatched = 0;
     impl_->pendingEvents_.clear();
 
+    static int debugFrame = 0;
+    bool shouldLog = (++debugFrame % 60 == 0);
+
+    if (shouldLog) {
+        spdlog::info("[AnimUpdate] dt={:.4f}, {} animators", dt, impl_->animators_.size());
+    }
+
     for (auto& [handle, animator] : impl_->animators_) {
-        if (animator.paused) continue;
+        if (animator.paused) {
+            if (shouldLog) spdlog::info("[AnimUpdate] animator {} paused, skipping", handle);
+            continue;
+        }
 
         auto skelIt = impl_->skeletons_.find(animator.skeleton);
-        if (skelIt == impl_->skeletons_.end()) continue;
+        if (skelIt == impl_->skeletons_.end()) {
+            if (shouldLog) spdlog::info("[AnimUpdate] animator {} has no skeleton", handle);
+            continue;
+        }
 
         auto& skeleton = skelIt->second;
         impl_->stats_.animatorsUpdated++;
+
+        if (shouldLog) {
+            spdlog::info("[AnimUpdate] animator {} has {} layers", handle, animator.layers.size());
+        }
 
         const std::size_t boneCount = skeleton.bones.size();
 
@@ -403,6 +271,11 @@ void AnimationSystem::update(DeltaTime dt) {
 
         for (auto& layer : animator.layers) {
             impl_->stats_.layersProcessed++;
+
+            if (shouldLog) {
+                spdlog::info("[AnimUpdate] layer: playing={}, clip={}, paused={}",
+                    layer.playing, layer.clip, layer.paused);
+            }
 
             if (!layer.playing || layer.clip == AnimationHandles::InvalidClip) continue;
 
@@ -470,8 +343,9 @@ void AnimationSystem::update(DeltaTime dt) {
             layer.time = wrappedTime;
 
             // Initialize sampling context if needed
-            if (layer.samplingContext.max_tracks() == 0) {
-                layer.samplingContext.Resize(clip.ozzAnimation.num_tracks());
+            if (!layer.samplingContext || layer.samplingContext->max_tracks() == 0) {
+                layer.samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>();
+                layer.samplingContext->Resize(clip.ozzAnimation.num_tracks());
             }
 
             // Resize local transforms buffer
@@ -484,17 +358,33 @@ void AnimationSystem::update(DeltaTime dt) {
             impl_->stats_.samplingJobs++;
             ozz::animation::SamplingJob samplingJob;
             samplingJob.animation = &clip.ozzAnimation;
-            samplingJob.context = &layer.samplingContext;
-            samplingJob.ratio = clip.duration > 0 ? layer.time / clip.duration : 0.0f;
+            samplingJob.context = layer.samplingContext.get();
+            float ratio = clip.duration > 0 ? layer.time / clip.duration : 0.0f;
+            samplingJob.ratio = ratio;
             samplingJob.output = ozz::make_span(layer.localTransforms);
+
+            if (shouldLog) {
+                spdlog::info("[AnimUpdate] Sampling: time={:.3f}, duration={:.3f}, ratio={:.3f}, tracks={}, soa_joints={}",
+                    layer.time, clip.duration, ratio,
+                    clip.ozzAnimation.num_tracks(),
+                    layer.localTransforms.size());
+            }
 
             if (samplingJob.Run()) {
                 float effectiveWeight = layer.weight * layer.fadeWeight;
+                if (shouldLog) {
+                    spdlog::info("[AnimUpdate] Sampling succeeded, effectiveWeight={:.3f} (weight={:.3f}, fadeWeight={:.3f})",
+                        effectiveWeight, layer.weight, layer.fadeWeight);
+                }
                 if (effectiveWeight > 0.001f) {
                     ozz::animation::BlendingJob::Layer blendLayer;
                     blendLayer.transform = ozz::make_span(layer.localTransforms);
                     blendLayer.weight = effectiveWeight;
                     blendLayers.push_back(blendLayer);
+                }
+            } else {
+                if (shouldLog) {
+                    spdlog::warn("[AnimUpdate] Sampling FAILED!");
                 }
             }
         }
@@ -502,6 +392,10 @@ void AnimationSystem::update(DeltaTime dt) {
         // Blend all layers
         if (!blendLayers.empty()) {
             impl_->stats_.blendingJobs++;
+
+            if (shouldLog) {
+                spdlog::info("[AnimUpdate] Blending {} layers", blendLayers.size());
+            }
 
             ozz::animation::BlendingJob blendJob;
             blendJob.threshold = 0.1f;
@@ -517,11 +411,47 @@ void AnimationSystem::update(DeltaTime dt) {
                 ltmJob.output = ozz::make_span(animator.modelMatrices);
 
                 if (ltmJob.Run()) {
-                    // Copy to our Mat4 output
-                    for (std::size_t i = 0; i < boneCount; ++i) {
-                        animator.boneTransforms[i] = fromOzz(animator.modelMatrices[i]);
+                    // Resize model space poses if needed
+                    if (animator.modelSpacePoses.size() != boneCount) {
+                        animator.modelSpacePoses.resize(boneCount, Mat4{1.0f});
+                    }
+
+                    // Compute final skinning matrices: ModelSpace * InverseBindPose
+                    // - InverseBindPose: transforms vertex from bind pose to bone-local space
+                    // - ModelSpace: transforms from bone-local space to animated world space
+                    // The order matters! ModelSpace * InverseBindPose (column-major convention)
+                    //
+                    // IMPORTANT: ozz joint indices != our bone indices!
+                    // ozz reorders joints during skeleton building (depth-first traversal)
+                    // We must use the mapping to get the correct bone index.
+                    for (std::size_t ozzIdx = 0; ozzIdx < boneCount; ++ozzIdx) {
+                        std::int32_t boneIdx = skeleton.ozzToBoneIndex[ozzIdx];
+                        Mat4 modelPose = fromOzz(animator.modelMatrices[ozzIdx]);
+                        animator.modelSpacePoses[boneIdx] = modelPose;  // Store for visualization
+                        animator.boneTransforms[boneIdx] = modelPose * skeleton.bones[boneIdx].inverseBindPose;
+                    }
+
+                    if (shouldLog && boneCount > 0) {
+                        // Log first bone transform position for debugging
+                        const auto& m = animator.boneTransforms[0];
+                        spdlog::info("[AnimUpdate] Bone 0 skinning matrix pos: {}, {}, {}",
+                            m[3][0], m[3][1], m[3][2]);
+                        // Also log the model pose position (use proper ozz conversion)
+                        Mat4 modelPose0 = fromOzz(animator.modelMatrices[0]);
+                        spdlog::info("[AnimUpdate] Bone 0 model pose pos: {}, {}, {}",
+                            modelPose0[3][0], modelPose0[3][1], modelPose0[3][2]);
+                        // Also check a mid-body bone like bone 5 (should be spine/chest)
+                        if (boneCount > 5) {
+                            Mat4 modelPose5 = fromOzz(animator.modelMatrices[5]);
+                            spdlog::info("[AnimUpdate] Bone 5 model pose pos: {}, {}, {}",
+                                modelPose5[3][0], modelPose5[3][1], modelPose5[3][2]);
+                        }
                     }
                 }
+            }
+        } else {
+            if (shouldLog) {
+                spdlog::info("[AnimUpdate] No blend layers - animation not running?");
             }
         }
 
@@ -613,9 +543,13 @@ void AnimationSystem::applyIK(AnimatorData& animator, SkeletonData& skeleton) {
         }
     }
 
-    // Copy back to our Mat4 output after IK
-    for (std::size_t i = 0; i < animator.boneTransforms.size(); ++i) {
-        animator.boneTransforms[i] = fromOzz(animator.modelMatrices[i]);
+    // Compute final skinning matrices after IK: ModelSpace * InverseBindPose
+    // Use ozz-to-bone mapping since ozz reorders joints
+    std::size_t boneCount = animator.boneTransforms.size();
+    for (std::size_t ozzIdx = 0; ozzIdx < boneCount; ++ozzIdx) {
+        std::int32_t boneIdx = skeleton.ozzToBoneIndex[ozzIdx];
+        Mat4 modelPose = fromOzz(animator.modelMatrices[ozzIdx]);
+        animator.boneTransforms[boneIdx] = modelPose * skeleton.bones[boneIdx].inverseBindPose;
     }
 }
 
@@ -667,12 +601,111 @@ void AnimationSystem::extractRootMotion(AnimatorData& animator, SkeletonData& sk
 //==========================================================================
 
 Result<SkeletonHandle, AnimationError> AnimationSystem::createSkeleton(const ModelData& modelData) {
-    // Extract bones from model data
-    std::vector<BoneInfo> bones;
-    // TODO: Extract from ModelData when asset pipeline supports it
-    if (bones.empty()) {
+    if (modelData.bones.empty()) {
         return std::unexpected(AnimationError::EmptyBoneData);
     }
+
+    // Build index maps for node lookup
+    std::unordered_map<std::string, std::size_t> nodeNameToIndex;
+    for (std::size_t i = 0; i < modelData.nodes.size(); ++i) {
+        nodeNameToIndex[modelData.nodes[i].name] = i;
+    }
+
+    // Helper to convert flat float[16] to Mat4
+    auto floatToMat4 = [](const float* m) -> Mat4 {
+        Mat4 result;
+        for (int j = 0; j < 16; ++j) {
+            result[j / 4][j % 4] = m[j];
+        }
+        return result;
+    };
+
+    // For each bone, compute the accumulated local transform by traversing UP
+    // through any Assimp intermediate nodes ($AssimpFbx$_Translation, etc.)
+    // until we reach the bone's actual parent bone (or root).
+    //
+    // Assimp splits FBX transforms into multiple nodes:
+    //   ParentBone -> Translation -> PreRotation -> Rotation -> BoneName
+    // We need to multiply all these together to get the true local transform.
+    auto computeAccumulatedLocalTransform = [&](const std::string& boneName, int boneParentIdx) -> Mat4 {
+        auto it = nodeNameToIndex.find(boneName);
+        if (it == nodeNameToIndex.end()) {
+            return Mat4{1.0f};  // Identity fallback
+        }
+
+        std::size_t nodeIdx = it->second;
+        Mat4 accumulated = floatToMat4(modelData.nodes[nodeIdx].localTransform);
+
+        // Walk up through intermediate nodes
+        int parentNodeIdx = modelData.nodes[nodeIdx].parentIndex;
+        while (parentNodeIdx >= 0) {
+            const auto& parentNode = modelData.nodes[parentNodeIdx];
+
+            // Check if this parent is an Assimp intermediate node (contains $AssimpFbx$)
+            if (parentNode.name.find("$AssimpFbx$") != std::string::npos) {
+                // Multiply parent's transform on the LEFT (parent * child)
+                Mat4 parentMat = floatToMat4(parentNode.localTransform);
+                accumulated = parentMat * accumulated;
+                parentNodeIdx = parentNode.parentIndex;
+            } else {
+                // This is a real bone or the root - stop here
+                break;
+            }
+        }
+
+        return accumulated;
+    };
+
+    // Convert ModelData::Bone to BoneInfo
+    std::vector<BoneInfo> bones;
+    bones.reserve(modelData.bones.size());
+
+    for (std::size_t i = 0; i < modelData.bones.size(); ++i) {
+        const auto& srcBone = modelData.bones[i];
+        BoneInfo bone;
+        bone.name = srcBone.name;
+        bone.index = static_cast<std::int32_t>(i);
+        bone.parentIndex = srcBone.parentIndex;
+
+        // Copy inverse bind pose (offset matrix)
+        for (int j = 0; j < 16; ++j) {
+            bone.inverseBindPose[j / 4][j % 4] = srcBone.offsetMatrix[j];
+        }
+
+        // Compute accumulated local transform (handles Assimp's $AssimpFbx$ intermediate nodes)
+        bone.localBindPose = computeAccumulatedLocalTransform(srcBone.name, srcBone.parentIndex);
+
+        // Debug: Print first 10 bones' local bind pose vs inverse bind pose
+        if (i < 10) {
+            Mat4 globalBindPose = glm::inverse(bone.inverseBindPose);
+            spdlog::info("[Skeleton] Bone {} '{}' parent={}:", i, srcBone.name, srcBone.parentIndex);
+            spdlog::info("  localBindPose pos: ({:.2f}, {:.2f}, {:.2f})",
+                bone.localBindPose[3][0], bone.localBindPose[3][1], bone.localBindPose[3][2]);
+            spdlog::info("  globalBindPose pos: ({:.2f}, {:.2f}, {:.2f})",
+                globalBindPose[3][0], globalBindPose[3][1], globalBindPose[3][2]);
+        }
+
+        // Extract position, rotation, scale from local bind pose
+        bone.localPosition = Vec3{bone.localBindPose[3][0], bone.localBindPose[3][1], bone.localBindPose[3][2]};
+
+        // Extract rotation from the upper-left 3x3 (assuming no shear)
+        glm::mat3 rotMat = glm::mat3(bone.localBindPose);
+        bone.localScale = Vec3{
+            glm::length(glm::vec3(rotMat[0])),
+            glm::length(glm::vec3(rotMat[1])),
+            glm::length(glm::vec3(rotMat[2]))
+        };
+
+        // Normalize rotation matrix
+        if (bone.localScale.x > 0.0001f) rotMat[0] /= bone.localScale.x;
+        if (bone.localScale.y > 0.0001f) rotMat[1] /= bone.localScale.y;
+        if (bone.localScale.z > 0.0001f) rotMat[2] /= bone.localScale.z;
+
+        bone.localRotation = glm::quat_cast(rotMat);
+
+        bones.push_back(bone);
+    }
+
     return createSkeleton(std::span<const BoneInfo>(bones));
 }
 
@@ -733,6 +766,35 @@ Result<SkeletonHandle, AnimationError> AnimationSystem::createSkeleton(std::span
     }
 
     data.ozzSkeleton = std::move(*skeleton);
+
+    // Build mapping from ozz joint index to our bone index
+    // ozz reorders joints during skeleton building (depth-first traversal)
+    int numJoints = data.ozzSkeleton.num_joints();
+    data.ozzToBoneIndex.resize(numJoints);
+
+    auto jointNames = data.ozzSkeleton.joint_names();
+    for (int ozzIdx = 0; ozzIdx < numJoints; ++ozzIdx) {
+        const char* jointName = jointNames[ozzIdx];
+        auto it = data.boneNameToIndex.find(jointName);
+        if (it != data.boneNameToIndex.end()) {
+            data.ozzToBoneIndex[ozzIdx] = it->second;
+        } else {
+            // Fallback to same index if name not found (shouldn't happen)
+            data.ozzToBoneIndex[ozzIdx] = ozzIdx;
+            spdlog::warn("[AnimationSystem] Joint '{}' not found in bone name map", jointName);
+        }
+    }
+
+    // Build reverse mapping: our bone index -> ozz joint index
+    // This is needed when building animations (tracks are in ozz order)
+    int numBones = static_cast<int>(data.bones.size());
+    data.boneToOzzIndex.resize(numBones, -1);  // -1 means bone not in ozz skeleton
+    for (int ozzIdx = 0; ozzIdx < numJoints; ++ozzIdx) {
+        std::int32_t boneIdx = data.ozzToBoneIndex[ozzIdx];
+        if (boneIdx >= 0 && boneIdx < numBones) {
+            data.boneToOzzIndex[boneIdx] = ozzIdx;
+        }
+    }
 
     impl_->skeletons_[data.handle] = std::move(data);
     impl_->stats_.skeletonCount++;
@@ -854,8 +916,130 @@ Result<AnimationClipHandle, AnimationError> AnimationSystem::createAnimationClip
 std::vector<AnimationClipHandle> AnimationSystem::createAnimationClips(
     SkeletonHandle skeleton,
     const ModelData& modelData) {
-    // TODO: Extract from ModelData when asset pipeline supports it
-    return {};
+    if (!impl_) return {};
+
+    // Find the skeleton data
+    auto skelIt = impl_->skeletons_.find(skeleton);
+    if (skelIt == impl_->skeletons_.end()) {
+        spdlog::error("[AnimationSystem] Cannot create clips - invalid skeleton handle");
+        return {};
+    }
+    const auto& skeletonData = skelIt->second;
+
+    std::vector<AnimationClipHandle> clipHandles;
+
+    for (const auto& srcAnim : modelData.animations) {
+        AnimationClipData clip;
+        clip.handle = impl_->nextClipHandle_++;
+        clip.skeleton = skeleton;
+        clip.name = srcAnim.name;
+        clip.duration = srcAnim.duration / srcAnim.ticksPerSecond; // Convert to seconds
+        clip.ticksPerSecond = srcAnim.ticksPerSecond;
+        clip.looping = true;
+
+        // Convert channels
+        int matchedChannels = 0;
+        int unmatchedChannels = 0;
+        for (const auto& srcChannel : srcAnim.channels) {
+            // Look up bone index by name in the skeleton (handles animation-only files)
+            int boneIndex = srcChannel.boneIndex;
+            if (boneIndex < 0 && !srcChannel.boneName.empty()) {
+                auto nameIt = skeletonData.boneNameToIndex.find(srcChannel.boneName);
+                if (nameIt != skeletonData.boneNameToIndex.end()) {
+                    boneIndex = nameIt->second;
+                }
+            }
+
+            if (boneIndex < 0) {
+                // Log first few unmatched channels
+                if (unmatchedChannels < 5) {
+                    spdlog::warn("[AnimationSystem] Animation channel '{}' not found in skeleton",
+                                 srcChannel.boneName);
+                }
+                unmatchedChannels++;
+                continue;
+            }
+            matchedChannels++;
+
+            AnimationChannel channel;
+            channel.boneIndex = boneIndex;
+
+            // Convert keyframes
+            for (const auto& srcKey : srcChannel.keyframes) {
+                AnimationKeyframe key;
+                key.time = srcKey.time / srcAnim.ticksPerSecond; // Convert to seconds
+                key.position = Vec3{srcKey.translation[0], srcKey.translation[1], srcKey.translation[2]};
+                // ModelData uses xyzw, Quat is wxyz
+                key.rotation = Quat{srcKey.rotation[3], srcKey.rotation[0], srcKey.rotation[1], srcKey.rotation[2]};
+                key.scale = Vec3{srcKey.scale[0], srcKey.scale[1], srcKey.scale[2]};
+                channel.keyframes.push_back(key);
+            }
+
+            clip.channels.push_back(channel);
+        }
+
+        // Build ozz animation from the raw animation data
+        ozz::animation::offline::RawAnimation rawAnimation;
+        rawAnimation.duration = clip.duration;
+        rawAnimation.tracks.resize(skeletonData.ozzSkeleton.num_joints());
+
+        // Fill tracks from channels
+        // IMPORTANT: Animation tracks are in ozz joint order, not our bone order!
+        // We must convert from our bone index to ozz joint index.
+        for (const auto& channel : clip.channels) {
+            if (channel.boneIndex < 0 || channel.boneIndex >= static_cast<int>(skeletonData.boneToOzzIndex.size())) {
+                continue;
+            }
+
+            // Convert from our bone index to ozz joint index
+            int ozzIdx = skeletonData.boneToOzzIndex[channel.boneIndex];
+            if (ozzIdx < 0 || ozzIdx >= static_cast<int>(rawAnimation.tracks.size())) {
+                continue;  // Bone not in ozz skeleton
+            }
+
+            auto& track = rawAnimation.tracks[ozzIdx];
+
+            for (const auto& key : channel.keyframes) {
+                track.translations.push_back({key.time, toOzz(key.position)});
+                track.rotations.push_back({key.time, toOzz(key.rotation)});
+                track.scales.push_back({key.time, toOzz(key.scale)});
+            }
+        }
+
+        // Ensure all tracks have at least one keyframe (ozz requirement)
+        for (auto& track : rawAnimation.tracks) {
+            if (track.translations.empty()) {
+                track.translations.push_back({0.0f, ozz::math::Float3{0, 0, 0}});
+            }
+            if (track.rotations.empty()) {
+                track.rotations.push_back({0.0f, ozz::math::Quaternion{0, 0, 0, 1}});
+            }
+            if (track.scales.empty()) {
+                track.scales.push_back({0.0f, ozz::math::Float3{1, 1, 1}});
+            }
+        }
+
+        // Build the runtime animation
+        ozz::animation::offline::AnimationBuilder builder;
+        auto builtAnim = builder(rawAnimation);
+        if (!builtAnim) {
+            spdlog::error("[AnimationSystem] Failed to build ozz animation for: {}", srcAnim.name);
+            continue;
+        }
+
+        clip.ozzAnimation = std::move(*builtAnim);
+
+        // Store the clip
+        impl_->clips_[clip.handle] = std::move(clip);
+        impl_->skeletonClips_[skeleton].push_back(clip.handle);
+        impl_->stats_.clipCount++;
+
+        clipHandles.push_back(clip.handle);
+        spdlog::info("[AnimationSystem] Created animation clip: {} (duration: {:.2f}s, {} matched channels, {} unmatched)",
+                     srcAnim.name, clip.duration, matchedChannels, unmatchedChannels);
+    }
+
+    return clipHandles;
 }
 
 void AnimationSystem::destroyAnimationClip(AnimationClipHandle clip) {
@@ -1362,6 +1546,15 @@ std::span<const Mat4> AnimationSystem::getBoneTransforms(AnimatorHandle animator
     return std::span<const Mat4>(it->second.boneTransforms);
 }
 
+std::span<const Mat4> AnimationSystem::getModelSpaceBonePoses(AnimatorHandle animator) const {
+    if (!impl_) return {};
+
+    auto it = impl_->animators_.find(animator);
+    if (it == impl_->animators_.end()) return {};
+
+    return std::span<const Mat4>(it->second.modelSpacePoses);
+}
+
 Mat4 AnimationSystem::getBoneTransform(AnimatorHandle animator, std::uint32_t boneIndex) const {
     if (!impl_) return Mat4{1.0f};
 
@@ -1677,8 +1870,8 @@ SocketRaycastResult AnimationSystem::raycastFromSocket(
     result.direction = worldDir;
 
     // Perform physics raycast
-    Ray3D ray{result.origin, worldDir};
-    auto hitResult = physics.raycast(ray, def.maxDistance, def.collisionMask);
+    QueryFilter3D filter{.layerMask = def.collisionMask};
+    auto hitResult = physics.raycast(result.origin, worldDir, def.maxDistance, filter);
 
     if (hitResult.has_value()) {
         result.hit = true;
@@ -1728,8 +1921,8 @@ SocketRaycastResult AnimationSystem::sphereCastFromSocket(
     result.direction = worldDir;
 
     // Perform physics sphere cast
-    Ray3D ray{result.origin, worldDir};
-    auto hitResult = physics.sphereCast(ray, sphereRadius, def.maxDistance, def.collisionMask);
+    QueryFilter3D filter{.layerMask = def.collisionMask};
+    auto hitResult = physics.sphereCast(result.origin, sphereRadius, worldDir, def.maxDistance, filter);
 
     if (hitResult.has_value()) {
         result.hit = true;
@@ -1737,7 +1930,7 @@ SocketRaycastResult AnimationSystem::sphereCastFromSocket(
         result.hitNormal = hitResult->normal;
         result.distance = hitResult->distance;
         result.hitEntity = hitResult->entity;
-        result.hitShapeIndex = hitResult->shapeIndex;
+        // result.hitShapeIndex not available from sphereCast
     }
 
     return result;

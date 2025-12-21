@@ -843,9 +843,15 @@ public:
     // Animator Bone Transforms (Output for Rendering)
     //======================================================================
 
-    /// Get final bone transforms for GPU skinning
-    /// @return Span of model-space transforms (valid until next update)
+    /// Get final bone transforms for GPU skinning (includes inverse bind pose)
+    /// @return Span of skinning transforms (valid until next update)
     virtual std::span<const Mat4> getBoneTransforms(
+        AnimatorHandle animator) const = 0;
+
+    /// Get model-space bone poses for visualization (NOT for skinning)
+    /// These are the animated bone positions in model space
+    /// @return Span of model-space poses (valid until next update)
+    virtual std::span<const Mat4> getModelSpaceBonePoses(
         AnimatorHandle animator) const = 0;
 
     /// Get specific bone's transform by index

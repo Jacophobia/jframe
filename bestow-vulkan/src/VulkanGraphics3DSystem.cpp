@@ -10,6 +10,7 @@ module;
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <bestow/sol2_compat.hpp>
+#include <spdlog/spdlog.h>
 
 module bestow.vulkan.impl;
 
@@ -121,6 +122,77 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
         return false;
     }
     lightUBO_ = *bufferResult;
+
+    // Create bone matrix UBO for skeletal animation
+    uboDesc.size = MAX_BONES * sizeof(glm::mat4);  // 100 bones * 64 bytes = 6400 bytes
+    bufferResult = context_.createBuffer(uboDesc);
+    if (!bufferResult) {
+        context_.destroyBuffer(lightUBO_);
+        context_.destroyBuffer(cameraUBO_);
+        context_.shutdown();
+        return false;
+    }
+    boneUBO_ = *bufferResult;
+
+    // Create descriptor set layout for bone matrices
+    VkDescriptorSetLayoutBinding boneBinding{};
+    boneBinding.binding = 0;
+    boneBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    boneBinding.descriptorCount = 1;
+    boneBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    boneBinding.pImmutableSamplers = nullptr;
+
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 1;
+    layoutInfo.pBindings = &boneBinding;
+
+    if (vkCreateDescriptorSetLayout(context_.getDevice(), &layoutInfo, nullptr, &boneDescriptorSetLayout_) != VK_SUCCESS) {
+        std::fprintf(stderr, "[Vulkan] Failed to create bone descriptor set layout\n");
+    }
+
+    // Create descriptor pool for bone descriptors
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSize.descriptorCount = 1;
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = 1;
+
+    if (vkCreateDescriptorPool(context_.getDevice(), &poolInfo, nullptr, &boneDescriptorPool_) != VK_SUCCESS) {
+        std::fprintf(stderr, "[Vulkan] Failed to create bone descriptor pool\n");
+    }
+
+    // Allocate bone descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = boneDescriptorPool_;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &boneDescriptorSetLayout_;
+
+    if (vkAllocateDescriptorSets(context_.getDevice(), &allocInfo, &boneDescriptorSet_) != VK_SUCCESS) {
+        std::fprintf(stderr, "[Vulkan] Failed to allocate bone descriptor set\n");
+    }
+
+    // Update descriptor set with bone UBO
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = context_.getBuffer(boneUBO_);
+    bufferInfo.offset = 0;
+    bufferInfo.range = MAX_BONES * sizeof(glm::mat4);
+
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = boneDescriptorSet_;
+    descriptorWrite.dstBinding = 0;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrite.descriptorCount = 1;
+    descriptorWrite.pBufferInfo = &bufferInfo;
+
+    vkUpdateDescriptorSets(context_.getDevice(), 1, &descriptorWrite, 0, nullptr);
 
     createDefaultMaterials();
     createPipelines();
@@ -929,6 +1001,81 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
     }
 
     renderQueue_.clear();
+
+    // Draw skinned meshes
+    if (!skinnedRenderQueue_.empty() && skinnedPipeline_ != 0) {
+        // Bind skinned pipeline
+        context_.bindPipeline(skinnedPipeline_);
+        VkPipelineLayout skinnedLayout = context_.getPipelineLayout(skinnedPipeline_);
+
+        // Bind bone descriptor set
+        if (boneDescriptorSet_ != VK_NULL_HANDLE) {
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                    skinnedLayout, 0, 1, &boneDescriptorSet_, 0, nullptr);
+        }
+
+        for (const auto& item : skinnedRenderQueue_) {
+            auto meshIt = meshes_.find(item.mesh);
+            if (meshIt == meshes_.end()) continue;
+
+            const auto& mesh = meshIt->second;
+            if (mesh.vertexBuffer == 0) continue;
+
+            // Upload bone transforms to UBO
+            std::size_t numBones = std::min(item.boneTransforms.size(), MAX_BONES);
+            if (numBones > 0) {
+                context_.uploadToBuffer(boneUBO_, item.boneTransforms.data(),
+                                        numBones * sizeof(Mat4));
+            }
+
+            // Get model matrix
+            glm::mat4 model;
+            std::memcpy(&model, &item.worldMatrix, sizeof(glm::mat4));
+
+            // Get material color
+            glm::vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+            auto matIt = materials_.find(item.material);
+            if (matIt != materials_.end()) {
+                const auto& bc = matIt->second.pbrData.baseColorFactor;
+                baseColor = glm::vec4{bc.x, bc.y, bc.z, bc.w};
+            }
+
+            // Push constants (same as regular meshes)
+            glm::vec4 camPos{cameraPos.x, cameraPos.y, cameraPos.z, 1.0f};
+            struct PushData {
+                glm::mat4 model;
+                glm::mat4 viewProjection;
+                glm::vec4 baseColor;
+                glm::vec4 lightDir;
+                glm::vec4 lightColor;
+                glm::vec4 ambientColor;
+                glm::vec4 cameraPos;
+            } pushData = {model, viewProjection, baseColor, lightDir, lightColor, ambientColor, camPos};
+
+            vkCmdPushConstants(cmd, skinnedLayout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
+                              sizeof(pushData), &pushData);
+
+            // Bind vertex buffer
+            VkBuffer vertexBuffer = context_.getBuffer(mesh.vertexBuffer);
+            if (vertexBuffer == VK_NULL_HANDLE) continue;
+
+            VkDeviceSize offset = 0;
+            vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, &offset);
+
+            // Draw
+            if (mesh.indexBuffer != 0 && mesh.indexCount > 0) {
+                VkBuffer indexBuffer = context_.getBuffer(mesh.indexBuffer);
+                if (indexBuffer != VK_NULL_HANDLE) {
+                    vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+                    vkCmdDrawIndexed(cmd, mesh.indexCount, 1, 0, 0, 0);
+                }
+            } else if (mesh.vertexCount > 0) {
+                vkCmdDraw(cmd, mesh.vertexCount, 1, 0, 0);
+            }
+        }
+
+        skinnedRenderQueue_.clear();
+    }
 }
 
 void VulkanGraphics3DSystem::renderEntities(IEntitySystem& entities) {
@@ -2251,15 +2398,21 @@ Result<void, Graphics3DError> VulkanGraphics3DSystem::drawMeshWithLuaMaterial(
 }
 
 Result<MeshHandle, Graphics3DError> VulkanGraphics3DSystem::createMeshFromData(const MeshData& data) {
-    // Convert Vertex3DData to Vertex3D
+    // Convert Vertex3DData to Vertex3D (including bone data for skinning)
     std::vector<Vertex3D> vertices;
     vertices.reserve(data.vertices.size());
     for (const auto& v : data.vertices) {
-        vertices.push_back({
-            Vec3{v.position[0], v.position[1], v.position[2]},
-            Vec3{v.normal[0], v.normal[1], v.normal[2]},
-            Vec2{v.texCoord[0], v.texCoord[1]}
-        });
+        Vertex3D vert;
+        vert.position = Vec3{v.position[0], v.position[1], v.position[2]};
+        vert.normal = Vec3{v.normal[0], v.normal[1], v.normal[2]};
+        vert.texCoord = Vec2{v.texCoord[0], v.texCoord[1]};
+        vert.color = Vec4{v.color[0], v.color[1], v.color[2], v.color[3]};
+        // Copy bone data for skeletal animation
+        for (int i = 0; i < 4; ++i) {
+            vert.boneIndices[i] = v.boneIndices[i];
+            vert.boneWeights[i] = v.boneWeights[i];
+        }
+        vertices.push_back(vert);
     }
 
     MeshDef def;
@@ -2546,7 +2699,29 @@ std::vector<Mat4> VulkanGraphics3DSystem::blendAnimations(const BlendedAnimation
 void VulkanGraphics3DSystem::drawSkinnedMesh(
     MeshHandle mesh, MaterialHandle material, const Mat4& worldMatrix,
     std::span<const Mat4> boneTransforms) {
-    drawMesh(mesh, material, worldMatrix, true, true);
+    if (skinnedPipeline_ == 0) {
+        // Fallback to regular mesh drawing if skinned pipeline not available
+        spdlog::warn("[Vulkan] drawSkinnedMesh: skinned pipeline not available, using fallback");
+        drawMesh(mesh, material, worldMatrix, true, true);
+        return;
+    }
+
+    static int debugCount = 0;
+    if (++debugCount % 120 == 1) {
+        spdlog::info("[Vulkan] drawSkinnedMesh: {} bone transforms, first bone pos: {}, {}, {}",
+            boneTransforms.size(),
+            boneTransforms.empty() ? 0.0f : boneTransforms[0][3][0],
+            boneTransforms.empty() ? 0.0f : boneTransforms[0][3][1],
+            boneTransforms.empty() ? 0.0f : boneTransforms[0][3][2]);
+    }
+
+    // Queue skinned render item
+    SkinnedRenderItem item;
+    item.mesh = mesh;
+    item.material = material;
+    item.worldMatrix = worldMatrix;
+    item.boneTransforms.assign(boneTransforms.begin(), boneTransforms.end());
+    skinnedRenderQueue_.push_back(std::move(item));
 }
 
 Result<Font3DHandle, Graphics3DError> VulkanGraphics3DSystem::loadFont3D(AssetHandle fontAsset) {
@@ -2627,8 +2802,9 @@ void VulkanGraphics3DSystem::createPipelines() {
     }
 
     // Load debug pipeline shaders (for debug line rendering)
-    auto debugVertHandle = pIAssetSystem_->loadShaderCompiled("debug.vert");
-    auto debugFragHandle = pIAssetSystem_->loadShaderCompiled("debug.frag");
+    // Use :library:/shaders/ prefix for proper path resolution
+    auto debugVertHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/debug.vert");
+    auto debugFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/debug.frag");
 
     if (pIAssetSystem_->isLoaded(debugVertHandle) && pIAssetSystem_->isLoaded(debugFragHandle)) {
         const ShaderData* debugVert = pIAssetSystem_->getShaderData(debugVertHandle);
@@ -2670,8 +2846,9 @@ void VulkanGraphics3DSystem::createPipelines() {
     }
 
     // Load basic 3D pipeline shaders (for mesh rendering)
-    auto basic3dVertHandle = pIAssetSystem_->loadShaderCompiled("basic3d.vert");
-    auto basic3dFragHandle = pIAssetSystem_->loadShaderCompiled("basic3d.frag");
+    // Use :library:/shaders/ prefix for proper path resolution
+    auto basic3dVertHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.vert");
+    auto basic3dFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.frag");
 
     if (pIAssetSystem_->isLoaded(basic3dVertHandle) && pIAssetSystem_->isLoaded(basic3dFragHandle)) {
         const ShaderData* basic3dVert = pIAssetSystem_->getShaderData(basic3dVertHandle);
@@ -2712,6 +2889,63 @@ void VulkanGraphics3DSystem::createPipelines() {
                 std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
             }
         }
+    }
+
+    // Create skinned mesh pipeline for skeletal animation
+    auto skinnedVertHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/skinned3d.vert");
+    auto skinnedFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.frag");
+
+    if (pIAssetSystem_->isLoaded(skinnedVertHandle) && pIAssetSystem_->isLoaded(skinnedFragHandle)) {
+        const ShaderData* skinnedVert = pIAssetSystem_->getShaderData(skinnedVertHandle);
+        const ShaderData* skinnedFrag = pIAssetSystem_->getShaderData(skinnedFragHandle);
+
+        if (skinnedVert && skinnedFrag && !skinnedVert->spirvBytecode.empty() && !skinnedFrag->spirvBytecode.empty()) {
+            VulkanPipelineDef skinnedDef;
+            skinnedDef.shaderStages = {
+                {VK_SHADER_STAGE_VERTEX_BIT, skinnedVert->spirvBytecode, "main"},
+                {VK_SHADER_STAGE_FRAGMENT_BIT, skinnedFrag->spirvBytecode, "main"}
+            };
+
+            // Skinned vertex layout: position + normal + texcoord + color + boneIndices + boneWeights
+            skinnedDef.vertexBindings = {
+                {0, sizeof(Vertex3D), VK_VERTEX_INPUT_RATE_VERTEX}
+            };
+            skinnedDef.vertexAttributes = {
+                {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, position)},
+                {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex3D, normal)},
+                {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex3D, texCoord)},
+                {3, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex3D, color)},
+                {4, 0, VK_FORMAT_R8G8B8A8_UINT, offsetof(Vertex3D, boneIndices)},
+                {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex3D, boneWeights)}
+            };
+
+            // Push constants same as PBR pipeline
+            skinnedDef.pushConstantRanges = {
+                {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
+            };
+
+            // Add descriptor set layout for bone matrices
+            if (boneDescriptorSetLayout_ != VK_NULL_HANDLE) {
+                skinnedDef.descriptorSetLayouts = {boneDescriptorSetLayout_};
+            }
+
+            skinnedDef.depthTestEnable = true;
+            skinnedDef.depthWriteEnable = true;
+            skinnedDef.cullMode = VK_CULL_MODE_BACK_BIT;
+            skinnedDef.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+            auto skinnedResult = context_.createPipeline(skinnedDef);
+            if (skinnedResult) {
+                skinnedPipeline_ = *skinnedResult;
+                std::fprintf(stderr, "[Vulkan] Created skinned mesh pipeline\n");
+            } else {
+                std::fprintf(stderr, "[Vulkan] Failed to create skinned pipeline\n");
+            }
+        } else {
+            std::fprintf(stderr, "[Vulkan] Skinned shader data is empty or null\n");
+        }
+    } else {
+        std::fprintf(stderr, "[Vulkan] Failed to load skinned shaders\n");
     }
 }
 
@@ -2760,8 +2994,11 @@ void VulkanGraphics3DSystem::updateLightUBO() {
 
 void VulkanGraphics3DSystem::renderDebugLines() {
     if (debugLines_.empty() || !debugRenderingEnabled_) return;
+    if (debugPipeline_ == 0) return;
 
-    // Would upload debug line vertices and draw with debug pipeline
+    // TODO: Debug line rendering needs proper buffer management (deferred destruction)
+    // For now, just clear the debug lines to prevent memory buildup
+    debugLines_.clear();
 }
 
 }  // namespace bestow::vulkan

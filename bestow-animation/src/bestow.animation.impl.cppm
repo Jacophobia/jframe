@@ -3,21 +3,220 @@
 
 module;
 
+// Kangaru DI framework
 #include <kangaru/kangaru.hpp>
+
+// GLM math library - MUST be before ozz to ensure operator* resolution
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+// ozz-animation runtime headers - MUST be in global module fragment
+#include <ozz/animation/runtime/skeleton.h>
+#include <ozz/animation/runtime/animation.h>
+#include <ozz/animation/runtime/sampling_job.h>
+#include <ozz/animation/runtime/blending_job.h>
+#include <ozz/animation/runtime/local_to_model_job.h>
+#include <ozz/animation/runtime/ik_two_bone_job.h>
+#include <ozz/animation/runtime/ik_aim_job.h>
+#include <ozz/base/maths/simd_math.h>
+#include <ozz/base/maths/soa_transform.h>
+#include <ozz/base/maths/vec_float.h>
+#include <ozz/base/containers/vector.h>
 
 export module bestow.animation.impl;
 
+import std;
 import bestow.services;
 
 export namespace bestow {
 
-// Forward declare the implementation class
-class AnimationSystem;
+//==========================================================================
+// Internal Data Structures
+//==========================================================================
 
-// Kangaru service definition for AnimationSystem
-// AnimationSystem depends on IAssetSystem for loading model data
-BESTOW_SYSTEM(AnimationSystem, IAnimationSystem, IAssetSystem) {
+struct SkeletonData {
+    SkeletonHandle handle = 0;
+    std::vector<BoneInfo> bones;  // Our contract type
+    std::unordered_map<std::string, std::int32_t> boneNameToIndex;
+    std::int32_t rootBoneIndex = 0;
+    AABB3D bounds;
+    ozz::animation::Skeleton ozzSkeleton;  // ozz runtime skeleton
+    std::vector<std::int32_t> ozzToBoneIndex;  // Map from ozz joint index to our bone index
+    std::vector<std::int32_t> boneToOzzIndex;  // Map from our bone index to ozz joint index
+};
+
+struct AnimationKeyframe {
+    float time = 0.0f;
+    Vec3 position{0.0f};
+    Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    Vec3 scale{1.0f};
+};
+
+struct AnimationChannel {
+    std::int32_t boneIndex = -1;
+    std::vector<AnimationKeyframe> keyframes;
+};
+
+struct AnimationClipData {
+    AnimationClipHandle handle = 0;
+    SkeletonHandle skeleton = 0;
+    std::string name;
+    float duration = 0.0f;
+    float ticksPerSecond = 30.0f;
+    bool looping = true;
+    bool hasRootMotion = false;
+    std::vector<AnimationChannel> channels;
+    std::vector<AnimationEventDef> events;
+    ozz::animation::Animation ozzAnimation;  // ozz runtime animation
+};
+
+struct AnimatorLayerData {
+    AnimationClipHandle clip = AnimationHandles::InvalidClip;
+    std::string clipName;
+    float time = 0.0f;
+    float speed = 1.0f;
+    float weight = 1.0f;
+    float fadeWeight = 1.0f;
+    float fadeSpeed = 0.0f;
+    AnimationWrapMode wrapMode = AnimationWrapMode::Loop;
+    AnimationBlendMode blendMode = AnimationBlendMode::Override;
+    bool playing = false;
+    bool paused = false;
+    std::set<std::uint32_t> boneMask;
+    std::unique_ptr<ozz::animation::SamplingJob::Context> samplingContext;
+    ozz::vector<ozz::math::SoaTransform> localTransforms;  // Per-layer sampled transforms
+
+    // Default constructible and movable
+    AnimatorLayerData() = default;
+    AnimatorLayerData(AnimatorLayerData&&) = default;
+    AnimatorLayerData& operator=(AnimatorLayerData&&) = default;
+
+    // Not copyable due to unique_ptr
+    AnimatorLayerData(const AnimatorLayerData&) = delete;
+    AnimatorLayerData& operator=(const AnimatorLayerData&) = delete;
+};
+
+struct AnimatorData {
+    AnimatorHandle handle = 0;
+    SkeletonHandle skeleton = 0;
+    std::vector<AnimatorLayerData> layers;
+    std::vector<Mat4> boneTransforms;      // Final model-space transforms (output)
+    std::vector<Mat4> localTransforms;     // Local transforms
+    float globalSpeed = 1.0f;
+    bool paused = false;
+
+    // IK targets
+    std::unordered_map<std::string, IKTwoBoneTarget> twoBoneTargets;
+    std::unordered_map<std::string, IKAimTarget> aimTargets;
+
+    // Root motion
+    RootMotionConfig rootMotionConfig;
+    RootMotion currentRootMotion;
+    Vec3 lastRootPosition{0.0f};
+    Quat lastRootRotation{1.0f, 0.0f, 0.0f, 0.0f};
+
+    ozz::vector<ozz::math::SoaTransform> blendedLocals;   // Blended local transforms
+    ozz::vector<ozz::math::Float4x4> modelMatrices;       // Model-space matrices from ozz
+    std::vector<Mat4> modelSpacePoses;                    // Converted model poses for visualization
+};
+
+struct SocketData {
+    SocketHandle handle = 0;
+    SkeletonHandle skeleton = 0;
+    std::string name;
+    std::uint32_t boneIndex = 0;
+    Vec3 localPosition{0.0f};
+    Quat localRotation{1.0f, 0.0f, 0.0f, 0.0f};
+    Vec3 localScale{1.0f};
+    SocketAttachMode attachMode = SocketAttachMode::FollowBone;
+    bool enabled = true;
+};
+
+struct IKChainData {
+    std::string name;
+    std::int32_t rootBoneIndex = -1;
+    std::int32_t midBoneIndex = -1;
+    std::int32_t tipBoneIndex = -1;
+};
+
+struct IKAimData {
+    std::string name;
+    std::int32_t boneIndex = -1;
+    Vec3 aimAxis{0.0f, 0.0f, 1.0f};
+    Vec3 upAxis{0.0f, 1.0f, 0.0f};
+    float horizontalLimit = 90.0f;
+    float verticalLimit = 60.0f;
+};
+
+struct RagdollData {
+    Entity entity;
+    SkeletonHandle skeleton = 0;
+    AnimatorHandle animator = 0;
+    RagdollState state;
+    RagdollDef definition;
+};
+
+struct EventSubscription {
+    SubscriptionId id = 0;
+    AnimatorHandle animator = 0;
+    enum class Type { Event, Complete, LayerChange } type;
+    std::variant<
+        AnimationEventCallback,
+        AnimationCompleteCallback,
+        AnimationLayerCallback
+    > callback;
+};
+
+//==========================================================================
+// AnimationSystem Implementation Data
+//==========================================================================
+
+class AnimationSystemImpl {
 public:
+    // Handle generators
+    SkeletonHandle nextSkeletonHandle_ = 1;
+    AnimationClipHandle nextClipHandle_ = 1;
+    AnimatorHandle nextAnimatorHandle_ = 1;
+    SocketHandle nextSocketHandle_ = 1;
+    SubscriptionId nextSubscriptionId_ = 1;
+
+    // Storage
+    std::unordered_map<SkeletonHandle, SkeletonData> skeletons_;
+    std::unordered_map<AnimationClipHandle, AnimationClipData> clips_;
+    std::unordered_map<AnimatorHandle, AnimatorData> animators_;
+    std::unordered_map<SocketHandle, SocketData> sockets_;
+    std::unordered_map<SkeletonHandle, std::vector<IKChainData>> ikChains_;
+    std::unordered_map<SkeletonHandle, std::vector<IKAimData>> ikAims_;
+    std::unordered_map<Entity, RagdollData> ragdolls_;
+    std::vector<EventSubscription> subscriptions_;
+
+    // Skeleton to clip/socket/animator mappings
+    std::unordered_map<SkeletonHandle, std::vector<AnimationClipHandle>> skeletonClips_;
+    std::unordered_map<SkeletonHandle, std::vector<SocketHandle>> skeletonSockets_;
+
+    // Statistics
+    AnimationStats stats_;
+    bool debugVisualization_ = false;
+
+    // Pending events to dispatch
+    std::vector<AnimationEvent> pendingEvents_;
+};
+
+//==========================================================================
+// AnimationSystem Class
+//==========================================================================
+
+/// Animation System Implementation using ozz-animation backend
+/// NOTE: AnimationSystem is stateless regarding asset loading - it receives ModelData
+/// directly through its API methods. Asset loading is handled by the caller through
+/// IAssetSystem before invoking animation functions.
+class AnimationSystem : public IAnimationSystem {
+public:
+    // Forward declare Service - defined after class is complete
+    struct Service;
+
+    AnimationSystem() = default;
     ~AnimationSystem() override;
 
     //======================================================================
@@ -168,6 +367,8 @@ public:
     //======================================================================
 
     std::span<const Mat4> getBoneTransforms(AnimatorHandle animator) const override;
+
+    std::span<const Mat4> getModelSpaceBonePoses(AnimatorHandle animator) const override;
 
     Mat4 getBoneTransform(AnimatorHandle animator,
                           std::uint32_t boneIndex) const override;
@@ -372,6 +573,18 @@ public:
 
     void setDebugVisualization(bool enabled) override;
     bool isDebugVisualizationEnabled() const override;
+
+private:
+    // Private helper methods for update loop
+    void applyIK(AnimatorData& animator, SkeletonData& skeleton);
+    void extractRootMotion(AnimatorData& animator, SkeletonData& skeleton);
 };
+
+// Kangaru service definition - must be after class is complete
+struct AnimationSystem::Service : kgr::single_service<AnimationSystem>,
+                                  kgr::overrides<IAnimationSystemService> {};
+
+// Alias for consistent naming with other systems
+using AnimationSystemService = AnimationSystem::Service;
 
 }  // namespace bestow

@@ -20,9 +20,9 @@ find_package(ozz-animation CONFIG REQUIRED)
 
 target_link_libraries(bestow-animation
     PRIVATE
-        ozz_animation
-        ozz_animation_offline
-        ozz_base
+        ozz::animation
+        ozz::animation_offline
+        ozz::base
 )
 
 target_compile_features(bestow-animation PUBLIC cxx_std_23)

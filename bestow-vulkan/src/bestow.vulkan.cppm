@@ -194,6 +194,7 @@ struct VulkanPipelineDef {
     std::vector<VulkanVertexBinding> vertexBindings;
     std::vector<VulkanVertexAttribute> vertexAttributes;
     std::vector<VulkanPushConstantRange> pushConstantRanges;
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;  // For UBO/SSBO bindings
     VkPrimitiveTopology topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     VkPolygonMode polygonMode = VK_POLYGON_MODE_FILL;
     VkCullModeFlags cullMode = VK_CULL_MODE_BACK_BIT;
