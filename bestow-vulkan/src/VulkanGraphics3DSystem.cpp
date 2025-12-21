@@ -2609,7 +2609,8 @@ Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createMaterialFr
                 channels = 4;
                 decodedData.assign(decoded, decoded + (width * height * 4));
                 stbi_image_free(decoded);
-                spdlog::info("[Vulkan] Decoded compressed embedded texture: {}x{}", width, height);
+                spdlog::info("[Vulkan] Decoded compressed embedded texture: {}x{} (source had {} channels)",
+                             width, height, decChannels);
             } else {
                 spdlog::warn("[Vulkan] Failed to decode compressed embedded texture: {}", stbi_failure_reason());
                 return matResult;

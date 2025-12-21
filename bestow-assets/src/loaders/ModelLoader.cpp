@@ -293,6 +293,23 @@ MaterialData processAssimpMaterial(const aiMaterial* material, const aiScene* sc
     if (material->GetTexture(aiTextureType_EMISSIVE, 0, &texPath) == AI_SUCCESS) {
         extractEmbeddedTexture(scene, texPath.C_Str(), matData.emissiveTexture);
     }
+    if (material->GetTexture(aiTextureType_OPACITY, 0, &texPath) == AI_SUCCESS) {
+        spdlog::info("[ModelLoader] Material '{}' has opacity texture: '{}'",
+                     matData.name, texPath.C_Str());
+        // For now, we don't have an opacity texture field - need to handle this
+        // Could blend opacity into the diffuse alpha channel
+        matData.transparent = true;
+    }
+
+    // Check material opacity property
+    float opacity = 1.0f;
+    if (material->Get(AI_MATKEY_OPACITY, opacity) == AI_SUCCESS) {
+        if (opacity < 1.0f) {
+            matData.transparent = true;
+            matData.baseColorFactor[3] = opacity;
+            spdlog::info("[ModelLoader] Material '{}' opacity: {}", matData.name, opacity);
+        }
+    }
 
     // Double-sided rendering
     int twoSided = 0;

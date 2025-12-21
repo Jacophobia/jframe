@@ -24,6 +24,12 @@ void main() {
     // Sample diffuse texture
     vec4 texColor = texture(baseColorTex, fragTexCoord);
 
+    // Alpha test - discard transparent pixels (cutout transparency)
+    // Only effective if texture has alpha channel
+    if (texColor.a < 0.1) {
+        discard;
+    }
+
     // Blend texture with base color
     vec4 albedo = texColor * pc.baseColor;
 
