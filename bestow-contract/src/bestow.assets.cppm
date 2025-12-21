@@ -97,6 +97,13 @@ struct MeshData {
 struct MaterialTextureRef {
     std::string path;
     AssetHandle handle;
+
+    // Embedded texture data (for FBX, glTF with embedded textures)
+    // If embeddedData is non-empty, use it instead of loading from path
+    std::vector<unsigned char> embeddedData;
+    int embeddedWidth = 0;
+    int embeddedHeight = 0;
+    int embeddedChannels = 0;
 };
 
 struct MaterialData {

@@ -871,6 +871,16 @@ private:
     VkDescriptorSet boneDescriptorSet_ = VK_NULL_HANDLE;
     VkDescriptorPool boneDescriptorPool_ = VK_NULL_HANDLE;
 
+    // Material texture descriptor set (set 1 for skinned pipeline)
+    VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool textureDescriptorPool_ = VK_NULL_HANDLE;
+    VulkanImageHandle defaultWhiteTexture_ = 0;
+    VkDescriptorSet defaultTextureDescriptorSet_ = VK_NULL_HANDLE;
+
+    // Per-material texture descriptor sets
+    std::map<MaterialHandle, VkDescriptorSet> materialTextureDescriptorSets_;
+    std::map<MaterialHandle, VulkanImageHandle> materialTextures_;  // GPU textures for materials
+
     // Lua material pipeline cache (material name -> pipeline handle)
     std::unordered_map<std::string, VulkanPipelineHandle> materialPipelineCache_;
     std::string shaderBasePath_;

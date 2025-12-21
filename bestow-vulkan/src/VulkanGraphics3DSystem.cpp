@@ -11,6 +11,7 @@ module;
 #include <glm/gtc/quaternion.hpp>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
+#include <stb_image.h>  // For decoding embedded compressed textures
 
 module bestow.vulkan.impl;
 
@@ -193,6 +194,109 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
     descriptorWrite.pBufferInfo = &bufferInfo;
 
     vkUpdateDescriptorSets(context_.getDevice(), 1, &descriptorWrite, 0, nullptr);
+
+    //==========================================================================
+    // Create texture descriptor set layout (set 1 for material textures)
+    //==========================================================================
+    {
+        VkDescriptorSetLayoutBinding texBinding{};
+        texBinding.binding = 0;
+        texBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        texBinding.descriptorCount = 1;
+        texBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        texBinding.pImmutableSamplers = nullptr;
+
+        VkDescriptorSetLayoutCreateInfo texLayoutInfo{};
+        texLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+        texLayoutInfo.bindingCount = 1;
+        texLayoutInfo.pBindings = &texBinding;
+
+        if (vkCreateDescriptorSetLayout(context_.getDevice(), &texLayoutInfo, nullptr, &textureDescriptorSetLayout_) != VK_SUCCESS) {
+            std::fprintf(stderr, "[Vulkan] Failed to create texture descriptor set layout\n");
+        }
+    }
+
+    //==========================================================================
+    // Create texture descriptor pool (enough for many materials)
+    //==========================================================================
+    {
+        VkDescriptorPoolSize texPoolSize{};
+        texPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        texPoolSize.descriptorCount = 100;  // Support up to 100 materials with textures
+
+        VkDescriptorPoolCreateInfo texPoolInfo{};
+        texPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        texPoolInfo.poolSizeCount = 1;
+        texPoolInfo.pPoolSizes = &texPoolSize;
+        texPoolInfo.maxSets = 100;
+        texPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+
+        if (vkCreateDescriptorPool(context_.getDevice(), &texPoolInfo, nullptr, &textureDescriptorPool_) != VK_SUCCESS) {
+            std::fprintf(stderr, "[Vulkan] Failed to create texture descriptor pool\n");
+        }
+    }
+
+    //==========================================================================
+    // Create default 1x1 white texture
+    //==========================================================================
+    {
+        VulkanImageDef imageDef;
+        imageDef.type = VK_IMAGE_TYPE_2D;
+        imageDef.format = VK_FORMAT_R8G8B8A8_UNORM;
+        imageDef.width = 1;
+        imageDef.height = 1;
+        imageDef.depth = 1;
+        imageDef.mipLevels = 1;
+        imageDef.arrayLayers = 1;
+        imageDef.usage = VulkanImageUsage::Sampled | VulkanImageUsage::TransferDst;
+        imageDef.isCubemap = false;
+
+        auto imageResult = context_.createImage(imageDef);
+        if (imageResult) {
+            defaultWhiteTexture_ = *imageResult;
+
+            // Upload white pixel
+            unsigned char whitePixel[4] = {255, 255, 255, 255};
+            context_.uploadToImage(defaultWhiteTexture_, whitePixel, 4);
+
+            std::fprintf(stderr, "[Vulkan] Created default white texture\n");
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to create default white texture\n");
+        }
+    }
+
+    //==========================================================================
+    // Allocate default texture descriptor set
+    //==========================================================================
+    if (defaultWhiteTexture_ != 0 && textureDescriptorSetLayout_ != VK_NULL_HANDLE && textureDescriptorPool_ != VK_NULL_HANDLE) {
+        VkDescriptorSetAllocateInfo texAllocInfo{};
+        texAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        texAllocInfo.descriptorPool = textureDescriptorPool_;
+        texAllocInfo.descriptorSetCount = 1;
+        texAllocInfo.pSetLayouts = &textureDescriptorSetLayout_;
+
+        if (vkAllocateDescriptorSets(context_.getDevice(), &texAllocInfo, &defaultTextureDescriptorSet_) == VK_SUCCESS) {
+            // Update descriptor set with default white texture
+            VkDescriptorImageInfo imageInfo{};
+            imageInfo.sampler = context_.getImageSampler(defaultWhiteTexture_);
+            imageInfo.imageView = context_.getImageView(defaultWhiteTexture_);
+            imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+            VkWriteDescriptorSet texWrite{};
+            texWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+            texWrite.dstSet = defaultTextureDescriptorSet_;
+            texWrite.dstBinding = 0;
+            texWrite.dstArrayElement = 0;
+            texWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+            texWrite.descriptorCount = 1;
+            texWrite.pImageInfo = &imageInfo;
+
+            vkUpdateDescriptorSets(context_.getDevice(), 1, &texWrite, 0, nullptr);
+            std::fprintf(stderr, "[Vulkan] Created default texture descriptor set\n");
+        } else {
+            std::fprintf(stderr, "[Vulkan] Failed to allocate default texture descriptor set\n");
+        }
+    }
 
     createDefaultMaterials();
     createPipelines();
@@ -1008,7 +1112,7 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
         context_.bindPipeline(skinnedPipeline_);
         VkPipelineLayout skinnedLayout = context_.getPipelineLayout(skinnedPipeline_);
 
-        // Bind bone descriptor set
+        // Bind bone descriptor set (set 0)
         if (boneDescriptorSet_ != VK_NULL_HANDLE) {
             vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
                                     skinnedLayout, 0, 1, &boneDescriptorSet_, 0, nullptr);
@@ -1038,6 +1142,18 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
             if (matIt != materials_.end()) {
                 const auto& bc = matIt->second.pbrData.baseColorFactor;
                 baseColor = glm::vec4{bc.x, bc.y, bc.z, bc.w};
+            }
+
+            // Bind texture descriptor set (set 1)
+            // Look for material-specific texture, otherwise use default white
+            VkDescriptorSet texDescSet = defaultTextureDescriptorSet_;
+            auto texSetIt = materialTextureDescriptorSets_.find(item.material);
+            if (texSetIt != materialTextureDescriptorSets_.end()) {
+                texDescSet = texSetIt->second;
+            }
+            if (texDescSet != VK_NULL_HANDLE) {
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                        skinnedLayout, 1, 1, &texDescSet, 0, nullptr);
             }
 
             // Push constants (same as regular meshes)
@@ -2464,7 +2580,103 @@ Result<MaterialHandle, Graphics3DError> VulkanGraphics3DSystem::createMaterialFr
         return createUnlitMaterial(unlitMat);
     }
 
-    return createMaterial(mat);
+    auto matResult = createMaterial(mat);
+    if (!matResult) return matResult;
+    MaterialHandle matHandle = *matResult;
+
+    // Handle embedded textures - create GPU texture and descriptor set
+    if (!data.baseColorTexture.embeddedData.empty()) {
+        const auto& texRef = data.baseColorTexture;
+
+        // Embedded texture data needs to be decoded if it's compressed (width = -1)
+        std::vector<unsigned char> decodedData;
+        int width = texRef.embeddedWidth;
+        int height = texRef.embeddedHeight;
+        int channels = texRef.embeddedChannels;
+
+        if (width < 0) {
+            // Compressed format (PNG, JPG) - decode using stb_image
+            int decWidth, decHeight, decChannels;
+            unsigned char* decoded = stbi_load_from_memory(
+                texRef.embeddedData.data(),
+                static_cast<int>(texRef.embeddedData.size()),
+                &decWidth, &decHeight, &decChannels, 4  // Force RGBA
+            );
+
+            if (decoded) {
+                width = decWidth;
+                height = decHeight;
+                channels = 4;
+                decodedData.assign(decoded, decoded + (width * height * 4));
+                stbi_image_free(decoded);
+                spdlog::info("[Vulkan] Decoded compressed embedded texture: {}x{}", width, height);
+            } else {
+                spdlog::warn("[Vulkan] Failed to decode compressed embedded texture: {}", stbi_failure_reason());
+                return matResult;
+            }
+        }
+
+        // Use decoded data if available (from compressed texture), otherwise use raw embedded data
+        const unsigned char* pixelData = decodedData.empty() ? texRef.embeddedData.data() : decodedData.data();
+        std::size_t pixelSize = decodedData.empty() ? texRef.embeddedData.size() : decodedData.size();
+
+        if (width > 0 && height > 0 && pixelData != nullptr && pixelSize > 0) {
+            // Create GPU texture
+            VulkanImageDef imageDef;
+            imageDef.type = VK_IMAGE_TYPE_2D;
+            imageDef.format = VK_FORMAT_R8G8B8A8_UNORM;
+            imageDef.width = static_cast<std::uint32_t>(width);
+            imageDef.height = static_cast<std::uint32_t>(height);
+            imageDef.depth = 1;
+            imageDef.mipLevels = 1;
+            imageDef.arrayLayers = 1;
+            imageDef.usage = VulkanImageUsage::Sampled | VulkanImageUsage::TransferDst;
+            imageDef.isCubemap = false;
+
+            auto imageResult = context_.createImage(imageDef);
+            if (imageResult) {
+                VulkanImageHandle texImage = *imageResult;
+
+                // Upload texture data
+                context_.uploadToImage(texImage, pixelData, pixelSize);
+
+                materialTextures_[matHandle] = texImage;
+
+                // Create descriptor set for this material's texture
+                if (textureDescriptorSetLayout_ != VK_NULL_HANDLE && textureDescriptorPool_ != VK_NULL_HANDLE) {
+                    VkDescriptorSetAllocateInfo allocInfo{};
+                    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+                    allocInfo.descriptorPool = textureDescriptorPool_;
+                    allocInfo.descriptorSetCount = 1;
+                    allocInfo.pSetLayouts = &textureDescriptorSetLayout_;
+
+                    VkDescriptorSet descSet = VK_NULL_HANDLE;
+                    if (vkAllocateDescriptorSets(context_.getDevice(), &allocInfo, &descSet) == VK_SUCCESS) {
+                        VkDescriptorImageInfo imageInfo{};
+                        imageInfo.sampler = context_.getImageSampler(texImage);
+                        imageInfo.imageView = context_.getImageView(texImage);
+                        imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                        VkWriteDescriptorSet texWrite{};
+                        texWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+                        texWrite.dstSet = descSet;
+                        texWrite.dstBinding = 0;
+                        texWrite.dstArrayElement = 0;
+                        texWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+                        texWrite.descriptorCount = 1;
+                        texWrite.pImageInfo = &imageInfo;
+
+                        vkUpdateDescriptorSets(context_.getDevice(), 1, &texWrite, 0, nullptr);
+
+                        materialTextureDescriptorSets_[matHandle] = descSet;
+                        spdlog::info("[Vulkan] Created texture descriptor for material ({}x{})", width, height);
+                    }
+                }
+            }
+        }
+    }
+
+    return matResult;
 }
 
 Result<std::vector<MaterialHandle>, Graphics3DError> VulkanGraphics3DSystem::createMaterialsFromModel(const ModelData& data) {
@@ -2891,9 +3103,9 @@ void VulkanGraphics3DSystem::createPipelines() {
         }
     }
 
-    // Create skinned mesh pipeline for skeletal animation
+    // Create skinned mesh pipeline for skeletal animation (with texture support)
     auto skinnedVertHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/skinned3d.vert");
-    auto skinnedFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.frag");
+    auto skinnedFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/skinned3d.frag");
 
     if (pIAssetSystem_->isLoaded(skinnedVertHandle) && pIAssetSystem_->isLoaded(skinnedFragHandle)) {
         const ShaderData* skinnedVert = pIAssetSystem_->getShaderData(skinnedVertHandle);
@@ -2924,8 +3136,10 @@ void VulkanGraphics3DSystem::createPipelines() {
                 {VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 208}
             };
 
-            // Add descriptor set layout for bone matrices
-            if (boneDescriptorSetLayout_ != VK_NULL_HANDLE) {
+            // Add descriptor set layouts: set 0 = bone matrices, set 1 = material texture
+            if (boneDescriptorSetLayout_ != VK_NULL_HANDLE && textureDescriptorSetLayout_ != VK_NULL_HANDLE) {
+                skinnedDef.descriptorSetLayouts = {boneDescriptorSetLayout_, textureDescriptorSetLayout_};
+            } else if (boneDescriptorSetLayout_ != VK_NULL_HANDLE) {
                 skinnedDef.descriptorSetLayouts = {boneDescriptorSetLayout_};
             }
 
@@ -2937,7 +3151,7 @@ void VulkanGraphics3DSystem::createPipelines() {
             auto skinnedResult = context_.createPipeline(skinnedDef);
             if (skinnedResult) {
                 skinnedPipeline_ = *skinnedResult;
-                std::fprintf(stderr, "[Vulkan] Created skinned mesh pipeline\n");
+                std::fprintf(stderr, "[Vulkan] Created skinned mesh pipeline with texture support\n");
             } else {
                 std::fprintf(stderr, "[Vulkan] Failed to create skinned pipeline\n");
             }

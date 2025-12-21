@@ -181,7 +181,56 @@ MeshData processAssimpMesh(const aiMesh* mesh, const std::vector<ModelData::Bone
     return meshData;
 }
 
-MaterialData processAssimpMaterial(const aiMaterial* material) {
+// Helper to extract embedded texture from Assimp scene
+void extractEmbeddedTexture(const aiScene* scene, const std::string& texPath,
+                            MaterialTextureRef& texRef) {
+    texRef.path = texPath;
+
+    // Use Assimp's GetEmbeddedTexture which handles both "*N" references
+    // and file paths that might map to embedded textures
+    const aiTexture* texture = scene->GetEmbeddedTexture(texPath.c_str());
+
+    if (texture != nullptr) {
+        if (texture->mHeight == 0) {
+            // Compressed format (PNG, JPG, etc.) - mWidth is the size in bytes
+            // The data needs to be decoded by stb_image or similar
+            texRef.embeddedData.assign(
+                reinterpret_cast<const unsigned char*>(texture->pcData),
+                reinterpret_cast<const unsigned char*>(texture->pcData) + texture->mWidth
+            );
+            texRef.embeddedWidth = -1;  // Indicates compressed, needs decoding
+            texRef.embeddedHeight = -1;
+            texRef.embeddedChannels = 4;
+
+            spdlog::info("[ModelLoader] Extracted embedded compressed texture '{}': {} bytes",
+                         texPath, texture->mWidth);
+        } else {
+            // Raw RGBA data
+            std::size_t dataSize = texture->mWidth * texture->mHeight * 4;
+            texRef.embeddedData.resize(dataSize);
+
+            // Convert from ARGB8888 to RGBA8888
+            const unsigned char* src = reinterpret_cast<const unsigned char*>(texture->pcData);
+            for (std::size_t i = 0; i < texture->mWidth * texture->mHeight; ++i) {
+                texRef.embeddedData[i * 4 + 0] = src[i * 4 + 2];  // R
+                texRef.embeddedData[i * 4 + 1] = src[i * 4 + 1];  // G
+                texRef.embeddedData[i * 4 + 2] = src[i * 4 + 0];  // B
+                texRef.embeddedData[i * 4 + 3] = src[i * 4 + 3];  // A
+            }
+
+            texRef.embeddedWidth = static_cast<int>(texture->mWidth);
+            texRef.embeddedHeight = static_cast<int>(texture->mHeight);
+            texRef.embeddedChannels = 4;
+
+            spdlog::info("[ModelLoader] Extracted embedded raw texture '{}': {}x{}",
+                         texPath, texture->mWidth, texture->mHeight);
+        }
+    } else {
+        spdlog::info("[ModelLoader] No embedded texture found for path: '{}'", texPath);
+    }
+}
+
+MaterialData processAssimpMaterial(const aiMaterial* material, const aiScene* scene) {
     MaterialData matData;
 
     aiString name;
@@ -223,22 +272,26 @@ MaterialData processAssimpMaterial(const aiMaterial* material) {
         matData.emissiveFactor[2] = emissive.b;
     }
 
-    // Texture paths
+    // Texture paths and embedded textures
     aiString texPath;
     if (material->GetTexture(aiTextureType_DIFFUSE, 0, &texPath) == AI_SUCCESS) {
-        matData.baseColorTexture.path = texPath.C_Str();
+        spdlog::info("[ModelLoader] Material '{}' has diffuse texture: '{}'",
+                     matData.name, texPath.C_Str());
+        extractEmbeddedTexture(scene, texPath.C_Str(), matData.baseColorTexture);
+    } else {
+        spdlog::info("[ModelLoader] Material '{}' has no diffuse texture", matData.name);
     }
     if (material->GetTexture(aiTextureType_NORMALS, 0, &texPath) == AI_SUCCESS) {
-        matData.normalTexture.path = texPath.C_Str();
+        extractEmbeddedTexture(scene, texPath.C_Str(), matData.normalTexture);
     }
     if (material->GetTexture(aiTextureType_METALNESS, 0, &texPath) == AI_SUCCESS) {
-        matData.metallicRoughnessTexture.path = texPath.C_Str();
+        extractEmbeddedTexture(scene, texPath.C_Str(), matData.metallicRoughnessTexture);
     }
     if (material->GetTexture(aiTextureType_AMBIENT_OCCLUSION, 0, &texPath) == AI_SUCCESS) {
-        matData.occlusionTexture.path = texPath.C_Str();
+        extractEmbeddedTexture(scene, texPath.C_Str(), matData.occlusionTexture);
     }
     if (material->GetTexture(aiTextureType_EMISSIVE, 0, &texPath) == AI_SUCCESS) {
-        matData.emissiveTexture.path = texPath.C_Str();
+        extractEmbeddedTexture(scene, texPath.C_Str(), matData.emissiveTexture);
     }
 
     // Double-sided rendering
@@ -465,10 +518,12 @@ ModelData AssetSystem::loadModelFromFile(const std::filesystem::path& path) {
         modelData.meshes.push_back(processAssimpMesh(scene->mMeshes[i], modelData.bones));
     }
 
-    // Process materials
+    // Process materials (including embedded textures)
     if (scene->HasMaterials()) {
+        spdlog::info("[AssetSystem] Processing {} materials, {} embedded textures",
+                     scene->mNumMaterials, scene->mNumTextures);
         for (unsigned int i = 0; i < scene->mNumMaterials; ++i) {
-            modelData.materials.push_back(processAssimpMaterial(scene->mMaterials[i]));
+            modelData.materials.push_back(processAssimpMaterial(scene->mMaterials[i], scene));
         }
     }
 

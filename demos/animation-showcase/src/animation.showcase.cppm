@@ -140,11 +140,11 @@ private:
             groundMesh_ = *planeResult;
         }
 
-        // Create materials
+        // Create ground material
         groundMaterial_ = graphics_->getDefaultUnlitMaterial();
-        characterMaterial_ = graphics_->getDefaultPBRMaterial();
+        // Note: characterMaterial_ will be created from model data in loadCharacterModel()
 
-        // Load the character model
+        // Load the character model (creates mesh and material from FBX data)
         loadCharacterModel();
 
         // Setup camera
@@ -233,6 +233,26 @@ private:
             animation_->play(animatorHandle_, clipHandles_[clipToPlay]);
             currentClipIndex_ = clipToPlay;
             std::cout << "Playing animation clip " << clipToPlay << "\n";
+        }
+
+        // Create materials from model data (includes embedded textures)
+        if (!modelData->materials.empty()) {
+            auto materialsResult = graphics_->createMaterialsFromModel(*modelData);
+            if (materialsResult && !materialsResult->empty()) {
+                characterMaterial_ = (*materialsResult)[0];  // Use first material
+                std::cout << "Created material from model with "
+                          << modelData->materials.size() << " materials\n";
+                if (!modelData->materials[0].baseColorTexture.embeddedData.empty()) {
+                    std::cout << "  Material has embedded texture: "
+                              << modelData->materials[0].baseColorTexture.path << "\n";
+                }
+            } else {
+                characterMaterial_ = graphics_->getDefaultPBRMaterial();
+                std::cout << "Using default PBR material (no model materials created)\n";
+            }
+        } else {
+            characterMaterial_ = graphics_->getDefaultPBRMaterial();
+            std::cout << "Using default PBR material (no materials in model)\n";
         }
 
         // Create mesh from the model data (use first mesh if available)
