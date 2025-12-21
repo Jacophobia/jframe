@@ -167,7 +167,7 @@ private:
         // Load the test character FBX using :library:/ path resolution
         // (library path is set to asset-library in main.cpp)
         std::string characterPath = ":library:/characters/test-character.fbx";
-        std::string animationPath = ":library:/animations/Idle-looking-around.fbx";
+        std::string animationPath = ":library:/animations/dance.fbx";
 
         std::cout << "Loading character from: " << characterPath << std::endl;
 
