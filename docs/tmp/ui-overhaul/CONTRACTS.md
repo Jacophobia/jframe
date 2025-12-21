@@ -42,11 +42,13 @@ public:
     virtual IUIRenderBackend* getUIRenderBackend() = 0;
 
     //======================================================================
-    // Viewport Information
+    // Window/Viewport Information
     //======================================================================
 
-    /// Get current viewport/window size in pixels.
-    virtual Size getViewportSize() const = 0;
+    /// Get current window size in pixels.
+    /// Note: Both IGraphicsSystem and IGraphics3DSystem already have this method,
+    /// so implementations can simply delegate to their existing getWindowSize().
+    virtual Size getWindowSize() const = 0;
 
     /// Get native window handle (e.g., GLFWwindow*).
     /// Used for input integration.

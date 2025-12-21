@@ -248,6 +248,8 @@ import std;
 // through a single import of bestow.services
 export import bestow.types;
 export import bestow.entity;
+export import bestow.graphics.context;  // Base graphics interface
+export import bestow.uirender;          // UI render backend interface
 export import bestow.graphics;
 export import bestow.graphics3d;
 export import bestow.audio;
@@ -302,6 +304,12 @@ struct ILevelSystemService : kgr::abstract_service<ILevelSystem> {};
 // Camera System
 struct ICameraSystemService : kgr::abstract_service<ICameraSystem> {};
 
+// Graphics Context (base interface for 2D and 3D graphics)
+struct IGraphicsContextService : kgr::abstract_service<IGraphicsContext> {};
+
+// UI Render Backend
+struct IUIRenderBackendService : kgr::abstract_service<IUIRenderBackend> {};
+
 // 2D Graphics System
 struct IGraphicsSystemService : kgr::abstract_service<IGraphicsSystem> {};
 
@@ -346,6 +354,8 @@ template<> struct ServiceFor<IAudioSystem> { using type = IAudioSystemService; }
 template<> struct ServiceFor<ISaveSystem> { using type = ISaveSystemService; };
 template<> struct ServiceFor<ILevelSystem> { using type = ILevelSystemService; };
 template<> struct ServiceFor<ICameraSystem> { using type = ICameraSystemService; };
+template<> struct ServiceFor<IGraphicsContext> { using type = IGraphicsContextService; };
+template<> struct ServiceFor<IUIRenderBackend> { using type = IUIRenderBackendService; };
 template<> struct ServiceFor<IGraphicsSystem> { using type = IGraphicsSystemService; };
 template<> struct ServiceFor<IGraphics3DSystem> { using type = IGraphics3DSystemService; };
 template<> struct ServiceFor<IPhysicsSystem> { using type = IPhysicsSystemService; };

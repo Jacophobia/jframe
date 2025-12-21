@@ -244,10 +244,120 @@ private:
 };
 
 //==========================================================================
+// VulkanUIRenderBackend - UI Rendering for Vulkan
+//==========================================================================
+
+/// Vulkan implementation of IUIRenderBackend.
+/// Provides 2D rendering primitives for UI systems like RmlUi.
+class VulkanUIRenderBackend : public bestow::IUIRenderBackend {
+public:
+    explicit VulkanUIRenderBackend(VulkanContext* context);
+    ~VulkanUIRenderBackend() override;
+
+    //======================================================================
+    // Lifecycle
+    //======================================================================
+
+    bool initialize() override;
+    void shutdown() override;
+    bool isInitialized() const override;
+
+    //======================================================================
+    // Geometry Management
+    //======================================================================
+
+    bestow::UIGeometryHandle compileGeometry(
+        std::span<const bestow::UIVertex> vertices,
+        std::span<const std::uint32_t> indices) override;
+    void releaseGeometry(bestow::UIGeometryHandle geometry) override;
+
+    //======================================================================
+    // Rendering
+    //======================================================================
+
+    void beginUIPass() override;
+    void renderGeometry(
+        bestow::UIGeometryHandle geometry,
+        bestow::Vec2 translation,
+        bestow::UITextureHandle texture = bestow::InvalidUITexture) override;
+    void endUIPass() override;
+
+    //======================================================================
+    // Texture Management
+    //======================================================================
+
+    bestow::UITextureHandle loadTexture(
+        const std::filesystem::path& path,
+        int& outWidth,
+        int& outHeight) override;
+    bestow::UITextureHandle createTexture(
+        std::span<const std::uint8_t> data,
+        int width,
+        int height) override;
+    void releaseTexture(bestow::UITextureHandle texture) override;
+
+    //======================================================================
+    // Scissor (Clipping)
+    //======================================================================
+
+    void enableScissor(bool enable) override;
+    void setScissorRegion(const bestow::UIScissorRect& region) override;
+
+    //======================================================================
+    // Viewport
+    //======================================================================
+
+    void setViewportSize(int width, int height) override;
+    bestow::Size getViewportSize() const override;
+
+    //======================================================================
+    // Statistics
+    //======================================================================
+
+    std::uint32_t getDrawCallCount() const override;
+    std::uint32_t getTriangleCount() const override;
+
+private:
+    VulkanContext* context_ = nullptr;
+    bool initialized_ = false;
+    bool inUIPass_ = false;
+    bool scissorEnabled_ = false;
+
+    // Geometry cache
+    struct GeometryResource {
+        VulkanBufferHandle vertexBufferHandle = 0;
+        VulkanBufferHandle indexBufferHandle = 0;
+        VkBuffer vertexBuffer = VK_NULL_HANDLE;
+        VkBuffer indexBuffer = VK_NULL_HANDLE;
+        std::uint32_t indexCount = 0;
+    };
+    std::unordered_map<bestow::UIGeometryHandle, GeometryResource> geometryCache_;
+    bestow::UIGeometryHandle nextGeometryHandle_ = 1;
+
+    // Texture cache
+    struct TextureResource {
+        VulkanImageHandle imageHandle = 0;
+        VkImage image = VK_NULL_HANDLE;
+        int width = 0;
+        int height = 0;
+    };
+    std::unordered_map<bestow::UITextureHandle, TextureResource> textureCache_;
+    bestow::UITextureHandle nextTextureHandle_ = 1;
+
+    // Viewport
+    int viewportWidth_ = 0;
+    int viewportHeight_ = 0;
+
+    // Statistics
+    std::uint32_t drawCallCount_ = 0;
+    std::uint32_t triangleCount_ = 0;
+};
+
+//==========================================================================
 // VulkanGraphicsSystem - 2D Vulkan Renderer
 //==========================================================================
 
-class VulkanGraphicsSystem : public IGraphicsSystem {
+class VulkanGraphicsSystem : public bestow::IGraphicsSystem {
 public:
     explicit VulkanGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
         : pIAssetSystem_(pIAssetSystem) {}
@@ -337,6 +447,15 @@ public:
     bool isViewportCullingEnabled() const override;
 
     //======================================================================
+    // IGraphicsContext (inherited from IGraphicsSystem)
+    //======================================================================
+
+    bestow::IUIRenderBackend* getUIRenderBackend() override;
+    bool isInFrame() const override { return inFrame_; }
+    void* getRenderContext() const override { return const_cast<VulkanContext*>(&context_); }
+    void* getCurrentCommandBuffer() const override { return context_.getCurrentCommandBuffer(); }
+
+    //======================================================================
     // Vulkan-specific
     //======================================================================
 
@@ -349,6 +468,8 @@ private:
     Color clearColor_ = Color::black();
     bool viewportCullingEnabled_ = false;
     bool isFullscreen_ = false;
+    bool inFrame_ = false;
+    std::unique_ptr<VulkanUIRenderBackend> uiRenderBackend_;
 
     // Windowed state (for restoring after exiting fullscreen)
     int windowedPosX_ = 100;
@@ -734,12 +855,25 @@ public:
     VulkanContext& getContext() { return context_; }
     const VulkanContext& getContext() const { return context_; }
 
+    //======================================================================
+    // IGraphicsContext Implementation
+    //======================================================================
+
+    bestow::IUIRenderBackend* getUIRenderBackend() override;
+    bool isInFrame() const override { return inFrame_; }
+    void* getRenderContext() const override { return const_cast<VulkanContext*>(&context_); }
+    void* getCurrentCommandBuffer() const override { return context_.getCurrentCommandBuffer(); }
+
 private:
     VulkanContext context_;
     Camera3D camera_;
     Color clearColor_ = Color::black();
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
+
+    // IGraphicsContext state
+    bool inFrame_ = false;
+    std::unique_ptr<VulkanUIRenderBackend> uiRenderBackend_;
 
     // Windowed state (for restoring after exiting fullscreen)
     int windowedPosX_ = 100;

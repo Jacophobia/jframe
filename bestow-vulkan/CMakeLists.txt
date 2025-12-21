@@ -78,6 +78,7 @@ target_sources(bestow-vulkan
         src/VulkanPipeline.cpp
         src/VulkanBuffer.cpp
         src/VulkanTexture.cpp
+        src/VulkanUIRenderBackend.cpp
 )
 
 target_link_libraries(bestow-vulkan

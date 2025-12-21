@@ -67,6 +67,12 @@ public:
     void renderEntities(IEntitySystem& entities) override {}
     void renderEntities(IEntitySystem& entities, RenderLayer minLayer, RenderLayer maxLayer) override {}
 
+    // IGraphicsContext methods
+    IUIRenderBackend* getUIRenderBackend() override { return nullptr; }
+    bool isInFrame() const override { return beginFrameCalled_ && !endFrameCalled_; }
+    void* getRenderContext() const override { return nullptr; }
+    void* getCurrentCommandBuffer() const override { return nullptr; }
+
     // Test helpers
     bool wasBeginFrameCalled() const { return beginFrameCalled_; }
     bool wasEndFrameCalled() const { return endFrameCalled_; }

@@ -8,6 +8,7 @@ module;
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <spdlog/spdlog.h>
 
 module bestow.vulkan.impl;
 
@@ -67,6 +68,7 @@ Result<void, VulkanError> VulkanGraphicsSystem::initialize(const VulkanConfig& c
 }
 
 void VulkanGraphicsSystem::beginFrame() {
+    inFrame_ = true;
     spriteVertices_.clear();
     primitiveVertices_.clear();
     primitiveColors_.clear();
@@ -76,6 +78,7 @@ void VulkanGraphicsSystem::beginFrame() {
 void VulkanGraphicsSystem::endFrame() {
     flushSpriteBatch();
     flushPrimitives();
+    inFrame_ = false;
     context_.endFrame();
 }
 
@@ -564,6 +567,22 @@ void VulkanGraphicsSystem::createPipelines() {
     if (bufferResult) {
         spriteVertexBuffer_ = *bufferResult;
     }
+}
+
+//==========================================================================
+// IGraphicsContext Implementation
+//==========================================================================
+
+IUIRenderBackend* VulkanGraphicsSystem::getUIRenderBackend() {
+    if (!uiRenderBackend_) {
+        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_);
+        if (!uiRenderBackend_->initialize()) {
+            spdlog::error("VulkanGraphicsSystem: Failed to initialize UI render backend");
+            uiRenderBackend_.reset();
+            return nullptr;
+        }
+    }
+    return uiRenderBackend_.get();
 }
 
 }  // namespace bestow::vulkan

@@ -90,6 +90,9 @@ public:
         return registerAsset(AssetType::Cubemap, posX);
     }
 
+    // Audio asset loading
+    const SoundData* getSoundData(AssetHandle /*handle*/) const override { return nullptr; }
+
     // Lua material loading
     AssetHandle loadMaterial(const std::filesystem::path& path) override {
         return registerAsset(AssetType::Data, path);

@@ -13,6 +13,8 @@ target_sources(bestow-opengl
         src/SpriteRenderer.cpp
         src/TextRenderer.cpp
         src/DebugRenderer.cpp
+        # UI Render Backend
+        src/OpenGLUIRenderBackend.cpp
 )
 
 target_link_libraries(bestow-opengl

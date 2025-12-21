@@ -5,6 +5,8 @@ target_sources(bestow-contract
         src/bestow.types.cppm
         src/bestow.utils.cppm
         src/bestow.entity.cppm
+        src/bestow.uirender.cppm
+        src/bestow.graphics.context.cppm
         src/bestow.graphics.cppm
         src/bestow.graphics3d.cppm
         src/bestow.audio.cppm
