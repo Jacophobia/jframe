@@ -209,12 +209,12 @@ private:
         // Setup natural lighting (sun-like directional light)
         bestow::DirectionalLight light{
             .direction = {0.5f, -0.8f, 0.3f},  // Sun angle from upper-left
-            .color = {1.0f, 0.95f, 0.85f},     // Warm sunlight
-            .intensity = 5.0f,
+            .color = {1.0f, 0.98f, 0.9f},      // Bright sunlight
+            .intensity = 8.0f,
             .castShadows = true
         };
         graphics_->setDirectionalLight(light);
-        graphics_->setAmbientLight({0.6f, 0.7f, 0.8f}, 0.4f);  // Brighter ambient fill
+        graphics_->setAmbientLight({0.8f, 0.85f, 0.9f}, 0.6f);  // Strong ambient fill
 
         return true;
     }
