@@ -1,0 +1,15 @@
+diff --git a/cmake/draco_targets.cmake b/cmake/draco_targets.cmake
+index a1b2c3d..d4e5f6a 100644
+--- a/cmake/draco_targets.cmake
++++ b/cmake/draco_targets.cmake
+@@ -162,7 +162,9 @@ macro(draco_add_executable)
+   endif()
+
+   if(exe_LIB_DEPS)
+-    if(CMAKE_CXX_COMPILER_ID MATCHES "^Clang|^GNU")
++    # Only add --start-group/--end-group on non-Apple platforms
++    # macOS ld doesn't support these GNU-specific linker flags
++    if(CMAKE_CXX_COMPILER_ID MATCHES "^Clang|^GNU" AND NOT APPLE)
+       # Third party dependencies can introduce dependencies on system and test
+       # libraries. Since the target created here is an executable, and CMake
+       # does not provide a method of controlling order of link dependencies,

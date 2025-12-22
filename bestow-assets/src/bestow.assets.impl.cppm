@@ -168,6 +168,7 @@ private:
     void loadAssetImpl(AssetHandle handle);  // Thread-safe loading implementation
     void processFileChanges();               // Process queued file change events
     void handleFileChange(const FileChangeEvent& event);  // Handle a single file change
+    ModelData loadModelFromFile(const std::filesystem::path& path);  // Load model with assimp
 
     // Shader compilation helpers (internal use only)
     bool warnIfSpvFile(const std::filesystem::path& path) const;  // Returns true if .spv, logs warning

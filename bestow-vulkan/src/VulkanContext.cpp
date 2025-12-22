@@ -1349,11 +1349,11 @@ Result<VulkanPipelineHandle, VulkanError> VulkanContext::createPipeline(const Vu
         pushConstantRanges.push_back(vkRange);
     }
 
-    // Create pipeline layout with push constants
+    // Create pipeline layout with push constants and descriptor set layouts
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = 0;
-    layoutInfo.pSetLayouts = nullptr;
+    layoutInfo.setLayoutCount = static_cast<std::uint32_t>(def.descriptorSetLayouts.size());
+    layoutInfo.pSetLayouts = def.descriptorSetLayouts.empty() ? nullptr : def.descriptorSetLayouts.data();
     layoutInfo.pushConstantRangeCount = static_cast<std::uint32_t>(pushConstantRanges.size());
     layoutInfo.pPushConstantRanges = pushConstantRanges.data();
 

@@ -1,0 +1,17 @@
+{
+    "name": "ozz-animation",
+    "version": "0.15.0",
+    "description": "Open source c++ 3d skeletal animation library and toolset",
+    "homepage": "https://github.com/guillaumeblanc/ozz-animation",
+    "license": "MIT",
+    "dependencies": [
+        {
+            "name": "vcpkg-cmake",
+            "host": true
+        },
+        {
+            "name": "vcpkg-cmake-config",
+            "host": true
+        }
+    ]
+}
