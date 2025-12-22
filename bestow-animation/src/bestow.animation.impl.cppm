@@ -72,6 +72,7 @@ struct AnimationClipData {
 };
 
 struct AnimatorLayerData {
+    // Current (incoming) animation
     AnimationClipHandle clip = AnimationHandles::InvalidClip;
     std::string clipName;
     float time = 0.0f;
@@ -86,6 +87,18 @@ struct AnimatorLayerData {
     std::set<std::uint32_t> boneMask;
     std::unique_ptr<ozz::animation::SamplingJob::Context> samplingContext;
     ozz::vector<ozz::math::SoaTransform> localTransforms;  // Per-layer sampled transforms
+
+    // Outgoing animation for crossfade blending
+    AnimationClipHandle outgoingClip = AnimationHandles::InvalidClip;
+    float outgoingTime = 0.0f;
+    float outgoingSpeed = 1.0f;
+    AnimationWrapMode outgoingWrapMode = AnimationWrapMode::Loop;
+    std::unique_ptr<ozz::animation::SamplingJob::Context> outgoingSamplingContext;
+    ozz::vector<ozz::math::SoaTransform> outgoingLocalTransforms;
+
+    // Root position matching - offset applied during crossfade to prevent popping
+    Vec3 crossfadeRootOffset{0.0f};  // Offset to apply to incoming animation's root
+    bool hasCrossfadeRootOffset = false;
 
     // Default constructible and movable
     AnimatorLayerData() = default;
@@ -115,6 +128,7 @@ struct AnimatorData {
     RootMotion currentRootMotion;
     Vec3 lastRootPosition{0.0f};
     Quat lastRootRotation{1.0f, 0.0f, 0.0f, 0.0f};
+    bool rootMotionInitialized = false;  // First frame flag
 
     ozz::vector<ozz::math::SoaTransform> blendedLocals;   // Blended local transforms
     ozz::vector<ozz::math::Float4x4> modelMatrices;       // Model-space matrices from ozz

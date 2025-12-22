@@ -37,16 +37,17 @@ void main() {
     vec3 N = normalize(fragNormal);
     vec3 L = normalize(-pc.lightDir.xyz);
 
-    // Simple directional lighting with wrap
-    float NdotL = dot(N, L);
-    float wrap = 0.5;  // How much light wraps around (0 = none, 1 = full)
-    float diffuse = max(0.0, (NdotL + wrap) / (1.0 + wrap));
+    // Standard Lambertian diffuse lighting (no wrap for natural shadows)
+    float NdotL = max(0.0, dot(N, L));
 
-    // Strong ambient to fill shadows
-    vec3 ambient = vec3(0.4);  // Fixed ambient, ignore passed value for now
+    // Light intensity from w component
+    float lightIntensity = pc.lightColor.w;
 
-    // Combine
-    vec3 litColor = albedo.rgb * (pc.lightColor.rgb * diffuse + ambient);
+    // Ambient from passed parameters (rgb = color, w = intensity)
+    vec3 ambient = pc.ambientColor.rgb * pc.ambientColor.w;
+
+    // Combine: directional light contribution + ambient
+    vec3 litColor = albedo.rgb * (pc.lightColor.rgb * lightIntensity * NdotL + ambient);
 
     outColor = vec4(litColor, albedo.a);
 }

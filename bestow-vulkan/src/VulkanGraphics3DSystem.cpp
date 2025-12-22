@@ -916,8 +916,9 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
     static int frameCount = 0;
     frameCount++;
 
-    if (renderQueue_.empty()) {
-        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Render queue is empty\n", frameCount);
+    // Only return early if BOTH queues are empty (skinned meshes need rendering too!)
+    if (renderQueue_.empty() && skinnedRenderQueue_.empty()) {
+        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Both render queues are empty\n", frameCount);
         return;
     }
 

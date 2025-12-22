@@ -6,6 +6,7 @@ target_sources(bestow-animation
         src/bestow.animation.impl.cppm
     PRIVATE
         src/AnimationSystem.cpp
+        src/AnimationStateMachine.cpp
 )
 
 target_link_libraries(bestow-animation

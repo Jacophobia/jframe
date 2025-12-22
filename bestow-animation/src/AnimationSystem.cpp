@@ -290,6 +290,16 @@ void AnimationSystem::update(DeltaTime dt) {
                 } else if (layer.fadeWeight >= 1.0f) {
                     layer.fadeWeight = 1.0f;
                     layer.fadeSpeed = 0.0f;
+                    // Crossfade complete - clear outgoing clip and root offset
+                    if (layer.outgoingClip != AnimationHandles::InvalidClip) {
+                        spdlog::info("[Crossfade] Complete - clearing outgoing clip {}", layer.outgoingClip);
+                        layer.outgoingClip = AnimationHandles::InvalidClip;
+                        layer.outgoingTime = 0.0f;
+                        layer.outgoingSamplingContext.reset();
+                        layer.outgoingLocalTransforms.clear();
+                        layer.crossfadeRootOffset = Vec3{0.0f};
+                        layer.hasCrossfadeRootOffset = false;
+                    }
                 }
             }
 
@@ -342,6 +352,74 @@ void AnimationSystem::update(DeltaTime dt) {
 
             layer.time = wrappedTime;
 
+            const int numSoaJoints = skeleton.ozzSkeleton.num_soa_joints();
+
+            //==================================================================
+            // Sample OUTGOING clip (if crossfading)
+            //==================================================================
+            Vec3 outgoingRootPos{0.0f};
+            bool hasOutgoingRoot = false;
+
+            if (layer.outgoingClip != AnimationHandles::InvalidClip) {
+                auto outClipIt = impl_->clips_.find(layer.outgoingClip);
+                if (outClipIt != impl_->clips_.end()) {
+                    auto& outClip = outClipIt->second;
+
+                    // Update outgoing time
+                    layer.outgoingTime += dt * layer.outgoingSpeed * animator.globalSpeed;
+                    float outWrappedTime = wrapTime(layer.outgoingTime, outClip.duration, layer.outgoingWrapMode);
+                    layer.outgoingTime = outWrappedTime;
+
+                    // Initialize outgoing sampling context if needed
+                    if (!layer.outgoingSamplingContext || layer.outgoingSamplingContext->max_tracks() == 0) {
+                        layer.outgoingSamplingContext = std::make_unique<ozz::animation::SamplingJob::Context>();
+                        layer.outgoingSamplingContext->Resize(outClip.ozzAnimation.num_tracks());
+                    }
+
+                    // Resize outgoing transforms buffer
+                    if (layer.outgoingLocalTransforms.size() != static_cast<size_t>(numSoaJoints)) {
+                        layer.outgoingLocalTransforms.resize(numSoaJoints);
+                    }
+
+                    // Sample outgoing animation
+                    impl_->stats_.samplingJobs++;
+                    ozz::animation::SamplingJob outSamplingJob;
+                    outSamplingJob.animation = &outClip.ozzAnimation;
+                    outSamplingJob.context = layer.outgoingSamplingContext.get();
+                    float outRatio = outClip.duration > 0 ? layer.outgoingTime / outClip.duration : 0.0f;
+                    outSamplingJob.ratio = outRatio;
+                    outSamplingJob.output = ozz::make_span(layer.outgoingLocalTransforms);
+
+                    if (outSamplingJob.Run()) {
+                        // Extract root position from outgoing animation (joint 0)
+                        if (!layer.outgoingLocalTransforms.empty()) {
+                            const auto& rootSoa = layer.outgoingLocalTransforms[0];
+                            outgoingRootPos.x = ozz::math::GetX(rootSoa.translation.x);
+                            outgoingRootPos.y = ozz::math::GetX(rootSoa.translation.y);
+                            outgoingRootPos.z = ozz::math::GetX(rootSoa.translation.z);
+                            hasOutgoingRoot = true;
+                        }
+
+                        // Outgoing weight decreases as fadeWeight increases (1 - fadeWeight)
+                        float outgoingWeight = layer.weight * (1.0f - layer.fadeWeight);
+                        if (shouldLog) {
+                            spdlog::info("[Crossfade] Outgoing clip {} weight={:.3f} (fadeWeight={:.3f})",
+                                layer.outgoingClip, outgoingWeight, layer.fadeWeight);
+                        }
+                        if (outgoingWeight > 0.001f) {
+                            ozz::animation::BlendingJob::Layer blendLayer;
+                            blendLayer.transform = ozz::make_span(layer.outgoingLocalTransforms);
+                            blendLayer.weight = outgoingWeight;
+                            blendLayers.push_back(blendLayer);
+                        }
+                    }
+                }
+            }
+
+            //==================================================================
+            // Sample INCOMING clip (current)
+            //==================================================================
+
             // Initialize sampling context if needed
             if (!layer.samplingContext || layer.samplingContext->max_tracks() == 0) {
                 layer.samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>();
@@ -349,7 +427,6 @@ void AnimationSystem::update(DeltaTime dt) {
             }
 
             // Resize local transforms buffer
-            const int numSoaJoints = skeleton.ozzSkeleton.num_soa_joints();
             if (layer.localTransforms.size() != static_cast<size_t>(numSoaJoints)) {
                 layer.localTransforms.resize(numSoaJoints);
             }
@@ -371,10 +448,26 @@ void AnimationSystem::update(DeltaTime dt) {
             }
 
             if (samplingJob.Run()) {
+                // Calculate root offset on first frame of crossfade
+                if (hasOutgoingRoot && !layer.hasCrossfadeRootOffset && !layer.localTransforms.empty()) {
+                    const auto& incomingRootSoa = layer.localTransforms[0];
+                    Vec3 incomingRootPos;
+                    incomingRootPos.x = ozz::math::GetX(incomingRootSoa.translation.x);
+                    incomingRootPos.y = ozz::math::GetX(incomingRootSoa.translation.y);
+                    incomingRootPos.z = ozz::math::GetX(incomingRootSoa.translation.z);
+
+                    // Offset = outgoing - incoming (so adding offset to incoming matches outgoing)
+                    layer.crossfadeRootOffset = outgoingRootPos - incomingRootPos;
+                    layer.hasCrossfadeRootOffset = true;
+
+                    spdlog::info("[Crossfade] Root offset calculated: ({:.2f}, {:.2f}, {:.2f})",
+                        layer.crossfadeRootOffset.x, layer.crossfadeRootOffset.y, layer.crossfadeRootOffset.z);
+                }
+
                 float effectiveWeight = layer.weight * layer.fadeWeight;
                 if (shouldLog) {
-                    spdlog::info("[AnimUpdate] Sampling succeeded, effectiveWeight={:.3f} (weight={:.3f}, fadeWeight={:.3f})",
-                        effectiveWeight, layer.weight, layer.fadeWeight);
+                    spdlog::info("[AnimUpdate] Incoming clip {} weight={:.3f} (weight={:.3f}, fadeWeight={:.3f})",
+                        layer.clip, effectiveWeight, layer.weight, layer.fadeWeight);
                 }
                 if (effectiveWeight > 0.001f) {
                     ozz::animation::BlendingJob::Layer blendLayer;
@@ -429,6 +522,38 @@ void AnimationSystem::update(DeltaTime dt) {
                         Mat4 modelPose = fromOzz(animator.modelMatrices[ozzIdx]);
                         animator.modelSpacePoses[boneIdx] = modelPose;  // Store for visualization
                         animator.boneTransforms[boneIdx] = modelPose * skeleton.bones[boneIdx].inverseBindPose;
+                    }
+
+                    // Apply crossfade root offset to prevent position popping during transitions
+                    // The offset = (outgoing_root - incoming_root) scaled by fadeWeight keeps position at outgoing.
+                    // This prevents jarring vertical "falls" when blending between animations with different
+                    // root heights (e.g., jump -> falling -> landing in Mixamo animations).
+                    for (auto& layer : animator.layers) {
+                        if (layer.hasCrossfadeRootOffset && layer.outgoingClip != AnimationHandles::InvalidClip) {
+                            float offsetScale = layer.fadeWeight;
+                            // Apply offset to ALL axes (X, Y, Z) to keep character at outgoing position
+                            Vec3 scaledOffset = layer.crossfadeRootOffset * offsetScale;
+
+                            // Apply offset to root bone (bone 0) model pose and skinning matrix
+                            animator.modelSpacePoses[0][3][0] += scaledOffset.x;
+                            animator.modelSpacePoses[0][3][1] += scaledOffset.y;
+                            animator.modelSpacePoses[0][3][2] += scaledOffset.z;
+
+                            animator.boneTransforms[0][3][0] += scaledOffset.x;
+                            animator.boneTransforms[0][3][1] += scaledOffset.y;
+                            animator.boneTransforms[0][3][2] += scaledOffset.z;
+
+                            // Also propagate offset to all child bones for consistent hierarchy
+                            for (std::size_t i = 1; i < boneCount; ++i) {
+                                animator.modelSpacePoses[i][3][0] += scaledOffset.x;
+                                animator.modelSpacePoses[i][3][1] += scaledOffset.y;
+                                animator.modelSpacePoses[i][3][2] += scaledOffset.z;
+
+                                animator.boneTransforms[i][3][0] += scaledOffset.x;
+                                animator.boneTransforms[i][3][1] += scaledOffset.y;
+                                animator.boneTransforms[i][3][2] += scaledOffset.z;
+                            }
+                        }
                     }
 
                     if (shouldLog && boneCount > 0) {
@@ -560,40 +685,107 @@ void AnimationSystem::extractRootMotion(AnimatorData& animator, SkeletonData& sk
     if (rootIdx < 0) rootIdx = skeleton.rootBoneIndex;
     if (rootIdx < 0 || static_cast<std::size_t>(rootIdx) >= animator.boneTransforms.size()) return;
 
+    // Get root bone position from MODEL SPACE pose (before skinning matrix)
+    // This gives us the animated position of the root bone
     Vec3 currentPos, currentScale;
     Quat currentRot;
-    decomposeTransform(animator.boneTransforms[rootIdx], currentPos, currentRot, currentScale);
+    decomposeTransform(animator.modelSpacePoses[rootIdx], currentPos, currentRot, currentScale);
 
-    // Calculate deltas
+    // Debug: Log root motion values periodically
+    static int frameCounter = 0;
+    bool shouldLog = (frameCounter++ % 60 == 0);
+
+    // Calculate deltas (or initialize on first frame)
     animator.currentRootMotion.deltaPosition = Vec3{0.0f};
     animator.currentRootMotion.deltaRotation = Quat{1.0f, 0.0f, 0.0f, 0.0f};
 
-    if (animator.rootMotionConfig.extractTranslationX) {
-        animator.currentRootMotion.deltaPosition.x = currentPos.x - animator.lastRootPosition.x;
-    }
-    if (animator.rootMotionConfig.extractTranslationY) {
-        animator.currentRootMotion.deltaPosition.y = currentPos.y - animator.lastRootPosition.y;
-    }
-    if (animator.rootMotionConfig.extractTranslationZ) {
-        animator.currentRootMotion.deltaPosition.z = currentPos.z - animator.lastRootPosition.z;
-    }
+    // First frame initialization - set lastRootPosition to current to avoid huge delta
+    if (!animator.rootMotionInitialized) {
+        animator.lastRootPosition = currentPos;
+        animator.lastRootRotation = currentRot;
+        animator.rootMotionInitialized = true;
+        spdlog::info("[RootMotion] Initialized lastRootPosition to ({:.3f}, {:.3f}, {:.3f})",
+            currentPos.x, currentPos.y, currentPos.z);
+        // Delta stays 0 on first frame, but we continue to apply cancel offset below
+    } else {
+        // Calculate deltas from last frame
+        if (animator.rootMotionConfig.extractTranslationX) {
+            animator.currentRootMotion.deltaPosition.x = currentPos.x - animator.lastRootPosition.x;
+        }
+        if (animator.rootMotionConfig.extractTranslationY) {
+            animator.currentRootMotion.deltaPosition.y = currentPos.y - animator.lastRootPosition.y;
+        }
+        if (animator.rootMotionConfig.extractTranslationZ) {
+            animator.currentRootMotion.deltaPosition.z = currentPos.z - animator.lastRootPosition.z;
+        }
 
-    if (animator.rootMotionConfig.extractRotationY) {
-        // Extract Y rotation delta
-        animator.currentRootMotion.deltaRotation = glm::inverse(animator.lastRootRotation) * currentRot;
+        if (animator.rootMotionConfig.extractRotationY) {
+            animator.currentRootMotion.deltaRotation = glm::inverse(animator.lastRootRotation) * currentRot;
+        }
+
+        animator.currentRootMotion.totalPosition += animator.currentRootMotion.deltaPosition;
+        animator.currentRootMotion.totalRotation = animator.currentRootMotion.totalRotation * animator.currentRootMotion.deltaRotation;
+
+        animator.lastRootPosition = currentPos;
+        animator.lastRootRotation = currentRot;
+
+        if (shouldLog) {
+            spdlog::info("[RootMotion] Root bone {} pos: ({:.3f}, {:.3f}, {:.3f}), Delta: ({:.4f}, {:.4f}, {:.4f})",
+                rootIdx, currentPos.x, currentPos.y, currentPos.z,
+                animator.currentRootMotion.deltaPosition.x,
+                animator.currentRootMotion.deltaPosition.y,
+                animator.currentRootMotion.deltaPosition.z);
+        }
     }
-
-    animator.currentRootMotion.totalPosition += animator.currentRootMotion.deltaPosition;
-    animator.currentRootMotion.totalRotation = animator.currentRootMotion.totalRotation * animator.currentRootMotion.deltaRotation;
-
-    animator.lastRootPosition = currentPos;
-    animator.lastRootRotation = currentRot;
 
     animator.currentRootMotion.hasTranslation =
         animator.rootMotionConfig.extractTranslationX ||
         animator.rootMotionConfig.extractTranslationY ||
         animator.rootMotionConfig.extractTranslationZ;
     animator.currentRootMotion.hasRotation = animator.rootMotionConfig.extractRotationY;
+
+    // Cancel out root bone motion from bone transforms so skeleton stays at origin
+    // The motion will be applied to the entity position instead via getRootMotion()
+    if (animator.currentRootMotion.hasTranslation) {
+        // Get the skeleton's rest/bind pose root position
+        // For most characters, the root bone's bind pose is at origin (0,0,0)
+        // The inverseBindPose transforms from model to bone space
+        // bindPose = inverse(inverseBindPose), position is column 3
+        Vec3 bindPoseRoot{0.0f};
+        if (!skeleton.bones.empty()) {
+            Mat4 bindPose = glm::inverse(skeleton.bones[0].inverseBindPose);
+            bindPoseRoot = Vec3{bindPose[3][0], bindPose[3][1], bindPose[3][2]};
+        }
+
+        // Calculate how far the root has moved from bind pose
+        Vec3 cancelOffset{0.0f};
+        if (animator.rootMotionConfig.extractTranslationX) {
+            cancelOffset.x = bindPoseRoot.x - currentPos.x;
+        }
+        if (animator.rootMotionConfig.extractTranslationY) {
+            cancelOffset.y = bindPoseRoot.y - currentPos.y;
+        }
+        if (animator.rootMotionConfig.extractTranslationZ) {
+            cancelOffset.z = bindPoseRoot.z - currentPos.z;
+        }
+
+        if (shouldLog) {
+            spdlog::info("[RootMotion] BindPose: ({:.3f}, {:.3f}, {:.3f}), CancelOffset: ({:.3f}, {:.3f}, {:.3f})",
+                bindPoseRoot.x, bindPoseRoot.y, bindPoseRoot.z,
+                cancelOffset.x, cancelOffset.y, cancelOffset.z);
+        }
+
+        // Apply cancel offset to ALL bones to keep skeleton centered at bind pose
+        for (std::size_t i = 0; i < animator.boneTransforms.size(); ++i) {
+            animator.boneTransforms[i][3][0] += cancelOffset.x;
+            animator.boneTransforms[i][3][1] += cancelOffset.y;
+            animator.boneTransforms[i][3][2] += cancelOffset.z;
+
+            animator.modelSpacePoses[i][3][0] += cancelOffset.x;
+            animator.modelSpacePoses[i][3][1] += cancelOffset.y;
+            animator.modelSpacePoses[i][3][2] += cancelOffset.z;
+        }
+    }
 }
 
 //==========================================================================
@@ -1268,6 +1460,33 @@ void AnimationSystem::play(AnimatorHandle animator, const AnimationPlayConfig& c
     AnimationClipHandle prevClip = layer.clip;
     AnimationClipHandle newClip = config.clip;
 
+    // If blending and there's a current animation, preserve it as outgoing for crossfade
+    // Note: We allow crossfade even if layer.playing is false (animation completed)
+    // because we still want smooth transitions from completed Once animations
+    bool shouldCrossfade = config.blendInTime > 0.0f &&
+                           layer.clip != AnimationHandles::InvalidClip;
+
+    if (shouldCrossfade) {
+        // Preserve current clip as outgoing for crossfade
+        layer.outgoingClip = layer.clip;
+        layer.outgoingTime = layer.time;
+        layer.outgoingSpeed = layer.speed;
+        layer.outgoingWrapMode = layer.wrapMode;
+        // Transfer sampling context and transforms to outgoing
+        layer.outgoingSamplingContext = std::move(layer.samplingContext);
+        layer.outgoingLocalTransforms = std::move(layer.localTransforms);
+
+        spdlog::info("[Crossfade] Starting crossfade from clip {} to clip {} over {:.2f}s",
+            layer.outgoingClip, config.clip, config.blendInTime);
+    } else {
+        // No crossfade - clear any outgoing animation
+        layer.outgoingClip = AnimationHandles::InvalidClip;
+        layer.outgoingTime = 0.0f;
+        layer.outgoingSamplingContext.reset();
+        layer.outgoingLocalTransforms.clear();
+    }
+
+    // Set up the new incoming animation
     layer.clip = config.clip;
     layer.clipName = config.clipName;
     layer.time = config.startTime;
@@ -1277,6 +1496,8 @@ void AnimationSystem::play(AnimatorHandle animator, const AnimationPlayConfig& c
     layer.blendMode = config.blendMode;
     layer.playing = true;
     layer.paused = false;
+    layer.samplingContext.reset();  // Will be re-created on first sample
+    layer.localTransforms.clear();
 
     if (config.blendInTime > 0.0f) {
         layer.fadeWeight = 0.0f;
