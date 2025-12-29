@@ -3177,8 +3177,30 @@ void VulkanGraphics3DSystem::updateCameraUBO() {
 
     Size windowSize = context_.getWindowSize();
     float aspect = static_cast<float>(windowSize.width) / static_cast<float>(windowSize.height);
-    glm::mat4 projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
-    projection[1][1] *= -1;  // Flip Y for Vulkan
+
+    glm::mat4 projection;
+    const auto& config = context_.getConfig();
+
+    if (config.useReversedZ) {
+        // Reversed-Z infinite far plane projection
+        // This provides maximum depth precision for large-world rendering
+        // Near plane maps to depth 1.0, infinite far maps to depth 0.0
+        float fovYRad = glm::radians(camera_.fovY);
+        float f = 1.0f / std::tan(fovYRad * 0.5f);
+
+        projection = glm::mat4(0.0f);
+        projection[0][0] = f / aspect;
+        projection[1][1] = f;
+        projection[2][2] = 0.0f;           // Infinite far plane (reversed)
+        projection[2][3] = -1.0f;          // Perspective divide
+        projection[3][2] = camera_.nearPlane;  // Near plane at depth 1.0
+
+        projection[1][1] *= -1;  // Flip Y for Vulkan
+    } else {
+        // Standard GLM perspective projection
+        projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
+        projection[1][1] *= -1;  // Flip Y for Vulkan
+    }
 
     CameraUBO ubo;
     std::memcpy(&ubo.view, &view, sizeof(glm::mat4));

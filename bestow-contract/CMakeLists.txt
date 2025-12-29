@@ -24,6 +24,7 @@ target_sources(bestow-contract
         src/bestow.gamestate.cppm
         src/bestow.animation.cppm
         src/bestow.animation.statemachine.cppm
+        src/bestow.spatial.cppm
         src/bestow.services.cppm
         src/bestow.cppm
 )

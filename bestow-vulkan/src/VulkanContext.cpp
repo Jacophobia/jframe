@@ -811,7 +811,8 @@ Result<void, VulkanError> VulkanContext::beginFrame() {
 
     std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = {{clearColor_[0], clearColor_[1], clearColor_[2], clearColor_[3]}};
-    clearValues[1].depthStencil = {1.0f, 0};
+    // Reversed-Z: clear depth to 0.0 (far plane), Standard: clear to 1.0 (far plane)
+    clearValues[1].depthStencil = {config_.useReversedZ ? 0.0f : 1.0f, 0};
 
     renderPassInfo.clearValueCount = static_cast<std::uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
@@ -1436,7 +1437,30 @@ Result<VulkanPipelineHandle, VulkanError> VulkanContext::createPipeline(const Vu
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depthStencil.depthTestEnable = def.depthTestEnable ? VK_TRUE : VK_FALSE;
     depthStencil.depthWriteEnable = def.depthWriteEnable ? VK_TRUE : VK_FALSE;
-    depthStencil.depthCompareOp = def.depthCompareOp;
+
+    // For reversed-Z depth buffer, we need to flip the comparison operators
+    // LESS becomes GREATER, LESS_OR_EQUAL becomes GREATER_OR_EQUAL, etc.
+    VkCompareOp depthOp = def.depthCompareOp;
+    if (config_.useReversedZ) {
+        switch (def.depthCompareOp) {
+            case VK_COMPARE_OP_LESS:
+                depthOp = VK_COMPARE_OP_GREATER;
+                break;
+            case VK_COMPARE_OP_LESS_OR_EQUAL:
+                depthOp = VK_COMPARE_OP_GREATER_OR_EQUAL;
+                break;
+            case VK_COMPARE_OP_GREATER:
+                depthOp = VK_COMPARE_OP_LESS;
+                break;
+            case VK_COMPARE_OP_GREATER_OR_EQUAL:
+                depthOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+                break;
+            default:
+                // EQUAL, NOT_EQUAL, ALWAYS, NEVER - unchanged
+                break;
+        }
+    }
+    depthStencil.depthCompareOp = depthOp;
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.stencilTestEnable = VK_FALSE;
 
