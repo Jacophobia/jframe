@@ -143,12 +143,18 @@ public:
 
 ## Unified Lua Architecture
 
-### Game Entry Point: `game.lua`
+### Application Entry Point: `app.lua`
 
-Every Bestow game starts with a single `game.lua` file. This is the **only** thing C++ loads.
+Every Bestow application starts with a single entry point file. The engine searches in this order:
+1. `./app.lua` (current directory)
+2. `./main.lua` (alternative name)
+3. `./data/app.lua` (data subdirectory)
+4. `./game/app.lua` (game subdirectory)
+
+This is the **only** thing C++ loads.
 
 ```lua
--- game.lua
+-- app.lua
 -- This is the ONLY entry point. Everything flows from here.
 
 return {
@@ -782,7 +788,7 @@ Step 9: Want to change level layout? Edit C++ arrays, recompile.
 ### AFTER: Building a Game (Lua-First)
 
 ```
-Step 1: Create game.lua (entry point)
+Step 1: Create app.lua (entry point)
 Step 2: Create blueprints/ for entity templates
 Step 3: Create behaviors/ for entity logic
 Step 4: Create levels/ for world layouts
@@ -848,8 +854,8 @@ int main(int argc, char* argv[]) {
     // engine.use<IPhysicsSystem, JoltPhysicsSystem>();
     // engine.use<IAudioSystem, FMODAudioSystem>();
 
-    // 4. Run game from Lua
-    engine.runGame("games/mygame/game.lua");
+    // 4. Run application from Lua (auto-discovers app.lua)
+    engine.run();  // Or: engine.run("path/to/app.lua");
 
     return 0;
 }
@@ -1027,9 +1033,11 @@ class ConfigSystem : public IConfigSystem {
 
 ---
 
-## Migration Plan
+## Implementation Phases
 
-### Phase 1: Core LuaRuntime (Week 1)
+> See `LUA-RUNTIME-IMPLEMENTATION.md` for detailed task breakdown and complete API specifications.
+
+### Phase 1: Core LuaRuntime
 
 1. **Create ILuaRuntime interface**
    - Define contract for Lua script execution
@@ -1044,9 +1052,9 @@ class ConfigSystem : public IConfigSystem {
 3. **Extend PathResolver**
    - Add new path schemes
    - Auto-append .lua extension
-   - Game root configuration
+   - Application root configuration
 
-### Phase 2: Entity Integration (Week 2)
+### Phase 2: Entity Integration
 
 1. **Lua Entity API**
    - `spawn()` function
@@ -1064,7 +1072,26 @@ class ConfigSystem : public IConfigSystem {
    - Component instantiation
    - Behavior instantiation
 
-### Phase 3: Systems & Levels (Week 3)
+### Phase 3: System Bindings
+
+1. **Core System Bindings**
+   - `input.*` bindings (IInputSystem)
+   - `audio.*` bindings (IAudioSystem)
+   - `camera.*` bindings (camera control)
+   - `physics.*` bindings (IPhysicsSystem, IPhysics3DSystem)
+
+2. **UI System Bindings**
+   - `ui.*` bindings (IUISystem)
+   - Document management
+   - Element access and manipulation
+   - Data binding
+
+3. **Additional Bindings**
+   - `animation.*` bindings (IAnimationSystem)
+   - `save.*` bindings (ISaveSystem)
+   - `level.*` bindings (ILevelSystem)
+
+### Phase 4: Lua Systems
 
 1. **Lua Systems**
    - System priority ordering
@@ -1076,13 +1103,7 @@ class ConfigSystem : public IConfigSystem {
    - Entity spawning from level
    - Spawner system
 
-3. **Global APIs**
-   - `input.*` bindings
-   - `audio.*` bindings
-   - `camera.*` bindings
-   - `physics.*` bindings
-
-### Phase 4: Example Game Migration (Week 4)
+### Phase 5: Example Application Migration
 
 1. **Migrate Snake Game to Lua**
    - Extract snake.game.cppm logic to Lua
@@ -1107,8 +1128,8 @@ class ConfigSystem : public IConfigSystem {
 
 ```
 mygame/
-├── main.cpp                    # ~15 lines, infrastructure only
-├── game.lua                    # Game entry point
+├── main.cpp                    # ~6 lines, infrastructure only
+├── app.lua                     # Application entry point
 ├── config/
 │   ├── settings.lua           # Game settings
 │   └── audio.lua              # Audio settings
@@ -1176,7 +1197,7 @@ mygame/
 | **Game logic location** | C++ (snake.game.cppm) | Lua (behaviors/, systems/) |
 | **Entity creation** | C++ `entities->createEntity()` | Lua `spawn()` only |
 | **Iteration speed** | 30-60s rebuild | <100ms hot reload |
-| **C++ code needed** | 41K+ tokens | ~15 lines |
+| **C++ code needed** | 41K+ tokens | ~6 lines |
 | **Path references** | Hardcoded strings | Scheme prefixes (:blueprints:/) |
 | **Hot reload scope** | Shaders only | Everything |
 | **Barrier to entry** | Know C++ + ECS + CMake | Know Lua only |

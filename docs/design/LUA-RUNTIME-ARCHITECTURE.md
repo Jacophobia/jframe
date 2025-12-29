@@ -66,9 +66,9 @@
 
 ```
 games/mygame/
-├── main.lua                    # Game entry point
+├── app.lua                     # Application entry point
 ├── config/
-│   ├── game.lua               # Game settings
+│   ├── settings.lua           # Application settings
 │   ├── input.lua              # Input bindings
 │   └── audio.lua              # Audio settings
 ├── blueprints/
