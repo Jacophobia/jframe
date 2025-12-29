@@ -69,6 +69,7 @@ add_subdirectory(bestow-gas)
 add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
 add_subdirectory(bestow-gamestate)
+add_subdirectory(bestow-lua)
 
 # Vulkan rendering backend (optional)
 if(BESTOW_BUILD_VULKAN)

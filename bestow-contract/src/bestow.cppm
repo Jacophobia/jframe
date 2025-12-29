@@ -20,6 +20,7 @@ export import bestow.config;
 export import bestow.camera;
 export import bestow.gas;
 export import bestow.blueprints;
+export import bestow.lua;
 export import bestow.ui;
 export import bestow.gamestate;
 export import bestow.services;
@@ -40,16 +41,21 @@ struct BestowEngine {
     ILevelSystem* levels = nullptr;
     ISaveSystem* save = nullptr;
     IAISystem* ai = nullptr;
-    IConfigSystem* config = nullptr;
     ICameraSystem* camera = nullptr;
     IGASSystem* gas = nullptr;
-    IBlueprintFactory* blueprints = nullptr;
     IUISystem* ui = nullptr;
     IGameStateSystem* gameStates = nullptr;
+    ILuaRuntime* lua = nullptr;
+
+    // Deprecated - use lua instead
+    [[deprecated("Use lua->getFloat() etc. instead")]]
+    IConfigSystem* config = nullptr;
+    [[deprecated("Use lua->spawn() instead")]]
+    IBlueprintFactory* blueprints = nullptr;
 
     bool isValid() const {
         return events && assets && entities && graphics &&
-               audio && input && physics && levels && save && ai && config;
+               audio && input && physics && levels && save && ai && lua;
     }
 
     bool has3DSupport() const {

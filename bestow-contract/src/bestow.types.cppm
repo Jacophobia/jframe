@@ -52,6 +52,24 @@ struct Transform2D {
     Vec2 scale() const { return {scaleX, scaleY}; }
 };
 
+struct Velocity2D {
+    float x = 0.0f;
+    float y = 0.0f;
+
+    Vec2 value() const { return {x, y}; }
+    float length() const { return std::sqrt(x * x + y * y); }
+};
+
+/// String-based entity tag for grouping/querying
+struct Tag {
+    std::string value;
+};
+
+/// Human-readable entity name for debugging/querying
+struct Name {
+    std::string value;
+};
+
 struct Transform3D {
     Vec3 position{0.0f, 0.0f, 0.0f};
     Quat rotation{1.0f, 0.0f, 0.0f, 0.0f};  // Identity quaternion (w, x, y, z)
@@ -97,6 +115,23 @@ struct Coordinate {
 struct Size {
     int width = 0;
     int height = 0;
+};
+
+/// Float-based rectangle for 2D positioning
+struct Rect {
+    float x = 0.0f;
+    float y = 0.0f;
+    float width = 0.0f;
+    float height = 0.0f;
+
+    bool contains(float px, float py) const {
+        return px >= x && px <= x + width && py >= y && py <= y + height;
+    }
+
+    bool intersects(const Rect& other) const {
+        return !(x + width < other.x || other.x + other.width < x ||
+                y + height < other.y || other.y + other.height < y);
+    }
 };
 
 struct Canvas {

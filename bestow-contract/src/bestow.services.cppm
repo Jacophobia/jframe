@@ -266,6 +266,7 @@ export import bestow.blueprints;
 export import bestow.ui;
 export import bestow.gamestate;
 export import bestow.animation;
+export import bestow.lua;
 
 export namespace bestow {
 
@@ -333,6 +334,9 @@ struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 // Animation System
 struct IAnimationSystemService : kgr::abstract_service<IAnimationSystem> {};
 
+// Lua Runtime (replaces IConfigSystem and IBlueprintFactory)
+struct ILuaRuntimeService : kgr::abstract_service<ILuaRuntime> {};
+
 //==========================================================================
 // Contract -> Service Type Mapping
 //
@@ -360,6 +364,7 @@ template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemSe
 template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
 template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
 template<> struct ServiceFor<IAnimationSystem> { using type = IAnimationSystemService; };
+template<> struct ServiceFor<ILuaRuntime> { using type = ILuaRuntimeService; };
 
 //==========================================================================
 // Application Interface
