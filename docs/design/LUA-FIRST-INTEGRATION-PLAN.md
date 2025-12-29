@@ -1,5 +1,7 @@
 # Lua-First Integration Plan
 
+> **Status:** ✅ IMPLEMENTED - See `bestow-lua/` for the implementation.
+
 > **Goal:** Lua is the ONLY way to build games with Bestow. C++ is infrastructure-only. It should be impossible to create a game without Lua.
 
 ## Table of Contents
