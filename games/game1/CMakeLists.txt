@@ -30,7 +30,7 @@ target_link_libraries(snake-game
         bestow-events      # Event system
         bestow-audio       # Audio system
         bestow-assets      # Asset system
-        bestow-config      # Config system
+        bestow-lua         # Lua runtime (replaces config)
 
         # Required for MSVC C++23 modules - kangaru inline constexpr values
         kangaru::kangaru

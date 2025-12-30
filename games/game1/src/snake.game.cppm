@@ -24,6 +24,7 @@ export import :types;
 import std;
 import bestow.services;   // All contract interfaces
 import bestow.types;
+import bestow.lua;        // ILuaRuntime
 import bestow.graphics3d;
 
 export namespace snake {
@@ -36,19 +37,19 @@ class SnakeGame : public bestow::Application<SnakeGame,
     bestow::IGraphics3DSystem,
     bestow::IInputSystem,
     bestow::IAudioSystem,
-    bestow::IConfigSystem,
+    bestow::ILuaRuntime,
     bestow::IAssetSystem>
 {
 public:
     SnakeGame(bestow::IGraphics3DSystem& graphics,
               bestow::IInputSystem& input,
               bestow::IAudioSystem& audio,
-              bestow::IConfigSystem& config,
+              bestow::ILuaRuntime& lua,
               bestow::IAssetSystem& assets)
         : graphics_(&graphics)
         , input_(&input)
         , audio_(&audio)
-        , config_(&config)
+        , lua_(&lua)
         , assets_(&assets) {}
 
     ~SnakeGame() override = default;
@@ -72,7 +73,7 @@ private:
     bestow::IGraphics3DSystem* graphics_ = nullptr;
     bestow::IInputSystem* input_ = nullptr;
     bestow::IAudioSystem* audio_ = nullptr;
-    bestow::IConfigSystem* config_ = nullptr;
+    bestow::ILuaRuntime* lua_ = nullptr;
     bestow::IAssetSystem* assets_ = nullptr;
 
     //======================================================================
@@ -359,9 +360,14 @@ private:
             input_->initialize(graphics_->getNativeWindowHandle());
         }
 
-        // Initialize config system for Lua parsing
-        if (config_) {
-            config_->initialize();
+        // Initialize Lua runtime for config/level parsing
+        if (lua_) {
+            lua_->initialize();
+            // Load app configuration
+            auto appResult = lua_->loadApp("data/app.lua");
+            if (!appResult) {
+                std::cerr << "Warning: Failed to load app.lua\n";
+            }
         }
 
         // Initialize audio system
@@ -609,8 +615,8 @@ private:
     //======================================================================
 
     bool loadLevel(const std::string& levelPath) {
-        if (!config_) {
-            std::cerr << "Config system not available for level loading\n";
+        if (!lua_) {
+            std::cerr << "Lua runtime not available for level loading\n";
             return false;
         }
 
@@ -625,10 +631,10 @@ private:
         buffer << file.rdbuf();
         std::string luaContent = buffer.str();
 
-        // Parse Lua
-        auto result = config_->parseLuaString(luaContent, levelPath);
+        // Parse Lua using LuaRuntime
+        auto result = lua_->execute(luaContent, levelPath);
         if (!result) {
-            std::cerr << "Failed to parse level Lua: " << levelPath << "\n";
+            std::cerr << "Failed to parse level Lua: " << levelPath << " - " << result.error().message << "\n";
             return false;
         }
 
@@ -713,8 +719,8 @@ private:
     //======================================================================
 
     void loadSoundConfig() {
-        if (!config_ || !audio_) {
-            std::cerr << "Config or audio system not available for sound loading\n";
+        if (!lua_ || !audio_) {
+            std::cerr << "Lua or audio system not available for sound loading\n";
             return;
         }
 
@@ -729,13 +735,13 @@ private:
         buffer << file.rdbuf();
         std::string luaContent = buffer.str();
 
-        auto result = config_->parseLuaString(luaContent);
+        auto result = lua_->execute(luaContent, "sounds.lua");
         if (!result) {
-            std::cerr << "Failed to parse sounds.lua\n";
+            std::cerr << "Failed to parse sounds.lua: " << result.error().message << "\n";
             return;
         }
 
-        sol::table soundsTable = *result;
+        sol::table soundsTable = result->as<sol::table>();
 
         // Load volume settings
         if (soundsTable["volumes"].valid()) {
@@ -886,8 +892,8 @@ private:
     }
 
     bool loadWorld(const std::string& worldPath) {
-        if (!config_) {
-            std::cerr << "Config system not available for world loading\n";
+        if (!lua_) {
+            std::cerr << "Lua runtime not available for world loading\n";
             return false;
         }
 
@@ -902,10 +908,10 @@ private:
         buffer << file.rdbuf();
         std::string luaContent = buffer.str();
 
-        // Parse Lua
-        auto result = config_->parseLuaString(luaContent, worldPath);
+        // Parse Lua using LuaRuntime
+        auto result = lua_->execute(luaContent, worldPath);
         if (!result) {
-            std::cerr << "Failed to parse world Lua: " << worldPath << "\n";
+            std::cerr << "Failed to parse world Lua: " << worldPath << " - " << result.error().message << "\n";
             return false;
         }
 

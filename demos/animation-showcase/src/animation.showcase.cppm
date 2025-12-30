@@ -22,6 +22,7 @@ export module animation.showcase;
 import std;
 import bestow.services;
 import bestow.types;
+import bestow.lua;
 import bestow.graphics3d;
 import bestow.animation;
 import bestow.animation.statemachine;
@@ -76,17 +77,20 @@ class AnimationShowcase : public bestow::Application<AnimationShowcase,
     bestow::IGraphics3DSystem,
     bestow::IInputSystem,
     bestow::IAssetSystem,
-    bestow::IAnimationSystem>
+    bestow::IAnimationSystem,
+    bestow::ILuaRuntime>
 {
 public:
     AnimationShowcase(bestow::IGraphics3DSystem& graphics,
                       bestow::IInputSystem& input,
                       bestow::IAssetSystem& assets,
-                      bestow::IAnimationSystem& animation)
+                      bestow::IAnimationSystem& animation,
+                      bestow::ILuaRuntime& lua)
         : graphics_(&graphics)
         , input_(&input)
         , assets_(&assets)
-        , animation_(&animation) {}
+        , animation_(&animation)
+        , lua_(&lua) {}
 
     ~AnimationShowcase() override = default;
 
@@ -111,6 +115,7 @@ private:
     bestow::IInputSystem* input_ = nullptr;
     bestow::IAssetSystem* assets_ = nullptr;
     bestow::IAnimationSystem* animation_ = nullptr;
+    bestow::ILuaRuntime* lua_ = nullptr;
 
     //======================================================================
     // Animation Data
@@ -159,18 +164,30 @@ private:
     //======================================================================
 
     bool initialize() {
-        if (!graphics_) {
-            std::cerr << "Graphics system not available\n";
+        if (!graphics_ || !lua_) {
+            std::cerr << "Graphics or Lua system not available\n";
             return false;
         }
 
-        // Initialize graphics
+        // Load app configuration from Lua
+        auto appResult = lua_->loadApp("data/app.lua");
+        if (!appResult) {
+            std::cerr << "Failed to load app.lua: " << appResult.error().message << "\n";
+            return false;
+        }
+
+        // Load config files
+        lua_->loadConfig("data/config/animations.lua");
+        lua_->loadConfig("data/config/state-machine.lua");
+        lua_->loadConfig("data/config/demo-sequence.lua");
+
+        // Initialize graphics with Lua config
         bestow::Graphics3DConfig gfxConfig{
-            .windowWidth = 1280,
-            .windowHeight = 720,
-            .windowTitle = "Animation Showcase - Bestow Demo",
-            .vsync = true,
-            .fullscreen = false
+            .windowWidth = static_cast<uint32_t>(lua_->getIntOr("window.width", 1280)),
+            .windowHeight = static_cast<uint32_t>(lua_->getIntOr("window.height", 720)),
+            .windowTitle = lua_->getStringOr("window.title", "Animation Showcase"),
+            .vsync = lua_->getBoolOr("window.vsync", true),
+            .fullscreen = lua_->getBoolOr("window.fullscreen", false)
         };
 
         if (!graphics_->initialize(gfxConfig)) {
@@ -178,7 +195,18 @@ private:
             return false;
         }
 
-        graphics_->setClearColor(bestow::Color{30, 35, 45, 255});
+        // Set clear color from Lua config
+        auto clearColor = lua_->getTable("graphics.clearColor");
+        if (clearColor.size() >= 4) {
+            graphics_->setClearColor(bestow::Color{
+                static_cast<uint8_t>(std::get<int64_t>(clearColor[0])),
+                static_cast<uint8_t>(std::get<int64_t>(clearColor[1])),
+                static_cast<uint8_t>(std::get<int64_t>(clearColor[2])),
+                static_cast<uint8_t>(std::get<int64_t>(clearColor[3]))
+            });
+        } else {
+            graphics_->setClearColor(bestow::Color{30, 35, 45, 255});
+        }
 
         // Initialize input
         if (input_) {
@@ -190,15 +218,24 @@ private:
             animation_->initialize();
         }
 
-        // Create ground mesh (large for Mixamo character scale)
-        auto planeResult = graphics_->createPlaneMesh(500.0f, 500.0f, 10, 10);
+        // Create ground mesh from Lua config
+        float groundSize = lua_->getFloatOr("ground.size", 500.0f);
+        auto planeResult = graphics_->createPlaneMesh(groundSize, groundSize, 10, 10);
         if (planeResult) {
             groundMesh_ = *planeResult;
         }
 
         // Create ground material
         groundMaterial_ = graphics_->getDefaultUnlitMaterial();
-        // Note: characterMaterial_ will be created from model data in loadCharacterModel()
+
+        // Load camera settings from Lua
+        cameraDistance_ = lua_->getFloatOr("camera.distance", 300.0f);
+        cameraHeight_ = lua_->getFloatOr("camera.height", 100.0f);
+        cameraTargetY_ = lua_->getFloatOr("camera.targetY", 100.0f);
+        cameraAngle_ = lua_->getFloatOr("camera.angle", 0.0f);
+
+        // Load debug settings from Lua
+        showMesh_ = !lua_->getBoolOr("debug.showBones", true);  // Inverse: if showing bones, less focus on mesh
 
         // Load the character model (creates mesh and material from FBX data)
         loadCharacterModel();
@@ -206,22 +243,44 @@ private:
         // Setup camera
         setupCamera();
 
-        // Setup natural lighting (sun-like directional light)
+        // Setup lighting from Lua config
+        auto lightDir = lua_->getTable("graphics.directionalLight.direction");
+        auto lightColor = lua_->getTable("graphics.directionalLight.color");
+        float lightIntensity = lua_->getFloatOr("graphics.directionalLight.intensity", 8.0f);
+
         bestow::DirectionalLight light{
-            .direction = {0.5f, -0.8f, 0.3f},  // Sun angle from upper-left
-            .color = {1.0f, 0.98f, 0.9f},      // Bright sunlight
-            .intensity = 8.0f,
+            .direction = {
+                lightDir.size() >= 3 ? static_cast<float>(std::get<double>(lightDir[0])) : 0.5f,
+                lightDir.size() >= 3 ? static_cast<float>(std::get<double>(lightDir[1])) : -0.8f,
+                lightDir.size() >= 3 ? static_cast<float>(std::get<double>(lightDir[2])) : 0.3f
+            },
+            .color = {
+                lightColor.size() >= 3 ? static_cast<float>(std::get<double>(lightColor[0])) : 1.0f,
+                lightColor.size() >= 3 ? static_cast<float>(std::get<double>(lightColor[1])) : 0.98f,
+                lightColor.size() >= 3 ? static_cast<float>(std::get<double>(lightColor[2])) : 0.9f
+            },
+            .intensity = lightIntensity,
             .castShadows = true
         };
         graphics_->setDirectionalLight(light);
-        graphics_->setAmbientLight({0.8f, 0.85f, 0.9f}, 0.6f);  // Strong ambient fill
+
+        auto ambientColor = lua_->getTable("graphics.ambientLight.color");
+        float ambientIntensity = lua_->getFloatOr("graphics.ambientLight.intensity", 0.6f);
+        graphics_->setAmbientLight(
+            {
+                ambientColor.size() >= 3 ? static_cast<float>(std::get<double>(ambientColor[0])) : 0.8f,
+                ambientColor.size() >= 3 ? static_cast<float>(std::get<double>(ambientColor[1])) : 0.85f,
+                ambientColor.size() >= 3 ? static_cast<float>(std::get<double>(ambientColor[2])) : 0.9f
+            },
+            ambientIntensity
+        );
 
         return true;
     }
 
     void loadCharacterModel() {
-        // Load the test character FBX using :library:/ path resolution
-        std::string characterPath = ":library:/characters/test-character.fbx";
+        // Load the test character FBX using path from Lua config
+        std::string characterPath = lua_->getStringOr("character.model", ":library:/characters/test-character.fbx");
 
         std::cout << "Loading character from: " << characterPath << std::endl;
 
@@ -732,9 +791,10 @@ private:
 
     void setupCamera() {
         bestow::Camera3D cam;
-        cam.fovY = 45.0f;
-        cam.nearPlane = 1.0f;
-        cam.farPlane = 1000.0f;  // Far enough for zoomed out view
+        // Load camera projection from Lua config
+        cam.fovY = lua_->getFloatOr("camera.fovY", 45.0f);
+        cam.nearPlane = lua_->getFloatOr("camera.nearPlane", 1.0f);
+        cam.farPlane = lua_->getFloatOr("camera.farPlane", 1000.0f);
 
         updateCameraTransform(cam);
         graphics_->setCamera(cam);

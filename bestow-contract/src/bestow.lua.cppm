@@ -407,6 +407,11 @@ public:
     virtual bool getBoolOr(std::string_view key, bool defaultVal) const = 0;
     virtual std::string getStringOr(std::string_view key, std::string_view defaultVal) const = 0;
 
+    /// Get a table/array as a vector of variants
+    /// @param key Dot-separated path to the table (e.g., "graphics.clearColor")
+    /// @return Vector of property values (empty if not found or not a table)
+    virtual std::vector<PropertyValue> getTable(std::string_view key) const = 0;
+
     /// Set config values at runtime
     virtual void setFloat(std::string_view key, float value) = 0;
     virtual void setInt(std::string_view key, int value) = 0;

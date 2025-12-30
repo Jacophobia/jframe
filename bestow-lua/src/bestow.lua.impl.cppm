@@ -173,6 +173,7 @@ public:
     int getIntOr(std::string_view key, int defaultVal) const override;
     bool getBoolOr(std::string_view key, bool defaultVal) const override;
     std::string getStringOr(std::string_view key, std::string_view defaultVal) const override;
+    std::vector<PropertyValue> getTable(std::string_view key) const override;
     void setFloat(std::string_view key, float value) override;
     void setInt(std::string_view key, int value) override;
     void setBool(std::string_view key, bool value) override;

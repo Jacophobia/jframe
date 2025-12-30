@@ -28,7 +28,7 @@ target_link_libraries(animation-showcase
         bestow-input       # Input system
         bestow-events      # Event system
         bestow-assets      # Asset system (model loading, shader compilation)
-        bestow-config      # Config system
+        bestow-lua         # Lua runtime (config loading)
         bestow-animation   # Animation system
 )
 

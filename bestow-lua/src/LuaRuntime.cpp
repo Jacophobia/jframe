@@ -475,6 +475,58 @@ std::string LuaRuntime::getStringOr(std::string_view key, std::string_view defau
     return getString(key).value_or(std::string(defaultVal));
 }
 
+std::vector<PropertyValue> LuaRuntime::getTable(std::string_view key) const {
+    std::vector<PropertyValue> result;
+
+    // Navigate the app config table using dot-separated key path
+    if (!appConfig_.valid()) {
+        return result;
+    }
+
+    // Parse key path (e.g., "graphics.clearColor")
+    std::vector<std::string> parts;
+    std::string keyStr(key);
+    std::size_t pos = 0;
+    while ((pos = keyStr.find('.')) != std::string::npos) {
+        parts.push_back(keyStr.substr(0, pos));
+        keyStr.erase(0, pos + 1);
+    }
+    parts.push_back(keyStr);
+
+    // Navigate to the target table
+    sol::table current = appConfig_;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        sol::optional<sol::table> next = current[parts[i]];
+        if (!next) {
+            return result;  // Path not found
+        }
+        current = *next;
+    }
+
+    // Extract values from the array-like table
+    for (auto& [k, v] : current) {
+        if (k.get_type() == sol::type::number) {
+            // Array element
+            if (v.get_type() == sol::type::number) {
+                // Check if it's an integer or float
+                double d = v.as<double>();
+                if (d == std::floor(d) && d >= std::numeric_limits<std::int64_t>::min() &&
+                    d <= std::numeric_limits<std::int64_t>::max()) {
+                    result.push_back(static_cast<std::int64_t>(d));
+                } else {
+                    result.push_back(d);
+                }
+            } else if (v.get_type() == sol::type::string) {
+                result.push_back(v.as<std::string>());
+            } else if (v.get_type() == sol::type::boolean) {
+                result.push_back(v.as<bool>());
+            }
+        }
+    }
+
+    return result;
+}
+
 void LuaRuntime::setFloat(std::string_view key, float value) {
     configValues_[std::string(key)] = ConfigValue{value};
 }

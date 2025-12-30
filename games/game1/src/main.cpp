@@ -14,7 +14,7 @@ import bestow.input.impl;      // InputSystem
 import bestow.events.impl;     // EventSystem
 import bestow.audio.impl;      // AudioSystem
 import bestow.assets.impl;     // AssetSystem
-import bestow.config.impl;     // ConfigSystem
+import bestow.lua.impl;        // LuaRuntime (replaces ConfigSystem)
 
 // Import the snake game
 import snake.game;
@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     // Register system implementations with engine.use<Contract, Implementation>()
     engine.use<bestow::IEventSystem, bestow::EventSystem>();
     engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
-    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
+    engine.use<bestow::ILuaRuntime, bestow::LuaRuntime>();
     engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
     engine.use<bestow::IInputSystem, bestow::InputSystem>();
 
