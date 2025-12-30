@@ -144,6 +144,15 @@ private:
     bool waitingForAnimEnd_ = false;
     bool sequenceLoops_ = true;      // Whether sequence loops back to start
 
+    // Hot reload file watching
+    struct WatchedFile {
+        std::string path;
+        std::filesystem::file_time_type lastModified;
+    };
+    std::vector<WatchedFile> watchedConfigs_;
+    float hotReloadCheckTimer_ = 0.0f;
+    static constexpr float kHotReloadCheckInterval = 0.25f;  // Check 4x per second
+
     // Root motion - character world position driven by animation
     bestow::Vec3 characterPosition_{0.0f, 0.0f, 0.0f};
     bool useRootMotion_ = true;      // Toggle with R key
@@ -409,6 +418,63 @@ private:
                 std::cerr << "[Config] Failed to load demo-sequence.lua: " << err.what() << "\n";
             }
         }
+
+        // Register files for hot reload watching
+        registerWatchedFiles();
+    }
+
+    void registerWatchedFiles() {
+        watchedConfigs_.clear();
+
+        const std::vector<std::string> configPaths = {
+            "data/config/animations.lua",
+            "data/config/state-machine.lua",
+            "data/config/demo-sequence.lua"
+        };
+
+        for (const auto& path : configPaths) {
+            if (std::filesystem::exists(path)) {
+                watchedConfigs_.push_back({
+                    .path = path,
+                    .lastModified = std::filesystem::last_write_time(path)
+                });
+            }
+        }
+
+        std::cout << "[HotReload] Watching " << watchedConfigs_.size() << " config files\n";
+    }
+
+    bool checkForConfigChanges() {
+        bool anyChanged = false;
+
+        for (auto& watched : watchedConfigs_) {
+            if (!std::filesystem::exists(watched.path)) continue;
+
+            auto currentTime = std::filesystem::last_write_time(watched.path);
+            if (currentTime != watched.lastModified) {
+                std::cout << "[HotReload] Detected change: " << watched.path << "\n";
+                watched.lastModified = currentTime;
+                anyChanged = true;
+            }
+        }
+
+        return anyChanged;
+    }
+
+    void hotReloadConfigs() {
+        std::cout << "\n=== HOT RELOAD ===\n";
+        loadAnimationConfigs();
+        // Rebuild state machine with new blend times (preserves current state)
+        if (stateMachine_) {
+            auto currentState = stateMachine_->getState();
+            createStateMachine();
+            // Restore current animation state if possible
+            if (stateMachine_) {
+                stateMachine_->setFloat("Speed", currentState.parameters.contains("Speed") ?
+                    std::get<float>(currentState.parameters.at("Speed")) : 0.0f);
+            }
+        }
+        std::cout << "=== RELOAD COMPLETE ===\n\n";
     }
 
     void loadDemoSequence() {
@@ -639,6 +705,15 @@ private:
                 input_->update();
             }
 
+            // Hot reload check (throttled to avoid excessive file system access)
+            hotReloadCheckTimer_ += frameTime;
+            if (hotReloadCheckTimer_ >= kHotReloadCheckInterval) {
+                hotReloadCheckTimer_ = 0.0f;
+                if (checkForConfigChanges()) {
+                    hotReloadConfigs();
+                }
+            }
+
             // Fixed timestep updates
             while (accumulator >= fixedDt) {
                 handleInput();
@@ -841,13 +916,9 @@ private:
             std::cout << (showMesh_ ? "Showing" : "Hiding") << " mesh\n";
         }
 
-        // Hot-reload Lua configs with L
+        // Manual force-reload with L (automatic reload also happens on file change)
         if (input_->wasKeyJustPressed(GLFW_KEY_L)) {
-            std::cout << "\n=== HOT RELOAD ===\n";
-            loadAnimationConfigs();
-            // Rebuild state machine with new blend times
-            createStateMachine();
-            std::cout << "=== RELOAD COMPLETE ===\n\n";
+            hotReloadConfigs();
         }
 
         // Manual state control with number keys (when auto-play disabled)
