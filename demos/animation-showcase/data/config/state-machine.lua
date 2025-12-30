@@ -68,8 +68,8 @@ return {
             blendTime = 0.25
         },
         [States.Recovery] = {
-            name = "recovery",
-            clip = "recovery",
+            name = "landing-recovery",
+            clip = "landing-recovery",
             wrapMode = "once",
             blendTime = 0.4
         }

@@ -53,20 +53,7 @@ struct SequenceStep {
     float duration;        // Time to stay in this state (0 = wait for animation end)
     float targetSpeed;     // Speed parameter to set
     bool isGrounded;       // IsGrounded parameter
-};
-
-// The demo auto-play sequence with full animation flow
-// Sequence loops back to idle after landing recovery
-inline const std::vector<SequenceStep> kDemoSequence = {
-    {AnimState::Idle,           2.0f, 0.0f, true},
-    {AnimState::Walk,           2.0f, 0.3f, true},
-    {AnimState::Jog,            2.0f, 0.6f, true},
-    {AnimState::Run,            2.0f, 1.0f, true},
-    {AnimState::Jump,           0.0f, 1.0f, false},  // Wait for animation end, not grounded during jump
-    {AnimState::Falling,        0.06f, 0.0f, false}, // Very brief fall
-    {AnimState::Landing,        0.0f, 0.0f, true},   // Land (wait for animation end), now grounded
-    {AnimState::LandingRecovery, 0.0f, 0.0f, true},  // Recovery (wait for animation end)
-    // Sequence will loop back to Idle
+    bool triggerJump = false;  // Whether to trigger a jump
 };
 
 //==========================================================================
@@ -149,11 +136,13 @@ private:
     float cameraHeight_ = 100.0f;    // Higher to see full character
     float cameraTargetY_ = 100.0f;   // Look-at target height (adjustable with Up/Down)
 
-    // Auto-play sequence state
+    // Auto-play sequence state (loaded from Lua)
+    std::vector<SequenceStep> demoSequence_;
     std::size_t sequenceIndex_ = 0;
     float sequenceTimer_ = 0.0f;
     bool autoPlayEnabled_ = true;    // Toggle with P key
     bool waitingForAnimEnd_ = false;
+    bool sequenceLoops_ = true;      // Whether sequence loops back to start
 
     // Root motion - character world position driven by animation
     bestow::Vec3 characterPosition_{0.0f, 0.0f, 0.0f};
@@ -176,10 +165,8 @@ private:
             return false;
         }
 
-        // Load config files
-        lua_->loadConfig("data/config/animations.lua");
-        lua_->loadConfig("data/config/state-machine.lua");
-        lua_->loadConfig("data/config/demo-sequence.lua");
+        // Load animation config files as globals (for hot-reload access)
+        loadAnimationConfigs();
 
         // Initialize graphics with Lua config
         bestow::Graphics3DConfig gfxConfig{
@@ -371,45 +358,136 @@ private:
         }
     }
 
+    void loadAnimationConfigs() {
+        // Load config files and store as Lua globals for hot-reload access
+        auto& lua = lua_->getLuaState();
+
+        // Load animations config
+        std::ifstream animFile("data/config/animations.lua");
+        if (animFile) {
+            std::stringstream buffer;
+            buffer << animFile.rdbuf();
+            auto result = lua.safe_script(buffer.str(), sol::script_pass_on_error);
+            if (result.valid()) {
+                lua["animations"] = result.get<sol::table>();
+                std::cout << "[Config] Loaded animations.lua\n";
+            } else {
+                sol::error err = result;
+                std::cerr << "[Config] Failed to load animations.lua: " << err.what() << "\n";
+            }
+        }
+
+        // Load state machine config
+        std::ifstream smFile("data/config/state-machine.lua");
+        if (smFile) {
+            std::stringstream buffer;
+            buffer << smFile.rdbuf();
+            auto result = lua.safe_script(buffer.str(), sol::script_pass_on_error);
+            if (result.valid()) {
+                lua["stateMachine"] = result.get<sol::table>();
+                std::cout << "[Config] Loaded state-machine.lua\n";
+            } else {
+                sol::error err = result;
+                std::cerr << "[Config] Failed to load state-machine.lua: " << err.what() << "\n";
+            }
+        }
+
+        // Load demo sequence config
+        std::ifstream seqFile("data/config/demo-sequence.lua");
+        if (seqFile) {
+            std::stringstream buffer;
+            buffer << seqFile.rdbuf();
+            auto result = lua.safe_script(buffer.str(), sol::script_pass_on_error);
+            if (result.valid()) {
+                lua["demoSequence"] = result.get<sol::table>();
+                std::cout << "[Config] Loaded demo-sequence.lua\n";
+
+                // Parse sequence into steps
+                loadDemoSequence();
+            } else {
+                sol::error err = result;
+                std::cerr << "[Config] Failed to load demo-sequence.lua: " << err.what() << "\n";
+            }
+        }
+    }
+
+    void loadDemoSequence() {
+        // Load demo sequence from Lua config
+        auto& lua = lua_->getLuaState();
+        sol::table seqConfig = lua["demoSequence"];
+        if (!seqConfig.valid()) {
+            std::cerr << "No 'demoSequence' config found, using empty sequence\n";
+            return;
+        }
+
+        // Get sequence settings
+        sequenceLoops_ = seqConfig.get_or("loop", true);
+        autoPlayEnabled_ = seqConfig.get_or("enabled", true);
+
+        // Parse steps
+        demoSequence_.clear();
+        sol::table steps = seqConfig["steps"];
+        if (!steps.valid()) {
+            std::cerr << "No 'steps' in demoSequence config\n";
+            return;
+        }
+
+        for (auto& pair : steps) {
+            if (pair.second.get_type() != sol::type::table) continue;
+
+            sol::table step = pair.second.as<sol::table>();
+            SequenceStep s;
+            s.state = static_cast<bestow::AnimStateId>(step.get_or("state", 0));
+            s.duration = step.get_or("duration", 1.0f);
+            s.targetSpeed = step.get_or("speed", 0.0f);
+            s.isGrounded = step.get_or("grounded", true);
+            s.triggerJump = step.get_or("jump", false);
+            demoSequence_.push_back(s);
+        }
+
+        std::cout << "[Config] Loaded " << demoSequence_.size() << " demo sequence steps\n";
+    }
+
     void loadAnimationClips() {
-        // Animation files to load (mapped to state names)
-        struct AnimFile {
-            std::string name;
-            std::string path;
-        };
+        // Load animation clip paths from Lua config
+        auto& lua = lua_->getLuaState();
+        sol::table animConfig = lua["animations"];
+        if (!animConfig.valid()) {
+            std::cerr << "No 'animations' config found, using defaults\n";
+            return;
+        }
 
-        std::vector<AnimFile> animFiles = {
-            {"idle",             ":library:/animations/idle.fbx"},
-            {"walk",             ":library:/animations/walk.fbx"},
-            {"jog",              ":library:/animations/jog.fbx"},
-            {"run",              ":library:/animations/run.fbx"},
-            {"jump",             ":library:/animations/jumping-up.fbx"},
-            {"falling",          ":library:/animations/falling.fbx"},
-            {"landing",          ":library:/animations/landing.fbx"},
-            {"landing-recovery", ":library:/animations/landing-recovery.fbx"},
-        };
+        sol::table clips = animConfig["clips"];
+        if (!clips.valid()) {
+            std::cerr << "No 'clips' table in animations config\n";
+            return;
+        }
 
-        std::cout << "\nLoading animation clips:\n";
+        std::cout << "\nLoading animation clips from Lua config:\n";
 
-        for (const auto& animFile : animFiles) {
-            auto animHandle = assets_->loadModel(animFile.path);
+        // Iterate through clip definitions from Lua
+        for (auto& pair : clips) {
+            std::string clipName = pair.first.as<std::string>();
+            std::string clipPath = pair.second.as<std::string>();
+
+            auto animHandle = assets_->loadModel(clipPath);
             if (!assets_->isLoaded(animHandle)) {
-                std::cerr << "  Failed to load: " << animFile.path << "\n";
+                std::cerr << "  Failed to load: " << clipPath << "\n";
                 continue;
             }
 
             const bestow::ModelData* animData = assets_->getModelData(animHandle);
             if (!animData || animData->animations.empty()) {
-                std::cerr << "  No animations in: " << animFile.path << "\n";
+                std::cerr << "  No animations in: " << clipPath << "\n";
                 continue;
             }
 
             // Create clips from this animation file
-            auto clips = animation_->createAnimationClips(skeletonHandle_, *animData);
-            if (!clips.empty()) {
-                clipsByName_[animFile.name] = clips[0];  // Use first clip
-                clipHandles_.push_back(clips[0]);
-                std::cout << "  Loaded: " << animFile.name << " (clip handle: " << clips[0] << ")\n";
+            auto animClips = animation_->createAnimationClips(skeletonHandle_, *animData);
+            if (!animClips.empty()) {
+                clipsByName_[clipName] = animClips[0];  // Use first clip
+                clipHandles_.push_back(animClips[0]);
+                std::cout << "  Loaded: " << clipName << " from " << clipPath << " (handle: " << animClips[0] << ")\n";
             }
         }
 
@@ -419,28 +497,40 @@ private:
     void createStateMachine() {
         using namespace bestow;
 
-        // Build the state machine definition
-        // Note: Blend times increased to 0.5s for more visible transitions during testing
+        // Load state config from Lua for blend times (hot-reloadable)
+        auto& lua = lua_->getLuaState();
+        sol::table smConfig = lua["stateMachine"];
+        sol::table states = smConfig.valid() ? smConfig["states"] : sol::table{};
+
+        // Helper to get blend time from Lua config or use default
+        auto getBlendTime = [&states](int stateId, float defaultVal) -> float {
+            if (!states.valid()) return defaultVal;
+            sol::optional<sol::table> state = states[stateId];
+            if (state) {
+                return state->get_or("blendTime", defaultVal);
+            }
+            return defaultVal;
+        };
+
+        // Build the state machine definition using Lua-configured blend times
         auto builder = AnimationStateMachineBuilder("CharacterLocomotion")
-            // Add states (last param is default blend time INTO this state)
-            // Locomotion states - longer blend times for smooth transitions
+            // Add states with blend times from Lua config
             .addState(AnimState::Idle, "idle", "idle",
-                      AnimationWrapMode::Loop, 0.8f)
+                      AnimationWrapMode::Loop, getBlendTime(0, 0.8f))
             .addState(AnimState::Walk, "walk", "walk",
-                      AnimationWrapMode::Loop, 0.8f)
+                      AnimationWrapMode::Loop, getBlendTime(1, 0.8f))
             .addState(AnimState::Jog, "jog", "jog",
-                      AnimationWrapMode::Loop, 0.7f)
+                      AnimationWrapMode::Loop, getBlendTime(2, 0.7f))
             .addState(AnimState::Run, "run", "run",
-                      AnimationWrapMode::Loop, 0.6f)
-            // Action states
+                      AnimationWrapMode::Loop, getBlendTime(3, 0.6f))
             .addState(AnimState::Jump, "jump", "jump",
-                      AnimationWrapMode::Once, 0.35f)
+                      AnimationWrapMode::Once, getBlendTime(4, 0.35f))
             .addState(AnimState::Falling, "falling", "falling",
-                      AnimationWrapMode::Loop, 0.4f)
+                      AnimationWrapMode::Loop, getBlendTime(5, 0.4f))
             .addState(AnimState::Landing, "landing", "landing",
-                      AnimationWrapMode::Once, 0.25f)
+                      AnimationWrapMode::Once, getBlendTime(6, 0.25f))
             .addState(AnimState::LandingRecovery, "landing-recovery", "landing-recovery",
-                      AnimationWrapMode::Once, 0.5f)
+                      AnimationWrapMode::Once, getBlendTime(7, 0.5f))
 
             // Set default state
             .setDefaultState(AnimState::Idle)
@@ -451,28 +541,22 @@ private:
             .addParameter("Jump", AnimParamType::Trigger)
 
             // Locomotion transitions (grounded, speed-based)
-            // idle -> walk when Speed > 0.1
             .addTransition(AnimState::Idle, AnimState::Walk,
                 {paramGreater("Speed", 0.1f), paramEquals("IsGrounded", true)})
-            // walk -> idle when Speed < 0.1
             .addTransition(AnimState::Walk, AnimState::Idle,
                 {paramLess("Speed", 0.1f), paramEquals("IsGrounded", true)})
-            // walk -> jog when Speed > 0.4
             .addTransition(AnimState::Walk, AnimState::Jog,
                 {paramGreater("Speed", 0.4f), paramEquals("IsGrounded", true)})
-            // jog -> walk when Speed < 0.4
             .addTransition(AnimState::Jog, AnimState::Walk,
                 {paramLess("Speed", 0.4f), paramEquals("IsGrounded", true)})
-            // jog -> run when Speed > 0.8
             .addTransition(AnimState::Jog, AnimState::Run,
                 {paramGreater("Speed", 0.8f), paramEquals("IsGrounded", true)})
-            // run -> jog when Speed < 0.8
             .addTransition(AnimState::Run, AnimState::Jog,
                 {paramLess("Speed", 0.8f), paramEquals("IsGrounded", true)})
 
-            // Jump transition (from any grounded state)
+            // Jump transitions
             .addTransition(AnimState::Idle, AnimState::Jump,
-                {onTrigger("Jump")}, 0.35f, 10)  // High priority
+                {onTrigger("Jump")}, 0.35f, 10)
             .addTransition(AnimState::Walk, AnimState::Jump,
                 {onTrigger("Jump")}, 0.35f, 10)
             .addTransition(AnimState::Jog, AnimState::Jump,
@@ -480,23 +564,19 @@ private:
             .addTransition(AnimState::Run, AnimState::Jump,
                 {onTrigger("Jump")}, 0.35f, 10)
 
-            // Jump -> Landing directly when grounded (skip falling for smoother flow)
+            // Jump -> Landing/Falling
             .addTransition(AnimState::Jump, AnimState::Landing,
                 {onAnimationEnd(), paramEquals("IsGrounded", true)}, 0.25f)
-
-            // Jump -> Falling when jump ends and still in air
             .addTransition(AnimState::Jump, AnimState::Falling,
                 {onAnimationEnd(), paramEquals("IsGrounded", false)}, 0.15f)
 
-            // Falling -> Landing when grounded
+            // Falling -> Landing
             .addTransition(AnimState::Falling, AnimState::Landing,
                 {paramEquals("IsGrounded", true)}, 0.1f)
 
-            // Landing -> LandingRecovery when landing animation ends
+            // Landing -> Recovery -> Locomotion
             .addTransition(AnimState::Landing, AnimState::LandingRecovery,
                 {onAnimationEnd()})
-
-            // LandingRecovery -> appropriate locomotion state when animation ends
             .addTransition(AnimState::LandingRecovery, AnimState::Walk,
                 {onAnimationEnd(), paramGreater("Speed", 0.1f)})
             .addTransition(AnimState::LandingRecovery, AnimState::Idle,
@@ -635,37 +715,38 @@ private:
     //======================================================================
 
     void startSequenceStep(std::size_t index) {
-        if (index >= kDemoSequence.size() || !stateMachine_) return;
+        if (index >= demoSequence_.size() || !stateMachine_) return;
 
         sequenceIndex_ = index;
         sequenceTimer_ = 0.0f;
 
-        const auto& step = kDemoSequence[index];
+        const auto& step = demoSequence_[index];
 
         // Set parameters for this step
         stateMachine_->setFloat("Speed", step.targetSpeed);
         stateMachine_->setBool("IsGrounded", step.isGrounded);
 
-        // If this is the jump state, trigger the jump
-        if (step.state == AnimState::Jump) {
+        // Trigger jump if requested
+        if (step.triggerJump) {
             stateMachine_->setTrigger("Jump");
         }
 
-        // Determine if we should wait for animation end
+        // Determine if we should wait for animation end (duration == 0 means wait)
         waitingForAnimEnd_ = (step.duration <= 0.0f);
 
         std::cout << "[AutoPlay] Step " << index << ": "
                   << "State=" << step.state
                   << ", Speed=" << step.targetSpeed
                   << ", Grounded=" << step.isGrounded
+                  << (step.triggerJump ? " (jumping)" : "")
                   << (waitingForAnimEnd_ ? " (wait for anim end)" : "")
                   << "\n";
     }
 
     void updateAutoPlay(float dt) {
-        if (sequenceIndex_ >= kDemoSequence.size()) return;
+        if (demoSequence_.empty() || sequenceIndex_ >= demoSequence_.size()) return;
 
-        const auto& step = kDemoSequence[sequenceIndex_];
+        const auto& step = demoSequence_[sequenceIndex_];
 
         if (waitingForAnimEnd_) {
             // Check if we've entered the target state and animation completed
@@ -689,10 +770,16 @@ private:
     void advanceSequence() {
         std::size_t nextIndex = sequenceIndex_ + 1;
 
-        // Loop back to beginning when we reach the end
-        if (nextIndex >= kDemoSequence.size()) {
-            std::cout << "[AutoPlay] Sequence complete! Looping back to start.\n";
-            nextIndex = 0;
+        // Loop back to beginning when we reach the end (if looping is enabled)
+        if (nextIndex >= demoSequence_.size()) {
+            if (sequenceLoops_) {
+                std::cout << "[AutoPlay] Sequence complete! Looping back to start.\n";
+                nextIndex = 0;
+            } else {
+                std::cout << "[AutoPlay] Sequence complete!\n";
+                autoPlayEnabled_ = false;
+                return;
+            }
         }
 
         startSequenceStep(nextIndex);
@@ -752,6 +839,15 @@ private:
         if (input_->wasKeyJustPressed(GLFW_KEY_M)) {
             showMesh_ = !showMesh_;
             std::cout << (showMesh_ ? "Showing" : "Hiding") << " mesh\n";
+        }
+
+        // Hot-reload Lua configs with L
+        if (input_->wasKeyJustPressed(GLFW_KEY_L)) {
+            std::cout << "\n=== HOT RELOAD ===\n";
+            loadAnimationConfigs();
+            // Rebuild state machine with new blend times
+            createStateMachine();
+            std::cout << "=== RELOAD COMPLETE ===\n\n";
         }
 
         // Manual state control with number keys (when auto-play disabled)
