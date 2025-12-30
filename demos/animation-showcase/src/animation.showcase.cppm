@@ -144,14 +144,9 @@ private:
     bool waitingForAnimEnd_ = false;
     bool sequenceLoops_ = true;      // Whether sequence loops back to start
 
-    // Hot reload file watching
-    struct WatchedFile {
-        std::string path;
-        std::filesystem::file_time_type lastModified;
-    };
-    std::vector<WatchedFile> watchedConfigs_;
-    float hotReloadCheckTimer_ = 0.0f;
-    static constexpr float kHotReloadCheckInterval = 0.25f;  // Check 4x per second
+    // Hot reload (handled by LuaRuntime automatically)
+    bestow::SubscriptionId configReloadSubId_ = 0;
+    bool pendingRebuild_ = false;  // Set by callback, processed on main thread
 
     // Root motion - character world position driven by animation
     bestow::Vec3 characterPosition_{0.0f, 0.0f, 0.0f};
@@ -271,7 +266,29 @@ private:
             ambientIntensity
         );
 
+        // Setup automatic hot reload via LuaRuntime
+        setupHotReload();
+
         return true;
+    }
+
+    void setupHotReload() {
+        // Enable hot reload on LuaRuntime (uses AssetSystem's efsw file watcher)
+        lua_->enableHotReload(true);
+
+        // Register config files with LuaRuntime for watching
+        lua_->watchConfig("data/config/animations.lua");
+        lua_->watchConfig("data/config/state-machine.lua");
+        lua_->watchConfig("data/config/demo-sequence.lua");
+
+        // Subscribe to config reload events - this callback fires when any config changes
+        configReloadSubId_ = lua_->onConfigReloaded([this](std::string_view path) {
+            std::cout << "[HotReload] Config changed: " << path << "\n";
+            // Set flag - actual rebuild happens on main thread in game loop
+            pendingRebuild_ = true;
+        });
+
+        std::cout << "[HotReload] Automatic hot reload enabled\n";
     }
 
     void loadCharacterModel() {
@@ -419,62 +436,22 @@ private:
             }
         }
 
-        // Register files for hot reload watching
-        registerWatchedFiles();
+        // Hot reload is handled automatically by LuaRuntime - no C++ file watching needed
     }
 
-    void registerWatchedFiles() {
-        watchedConfigs_.clear();
+    void rebuildFromLuaConfigs() {
+        // Called when LuaRuntime notifies us that configs have changed
+        std::cout << "\n=== REBUILDING FROM LUA ===\n";
 
-        const std::vector<std::string> configPaths = {
-            "data/config/animations.lua",
-            "data/config/state-machine.lua",
-            "data/config/demo-sequence.lua"
-        };
+        // Reload demo sequence from the updated Lua global
+        loadDemoSequence();
 
-        for (const auto& path : configPaths) {
-            if (std::filesystem::exists(path)) {
-                watchedConfigs_.push_back({
-                    .path = path,
-                    .lastModified = std::filesystem::last_write_time(path)
-                });
-            }
-        }
-
-        std::cout << "[HotReload] Watching " << watchedConfigs_.size() << " config files\n";
-    }
-
-    bool checkForConfigChanges() {
-        bool anyChanged = false;
-
-        for (auto& watched : watchedConfigs_) {
-            if (!std::filesystem::exists(watched.path)) continue;
-
-            auto currentTime = std::filesystem::last_write_time(watched.path);
-            if (currentTime != watched.lastModified) {
-                std::cout << "[HotReload] Detected change: " << watched.path << "\n";
-                watched.lastModified = currentTime;
-                anyChanged = true;
-            }
-        }
-
-        return anyChanged;
-    }
-
-    void hotReloadConfigs() {
-        std::cout << "\n=== HOT RELOAD ===\n";
-        loadAnimationConfigs();
-        // Rebuild state machine with new blend times (preserves current state)
+        // Rebuild state machine with new blend times
         if (stateMachine_) {
-            auto currentState = stateMachine_->getState();
             createStateMachine();
-            // Restore current animation state if possible
-            if (stateMachine_) {
-                stateMachine_->setFloat("Speed", currentState.parameters.contains("Speed") ?
-                    std::get<float>(currentState.parameters.at("Speed")) : 0.0f);
-            }
         }
-        std::cout << "=== RELOAD COMPLETE ===\n\n";
+
+        std::cout << "=== REBUILD COMPLETE ===\n\n";
     }
 
     void loadDemoSequence() {
@@ -705,13 +682,15 @@ private:
                 input_->update();
             }
 
-            // Hot reload check (throttled to avoid excessive file system access)
-            hotReloadCheckTimer_ += frameTime;
-            if (hotReloadCheckTimer_ >= kHotReloadCheckInterval) {
-                hotReloadCheckTimer_ = 0.0f;
-                if (checkForConfigChanges()) {
-                    hotReloadConfigs();
-                }
+            // Process AssetSystem updates (handles efsw file change events)
+            if (assets_) {
+                assets_->update();
+            }
+
+            // Check if LuaRuntime notified us of config changes
+            if (pendingRebuild_) {
+                pendingRebuild_ = false;
+                rebuildFromLuaConfigs();
             }
 
             // Fixed timestep updates
@@ -760,6 +739,11 @@ private:
     }
 
     void cleanup() {
+        // Unsubscribe from hot reload events
+        if (lua_ && configReloadSubId_ != 0) {
+            lua_->unsubscribeConfigReload(configReloadSubId_);
+        }
+
         // Clean up animation resources
         if (animation_ && animatorHandle_) {
             animation_->destroyAnimator(animatorHandle_);
@@ -918,7 +902,9 @@ private:
 
         // Manual force-reload with L (automatic reload also happens on file change)
         if (input_->wasKeyJustPressed(GLFW_KEY_L)) {
-            hotReloadConfigs();
+            std::cout << "[HotReload] Manual reload triggered (L key)\n";
+            loadAnimationConfigs();  // Re-load Lua config files
+            rebuildFromLuaConfigs(); // Rebuild state machine and sequence
         }
 
         // Manual state control with number keys (when auto-play disabled)

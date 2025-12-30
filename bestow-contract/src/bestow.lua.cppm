@@ -354,6 +354,28 @@ public:
     /// Reload all loaded Lua files
     virtual LuaResult<void> reloadAll() = 0;
 
+    /// Callback for when a config file is reloaded
+    using ConfigReloadCallback = std::function<void(std::string_view path)>;
+
+    /// Subscribe to config reload events
+    /// @param callback Called when any config file is reloaded
+    /// @return Subscription ID for unsubscribing
+    virtual SubscriptionId onConfigReloaded(ConfigReloadCallback callback) = 0;
+
+    /// Subscribe to reload events for a specific config path pattern
+    /// @param pathPattern Glob pattern (e.g., "config/*.lua")
+    /// @param callback Called when matching file is reloaded
+    virtual SubscriptionId onConfigReloaded(std::string_view pathPattern,
+                                             ConfigReloadCallback callback) = 0;
+
+    /// Unsubscribe from config reload events
+    virtual void unsubscribeConfigReload(SubscriptionId id) = 0;
+
+    /// Watch a config file for hot reload
+    /// @param path Path to the config file
+    /// @return Asset handle for the watched file
+    virtual AssetHandle watchConfig(std::string_view path) = 0;
+
     //==========================================================================
     // Direct Lua Access
     //==========================================================================

@@ -150,6 +150,11 @@ public:
     bool isHotReloadEnabled() const override;
     LuaResult<void> reloadFile(std::string_view path) override;
     LuaResult<void> reloadAll() override;
+    SubscriptionId onConfigReloaded(ConfigReloadCallback callback) override;
+    SubscriptionId onConfigReloaded(std::string_view pathPattern,
+                                     ConfigReloadCallback callback) override;
+    void unsubscribeConfigReload(SubscriptionId id) override;
+    AssetHandle watchConfig(std::string_view path) override;
 
     //==========================================================================
     // Direct Lua Access
@@ -223,6 +228,7 @@ private:
     void registerBuiltinComponents();
     LuaResult<void> loadLuaFile(std::string_view path, std::string_view description);
     void onAssetReloaded(AssetHandle handle, AssetType type);
+    void notifyConfigReloaded(std::string_view path);
 
     //==========================================================================
     // State
@@ -258,8 +264,20 @@ private:
     std::unordered_map<std::string, ConfigValue> configValues_;
     std::vector<AssetHandle> configAssets_;
 
-    // Hot reload subscriptions
+    // Hot reload subscriptions (to AssetSystem)
     std::vector<SubscriptionId> assetSubscriptions_;
+
+    // Config reload callbacks
+    struct ConfigReloadSubscription {
+        SubscriptionId id;
+        std::string pathPattern;  // Empty = all configs
+        ConfigReloadCallback callback;
+    };
+    std::vector<ConfigReloadSubscription> configReloadCallbacks_;
+    SubscriptionId nextConfigSubId_ = 1;
+
+    // Watched config files
+    std::unordered_map<std::string, AssetHandle> watchedConfigs_;
 
     // Available engine systems (set during initialization based on what's registered)
     std::unordered_set<std::string> availableSystems_;

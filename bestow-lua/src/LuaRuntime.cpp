@@ -757,13 +757,118 @@ void LuaRuntime::onAssetReloaded(AssetHandle handle, AssetType type) {
         }
     }
 
-    // Check configs
-    for (const auto& cfgAsset : configAssets_) {
-        if (cfgAsset.uuid == handle.uuid) {
-            spdlog::info("[LuaRuntime] Hot reloading config");
-            break;
+    // Check watched configs
+    for (const auto& [path, cfgHandle] : watchedConfigs_) {
+        if (cfgHandle.uuid == handle.uuid) {
+            spdlog::info("[LuaRuntime] Hot reloading config: {}", path);
+
+            // Re-execute the config file and update the global
+            std::filesystem::path resolvedPath = PathResolver::resolve(path);
+            std::ifstream file(resolvedPath);
+            if (file) {
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                auto result = lua_.safe_script(buffer.str(), sol::script_pass_on_error);
+                if (result.valid()) {
+                    // Store result in global (extract name from path)
+                    std::string globalName = std::filesystem::path(path).stem().string();
+                    // Convert kebab-case to camelCase for Lua global
+                    std::string luaName;
+                    bool capitalizeNext = false;
+                    for (char c : globalName) {
+                        if (c == '-') {
+                            capitalizeNext = true;
+                        } else if (capitalizeNext) {
+                            luaName += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+                            capitalizeNext = false;
+                        } else {
+                            luaName += c;
+                        }
+                    }
+                    lua_[luaName] = result.get<sol::table>();
+
+                    // Notify all subscribers
+                    notifyConfigReloaded(path);
+                } else {
+                    sol::error err = result;
+                    spdlog::error("[LuaRuntime] Failed to reload config '{}': {}",
+                                  path, err.what());
+                }
+            }
+            return;
         }
     }
+}
+
+void LuaRuntime::notifyConfigReloaded(std::string_view path) {
+    for (const auto& sub : configReloadCallbacks_) {
+        if (sub.pathPattern.empty()) {
+            // Subscribe to all - always call
+            sub.callback(path);
+        } else {
+            // Check if path matches pattern (simple prefix/suffix matching for now)
+            std::string pathStr(path);
+            if (pathStr.find(sub.pathPattern) != std::string::npos ||
+                sub.pathPattern == "*") {
+                sub.callback(path);
+            }
+        }
+    }
+}
+
+SubscriptionId LuaRuntime::onConfigReloaded(ConfigReloadCallback callback) {
+    auto id = nextConfigSubId_++;
+    configReloadCallbacks_.push_back({
+        .id = id,
+        .pathPattern = "",
+        .callback = std::move(callback)
+    });
+    return id;
+}
+
+SubscriptionId LuaRuntime::onConfigReloaded(std::string_view pathPattern,
+                                             ConfigReloadCallback callback) {
+    auto id = nextConfigSubId_++;
+    configReloadCallbacks_.push_back({
+        .id = id,
+        .pathPattern = std::string(pathPattern),
+        .callback = std::move(callback)
+    });
+    return id;
+}
+
+void LuaRuntime::unsubscribeConfigReload(SubscriptionId id) {
+    std::erase_if(configReloadCallbacks_, [id](const auto& sub) {
+        return sub.id == id;
+    });
+}
+
+AssetHandle LuaRuntime::watchConfig(std::string_view path) {
+    std::string pathStr(path);
+
+    // Check if already watching
+    auto it = watchedConfigs_.find(pathStr);
+    if (it != watchedConfigs_.end()) {
+        return it->second;
+    }
+
+    if (!pIAssetSystem_) {
+        spdlog::warn("[LuaRuntime] Cannot watch config '{}': AssetSystem not available", path);
+        return {};
+    }
+
+    // Resolve the path
+    std::filesystem::path resolvedPath = PathResolver::resolve(pathStr);
+
+    // Register with AssetSystem as a Data asset
+    auto handle = pIAssetSystem_->registerAsset(AssetType::Data, resolvedPath.string());
+    watchedConfigs_[pathStr] = handle;
+
+    // Load the asset so it's tracked
+    pIAssetSystem_->loadAsset(handle);
+
+    spdlog::info("[LuaRuntime] Watching config for hot reload: {}", path);
+    return handle;
 }
 
 //==============================================================================
