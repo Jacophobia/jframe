@@ -1,6 +1,23 @@
 # Bestow TODO
 
-> Last Updated: 2025-12-15
+> Last Updated: 2025-12-31
+
+## Snake Game - Lua vs C++ Comparison
+
+### FPS Tracking
+- [ ] Add FPS counter/display to C++ snake game (games/game1)
+- [ ] Add FPS counter/display to Lua snake game (games/snake3d)
+- [ ] Compare performance between C++ and Lua implementations
+
+### Lua Snake Game Fixes
+- [x] Fix shader path resolution (use `--library library` not `--library asset-library`)
+- [ ] Fix main menu to match C++ version exactly
+- [ ] Implement pixel text rendering system (drawPixelText/drawPixelTextShadow)
+- [ ] Add title cubes with wave animation
+- [ ] Add menu option cubes with selection arrows
+- [ ] Add controls hint display
+
+---
 
 ## Critical Implementation Gaps (Updated 2025-12-14)
 
