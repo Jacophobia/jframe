@@ -100,6 +100,11 @@ if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
     add_subdirectory(demos/animation-showcase)
 endif()
 
+# Lua Runtime executable (PROTOTYPE)
+# This creates the 'bestow' executable for running Lua games
+# Currently works standalone - full engine integration coming soon
+add_subdirectory(bestow-runtime)
+
 # Template uses proper contract-based DI architecture
 # See template/README.md for usage
 
