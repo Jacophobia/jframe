@@ -123,19 +123,19 @@ function game:transitionTo(phase)
 
     self.currentPhase = phase
 
-    -- Handle audio transitions (matches C++ snake.game.cppm)
+    -- Handle audio transitions (matches C++ snake.game.cppm enterPhase())
+    -- NOTE: Pause sound is played in input.lua when ESC is pressed, not here
+    -- NOTE: Level complete sound should be played when level is completed, not here
     if phase == GamePhase.MainMenu then
         Audio.playMusic("menu")
     elseif phase == GamePhase.Playing then
+        -- Only switch music when coming from menu/worldmap (not from pause)
         if oldPhase == GamePhase.MainMenu or oldPhase == GamePhase.WorldMap then
             Audio.playMusic("game")
         end
-        -- Note: No sound when resuming from pause (matches C++)
         self.gameOver = false
-    elseif phase == GamePhase.Paused then
-        Audio.playSFX("pause")
-    elseif phase == GamePhase.LevelComplete then
-        Audio.playSFX("level_complete")
+    -- Paused: Sound played in input handler, not here (matches C++ pattern)
+    -- LevelComplete: Sound played in completeLevel(), not here
     elseif phase == GamePhase.GameOver then
         self.gameOver = true
         Audio.playSFX("game_over")
