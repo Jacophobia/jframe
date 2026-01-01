@@ -1,9 +1,6 @@
 -- levels.lua - Level and world loading
--- Matches C++ level/world functions exactly
-
-local config = require("config")
-local state = require("state")
-local types = require("types")
+-- Dependencies: app.config, app.state, app.types, app.game_logic, app.enemies, app.main
+-- (accessed inside functions)
 
 local levels = {}
 
@@ -20,28 +17,32 @@ function levels.loadLevel(levelPath)
 end
 
 -- Parse a level table into currentLevel
-function levels.parseLevelTable(table)
+function levels.parseLevelTable(tbl)
+    local state = app.state
+    local types = app.types
+    local config = app.config
+
     -- Clear current level
     state.currentLevel = types.LevelMap()
 
     -- Basic properties
-    state.currentLevel.name = table.name or "Unnamed Level"
-    state.currentLevel.width = table.width or 15
-    state.currentLevel.height = table.height or 15
-    state.currentLevel.foodRequired = table.foodRequired or 5
-    state.currentLevel.isBossLevel = table.isBossLevel or false
+    state.currentLevel.name = tbl.name or "Unnamed Level"
+    state.currentLevel.width = tbl.width or 15
+    state.currentLevel.height = tbl.height or 15
+    state.currentLevel.foodRequired = tbl.foodRequired or 5
+    state.currentLevel.isBossLevel = tbl.isBossLevel or false
 
     -- Player start position
-    if table.playerStart then
+    if tbl.playerStart then
         state.currentLevel.playerStart = types.GridPos(
-            table.playerStart.x or state.currentLevel.width / 2,
-            table.playerStart.z or state.currentLevel.height / 2
+            tbl.playerStart.x or state.currentLevel.width / 2,
+            tbl.playerStart.z or state.currentLevel.height / 2
         )
     end
 
     -- Walls
-    if table.walls then
-        for _, wallDef in ipairs(table.walls) do
+    if tbl.walls then
+        for _, wallDef in ipairs(tbl.walls) do
             table.insert(state.currentLevel.walls, types.GridPos(
                 wallDef.x or 0,
                 wallDef.z or 0
@@ -50,8 +51,8 @@ function levels.parseLevelTable(table)
     end
 
     -- Food spawn points
-    if table.foodSpawnPoints then
-        for _, posDef in ipairs(table.foodSpawnPoints) do
+    if tbl.foodSpawnPoints then
+        for _, posDef in ipairs(tbl.foodSpawnPoints) do
             table.insert(state.currentLevel.foodSpawnPoints, types.GridPos(
                 posDef.x or 0,
                 posDef.z or 0
@@ -60,8 +61,8 @@ function levels.parseLevelTable(table)
     end
 
     -- Enemy zones
-    if table.enemies then
-        for _, enemyDef in ipairs(table.enemies) do
+    if tbl.enemies then
+        for _, enemyDef in ipairs(tbl.enemies) do
             local zone = enemyDef.zone
             local ez = types.EnemyZone(
                 types.AABB2Di(
@@ -104,24 +105,27 @@ function levels.loadWorld(worldPath)
 end
 
 -- Parse a world table into currentWorld
-function levels.parseWorldTable(table)
+function levels.parseWorldTable(tbl)
+    local state = app.state
+    local types = app.types
+
     -- Clear current world
     state.currentWorld = types.WorldConfig()
 
     -- Basic properties
-    state.currentWorld.name = table.name or "Unnamed World"
-    state.currentWorld.theme = table.theme or "default"
+    state.currentWorld.name = tbl.name or "Unnamed World"
+    state.currentWorld.theme = tbl.theme or "default"
 
     -- Level files
-    if table.levels then
-        for _, levelFile in ipairs(table.levels) do
+    if tbl.levels then
+        for _, levelFile in ipairs(tbl.levels) do
             table.insert(state.currentWorld.levelFiles, levelFile)
         end
     end
 
     -- Unlock requirements
-    if table.unlockRequirements then
-        for idx, requirement in pairs(table.unlockRequirements) do
+    if tbl.unlockRequirements then
+        for idx, requirement in pairs(tbl.unlockRequirements) do
             -- Ensure array is large enough
             while #state.currentWorld.unlockRequirements < idx do
                 table.insert(state.currentWorld.unlockRequirements, 0)
@@ -131,8 +135,8 @@ function levels.parseWorldTable(table)
     end
 
     -- Map nodes
-    if table.nodes then
-        for _, nodeDef in ipairs(table.nodes) do
+    if tbl.nodes then
+        for _, nodeDef in ipairs(tbl.nodes) do
             local node = types.WorldMapNode(
                 types.GridPos(nodeDef.x or 0, nodeDef.z or 0),
                 (nodeDef.levelIndex or 1) - 1  -- Convert to 0-indexed
@@ -144,8 +148,8 @@ function levels.parseWorldTable(table)
     end
 
     -- Paths (connections between nodes)
-    if table.paths then
-        for _, pathDef in ipairs(table.paths) do
+    if tbl.paths then
+        for _, pathDef in ipairs(tbl.paths) do
             local a = pathDef[1] - 1  -- Convert to 0-indexed
             local b = pathDef[2] - 1
             table.insert(state.currentWorld.paths, {a, b})
@@ -153,10 +157,10 @@ function levels.parseWorldTable(table)
     end
 
     -- Boss config
-    if table.boss then
-        state.currentWorld.bossName = table.boss.name or "Boss"
-        state.currentWorld.bossType = table.boss.type or "default"
-        state.currentWorld.bossHealth = table.boss.health or 10
+    if tbl.boss then
+        state.currentWorld.bossName = tbl.boss.name or "Boss"
+        state.currentWorld.bossType = tbl.boss.type or "default"
+        state.currentWorld.bossHealth = tbl.boss.health or 10
     end
 
     print("Loaded world: " .. state.currentWorld.name ..
@@ -169,8 +173,11 @@ end
 
 -- Apply the loaded level to the game state
 function levels.applyToGame()
-    local game_logic = require("game_logic")
-    local enemies = require("enemies")
+    local config = app.config
+    local state = app.state
+    local types = app.types
+    local game_logic = app.game_logic
+    local enemies = app.enemies
 
     -- Store the level's max size, but start with initial small grid
     state.levelMaxSize = state.currentLevel.width
@@ -227,6 +234,8 @@ end
 
 -- Update level offset based on current grid size
 function levels.updateOffset()
+    local state = app.state
+
     -- Offset from current grid origin to level origin
     -- As grid expands, offset decreases (we see more of the level)
     state.levelOffsetX = math.floor((state.levelMaxSize - state.gridSize) / 2)
@@ -235,6 +244,9 @@ end
 
 -- Rebuild visible obstacles from level walls
 function levels.rebuildVisibleObstacles()
+    local state = app.state
+    local types = app.types
+
     state.obstacles = {}
 
     -- Convert level walls to current grid coordinates
@@ -253,6 +265,9 @@ end
 
 -- Update world progress after level completion
 function levels.updateWorldProgress()
+    local state = app.state
+    local types = app.types
+
     -- Ensure we have progress for this world
     while #state.saveData.worldProgress <= state.currentWorldIndex do
         local wp = types.WorldProgress()
@@ -281,13 +296,15 @@ end
 
 -- Proceed to next level
 function levels.proceedToNextLevel()
+    local state = app.state
+    local main = app.main
+
     state.currentLevelIndex = state.currentLevelIndex + 1
 
     -- Check if we've completed all levels in the world
     if state.currentLevelIndex >= #state.currentWorld.levelFiles then
         -- World complete! Go to world map
-        local game = require("main")
-        game.transitionTo(GamePhase.WorldMap)
+        main.transitionTo(GamePhase.WorldMap)
         return
     end
 
@@ -295,19 +312,20 @@ function levels.proceedToNextLevel()
     local levelPath = "data/worlds/world1/" .. state.currentWorld.levelFiles[state.currentLevelIndex + 1]
     if levels.loadLevel(levelPath) then
         levels.applyToGame()
-        local game = require("main")
-        game.transitionTo(GamePhase.Playing)
+        main.transitionTo(GamePhase.Playing)
     end
 end
 
 -- Return to world map
 function levels.returnToWorldMap()
-    local game = require("main")
-    game.transitionTo(GamePhase.WorldMap)
+    local main = app.main
+    main.transitionTo(GamePhase.WorldMap)
 end
 
 -- Get total food collected in current world
 function levels.getTotalFoodInCurrentWorld()
+    local state = app.state
+
     if state.currentWorldIndex < #state.saveData.worldProgress then
         return state.saveData.worldProgress[state.currentWorldIndex + 1].totalFoodEarned
     end
@@ -316,6 +334,8 @@ end
 
 -- Check if a level is unlocked
 function levels.isLevelUnlocked(levelIndex)
+    local state = app.state
+
     if levelIndex == 0 then return true end  -- First level always unlocked
 
     if levelIndex >= #state.currentWorld.unlockRequirements then
@@ -328,6 +348,8 @@ end
 
 -- Update world map node statuses
 function levels.updateNodeStatuses()
+    local state = app.state
+
     for i, node in ipairs(state.currentWorld.nodes) do
         node.isUnlocked = levels.isLevelUnlocked(node.levelIndex)
 
@@ -343,6 +365,8 @@ end
 
 -- Update world map animation
 function levels.updateWorldMap(dt)
+    local state = app.state
+
     -- Animate cursor bob
     state.worldMapCursorBob = state.worldMapCursorBob + dt * 4.0
 

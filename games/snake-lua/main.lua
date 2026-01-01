@@ -2,22 +2,26 @@
 -- A complete port of the C++ snake game to Lua using Bestow contracts
 --
 -- Structure:
---   main.lua      - Entry point and game loop
---   config.lua    - Constants and configuration
---   types.lua     - Data structures (GridPos, SnakeSegment, etc.)
---   state.lua     - Game state management
---   input.lua     - Input handling per phase
---   rendering.lua - All drawing functions
---   game_logic.lua - Snake movement, collision, food
---   enemies.lua   - Enemy AI and management
---   levels.lua    - Level/world loading
---   audio.lua     - Sound and music
---   ui.lua        - Menus and HUD
---   camera.lua    - Camera management
---   pixeltext.lua - Pixel font rendering
---   worldmap.lua  - World map rendering
+--   main.lua      - Entry point and game loop (becomes app.main)
+--   config.lua    - Constants and configuration (app.config)
+--   types.lua     - Data structures (app.types)
+--   state.lua     - Game state management (app.state)
+--   input.lua     - Input handling per phase (app.input)
+--   rendering.lua - All drawing functions (app.rendering)
+--   game_logic.lua - Snake movement, collision, food (app.game_logic)
+--   enemies.lua   - Enemy AI and management (app.enemies)
+--   levels.lua    - Level/world loading (app.levels)
+--   audio.lua     - Sound and music (app.audio)
+--   ui.lua        - Menus and HUD (app.ui)
+--   camera.lua    - Camera management (app.camera)
+--   pixeltext.lua - Pixel font rendering (app.pixeltext)
+--   worldmap.lua  - World map rendering (app.worldmap)
+--
+-- All modules are accessed via app.* namespace inside functions for hot-reload support.
+-- Dependencies are NOT required at file scope.
 
 -- Game phases (matching C++ GamePhase enum)
+-- These are GLOBALS so they can be used across all modules
 GamePhase = {
     MainMenu = "MainMenu",
     WorldMap = "WorldMap",
@@ -29,6 +33,7 @@ GamePhase = {
 }
 
 -- Direction enum (matching C++ Direction)
+-- These are GLOBALS so they can be used across all modules
 Direction = {
     Up = "Up",       -- -Z
     Down = "Down",   -- +Z
@@ -36,35 +41,25 @@ Direction = {
     Right = "Right"  -- +X
 }
 
--- Load all modules
-local config = require("config")
-local types = require("types")
-local state = require("state")
-local input = require("input")
-local rendering = require("rendering")
-local game_logic = require("game_logic")
-local enemies = require("enemies")
-local levels = require("levels")
-local audio = require("audio")
-local ui = require("ui")
-local camera = require("camera")
-local pixeltext = require("pixeltext")
-local worldmap = require("worldmap")
-
 -- Main game table
-local game = {
+local main = {
     title = "Snake 3D - Bestow Lua Demo",
     width = 1280,
     height = 720
 }
 
 -- Initialize the game
-function game.init()
+function main.init()
+    local state = app.state
+    local audio = app.audio
+    local levels = app.levels
+    local camera = app.camera
+
     -- Initialize graphics
     local gfxConfig = {
-        windowWidth = game.width,
-        windowHeight = game.height,
-        windowTitle = game.title,
+        windowWidth = main.width,
+        windowHeight = main.height,
+        windowTitle = main.title,
         vsync = true,
         fullscreen = false
     }
@@ -128,10 +123,19 @@ function game.init()
 end
 
 -- Main game loop
-function game.loop()
+function main.loop()
+    local state = app.state
+    local input = app.input
+    local levels = app.levels
+    local game_logic = app.game_logic
+    local enemies = app.enemies
+    local camera = app.camera
+    local rendering = app.rendering
+    local ui = app.ui
+    local worldmap = app.worldmap
+
     local fixedDt = 1.0 / 60.0
     local accumulator = 0.0
-    local lastTime = 0.0
 
     while state.running and not bestow.graphics3d.shouldClose() do
         local dt = bestow.core.deltaTime()
@@ -217,14 +221,19 @@ function game.loop()
 end
 
 -- Cleanup
-function game.cleanup()
+function main.cleanup()
     bestow.input.shutdown()
     bestow.graphics3d.shutdown()
     print("Snake game cleanup complete")
 end
 
 -- Transition to a new game phase
-function game.transitionTo(newPhase)
+function main.transitionTo(newPhase)
+    local state = app.state
+    local audio = app.audio
+    local worldmap = app.worldmap
+    local levels = app.levels
+
     local oldPhase = state.currentPhase
 
     -- Exit current phase
@@ -264,15 +273,15 @@ function game.transitionTo(newPhase)
 end
 
 -- Run the game
-function game.run()
-    if not game.init() then
+function main.run()
+    if not main.init() then
         print("Failed to initialize game")
         return
     end
 
-    game.loop()
-    game.cleanup()
+    main.loop()
+    main.cleanup()
 end
 
--- Export for bestow runtime
-return game
+-- Export for bestow runtime (becomes app.main)
+return main

@@ -35,7 +35,19 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]);
 
 // Forward declarations from GameRunner.cpp
 class GameRunner;
-std::unique_ptr<GameRunner> createGameRunner();
+GameRunner* createGameRunner();
+void destroyGameRunner(GameRunner* runner);
+bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript, bool verbose, bool debug);
+int runGame(GameRunner* runner);
+
+// Custom deleter that calls destroyGameRunner
+struct GameRunnerDeleter {
+    void operator()(GameRunner* runner) const {
+        destroyGameRunner(runner);
+    }
+};
+
+using GameRunnerPtr = std::unique_ptr<GameRunner, GameRunnerDeleter>;
 
 }  // namespace bestow::launcher
 
@@ -48,13 +60,13 @@ namespace bestow::launcher {
 int handleRun(const CommandLineArgs& args) {
     spdlog::info("Bestow Engine - Running game...");
 
-    auto runner = createGameRunner();
-    if (!runner->initialize(args.mainScript, args.verbose, args.debug)) {
+    GameRunnerPtr runner(createGameRunner());
+    if (!initializeRunner(runner.get(), args.mainScript, args.verbose, args.debug)) {
         spdlog::error("Failed to initialize game runner");
         return 1;
     }
 
-    return runner->run();
+    return runGame(runner.get());
 }
 
 int handleGenerateStubs(const CommandLineArgs& args) {

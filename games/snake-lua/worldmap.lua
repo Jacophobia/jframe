@@ -1,15 +1,16 @@
 -- worldmap.lua - World map rendering
--- Matches C++ world map code exactly
-
-local config = require("config")
-local state = require("state")
-local levels = require("levels")
-local pixeltext = require("pixeltext")
+-- Dependencies: app.config, app.state, app.levels, app.pixeltext
+-- (accessed inside functions)
 
 local worldmap = {}
 
 -- Draw the world map
 function worldmap.draw()
+    local config = app.config
+    local state = app.state
+    local levels = app.levels
+    local pixeltext = app.pixeltext
+
     -- Set up isometric camera for world map
     local cam = Camera3D.new()
     local angleRad = math.rad(45.0)
@@ -207,6 +208,9 @@ end
 
 -- Initialize world map (update node states from save data)
 function worldmap.initialize()
+    local state = app.state
+    local levels = app.levels
+
     if state.currentWorldIndex < #state.saveData.worldProgress then
         local progress = state.saveData.worldProgress[state.currentWorldIndex + 1]
         for i, node in ipairs(state.currentWorld.nodes) do

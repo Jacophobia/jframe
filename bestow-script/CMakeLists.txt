@@ -19,7 +19,7 @@ target_link_libraries(bestow-script
         lua
         sol2::sol2
         spdlog::spdlog
-        efsw
+        efsw::efsw
 )
 
 target_compile_features(bestow-script PUBLIC cxx_std_23)

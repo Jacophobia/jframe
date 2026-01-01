@@ -1,14 +1,12 @@
 -- rendering.lua - All drawing functions
--- Matches C++ drawing code exactly
-
-local config = require("config")
-local state = require("state")
-local types = require("types")
+-- Dependencies: app.config, app.state, app.types (accessed inside functions)
 
 local rendering = {}
 
 -- Convert grid position to world position
 function rendering.gridToWorld(pos)
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     return Vec3.new(
         pos.x * config.CELL_SIZE - halfGrid + config.CELL_SIZE * 0.5,
@@ -19,6 +17,8 @@ end
 
 -- Convert float grid position to world position (for smooth enemy movement)
 function rendering.gridToWorldFloat(x, z)
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     return Vec3.new(
         x * config.CELL_SIZE - halfGrid + config.CELL_SIZE * 0.5,
@@ -29,6 +29,7 @@ end
 
 -- Draw the ground plane
 function rendering.drawGround()
+    local state = app.state
     if not state.groundMesh or not state.groundMaterial then return end
 
     -- Ground matches current grid size exactly (instant transition)
@@ -41,6 +42,7 @@ end
 
 -- Draw the snake
 function rendering.drawSnake()
+    local state = app.state
     if not state.cubeMesh then return end
 
     for i, segment in ipairs(state.snake) do
@@ -73,6 +75,7 @@ end
 
 -- Draw obstacles (walls)
 function rendering.drawObstacles()
+    local state = app.state
     if not state.cubeMesh then return end
 
     -- Dark gray/brown obstacle color
@@ -98,6 +101,8 @@ end
 
 -- Draw enemies
 function rendering.drawEnemies()
+    local config = app.config
+    local state = app.state
     if not state.cubeMesh then return end
 
     for _, enemy in ipairs(state.enemies) do
@@ -138,6 +143,7 @@ end
 
 -- Draw enemy health bar
 function rendering.drawEnemyHealthBar(enemy, worldPos)
+    local config = app.config
     -- Health bar above enemy
     local barWidth = config.CELL_SIZE * 0.8
     local barHeight = worldPos.y + config.CELL_SIZE * 0.8
@@ -169,6 +175,8 @@ end
 
 -- Draw detached segments (explosion animation)
 function rendering.drawDetachedSegments()
+    local config = app.config
+    local state = app.state
     if not state.cubeMesh then return end
 
     for _, segment in ipairs(state.detachedSegments) do
@@ -256,6 +264,7 @@ end
 
 -- Draw food pickups (spawned from detached segments)
 function rendering.drawFoodPickups()
+    local state = app.state
     if not state.cubeMesh then return end
 
     for _, pickup in ipairs(state.foodPickups) do
@@ -290,6 +299,8 @@ end
 
 -- Draw main food
 function rendering.drawFood()
+    local config = app.config
+    local state = app.state
     if not state.cubeMesh then return end
     -- Don't draw food when level is complete (it was just collected)
     if state.currentPhase == GamePhase.LevelComplete then return end
@@ -334,6 +345,7 @@ end
 
 -- Draw food collection pop effect
 function rendering.drawFoodPopEffect()
+    local state = app.state
     if state.foodPopTimer <= 0 then return end
 
     -- Draw expanding burst lines from where food was collected
@@ -369,6 +381,8 @@ end
 
 -- Draw grid border
 function rendering.drawGridBorder()
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     local borderColor = Color.new(80, 60, 40, 255)
     local y = 0.05
@@ -398,6 +412,8 @@ end
 
 -- Draw game HUD (food progress bar, snake length indicator)
 function rendering.drawHUD()
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     local hudY = 0.05  -- Just above ground
     local hudZ = -halfGrid - 0.5  -- Behind the play area
@@ -461,6 +477,8 @@ end
 
 -- Draw victory effect for level complete
 function rendering.drawLevelCompleteEffect()
+    local config = app.config
+    local state = app.state
     if state.currentPhase ~= GamePhase.LevelComplete or #state.snake == 0 then return end
 
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5

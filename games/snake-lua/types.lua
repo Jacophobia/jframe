@@ -1,4 +1,5 @@
 -- types.lua - Data structures matching C++ structs
+-- No dependencies - pure utility functions
 
 local types = {}
 

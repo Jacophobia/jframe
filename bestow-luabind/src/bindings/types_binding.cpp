@@ -44,7 +44,8 @@ void bindTypes(sol::state& lua) {
         "dot", [](const Vec2& a, const Vec2& b) { return glm::dot(a, b); }
     );
 
-    // Static constructors
+    // Static constructors / factory
+    lua["Vec2"]["new"] = [](float x, float y) { return Vec2(x, y); };
     lua["Vec2"]["zero"] = []() { return Vec2(0.0f, 0.0f); };
     lua["Vec2"]["one"] = []() { return Vec2(1.0f, 1.0f); };
     lua["Vec2"]["up"] = []() { return Vec2(0.0f, 1.0f); };
@@ -81,7 +82,8 @@ void bindTypes(sol::state& lua) {
         "cross", [](const Vec3& a, const Vec3& b) { return glm::cross(a, b); }
     );
 
-    // Static constructors
+    // Static constructors / factory
+    lua["Vec3"]["new"] = [](float x, float y, float z) { return Vec3(x, y, z); };
     lua["Vec3"]["zero"] = []() { return Vec3(0.0f, 0.0f, 0.0f); };
     lua["Vec3"]["one"] = []() { return Vec3(1.0f, 1.0f, 1.0f); };
     lua["Vec3"]["up"] = []() { return Vec3(0.0f, 1.0f, 0.0f); };
@@ -122,13 +124,17 @@ void bindTypes(sol::state& lua) {
         "inverse", [](const Quat& q) { return glm::inverse(q); }
     );
 
-    // Static constructors
+    // Static constructors / factory
+    lua["Quat"]["new"] = [](float w, float x, float y, float z) { return Quat(w, x, y, z); };
     lua["Quat"]["identity"] = []() { return Quat(1.0f, 0.0f, 0.0f, 0.0f); };
     lua["Quat"]["fromAxisAngle"] = [](const Vec3& axis, float angle) {
         return glm::angleAxis(angle, glm::normalize(axis));
     };
     lua["Quat"]["fromEuler"] = [](float pitch, float yaw, float roll) {
         return glm::quat(Vec3(pitch, yaw, roll));
+    };
+    lua["Quat"]["lookAt"] = [](const Vec3& direction, const Vec3& up) {
+        return glm::quatLookAt(glm::normalize(direction), up);
     };
 
     //=========================================================================
@@ -202,9 +208,12 @@ void bindTypes(sol::state& lua) {
     );
 
     lua["Transform3D"]["identity"] = []() { return Transform3D::identity(); };
-    lua["Transform3D"]["new"] = [](const Vec3& pos, const Quat& rot, const Vec3& scale) {
-        return Transform3D{pos, rot, scale};
-    };
+    lua["Transform3D"]["new"] = sol::overload(
+        []() { return Transform3D::identity(); },
+        [](const Vec3& pos, const Quat& rot, const Vec3& scale) {
+            return Transform3D{pos, rot, scale};
+        }
+    );
 
     //=========================================================================
     // AABB3D

@@ -1,14 +1,13 @@
 -- input.lua - Input handling for each game phase
--- Matches C++ handleInput(), handleMainMenuInput(), etc.
-
-local config = require("config")
-local state = require("state")
-local types = require("types")
+-- Dependencies: app.config, app.state, app.types, app.main, app.levels, app.game_logic, app.audio
+-- (accessed inside functions)
 
 local input = {}
 
 -- Handle input based on current game phase
 function input.handleInput(dt)
+    local state = app.state
+
     if state.currentPhase == GamePhase.MainMenu then
         input.handleMainMenuInput()
     elseif state.currentPhase == GamePhase.WorldMap then
@@ -26,6 +25,10 @@ end
 
 -- Main menu input
 function input.handleMainMenuInput()
+    local config = app.config
+    local state = app.state
+    local audio = app.audio
+
     -- Navigation: Comma (Dvorak W) or Up
     if bestow.input.wasKeyJustPressed(Keys.Comma) or
        bestow.input.wasKeyJustPressed(Keys.Up) then
@@ -33,24 +36,24 @@ function input.handleMainMenuInput()
         if state.mainMenuSelection < 0 then
             state.mainMenuSelection = config.MAIN_MENU_COUNT - 1
         end
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Navigation: O (Dvorak S) or Down
     if bestow.input.wasKeyJustPressed(Keys.O) or
        bestow.input.wasKeyJustPressed(Keys.Down) then
         state.mainMenuSelection = (state.mainMenuSelection + 1) % config.MAIN_MENU_COUNT
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Select: Enter or Space
     if bestow.input.wasKeyJustPressed(Keys.Enter) or
        bestow.input.wasKeyJustPressed(Keys.Space) then
-        -- audio.playSound(state.soundMenuSelect)
+        audio.playMenuSelect()
         if state.mainMenuSelection == config.MAIN_MENU_PLAY then
             -- Transition to world map
-            local game = require("main")
-            game.transitionTo(GamePhase.WorldMap)
+            local main = app.main
+            main.transitionTo(GamePhase.WorldMap)
         elseif state.mainMenuSelection == config.MAIN_MENU_QUIT then
             state.running = false
         end
@@ -59,6 +62,11 @@ end
 
 -- World map input
 function input.handleWorldMapInput()
+    local state = app.state
+    local audio = app.audio
+    local levels = app.levels
+    local main = app.main
+
     if #state.currentWorld.nodes == 0 then return end
 
     local prevSelection = state.selectedNodeIndex
@@ -129,7 +137,7 @@ function input.handleWorldMapInput()
 
     -- Play sound if selection changed
     if state.selectedNodeIndex ~= prevSelection then
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Select level: Enter or Space
@@ -137,34 +145,35 @@ function input.handleWorldMapInput()
        bestow.input.wasKeyJustPressed(Keys.Space) then
         local node = state.currentWorld.nodes[state.selectedNodeIndex + 1]
         if node and node.isUnlocked then
-            -- audio.playSound(state.soundMenuSelect)
+            audio.playMenuSelect()
             state.currentLevelIndex = node.levelIndex
-            local levels = require("levels")
             if levels.loadLevel(state.currentWorld.levelFiles[node.levelIndex + 1]) then
-                local game = require("main")
-                game.transitionTo(GamePhase.Playing)
+                main.transitionTo(GamePhase.Playing)
             end
         end
     end
 
     -- Back to main menu: Escape
     if bestow.input.wasKeyJustPressed(Keys.Escape) then
-        local game = require("main")
-        game.transitionTo(GamePhase.MainMenu)
+        main.transitionTo(GamePhase.MainMenu)
     end
 end
 
 -- Playing input - movement controls
 function input.handlePlayingInput(dt)
+    local state = app.state
+    local types = app.types
+    local levels = app.levels
+    local main = app.main
+    local audio = app.audio
+
     -- Level complete phase - wait for input to proceed
     if state.currentPhase == GamePhase.LevelComplete then
         if bestow.input.wasKeyJustPressed(Keys.Enter) or
            bestow.input.wasKeyJustPressed(Keys.Space) then
-            local levels = require("levels")
             levels.proceedToNextLevel()
         end
         if bestow.input.wasKeyJustPressed(Keys.Escape) then
-            local levels = require("levels")
             levels.returnToWorldMap()
         end
         return
@@ -215,14 +224,20 @@ function input.handlePlayingInput(dt)
     -- Pause: Escape
     if bestow.input.wasKeyJustPressed(Keys.Escape) then
         state.pauseMenuSelection = 0
-        -- audio.playSound(state.soundPause)
-        local game = require("main")
-        game.transitionTo(GamePhase.Paused)
+        audio.playPause()
+        main.transitionTo(GamePhase.Paused)
     end
 end
 
 -- Pause menu input
 function input.handlePauseMenuInput()
+    local config = app.config
+    local state = app.state
+    local main = app.main
+    local game_logic = app.game_logic
+    local levels = app.levels
+    local audio = app.audio
+
     -- Navigation: Comma or Up
     if bestow.input.wasKeyJustPressed(Keys.Comma) or
        bestow.input.wasKeyJustPressed(Keys.Up) then
@@ -230,55 +245,58 @@ function input.handlePauseMenuInput()
         if state.pauseMenuSelection < 0 then
             state.pauseMenuSelection = config.PAUSE_MENU_COUNT - 1
         end
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Navigation: O or Down
     if bestow.input.wasKeyJustPressed(Keys.O) or
        bestow.input.wasKeyJustPressed(Keys.Down) then
         state.pauseMenuSelection = (state.pauseMenuSelection + 1) % config.PAUSE_MENU_COUNT
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Select: Enter or Space
     if bestow.input.wasKeyJustPressed(Keys.Enter) or
        bestow.input.wasKeyJustPressed(Keys.Space) then
-        -- audio.playSound(state.soundMenuSelect)
-        local game = require("main")
+        audio.playMenuSelect()
         if state.pauseMenuSelection == config.PAUSE_MENU_RESUME then
-            game.transitionTo(GamePhase.Playing)
+            main.transitionTo(GamePhase.Playing)
         elseif state.pauseMenuSelection == config.PAUSE_MENU_RESTART then
-            local game_logic = require("game_logic")
             game_logic.restartGame()
-            game.transitionTo(GamePhase.Playing)
+            main.transitionTo(GamePhase.Playing)
         elseif state.pauseMenuSelection == config.PAUSE_MENU_QUIT then
-            local levels = require("levels")
             levels.returnToWorldMap()
         end
     end
 
     -- Resume on Escape
     if bestow.input.wasKeyJustPressed(Keys.Escape) then
-        local game = require("main")
-        game.transitionTo(GamePhase.Playing)
+        main.transitionTo(GamePhase.Playing)
     end
 end
 
 -- Level complete input
 function input.handleLevelCompleteInput()
+    local levels = app.levels
+
     if bestow.input.wasKeyJustPressed(Keys.Enter) or
        bestow.input.wasKeyJustPressed(Keys.Space) then
-        local levels = require("levels")
         levels.proceedToNextLevel()
     end
     if bestow.input.wasKeyJustPressed(Keys.Escape) then
-        local levels = require("levels")
         levels.returnToWorldMap()
     end
 end
 
 -- Game over input
 function input.handleGameOverInput()
+    local config = app.config
+    local state = app.state
+    local main = app.main
+    local game_logic = app.game_logic
+    local levels = app.levels
+    local audio = app.audio
+
     -- Navigation: Comma or Up
     if bestow.input.wasKeyJustPressed(Keys.Comma) or
        bestow.input.wasKeyJustPressed(Keys.Up) then
@@ -286,27 +304,24 @@ function input.handleGameOverInput()
         if state.gameOverMenuSelection < 0 then
             state.gameOverMenuSelection = config.GAME_OVER_COUNT - 1
         end
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Navigation: O or Down
     if bestow.input.wasKeyJustPressed(Keys.O) or
        bestow.input.wasKeyJustPressed(Keys.Down) then
         state.gameOverMenuSelection = (state.gameOverMenuSelection + 1) % config.GAME_OVER_COUNT
-        -- audio.playSound(state.soundMenuMove)
+        audio.playMenuMove()
     end
 
     -- Select: Enter or Space
     if bestow.input.wasKeyJustPressed(Keys.Enter) or
        bestow.input.wasKeyJustPressed(Keys.Space) then
-        -- audio.playSound(state.soundMenuSelect)
-        local game = require("main")
+        audio.playMenuSelect()
         if state.gameOverMenuSelection == config.GAME_OVER_RETRY then
-            local game_logic = require("game_logic")
             game_logic.restartGame()
-            game.transitionTo(GamePhase.Playing)
+            main.transitionTo(GamePhase.Playing)
         elseif state.gameOverMenuSelection == config.GAME_OVER_QUIT then
-            local levels = require("levels")
             levels.returnToWorldMap()
         end
     end

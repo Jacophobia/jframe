@@ -1,14 +1,14 @@
 -- ui.lua - Menus and HUD
--- Matches C++ UI code exactly
-
-local config = require("config")
-local state = require("state")
-local pixeltext = require("pixeltext")
+-- Dependencies: app.config, app.state, app.pixeltext (accessed inside functions)
 
 local ui = {}
 
 -- Draw the main menu
 function ui.drawMainMenu()
+    local config = app.config
+    local state = app.state
+    local pixeltext = app.pixeltext
+
     -- Set up camera for menu view - more top-down angle
     local cam = Camera3D.new()
     cam.fovY = 45.0
@@ -211,6 +211,10 @@ end
 
 -- Draw the pause menu
 function ui.drawPauseMenu()
+    local config = app.config
+    local state = app.state
+    local pixeltext = app.pixeltext
+
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
 
     -- Darken overlay - draw large dark rectangle using multiple lines
@@ -268,6 +272,10 @@ end
 
 -- Draw game over overlay
 function ui.drawGameOverMenu()
+    local config = app.config
+    local state = app.state
+    local pixeltext = app.pixeltext
+
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
 
     -- Darken overlay
@@ -303,6 +311,10 @@ end
 
 -- Draw HUD text labels
 function ui.drawHUDText()
+    local config = app.config
+    local state = app.state
+    local pixeltext = app.pixeltext
+
     if state.currentPhase ~= GamePhase.Playing or state.gameOver then return end
 
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
@@ -327,6 +339,10 @@ end
 
 -- Draw level complete celebration
 function ui.drawLevelCompleteUI()
+    local config = app.config
+    local state = app.state
+    local pixeltext = app.pixeltext
+
     if state.currentPhase ~= GamePhase.LevelComplete or #state.snake == 0 then return end
 
     -- Get snake head position

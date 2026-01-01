@@ -1,5 +1,5 @@
 -- pixeltext.lua - Pixel font rendering
--- Matches C++ pixel font code exactly
+-- No dependencies - pure rendering utility
 
 local pixeltext = {}
 

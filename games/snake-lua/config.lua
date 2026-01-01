@@ -1,5 +1,6 @@
 -- config.lua - Game constants and configuration
 -- Matches the C++ constexpr values exactly
+-- No dependencies - pure data module
 
 local config = {}
 

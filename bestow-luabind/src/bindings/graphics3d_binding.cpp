@@ -124,6 +124,7 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
         "receiveShadows", &PBRMaterial::receiveShadows,
         "castShadows", &PBRMaterial::castShadows
     );
+    lua["PBRMaterial"]["new"] = []() { return PBRMaterial{}; };
 
     // UnlitMaterial struct
     lua.new_usertype<UnlitMaterial>("UnlitMaterial",
@@ -195,6 +196,7 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
         "nearPlane", &Camera3D::nearPlane,
         "farPlane", &Camera3D::farPlane
     );
+    lua["Camera3D"]["new"] = []() { return Camera3D{}; };
 
     // RenderStats struct
     lua.new_usertype<RenderStats>("RenderStats",

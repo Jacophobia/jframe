@@ -538,6 +538,43 @@ function bestow.audio.getMasterVolume() end
 
 ---Stop all sounds
 function bestow.audio.stopAll() end
+
+---Pause all sounds
+function bestow.audio.pauseAll() end
+
+---Resume all sounds
+function bestow.audio.resumeAll() end
+
+---Set group volume
+---@param group string Group name (e.g., "SFX", "Music")
+---@param volume number Volume (0-1)
+function bestow.audio.setGroupVolume(group, volume) end
+
+---Assign a channel to a group
+---@param channel integer Channel handle
+---@param group string Group name
+function bestow.audio.assignChannelToGroup(channel, group) end
+
+---Play sound on a specific channel
+---@param channel integer Channel identifier
+---@param sound ChannelSound Sound configuration
+function bestow.audio.playOnChannel(channel, sound) end
+
+-- Channel constants for playOnChannel
+---@class bestow.audio.Channel
+bestow.audio.Channel = {
+    Music = 0,
+    Ambience = 1,
+    UI = 2,
+}
+
+---@class ChannelSound
+---@field asset AssetHandle Sound asset handle
+---@field volume? number Volume (0-1, default 1)
+---@field pitch? number Pitch multiplier (default 1)
+---@field looping? boolean Loop the sound (default false)
+---@field fadeInTime? number Fade in duration (default 0)
+ChannelSound = {}
 )lua";
     file.close();
 }
@@ -657,6 +694,19 @@ function bestow.physics3d.getCharacterGroundInfo(world, character) end
 ---@param to Vec3
 ---@return RaycastResult|nil
 function bestow.physics3d.raycast(world, from, to) end
+
+---Synchronize entity transforms with physics bodies
+---Updates Transform3D components from physics simulation results
+---@param entities Entity[] Table of entities to sync
+function bestow.physics3d.syncTransforms(entities) end
+
+---Enable or disable debug drawing
+---@param enabled boolean
+function bestow.physics3d.setDebugDraw(enabled) end
+
+---Get physics system statistics
+---@return Physics3DStats
+function bestow.physics3d.getStats() end
 
 ---@class RigidBodyDef
 ---@field motionType string "static"|"dynamic"|"kinematic"

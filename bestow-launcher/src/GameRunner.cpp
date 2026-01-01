@@ -284,9 +284,21 @@ private:
     bool initialized_ = false;
 };
 
-// Factory function for GameRunner
-std::unique_ptr<GameRunner> createGameRunner() {
-    return std::make_unique<GameRunner>();
+// Free functions for main.cpp to use (avoids incomplete type issues with unique_ptr)
+GameRunner* createGameRunner() {
+    return new GameRunner();
+}
+
+void destroyGameRunner(GameRunner* runner) {
+    delete runner;
+}
+
+bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript, bool verbose, bool debug) {
+    return runner->initialize(mainScript, verbose, debug);
+}
+
+int runGame(GameRunner* runner) {
+    return runner->run();
 }
 
 }  // namespace bestow::launcher

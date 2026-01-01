@@ -1,9 +1,5 @@
 -- camera.lua - Camera management
--- Matches C++ camera code exactly
-
-local config = require("config")
-local state = require("state")
-local rendering = require("rendering")
+-- Dependencies: app.config, app.state, app.rendering (accessed inside functions)
 
 local camera = {}
 
@@ -20,6 +16,9 @@ end
 
 -- Update camera position and orientation
 function camera.update(dt)
+    local state = app.state
+    local rendering = app.rendering
+
     if #state.snake > 0 then
         local headWorldPos = rendering.gridToWorld(state.snake[1].pos)
         state.cameraTarget = Vec3.new(
@@ -36,6 +35,8 @@ end
 
 -- Update camera transform (position and rotation)
 function camera.updateTransform(cam)
+    local state = app.state
+
     -- Use smoothly animated camera distance/height
     local angleRad = math.rad(state.cameraAngle)
     local cameraPos = Vec3.new(
@@ -67,6 +68,9 @@ end
 
 -- Update camera zoom based on grid size
 function camera.updateZoom(dt)
+    local config = app.config
+    local state = app.state
+
     -- Use visual grid size for smooth transition during expansion
     local cameraTargetSize = state.isExpanding and state.visualGridSize or state.gridSize
 
@@ -83,6 +87,8 @@ end
 
 -- Update screen shake effect
 function camera.updateScreenShake(dt)
+    local state = app.state
+
     if state.screenShakeTimer > 0 then
         state.screenShakeTimer = state.screenShakeTimer - dt
         local progress = state.screenShakeTimer / state.screenShakeDuration
@@ -101,6 +107,7 @@ end
 
 -- Trigger screen shake effect
 function camera.triggerScreenShake(intensity, duration)
+    local state = app.state
     state.screenShakeIntensity = intensity
     state.screenShakeDuration = duration
     state.screenShakeTimer = duration
@@ -108,6 +115,9 @@ end
 
 -- Update food pop effect
 function camera.updateFoodPop(dt)
+    local config = app.config
+    local state = app.state
+
     if state.foodPopTimer > 0 then
         state.foodPopTimer = state.foodPopTimer - dt
         state.foodPopScale = state.foodPopTimer / config.FOOD_POP_DURATION
@@ -116,6 +126,9 @@ end
 
 -- Trigger food pop effect
 function camera.triggerFoodPop(pos)
+    local config = app.config
+    local state = app.state
+
     state.lastFoodPos = pos
     state.foodPopTimer = config.FOOD_POP_DURATION
     state.foodPopScale = 1.0

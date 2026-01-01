@@ -1,14 +1,15 @@
 -- enemies.lua - Enemy AI and management
--- Matches C++ enemy functions exactly
-
-local config = require("config")
-local state = require("state")
-local types = require("types")
+-- Dependencies: app.config, app.state, app.types, app.game_logic, app.audio, app.main
+-- (accessed inside functions)
 
 local enemies = {}
 
 -- Spawn enemies from the level's enemy zones
 function enemies.spawnFromZones()
+    local config = app.config
+    local state = app.state
+    local types = app.types
+
     state.enemies = {}
 
     for _, zone in ipairs(state.currentLevel.enemyZones) do
@@ -60,6 +61,9 @@ end
 
 -- Update all enemies
 function enemies.update(dt)
+    local config = app.config
+    local state = app.state
+
     if state.gameOver then return end
 
     for _, enemy in ipairs(state.enemies) do
@@ -106,7 +110,9 @@ end
 
 -- Move a single enemy using patrol AI
 function enemies.moveEnemy(enemy)
-    local game_logic = require("game_logic")
+    local config = app.config
+    local types = app.types
+    local game_logic = app.game_logic
 
     -- Collect valid moves within patrol zone
     local validMoves = {}
@@ -155,6 +161,9 @@ end
 
 -- Check if there's an enemy at a position (optionally excluding one)
 function enemies.isEnemyAt(pos, exclude)
+    local state = app.state
+    local types = app.types
+
     for _, enemy in ipairs(state.enemies) do
         if enemy ~= exclude and types.gridPosEquals(enemy.pos, pos) then
             return true
@@ -165,9 +174,13 @@ end
 
 -- Check collisions between enemies and snake
 function enemies.checkSnakeCollision()
+    local state = app.state
+    local types = app.types
+
     if #state.snake == 0 then return end
 
-    local game_logic = require("game_logic")
+    local game_logic = app.game_logic
+    local main = app.main
 
     -- Check if snake head hit any enemy
     local headPos = state.snake[1].pos
@@ -175,8 +188,7 @@ function enemies.checkSnakeCollision()
         if types.gridPosEquals(enemy.pos, headPos) then
             -- Snake head hit enemy = game over with explosion!
             game_logic.explodeSnake()
-            local game = require("main")
-            game.transitionTo(GamePhase.GameOver)
+            main.transitionTo(GamePhase.GameOver)
             return
         end
     end
@@ -195,6 +207,10 @@ end
 
 -- Damage an enemy
 function enemies.damageEnemy(enemy, damage)
+    local config = app.config
+    local state = app.state
+    local audio = app.audio
+
     enemy.currentHealth = enemy.currentHealth - damage
     enemy.isDamaged = true
     enemy.damageFlashTimer = config.ENEMY_DAMAGE_FLASH_DURATION
@@ -202,12 +218,13 @@ function enemies.damageEnemy(enemy, damage)
     enemy.healthBarTimer = config.ENEMY_HEALTH_BAR_DURATION
 
     -- Play hit sound
-    local audio = require("audio")
     audio.playSound(state.soundEnemyHit)
 end
 
 -- Remove dead enemies (called after ring attack or damage)
 function enemies.removeDeadEnemies()
+    local state = app.state
+
     local i = 1
     while i <= #state.enemies do
         if state.enemies[i].currentHealth <= 0 then
@@ -220,6 +237,9 @@ end
 
 -- Get enemy at a specific position (for ring attack damage)
 function enemies.getEnemyAt(pos)
+    local state = app.state
+    local types = app.types
+
     for _, enemy in ipairs(state.enemies) do
         if types.gridPosEquals(enemy.pos, pos) then
             return enemy

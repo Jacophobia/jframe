@@ -1,12 +1,11 @@
 -- audio.lua - Sound and music
--- Matches C++ audio code exactly
-
-local state = require("state")
+-- Dependencies: app.state (accessed inside functions)
 
 local audio = {}
 
 -- Load sound configuration from Lua file
 function audio.loadSoundConfig()
+    local state = app.state
     local configPath = "data/config/sounds.lua"
 
     -- Use bestow config system to parse Lua
@@ -53,10 +52,10 @@ function audio.loadSoundConfig()
 end
 
 -- Try to load a sound effect
-function audio.tryLoadSound(table, key)
-    if not table[key] then return nil end
+function audio.tryLoadSound(tbl, key)
+    if not tbl[key] then return nil end
 
-    local path = table[key]
+    local path = tbl[key]
     print("Loading sound: " .. key .. " -> " .. path)
 
     -- Register and load the sound asset
@@ -69,10 +68,10 @@ function audio.tryLoadSound(table, key)
 end
 
 -- Try to load a music track
-function audio.tryLoadMusic(table, key)
-    if not table[key] then return nil end
+function audio.tryLoadMusic(tbl, key)
+    if not tbl[key] then return nil end
 
-    local path = table[key]
+    local path = tbl[key]
     print("Loading music: " .. key .. " -> " .. path)
 
     -- Register and load the music asset
@@ -86,6 +85,7 @@ end
 
 -- Play a sound effect
 function audio.playSound(sound, volume)
+    local state = app.state
     volume = volume or 1.0
     if not state.soundsLoaded or not sound or not sound:isValid() then return end
 
@@ -99,6 +99,7 @@ end
 
 -- Play a positional sound
 function audio.playSoundPositional(sound, pos, volume)
+    local state = app.state
     volume = volume or 1.0
     if not state.soundsLoaded or not sound or not sound:isValid() then return end
 
@@ -113,6 +114,7 @@ end
 
 -- Play music track
 function audio.playMusicTrack(music, loop, fadeIn)
+    local state = app.state
     loop = (loop == nil) and true or loop
     fadeIn = fadeIn or 1.0
     if not state.soundsLoaded or not music or not music:isValid() then return end
@@ -133,46 +135,57 @@ end
 
 -- Convenience functions for specific sounds
 function audio.playEat()
+    local state = app.state
     audio.playSound(state.soundEat)
 end
 
 function audio.playDeath()
+    local state = app.state
     audio.playSound(state.soundDeath)
 end
 
 function audio.playLevelComplete()
+    local state = app.state
     audio.playSound(state.soundLevelComplete)
 end
 
 function audio.playMenuSelect()
+    local state = app.state
     audio.playSound(state.soundMenuSelect)
 end
 
 function audio.playMenuMove()
+    local state = app.state
     audio.playSound(state.soundMenuMove)
 end
 
 function audio.playEnemyHit()
+    local state = app.state
     audio.playSound(state.soundEnemyHit)
 end
 
 function audio.playChainBreak()
+    local state = app.state
     audio.playSound(state.soundChainBreak)
 end
 
 function audio.playPause()
+    local state = app.state
     audio.playSound(state.soundPause)
 end
 
 function audio.playGameOver()
+    local state = app.state
     audio.playSound(state.soundGameOver)
 end
 
 function audio.playGameMusic()
+    local state = app.state
     audio.playMusicTrack(state.musicGame)
 end
 
 function audio.playMenuMusic()
+    local state = app.state
     audio.playMusicTrack(state.musicMenu)
 end
 

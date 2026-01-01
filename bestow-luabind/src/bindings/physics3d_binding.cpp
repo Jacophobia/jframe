@@ -599,6 +599,21 @@ void bindPhysics3DSystem(sol::state& lua, IPhysics3DSystem& physics) {
     };
 
     //-------------------------------------------------------------------------
+    // Transform Synchronization
+    //-------------------------------------------------------------------------
+
+    physics3dTable["syncTransforms"] = [&physics](sol::table entities) {
+        std::vector<Entity> entityVec;
+        entityVec.reserve(entities.size());
+        for (auto& kv : entities) {
+            if (kv.second.is<Entity>()) {
+                entityVec.push_back(kv.second.as<Entity>());
+            }
+        }
+        physics.syncTransforms(entityVec);
+    };
+
+    //-------------------------------------------------------------------------
     // Debug & Statistics
     //-------------------------------------------------------------------------
 

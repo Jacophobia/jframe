@@ -1,14 +1,12 @@
 -- game_logic.lua - Core snake movement, collision, food mechanics
--- Matches C++ moveSnake(), checkCollision(), spawnFood(), etc.
-
-local config = require("config")
-local state = require("state")
-local types = require("types")
+-- Dependencies: app.config, app.state, app.types, app.enemies, app.levels, app.main
+-- (accessed inside functions)
 
 local game_logic = {}
 
 -- Update game logic (called each fixed timestep)
 function game_logic.update(dt)
+    local state = app.state
     if state.gameOver then return end
 
     -- Update move timer
@@ -24,6 +22,9 @@ end
 
 -- Apply buffered direction change
 function game_logic.applyBufferedInput()
+    local state = app.state
+    local types = app.types
+
     if state.hasBufferedInput then
         if not types.isOppositeDirection(state.nextDirection, state.direction) then
             state.direction = state.nextDirection
@@ -34,6 +35,12 @@ end
 
 -- Move the snake one grid cell
 function game_logic.moveSnake()
+    local config = app.config
+    local state = app.state
+    local types = app.types
+    local enemies = app.enemies
+    local main = app.main
+
     if state.gameOver or #state.snake == 0 then return end
 
     -- Calculate new head position
@@ -60,16 +67,14 @@ function game_logic.moveSnake()
     end
 
     -- Check enemy collision
-    local enemies = require("enemies")
     if enemies.isEnemyAt(newHead) then
         game_logic.triggerGameOver()
         return
     end
 
     -- Check bounds
-    local halfGrid = math.floor(state.gridSize / 2)
-    if newHead.x < -halfGrid or newHead.x >= halfGrid or
-       newHead.z < -halfGrid or newHead.z >= halfGrid then
+    if newHead.x < 0 or newHead.x >= state.gridSize or
+       newHead.z < 0 or newHead.z >= state.gridSize then
         game_logic.triggerGameOver()
         return
     end
@@ -90,7 +95,8 @@ function game_logic.moveSnake()
         game_logic.triggerFoodPop(game_logic.gridToWorld(state.foodPos))
 
         -- Play eat sound
-        -- audio.playSound(state.soundEat)
+        local audio = app.audio
+        audio.playEat()
 
         -- Speed up snake slightly
         state.moveInterval = math.max(config.MIN_MOVE_INTERVAL,
@@ -99,8 +105,7 @@ function game_logic.moveSnake()
         -- Check for level complete
         if state.foodCollected >= state.foodRequired then
             state.segmentsEarnedThisLevel = #state.snake
-            local game = require("main")
-            game.transitionTo(GamePhase.LevelComplete)
+            main.transitionTo(GamePhase.LevelComplete)
             return
         end
 
@@ -123,6 +128,9 @@ end
 
 -- Check if position has obstacle
 function game_logic.isObstacleAt(pos)
+    local state = app.state
+    local types = app.types
+
     for _, obs in ipairs(state.obstacles) do
         if types.gridPosEquals(obs, pos) then
             return true
@@ -133,6 +141,9 @@ end
 
 -- Check if position has snake
 function game_logic.isSnakeAt(pos)
+    local state = app.state
+    local types = app.types
+
     for i, seg in ipairs(state.snake) do
         if types.gridPosEquals(seg.pos, pos) then
             return true
@@ -143,6 +154,9 @@ end
 
 -- Get snake segment index at position (0 if not found)
 function game_logic.getSnakeIndexAt(pos)
+    local state = app.state
+    local types = app.types
+
     for i, seg in ipairs(state.snake) do
         if types.gridPosEquals(seg.pos, pos) then
             return i
@@ -153,6 +167,9 @@ end
 
 -- Detect if a ring is formed when head touches body
 function game_logic.detectRing(headPos)
+    local config = app.config
+    local types = app.types
+
     local result = types.RingResult()
 
     -- Find where head would touch body
@@ -178,6 +195,9 @@ end
 
 -- Calculate cells enclosed by ring using flood fill
 function game_logic.calculateEnclosedCells(ringEndIndex)
+    local state = app.state
+    local types = app.types
+
     local enclosed = {}
 
     -- Get ring boundary positions
@@ -259,7 +279,11 @@ end
 
 -- Execute ring attack on enemies inside ring
 function game_logic.executeRingAttack(ring)
-    local enemies = require("enemies")
+    local config = app.config
+    local state = app.state
+    local types = app.types
+    local enemies = app.enemies
+    local audio = app.audio
 
     -- Damage enemies inside ring
     for _, cell in ipairs(ring.enclosedCells) do
@@ -271,7 +295,7 @@ function game_logic.executeRingAttack(ring)
     end
 
     -- Play sound
-    -- audio.playSound(state.soundEnemyHit)
+    audio.playEnemyHit()
 
     -- Screen shake
     game_logic.triggerScreenShake(0.3, 0.2)
@@ -279,7 +303,10 @@ end
 
 -- Spawn food at valid position
 function game_logic.spawnFood()
-    local halfGrid = math.floor(state.gridSize / 2)
+    local config = app.config
+    local state = app.state
+    local types = app.types
+
     local margin = config.FOOD_EDGE_MARGIN
     local attempts = 0
     local maxAttempts = 100
@@ -308,8 +335,8 @@ function game_logic.spawnFood()
 
     -- Fall back to random position
     while attempts < maxAttempts do
-        local x = math.random(-halfGrid + margin, halfGrid - margin - 1)
-        local z = math.random(-halfGrid + margin, halfGrid - margin - 1)
+        local x = math.random(margin, state.gridSize - margin - 1)
+        local z = math.random(margin, state.gridSize - margin - 1)
         local pos = types.GridPos(x, z)
 
         if game_logic.isValidFoodPosition(pos) then
@@ -322,12 +349,16 @@ function game_logic.spawnFood()
     end
 
     -- Last resort: just place somewhere
-    state.foodPos = types.GridPos(0, 0)
+    state.foodPos = types.GridPos(math.floor(state.gridSize / 2), math.floor(state.gridSize / 2))
     state.foodColor = game_logic.generateRandomColor()
 end
 
 -- Check if food position is valid
 function game_logic.isValidFoodPosition(pos)
+    local config = app.config
+    local state = app.state
+    local enemies = app.enemies
+
     -- Not on snake
     if game_logic.isSnakeAt(pos) then return false end
 
@@ -335,7 +366,6 @@ function game_logic.isValidFoodPosition(pos)
     if game_logic.isObstacleAt(pos) then return false end
 
     -- Not on enemy
-    local enemies = require("enemies")
     if enemies.isEnemyAt(pos) then return false end
 
     -- Minimum distance from snake head
@@ -345,17 +375,100 @@ function game_logic.isValidFoodPosition(pos)
         if dist < config.MIN_FOOD_DISTANCE then return false end
     end
 
+    -- Must be reachable from snake head (BFS)
+    if #state.snake > 0 and not game_logic.isFoodReachable(pos) then
+        return false
+    end
+
     return true
+end
+
+-- Check if food at pos is reachable from snake head via BFS
+function game_logic.isFoodReachable(targetPos)
+    local state = app.state
+    local types = app.types
+
+    if #state.snake == 0 then return true end
+
+    local head = state.snake[1].pos
+
+    -- BFS from head to target
+    local visited = {}
+    local function key(p) return p.x .. "," .. p.z end
+
+    local queue = {head}
+    visited[key(head)] = true
+
+    local directions = {
+        {dx = 0, dz = -1},  -- Up
+        {dx = 0, dz = 1},   -- Down
+        {dx = -1, dz = 0},  -- Left
+        {dx = 1, dz = 0}    -- Right
+    }
+
+    while #queue > 0 do
+        local current = table.remove(queue, 1)
+
+        -- Found target
+        if current.x == targetPos.x and current.z == targetPos.z then
+            return true
+        end
+
+        -- Explore neighbors
+        for _, dir in ipairs(directions) do
+            local nx = current.x + dir.dx
+            local nz = current.z + dir.dz
+
+            -- Wrap around grid
+            if nx < 0 then nx = state.gridSize - 1
+            elseif nx >= state.gridSize then nx = 0 end
+            if nz < 0 then nz = state.gridSize - 1
+            elseif nz >= state.gridSize then nz = 0 end
+
+            local neighbor = types.GridPos(nx, nz)
+            local nkey = key(neighbor)
+
+            if not visited[nkey] then
+                -- Check if walkable (not obstacle, not snake body except we can go through tail area)
+                local blocked = false
+
+                if game_logic.isObstacleAt(neighbor) then
+                    blocked = true
+                end
+
+                -- Snake body blocks (but not tail since it moves)
+                if not blocked then
+                    for i = 1, #state.snake - 1 do
+                        if state.snake[i].pos.x == neighbor.x and state.snake[i].pos.z == neighbor.z then
+                            blocked = true
+                            break
+                        end
+                    end
+                end
+
+                if not blocked then
+                    visited[nkey] = true
+                    table.insert(queue, neighbor)
+                end
+            end
+        end
+    end
+
+    return false
 end
 
 -- Check food pickups at position
 function game_logic.checkFoodPickups(pos)
+    local state = app.state
+    local types = app.types
+    local audio = app.audio
+
     for i = #state.foodPickups, 1, -1 do
         local pickup = state.foodPickups[i]
         if types.gridPosEquals(pickup.pos, pos) then
             -- Eat the pickup
             state.score = state.score + 1
-            -- audio.playSound(state.soundEat)
+            audio.playEat()
             table.remove(state.foodPickups, i)
 
             -- Grow snake
@@ -391,6 +504,7 @@ end
 
 -- Start grid expansion animation
 function game_logic.startExpansion()
+    local state = app.state
     if state.gridSize >= state.levelMaxSize then return end
 
     state.isExpanding = true
@@ -400,16 +514,21 @@ end
 
 -- Finalize grid expansion
 function game_logic.finalizeExpansion()
+    local state = app.state
+    local levels = app.levels
+
     state.gridSize = state.targetGridSize
     state.isExpanding = false
 
     -- Rebuild visible obstacles
-    local levels = require("levels")
     levels.rebuildVisibleObstacles()
 end
 
 -- Update animations
 function game_logic.updateAnimations(dt)
+    local config = app.config
+    local state = app.state
+
     -- Grid expansion
     if state.isExpanding then
         state.expansionTimer = state.expansionTimer + dt
@@ -448,6 +567,10 @@ end
 
 -- Update detached segments physics
 function game_logic.updateDetachedSegments(dt)
+    local config = app.config
+    local state = app.state
+    local types = app.types
+
     for i = #state.detachedSegments, 1, -1 do
         local seg = state.detachedSegments[i]
 
@@ -499,15 +622,22 @@ end
 
 -- Trigger game over
 function game_logic.triggerGameOver()
+    local state = app.state
+    local main = app.main
+    local audio = app.audio
+
     state.gameOver = true
     game_logic.explodeSnake()
-    -- audio.playSound(state.soundDeath)
-    local game = require("main")
-    game.transitionTo(GamePhase.GameOver)
+    audio.playDeath()
+    main.transitionTo(GamePhase.GameOver)
 end
 
 -- Explode snake into particles
 function game_logic.explodeSnake()
+    local config = app.config
+    local state = app.state
+    local types = app.types
+
     for _, seg in ipairs(state.snake) do
         -- Create explosion particles
         local worldPos = game_logic.gridToWorld(seg.pos)
@@ -541,7 +671,12 @@ end
 
 -- Trigger chain break at segment index
 function game_logic.triggerChainBreak(breakIndex)
-    -- audio.playSound(state.soundChainBreak)
+    local config = app.config
+    local state = app.state
+    local types = app.types
+    local audio = app.audio
+
+    audio.playChainBreak()
     game_logic.triggerScreenShake(0.2, 0.15)
 
     -- Detach segments from break point onward
@@ -560,6 +695,7 @@ end
 
 -- Trigger screen shake
 function game_logic.triggerScreenShake(intensity, duration)
+    local state = app.state
     state.screenShakeIntensity = intensity
     state.screenShakeDuration = duration
     state.screenShakeTimer = duration
@@ -567,6 +703,8 @@ end
 
 -- Trigger food pop effect
 function game_logic.triggerFoodPop(worldPos)
+    local config = app.config
+    local state = app.state
     state.lastFoodPos = worldPos
     state.foodPopTimer = config.FOOD_POP_DURATION
     state.foodPopScale = 1.0
@@ -574,6 +712,8 @@ end
 
 -- Convert grid position to world position
 function game_logic.gridToWorld(pos)
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     return Vec3.new(
         pos.x * config.CELL_SIZE - halfGrid + config.CELL_SIZE * 0.5,
@@ -584,6 +724,8 @@ end
 
 -- Convert grid position to world position (float version)
 function game_logic.gridToWorldFloat(x, z)
+    local config = app.config
+    local state = app.state
     local halfGrid = state.gridSize * config.CELL_SIZE * 0.5
     return Vec3.new(
         x * config.CELL_SIZE - halfGrid + config.CELL_SIZE * 0.5,
@@ -594,11 +736,19 @@ end
 
 -- Restart current level
 function game_logic.restartGame()
+    local state = app.state
+    local levels = app.levels
+
     state.reset()
 
     -- Reinitialize from current level
-    local levels = require("levels")
-    levels.applyLevelToGame()
+    levels.applyToGame()
+end
+
+-- Try ring attack (called from input)
+function game_logic.tryRingAttack()
+    -- Ring attack happens automatically when snake forms a ring
+    -- This function is here for potential manual trigger
 end
 
 return game_logic
