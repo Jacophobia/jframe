@@ -197,8 +197,8 @@ function enemies.checkSnakeCollision()
     for _, enemy in ipairs(state.enemies) do
         for i = 2, #state.snake do
             if types.gridPosEquals(enemy.pos, state.snake[i].pos) then
-                -- Chain break at collision point!
-                game_logic.triggerChainBreak(i - 1)  -- Convert to 0-indexed for C++ compatibility
+                -- Chain break at collision point - detach from this segment onward
+                game_logic.triggerChainBreak(i)  -- Lua 1-indexed: detach segments i to end
                 return  -- Only one break per frame
             end
         end

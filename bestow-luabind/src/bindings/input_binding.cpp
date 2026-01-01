@@ -259,6 +259,22 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
+    // Lifecycle Management
+    //-------------------------------------------------------------------------
+
+    inputTable["initialize"] = [&input](void* windowHandle) {
+        input.initialize(windowHandle);
+    };
+
+    inputTable["update"] = [&input]() {
+        input.update();
+    };
+
+    inputTable["shutdown"] = [&input]() {
+        input.shutdown();
+    };
+
+    //-------------------------------------------------------------------------
     // Common key code constants (subset of GLFW key codes)
     // Users can also use raw integer key codes
     //-------------------------------------------------------------------------
@@ -447,7 +463,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     globalKeys["LeftAlt"] = 342;
     globalKeys["RightAlt"] = 346;
 
-    lua["Keys"] = globalKeys;
+    inputTable["Keys"] = globalKeys;
 }
 
 }  // namespace bestow

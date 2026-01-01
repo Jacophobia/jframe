@@ -4,12 +4,51 @@
 
 local levels = {}
 
--- Load a level from a Lua file path
+-- Load a level from a Lua file path or app.* namespace
 function levels.loadLevel(levelPath)
-    -- Use bestow config system to parse Lua
-    local result = bestow.config.parseLuaFile(levelPath)
+    local state = app.state
+
+    -- First, try to find the level in the app.data namespace
+    -- ScriptManager loads data/worlds/forest/level01.lua as app.data.worlds.forest.level01
+    local result = nil
+
+    -- Try to resolve path to app namespace
+    -- e.g., "data/worlds/forest/level01.lua" -> app.data.worlds.forest.level01
+    if type(levelPath) == "string" then
+        local appPath = levelPath
+
+        -- If it's just a filename like "level01.lua", prepend the current world path
+        if not appPath:find("/") then
+            -- Get the world's base path from currentWorld
+            -- The world was loaded from e.g. "data/worlds/forest/world.lua"
+            -- So levels should be in "data/worlds/forest/"
+            local worldTheme = state.currentWorld and state.currentWorld.theme or "forest"
+            appPath = "data/worlds/" .. worldTheme .. "/" .. appPath
+        end
+
+        -- Remove .lua extension and convert path to dots
+        appPath = appPath:gsub("%.lua$", ""):gsub("/", ".")
+
+        -- Navigate the app table
+        local current = app
+        for part in appPath:gmatch("[^.]+") do
+            if current and type(current) == "table" then
+                current = current[part]
+            else
+                current = nil
+                break
+            end
+        end
+        result = current
+    end
+
+    -- Fallback to config system (deprecated path)
+    if not result and bestow.config then
+        result = bestow.config.parseLuaFile(levelPath)
+    end
+
     if not result then
-        print("Failed to load level: " .. levelPath)
+        bestow.error("Failed to load level:", levelPath)
         return false
     end
 
@@ -83,21 +122,46 @@ function levels.parseLevelTable(tbl)
     state.gridSize = state.currentLevel.width
     state.foodRequired = state.currentLevel.foodRequired
 
-    print("Loaded level: " .. state.currentLevel.name ..
-          " (" .. state.currentLevel.width .. "x" .. state.currentLevel.height .. ")" ..
-          " with " .. #state.currentLevel.walls .. " walls, " ..
-          #state.currentLevel.foodSpawnPoints .. " spawn points, " ..
-          #state.currentLevel.enemyZones .. " enemy zones")
+    bestow.info("Loaded level:", state.currentLevel.name,
+          "(" .. state.currentLevel.width .. "x" .. state.currentLevel.height .. ")",
+          "with", #state.currentLevel.walls, "walls,",
+          #state.currentLevel.foodSpawnPoints, "spawn points,",
+          #state.currentLevel.enemyZones, "enemy zones")
 
     return true
 end
 
--- Load a world from a Lua file path
+-- Load a world from a Lua file path or app.* namespace
 function levels.loadWorld(worldPath)
-    -- Use bestow config system to parse Lua
-    local result = bestow.config.parseLuaFile(worldPath)
+    -- First, try to find the world in the app.data namespace
+    -- ScriptManager loads data/worlds/forest/world.lua as app.data.worlds.forest.world
+    local result = nil
+
+    -- Try to resolve path to app namespace
+    -- e.g., "data/worlds/forest/world.lua" -> app.data.worlds.forest.world
+    if type(worldPath) == "string" then
+        -- Remove .lua extension and convert path to dots
+        local appPath = worldPath:gsub("%.lua$", ""):gsub("/", ".")
+        -- Navigate the app table
+        local current = app
+        for part in appPath:gmatch("[^.]+") do
+            if current and type(current) == "table" then
+                current = current[part]
+            else
+                current = nil
+                break
+            end
+        end
+        result = current
+    end
+
+    -- Fallback to config system (deprecated path)
+    if not result and bestow.config then
+        result = bestow.config.parseLuaFile(worldPath)
+    end
+
     if not result then
-        print("Failed to load world: " .. worldPath)
+        bestow.error("Failed to load world:", worldPath)
         return false
     end
 
@@ -163,10 +227,10 @@ function levels.parseWorldTable(tbl)
         state.currentWorld.bossHealth = tbl.boss.health or 10
     end
 
-    print("Loaded world: " .. state.currentWorld.name ..
-          " with " .. #state.currentWorld.levelFiles .. " levels, " ..
-          #state.currentWorld.nodes .. " nodes, " ..
-          #state.currentWorld.paths .. " paths")
+    bestow.info("Loaded world:", state.currentWorld.name,
+          "with", #state.currentWorld.levelFiles, "levels,",
+          #state.currentWorld.nodes, "nodes,",
+          #state.currentWorld.paths, "paths")
 
     return true
 end

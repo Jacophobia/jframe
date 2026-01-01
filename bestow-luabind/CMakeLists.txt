@@ -17,6 +17,8 @@ target_sources(bestow-luabind
         src/bindings/graphics3d_binding.cpp
         src/bindings/animation_binding.cpp
         src/bindings/entity_binding.cpp
+        src/bindings/config_binding.cpp
+        src/bindings/assets_binding.cpp
         src/stubs/StubGenerator.cpp
 )
 
@@ -25,10 +27,16 @@ target_link_libraries(bestow-luabind
         bestow-contract
         bestow-core
     PRIVATE
+        bestow-metrics  # For Tracy profiling support
         lua
         sol2::sol2
         spdlog::spdlog
 )
+
+# Tracy include directory for profiler bindings
+if(BESTOW_ENABLE_TRACY AND TRACY_INCLUDE_DIR)
+    target_include_directories(bestow-luabind PRIVATE "${TRACY_INCLUDE_DIR}")
+endif()
 
 target_compile_features(bestow-luabind PUBLIC cxx_std_23)
 

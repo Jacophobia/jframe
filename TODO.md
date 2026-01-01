@@ -30,38 +30,66 @@ The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 mod
 
 ---
 
+## Config System Deprecation (Added 2026-01-01)
+
+> With the Lua-first architecture (`bestow run main.lua`), the entire game runs in Lua. The ConfigSystem's Lua parsing functionality is now redundant since ScriptManager handles all Lua file loading into the `app.*` namespace.
+
+### Problem
+- ConfigSystem provides `parseLuaFile()` which duplicates ScriptManager's role
+- Games now have two places that interpret Lua: ConfigSystem and ScriptManager
+- This creates confusion and potential inconsistency
+
+### Migration Plan
+1. [ ] Remove `bestow.config.parseLuaFile()` usage from snake-lua game
+   - Replace level loading with direct `app.levels.*` access
+   - Replace world loading with direct `app.worlds.*` access
+2. [ ] Move Lua parsing entirely to ScriptManager
+   - Levels should be loaded as `games/snake-lua/levels/level01.lua` → `app.levels.level01`
+   - Worlds should be loaded as `games/snake-lua/worlds/forest.lua` → `app.worlds.forest`
+3. [ ] Deprecate or remove ConfigSystem's Lua functionality
+   - Keep JSON/user settings functionality if needed
+   - Remove `parseLuaFile()` and `parseLuaString()` methods
+4. [ ] Update documentation to reflect Lua-first approach
+
+### Benefits
+- Single source of truth for Lua parsing (ScriptManager)
+- Hot reload works automatically via ScriptManager's file watcher
+- Simpler mental model for game developers
+
+---
+
 ## Lua Binding System Issues (Identified 2026-01-01)
 
 > Issues discovered during verification of Lua-driven engine implementation.
+> Updated 2026-01-01: Several issues were false positives - stubs already matched bindings.
 
-### Critical - Must Fix
+### Resolved Issues
 
-| Issue | Location | Description | Priority |
-|-------|----------|-------------|----------|
-| **Animation stub API mismatch** | `bestow-luabind/src/stubs/StubGenerator.cpp` | Stubs define OLD entity-centric API (`setAnimation(entity, name)`), but binding uses NEW animator-handle API (`play(animator, clip)`) | CRITICAL |
-| **ScriptManager bypasses AssetSystem** | `bestow-script/src/ScriptManager.cpp:115,291` | Direct `std::ifstream` usage instead of IAssetSystem | MEDIUM |
+| Issue | Status | Notes |
+|-------|--------|-------|
+| ~~Animation stub API mismatch~~ | ✅ FALSE POSITIVE | Stubs already use animator-handle API |
+| ~~Input stubs need Key constants~~ | ✅ FALSE POSITIVE | Keys table already present (lines 451-479) |
+| ~~Missing Physics3D::syncTransforms~~ | ✅ FIXED | Added to `physics3d_binding.cpp` |
+| ~~Audio stubs missing Channel constants~~ | ✅ FIXED | Added `bestow.audio.Channel` table to stubs |
 
-### Medium - Should Fix
+### Remaining Issues
 
 | Issue | Location | Description | Priority |
 |-------|----------|-------------|----------|
 | **Error codes discarded** | `physics3d_binding.cpp`, `graphics3d_binding.cpp`, `animation_binding.cpp` | `Result<T, Error>` returns `nil` on error, losing error code | MEDIUM |
-| **Missing Physics3D::syncTransforms binding** | `physics3d_binding.cpp` | Contract has method but not exposed to Lua | MEDIUM |
-| **Ragdoll creation not bound** | `animation_binding.cpp` | `hasRagdoll`, `getRagdollState` exist but `createRagdoll` missing | MEDIUM |
+| **ScriptManager bypasses AssetSystem** | `bestow-script/src/ScriptManager.cpp:115,291` | Direct `std::ifstream` usage instead of IAssetSystem | LOW (intentional exception) |
 
-### Low - Nice to Have
+### Architectural Limitations (By Design)
 
-| Issue | Location | Description | Priority |
-|-------|----------|-------------|----------|
-| **Audio stubs missing Channel constants** | `StubGenerator.cpp` | `Channels.Music`, `Channels.UI` etc. not documented | LOW |
-| **Input stubs need Key constants** | `StubGenerator.cpp` | Key table exists in binding but not in stubs | LOW |
+| Feature | Reason | Workaround |
+|---------|--------|------------|
+| **Ragdoll creation from Lua** | `createRagdoll()` requires `IPhysics3DSystem&` reference | Call from C++ or extend binding to accept both systems |
+| **Ragdoll activation from Lua** | `activateRagdoll()` requires `IPhysics3DSystem&` reference | Same as above |
 
 ### Recommendations
 
-1. **Fix Animation Stubs** - Update `StubGenerator.cpp` lines 803-879 to match animator-based API
-2. **Add Error Handling Pattern** - Return `(value, nil)` on success, `(nil, errorCode)` on error
-3. **Document ScriptManager Exception** - Either route through AssetSystem or document why direct I/O is acceptable (similar to SaveSystem)
-4. **Bind syncTransforms** - Required for proper physics-entity synchronization
+1. **Add Error Handling Pattern** - Return `(value, nil)` on success, `(nil, errorCode)` on error for better Lua debugging
+2. **Document ScriptManager Exception** - ScriptManager intentionally uses direct file I/O (similar to SaveSystem exception) for hot reload control
 
 ---
 

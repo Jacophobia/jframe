@@ -30,8 +30,8 @@ function input.handleMainMenuInput()
     local audio = app.audio
 
     -- Navigation: Comma (Dvorak W) or Up
-    if bestow.input.wasKeyJustPressed(Keys.Comma) or
-       bestow.input.wasKeyJustPressed(Keys.Up) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Comma) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Up) then
         state.mainMenuSelection = (state.mainMenuSelection - 1) % config.MAIN_MENU_COUNT
         if state.mainMenuSelection < 0 then
             state.mainMenuSelection = config.MAIN_MENU_COUNT - 1
@@ -40,15 +40,15 @@ function input.handleMainMenuInput()
     end
 
     -- Navigation: O (Dvorak S) or Down
-    if bestow.input.wasKeyJustPressed(Keys.O) or
-       bestow.input.wasKeyJustPressed(Keys.Down) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.O) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Down) then
         state.mainMenuSelection = (state.mainMenuSelection + 1) % config.MAIN_MENU_COUNT
         audio.playMenuMove()
     end
 
     -- Select: Enter or Space
-    if bestow.input.wasKeyJustPressed(Keys.Enter) or
-       bestow.input.wasKeyJustPressed(Keys.Space) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
         audio.playMenuSelect()
         if state.mainMenuSelection == config.MAIN_MENU_PLAY then
             -- Transition to world map
@@ -108,29 +108,29 @@ function input.handleWorldMapInput()
     end
 
     -- Up: Comma (Dvorak W) or Up Arrow
-    if bestow.input.wasKeyJustPressed(Keys.Comma) or
-       bestow.input.wasKeyJustPressed(Keys.Up) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Comma) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Up) then
         local node = findNodeInDirection(0, -1)
         if node >= 0 then state.selectedNodeIndex = node end
     end
 
     -- Down: O (Dvorak S) or Down Arrow
-    if bestow.input.wasKeyJustPressed(Keys.O) or
-       bestow.input.wasKeyJustPressed(Keys.Down) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.O) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Down) then
         local node = findNodeInDirection(0, 1)
         if node >= 0 then state.selectedNodeIndex = node end
     end
 
     -- Left: A or Left Arrow
-    if bestow.input.wasKeyJustPressed(Keys.A) or
-       bestow.input.wasKeyJustPressed(Keys.Left) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.A) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Left) then
         local node = findNodeInDirection(-1, 0)
         if node >= 0 then state.selectedNodeIndex = node end
     end
 
     -- Right: E (Dvorak D) or Right Arrow
-    if bestow.input.wasKeyJustPressed(Keys.E) or
-       bestow.input.wasKeyJustPressed(Keys.Right) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.E) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Right) then
         local node = findNodeInDirection(1, 0)
         if node >= 0 then state.selectedNodeIndex = node end
     end
@@ -141,20 +141,21 @@ function input.handleWorldMapInput()
     end
 
     -- Select level: Enter or Space
-    if bestow.input.wasKeyJustPressed(Keys.Enter) or
-       bestow.input.wasKeyJustPressed(Keys.Space) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
         local node = state.currentWorld.nodes[state.selectedNodeIndex + 1]
         if node and node.isUnlocked then
             audio.playMenuSelect()
             state.currentLevelIndex = node.levelIndex
             if levels.loadLevel(state.currentWorld.levelFiles[node.levelIndex + 1]) then
+                levels.applyToGame()  -- Apply level to game state (create snake, obstacles, food)
                 main.transitionTo(GamePhase.Playing)
             end
         end
     end
 
     -- Back to main menu: Escape
-    if bestow.input.wasKeyJustPressed(Keys.Escape) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Escape) then
         main.transitionTo(GamePhase.MainMenu)
     end
 end
@@ -169,11 +170,11 @@ function input.handlePlayingInput(dt)
 
     -- Level complete phase - wait for input to proceed
     if state.currentPhase == GamePhase.LevelComplete then
-        if bestow.input.wasKeyJustPressed(Keys.Enter) or
-           bestow.input.wasKeyJustPressed(Keys.Space) then
+        if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+           bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
             levels.proceedToNextLevel()
         end
-        if bestow.input.wasKeyJustPressed(Keys.Escape) then
+        if bestow.input.wasKeyJustPressed(bestow.input.Keys.Escape) then
             levels.returnToWorldMap()
         end
         return
@@ -186,8 +187,8 @@ function input.handlePlayingInput(dt)
 
     -- Direction input (Dvorak-friendly: ,AOE instead of WASD)
     -- Up: Comma (Dvorak W) or Up Arrow
-    if bestow.input.wasKeyJustPressed(Keys.Comma) or
-       bestow.input.wasKeyJustPressed(Keys.Up) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Comma) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Up) then
         if not types.isOppositeDirection(Direction.Up, state.direction) then
             state.nextDirection = Direction.Up
             state.hasBufferedInput = true
@@ -195,8 +196,8 @@ function input.handlePlayingInput(dt)
     end
 
     -- Down: O (Dvorak S) or Down Arrow
-    if bestow.input.wasKeyJustPressed(Keys.O) or
-       bestow.input.wasKeyJustPressed(Keys.Down) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.O) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Down) then
         if not types.isOppositeDirection(Direction.Down, state.direction) then
             state.nextDirection = Direction.Down
             state.hasBufferedInput = true
@@ -204,8 +205,8 @@ function input.handlePlayingInput(dt)
     end
 
     -- Left: A or Left Arrow
-    if bestow.input.wasKeyJustPressed(Keys.A) or
-       bestow.input.wasKeyJustPressed(Keys.Left) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.A) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Left) then
         if not types.isOppositeDirection(Direction.Left, state.direction) then
             state.nextDirection = Direction.Left
             state.hasBufferedInput = true
@@ -213,8 +214,8 @@ function input.handlePlayingInput(dt)
     end
 
     -- Right: E (Dvorak D) or Right Arrow
-    if bestow.input.wasKeyJustPressed(Keys.E) or
-       bestow.input.wasKeyJustPressed(Keys.Right) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.E) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Right) then
         if not types.isOppositeDirection(Direction.Right, state.direction) then
             state.nextDirection = Direction.Right
             state.hasBufferedInput = true
@@ -222,7 +223,7 @@ function input.handlePlayingInput(dt)
     end
 
     -- Pause: Escape
-    if bestow.input.wasKeyJustPressed(Keys.Escape) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Escape) then
         state.pauseMenuSelection = 0
         audio.playPause()
         main.transitionTo(GamePhase.Paused)
@@ -239,8 +240,8 @@ function input.handlePauseMenuInput()
     local audio = app.audio
 
     -- Navigation: Comma or Up
-    if bestow.input.wasKeyJustPressed(Keys.Comma) or
-       bestow.input.wasKeyJustPressed(Keys.Up) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Comma) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Up) then
         state.pauseMenuSelection = (state.pauseMenuSelection - 1) % config.PAUSE_MENU_COUNT
         if state.pauseMenuSelection < 0 then
             state.pauseMenuSelection = config.PAUSE_MENU_COUNT - 1
@@ -249,15 +250,15 @@ function input.handlePauseMenuInput()
     end
 
     -- Navigation: O or Down
-    if bestow.input.wasKeyJustPressed(Keys.O) or
-       bestow.input.wasKeyJustPressed(Keys.Down) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.O) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Down) then
         state.pauseMenuSelection = (state.pauseMenuSelection + 1) % config.PAUSE_MENU_COUNT
         audio.playMenuMove()
     end
 
     -- Select: Enter or Space
-    if bestow.input.wasKeyJustPressed(Keys.Enter) or
-       bestow.input.wasKeyJustPressed(Keys.Space) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
         audio.playMenuSelect()
         if state.pauseMenuSelection == config.PAUSE_MENU_RESUME then
             main.transitionTo(GamePhase.Playing)
@@ -270,7 +271,7 @@ function input.handlePauseMenuInput()
     end
 
     -- Resume on Escape
-    if bestow.input.wasKeyJustPressed(Keys.Escape) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Escape) then
         main.transitionTo(GamePhase.Playing)
     end
 end
@@ -279,11 +280,11 @@ end
 function input.handleLevelCompleteInput()
     local levels = app.levels
 
-    if bestow.input.wasKeyJustPressed(Keys.Enter) or
-       bestow.input.wasKeyJustPressed(Keys.Space) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
         levels.proceedToNextLevel()
     end
-    if bestow.input.wasKeyJustPressed(Keys.Escape) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Escape) then
         levels.returnToWorldMap()
     end
 end
@@ -298,8 +299,8 @@ function input.handleGameOverInput()
     local audio = app.audio
 
     -- Navigation: Comma or Up
-    if bestow.input.wasKeyJustPressed(Keys.Comma) or
-       bestow.input.wasKeyJustPressed(Keys.Up) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Comma) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Up) then
         state.gameOverMenuSelection = (state.gameOverMenuSelection - 1) % config.GAME_OVER_COUNT
         if state.gameOverMenuSelection < 0 then
             state.gameOverMenuSelection = config.GAME_OVER_COUNT - 1
@@ -308,15 +309,15 @@ function input.handleGameOverInput()
     end
 
     -- Navigation: O or Down
-    if bestow.input.wasKeyJustPressed(Keys.O) or
-       bestow.input.wasKeyJustPressed(Keys.Down) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.O) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Down) then
         state.gameOverMenuSelection = (state.gameOverMenuSelection + 1) % config.GAME_OVER_COUNT
         audio.playMenuMove()
     end
 
     -- Select: Enter or Space
-    if bestow.input.wasKeyJustPressed(Keys.Enter) or
-       bestow.input.wasKeyJustPressed(Keys.Space) then
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.Enter) or
+       bestow.input.wasKeyJustPressed(bestow.input.Keys.Space) then
         audio.playMenuSelect()
         if state.gameOverMenuSelection == config.GAME_OVER_RETRY then
             game_logic.restartGame()

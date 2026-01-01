@@ -221,38 +221,32 @@ function rendering.drawDetachedSegments()
 
         -- Color: particles keep their original color, regular segments flash
         local mat = PBRMaterial.new()
+        local colorR, colorG, colorB = 0.5, 0.5, 0.5  -- Default color for emissive calculation
         if segment.isParticle then
             -- Particles keep segment color, fade to ember glow near end
             local fadeStart = 1.0
             local colorAlpha = segment.timer < fadeStart and (segment.timer / fadeStart) or 1.0
             local emberBlend = 1.0 - colorAlpha
-            mat.baseColorFactor = Color.new(
-                segment.color[1] * colorAlpha + 0.8 * emberBlend,
-                segment.color[2] * colorAlpha + 0.2 * emberBlend,
-                segment.color[3] * colorAlpha + 0.1 * emberBlend,
-                1.0
-            )
+            colorR = segment.color[1] * colorAlpha + 0.8 * emberBlend
+            colorG = segment.color[2] * colorAlpha + 0.2 * emberBlend
+            colorB = segment.color[3] * colorAlpha + 0.1 * emberBlend
+            mat.baseColorFactor = Color.new(colorR, colorG, colorB, 1.0)
             mat.emissiveFactor = Vec3.new(0.2 * emberBlend, 0.05 * emberBlend, 0.0)
         elseif segment.willShatter then
             local progress = 1.0 - (segment.timer / config.DETACH_ANIMATION_TIME)
             local flash = math.sin(progress * 30.0) > 0 and 1.0 or 0.3
-            mat.baseColorFactor = Color.new(flash, 0.1, 0.1, 1.0)
+            colorR, colorG, colorB = flash, 0.1, 0.1
+            mat.baseColorFactor = Color.new(colorR, colorG, colorB, 1.0)
         else
-            mat.baseColorFactor = Color.new(
-                segment.color[1],
-                segment.color[2],
-                segment.color[3],
-                1.0
-            )
+            colorR = segment.color[1]
+            colorG = segment.color[2]
+            colorB = segment.color[3]
+            mat.baseColorFactor = Color.new(colorR, colorG, colorB, 1.0)
         end
         mat.roughnessFactor = 0.4
         mat.metallicFactor = 0.1
         if not segment.isParticle then
-            mat.emissiveFactor = Vec3.new(
-                mat.baseColorFactor.r * 0.2,
-                mat.baseColorFactor.g * 0.2,
-                mat.baseColorFactor.b * 0.2
-            )
+            mat.emissiveFactor = Vec3.new(colorR * 0.2, colorG * 0.2, colorB * 0.2)
         end
 
         local matHandle = bestow.graphics3d.createMaterial(mat)

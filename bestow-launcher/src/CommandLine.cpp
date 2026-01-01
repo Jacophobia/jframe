@@ -20,6 +20,7 @@ struct CommandLineArgs {
     Command command = Command::None;
     std::filesystem::path mainScript;
     std::filesystem::path outputDir;
+    std::filesystem::path assetLibraryPath;
     std::string projectName;
     bool verbose = false;
     bool debug = false;
@@ -39,11 +40,13 @@ void printUsage(const char* programName) {
     spdlog::info("  help                Show this help message");
     spdlog::info("");
     spdlog::info("Options:");
-    spdlog::info("  -v, --verbose       Enable verbose logging");
-    spdlog::info("  -d, --debug         Enable debug mode (no hot reload, extra logging)");
+    spdlog::info("  -v, --verbose              Enable verbose logging");
+    spdlog::info("  -d, --debug                Enable debug mode (no hot reload, extra logging)");
+    spdlog::info("  --asset-library <path>     Path to asset library (default: auto-detect)");
     spdlog::info("");
     spdlog::info("Examples:");
     spdlog::info("  {} run games/my-game/main.lua", programName);
+    spdlog::info("  {} run main.lua --asset-library /path/to/asset-library", programName);
     spdlog::info("  {} generate-stubs sdk/stubs/", programName);
     spdlog::info("  {} new my-platformer", programName);
     spdlog::info("");
@@ -77,6 +80,15 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
         if (arg == "-d" || arg == "--debug") {
             args.debug = true;
             ++i;
+            continue;
+        }
+        if (arg == "--asset-library") {
+            if (i + 1 >= argc) {
+                spdlog::error("--asset-library requires a path");
+                return std::nullopt;
+            }
+            args.assetLibraryPath = argv[i + 1];
+            i += 2;
             continue;
         }
 

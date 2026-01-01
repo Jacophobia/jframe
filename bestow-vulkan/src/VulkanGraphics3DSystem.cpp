@@ -3086,9 +3086,18 @@ void VulkanGraphics3DSystem::createPipelines() {
     auto basic3dVertHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.vert");
     auto basic3dFragHandle = pIAssetSystem_->loadShaderCompiled(":library:/shaders/basic3d.frag");
 
+    spdlog::debug("[Vulkan] basic3d vert loaded: {}, frag loaded: {}",
+                  pIAssetSystem_->isLoaded(basic3dVertHandle),
+                  pIAssetSystem_->isLoaded(basic3dFragHandle));
+
     if (pIAssetSystem_->isLoaded(basic3dVertHandle) && pIAssetSystem_->isLoaded(basic3dFragHandle)) {
         const ShaderData* basic3dVert = pIAssetSystem_->getShaderData(basic3dVertHandle);
         const ShaderData* basic3dFrag = pIAssetSystem_->getShaderData(basic3dFragHandle);
+
+        spdlog::debug("[Vulkan] basic3d vert ptr: {}, frag ptr: {}, vert spirv size: {}, frag spirv size: {}",
+                      (void*)basic3dVert, (void*)basic3dFrag,
+                      basic3dVert ? basic3dVert->spirvBytecode.size() : 0,
+                      basic3dFrag ? basic3dFrag->spirvBytecode.size() : 0);
 
         if (basic3dVert && basic3dFrag && !basic3dVert->spirvBytecode.empty() && !basic3dFrag->spirvBytecode.empty()) {
             VulkanPipelineDef pbrDef;
@@ -3121,10 +3130,13 @@ void VulkanGraphics3DSystem::createPipelines() {
             if (result) {
                 pbrPipeline_ = *result;
                 unlitPipeline_ = *result;  // Use same pipeline for now
+                spdlog::info("[Vulkan] Created PBR/basic3d pipeline");
             } else {
-                std::fprintf(stderr, "[Vulkan] Failed to create PBR pipeline\n");
+                spdlog::error("[Vulkan] Failed to create PBR pipeline");
             }
         }
+    } else {
+        spdlog::warn("[Vulkan] basic3d shaders not loaded, skipping PBR pipeline");
     }
 
     // Create skinned mesh pipeline for skeletal animation (with texture support)

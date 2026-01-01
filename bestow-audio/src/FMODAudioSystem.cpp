@@ -352,6 +352,10 @@ void FMODAudioSystem::playOnChannel(Channel channel, const ChannelSound& sound) 
     // Set pitch
     FMOD_Channel_SetPitch(channelData.fmodChannel, sound.pitch);
 
+    // Set loop mode on channel (critical: sound cache may have wrong mode)
+    FMOD_Channel_SetMode(channelData.fmodChannel,
+                         sound.looping ? FMOD_LOOP_NORMAL : FMOD_LOOP_OFF);
+
     // Set start time if specified
     if (sound.startTime.has_value()) {
         unsigned int positionMs = static_cast<unsigned int>(sound.startTime.value() * 1000.0f);

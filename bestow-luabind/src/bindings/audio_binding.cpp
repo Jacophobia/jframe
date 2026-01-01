@@ -70,7 +70,38 @@ void bindAudioSystem(sol::state& lua, IAudioSystem& audio) {
     // Channel-Based Audio
     //-------------------------------------------------------------------------
 
-    audioTable["playOnChannel"] = [&audio](Channel channel, const ChannelSound& sound) {
+    // playOnChannel accepts either ChannelSound userdata or a Lua table
+    audioTable["playOnChannel"] = [&audio](Channel channel, sol::object soundObj) {
+        ChannelSound sound;
+
+        if (soundObj.is<ChannelSound>()) {
+            // Already a ChannelSound userdata
+            sound = soundObj.as<ChannelSound>();
+        } else if (soundObj.is<sol::table>()) {
+            // Construct from Lua table
+            sol::table tbl = soundObj.as<sol::table>();
+            if (tbl["asset"].valid()) {
+                sound.asset = tbl["asset"].get<AssetHandle>();
+            }
+            if (tbl["volume"].valid()) {
+                sound.volume = tbl["volume"].get<float>();
+            }
+            if (tbl["pitch"].valid()) {
+                sound.pitch = tbl["pitch"].get<float>();
+            }
+            if (tbl["looping"].valid()) {
+                sound.looping = tbl["looping"].get<bool>();
+            }
+            if (tbl["fadeInTime"].valid()) {
+                sound.fadeInTime = tbl["fadeInTime"].get<float>();
+            }
+        } else {
+            spdlog::error("[Audio] playOnChannel: expected ChannelSound or table");
+            return;
+        }
+
+        spdlog::debug("[Audio] playOnChannel: channel={}, looping={}",
+                      static_cast<int>(channel), sound.looping);
         audio.playOnChannel(channel, sound);
     };
 
@@ -115,7 +146,37 @@ void bindAudioSystem(sol::state& lua, IAudioSystem& audio) {
     // Positional Audio
     //-------------------------------------------------------------------------
 
-    audioTable["playPositional"] = [&audio](const PositionalSound& sound) {
+    // playPositional accepts either PositionalSound userdata or a Lua table
+    audioTable["playPositional"] = [&audio](sol::object soundObj) -> SoundHandle {
+        PositionalSound sound;
+
+        if (soundObj.is<PositionalSound>()) {
+            sound = soundObj.as<PositionalSound>();
+        } else if (soundObj.is<sol::table>()) {
+            sol::table tbl = soundObj.as<sol::table>();
+            if (tbl["asset"].valid()) {
+                sound.asset = tbl["asset"].get<AssetHandle>();
+            }
+            if (tbl["position"].valid()) {
+                sound.position = tbl["position"].get<Vec3>();
+            }
+            if (tbl["volume"].valid()) {
+                sound.volume = tbl["volume"].get<float>();
+            }
+            if (tbl["pitch"].valid()) {
+                sound.pitch = tbl["pitch"].get<float>();
+            }
+            if (tbl["minDistance"].valid()) {
+                sound.minDistance = tbl["minDistance"].get<float>();
+            }
+            if (tbl["maxDistance"].valid()) {
+                sound.maxDistance = tbl["maxDistance"].get<float>();
+            }
+        } else {
+            spdlog::error("[Audio] playPositional: expected PositionalSound or table");
+            return SoundHandle{};
+        }
+
         return audio.playPositional(sound);
     };
 
@@ -177,6 +238,22 @@ void bindAudioSystem(sol::state& lua, IAudioSystem& audio) {
 
     audioTable["assignChannelToGroup"] = [&audio](Channel channel, const std::string& group) {
         audio.assignChannelToGroup(channel, group);
+    };
+
+    //-------------------------------------------------------------------------
+    // Lifecycle Management
+    //-------------------------------------------------------------------------
+
+    audioTable["initialize"] = [&audio]() {
+        audio.initialize();
+    };
+
+    audioTable["update"] = [&audio](float dt) {
+        audio.update(dt);
+    };
+
+    audioTable["shutdown"] = [&audio]() {
+        audio.shutdown();
     };
 
     //-------------------------------------------------------------------------

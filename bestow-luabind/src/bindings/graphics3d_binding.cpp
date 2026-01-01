@@ -106,7 +106,18 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
     // PBRMaterial struct
     lua.new_usertype<PBRMaterial>("PBRMaterial",
         sol::constructors<PBRMaterial()>(),
-        "baseColorFactor", &PBRMaterial::baseColorFactor,
+        // Accept both Vec4 and Color for baseColorFactor
+        "baseColorFactor", sol::property(
+            [](const PBRMaterial& m) { return m.baseColorFactor; },
+            [](PBRMaterial& m, sol::object value) {
+                if (value.is<Vec4>()) {
+                    m.baseColorFactor = value.as<Vec4>();
+                } else if (value.is<Color>()) {
+                    Color c = value.as<Color>();
+                    m.baseColorFactor = Vec4(c.r / 255.0f, c.g / 255.0f, c.b / 255.0f, c.a / 255.0f);
+                }
+            }
+        ),
         "baseColorTexture", &PBRMaterial::baseColorTexture,
         "metallicFactor", &PBRMaterial::metallicFactor,
         "roughnessFactor", &PBRMaterial::roughnessFactor,
@@ -258,6 +269,18 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
         "layer", &Text3DItem::layer
     );
 
+    // Graphics3DConfig struct
+    lua.new_usertype<Graphics3DConfig>("Graphics3DConfig",
+        sol::constructors<Graphics3DConfig()>(),
+        "windowWidth", &Graphics3DConfig::windowWidth,
+        "windowHeight", &Graphics3DConfig::windowHeight,
+        "windowTitle", &Graphics3DConfig::windowTitle,
+        "vsync", &Graphics3DConfig::vsync,
+        "fullscreen", &Graphics3DConfig::fullscreen,
+        "enableValidation", &Graphics3DConfig::enableValidation,
+        "nativeWindowHandle", &Graphics3DConfig::nativeWindowHandle
+    );
+
     //=========================================================================
     // bestow.graphics3d table
     //=========================================================================
@@ -268,6 +291,25 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
     //-------------------------------------------------------------------------
     // Lifecycle
     //-------------------------------------------------------------------------
+
+    gfxTable["initialize"] = [&graphics](sol::table configTable) {
+        Graphics3DConfig config{};
+        config.windowWidth = configTable.get_or("windowWidth", 1280);
+        config.windowHeight = configTable.get_or("windowHeight", 720);
+        config.windowTitle = configTable.get_or("windowTitle", std::string("Bestow"));
+        config.vsync = configTable.get_or("vsync", true);
+        config.fullscreen = configTable.get_or("fullscreen", false);
+        config.enableValidation = configTable.get_or("enableValidation", false);
+        return graphics.initialize(config);
+    };
+
+    gfxTable["shutdown"] = [&graphics]() {
+        graphics.shutdown();
+    };
+
+    gfxTable["getNativeWindowHandle"] = [&graphics]() {
+        return graphics.getNativeWindowHandle();
+    };
 
     gfxTable["isInitialized"] = [&graphics]() {
         return graphics.isInitialized();
@@ -464,7 +506,23 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
     // Lighting
     //-------------------------------------------------------------------------
 
-    gfxTable["setDirectionalLight"] = [&graphics](const DirectionalLight& light) {
+    gfxTable["setDirectionalLight"] = [&graphics](sol::table lightTable) {
+        DirectionalLight light;
+        if (lightTable["direction"].valid()) {
+            light.direction = lightTable["direction"].get<Vec3>();
+        }
+        if (lightTable["color"].valid()) {
+            light.color = lightTable["color"].get<Vec3>();
+        }
+        if (lightTable["intensity"].valid()) {
+            light.intensity = lightTable["intensity"].get<float>();
+        }
+        if (lightTable["castShadows"].valid()) {
+            light.castShadows = lightTable["castShadows"].get<bool>();
+        }
+        if (lightTable["shadowMapResolution"].valid()) {
+            light.shadowMapResolution = lightTable["shadowMapResolution"].get<int>();
+        }
         graphics.setDirectionalLight(light);
     };
 

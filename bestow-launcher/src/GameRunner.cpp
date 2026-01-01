@@ -7,8 +7,19 @@
 import std;
 import bestow.core;
 import bestow.services;
+import bestow.types;      // PathResolver
 import bestow.script;
 import bestow.luabind;
+
+// System implementations
+import bestow.entity.impl;    // EntitySystem
+import bestow.events.impl;    // EventSystem
+import bestow.input.impl;     // InputSystem
+import bestow.assets.impl;    // AssetSystem
+import bestow.config.impl;    // ConfigSystem
+import bestow.vulkan.impl;    // VulkanGraphics3DSystem
+import bestow.audio.impl;     // FMODAudioSystem
+import bestow.animation.impl; // AnimationSystem
 
 namespace bestow::launcher {
 
@@ -18,9 +29,12 @@ public:
     ~GameRunner() = default;
 
     /// Initialize the engine with all default systems
-    bool initialize(const std::filesystem::path& mainScript, bool verbose, bool debugMode) {
+    bool initialize(const std::filesystem::path& mainScript,
+                    const std::filesystem::path& assetLibraryPath,
+                    bool verbose, bool debugMode) {
         mainScript_ = mainScript;
         gameRoot_ = mainScript.parent_path();
+        assetLibraryPath_ = assetLibraryPath;
         verbose_ = verbose;
         debugMode_ = debugMode;
 
@@ -31,6 +45,9 @@ public:
         spdlog::info("[GameRunner] Initializing Bestow Engine...");
         spdlog::info("[GameRunner] Game root: {}", gameRoot_.string());
         spdlog::info("[GameRunner] Main script: {}", mainScript_.string());
+
+        // Initialize PathResolver with library path
+        initializePathResolver();
 
         // Register all default systems
         registerDefaultSystems();
@@ -124,33 +141,76 @@ public:
     }
 
 private:
+    void initializePathResolver() {
+        PathResolver::initialize();
+
+        std::filesystem::path libraryPath;
+
+        // If asset library path was explicitly provided, use it
+        if (!assetLibraryPath_.empty()) {
+            if (std::filesystem::exists(assetLibraryPath_)) {
+                libraryPath = assetLibraryPath_;
+            } else {
+                spdlog::error("[GameRunner] Specified asset-library path does not exist: {}",
+                              assetLibraryPath_.string());
+                libraryPath = assetLibraryPath_;  // Use it anyway, might be created later
+            }
+        } else {
+            // Auto-detect library path
+            auto cwd = std::filesystem::current_path();
+
+            // Look for library assets in order of preference:
+            // 1. "library/" - copied by CMake build (preferred for build output)
+            // 2. "asset-library/" - source repo location
+            // 3. Search up from cwd for asset-library
+            if (std::filesystem::exists(cwd / "library")) {
+                libraryPath = cwd / "library";
+            } else if (std::filesystem::exists(cwd / "asset-library")) {
+                libraryPath = cwd / "asset-library";
+            } else if (std::filesystem::exists(cwd.parent_path().parent_path().parent_path() / "asset-library")) {
+                // Running from build/macos-debug/bestow-launcher/
+                libraryPath = cwd.parent_path().parent_path().parent_path() / "asset-library";
+            } else {
+                spdlog::warn("[GameRunner] Could not find asset-library directory from cwd: {}", cwd.string());
+                spdlog::warn("[GameRunner] Use --asset-library <path> to specify the location");
+                libraryPath = cwd / "asset-library";  // Fallback
+            }
+        }
+
+        spdlog::info("[GameRunner] Using library path: {}", libraryPath.string());
+        PathResolver::setLibraryPath(libraryPath.string());
+
+        // Set assets path to game root
+        spdlog::info("[GameRunner] Using assets path: {}", gameRoot_.string());
+        PathResolver::setAssetsPath(gameRoot_.string());
+    }
+
     void registerDefaultSystems() {
         spdlog::debug("[GameRunner] Registering default systems...");
 
         // Register entity system first (foundation for all other systems)
-        // engine_.use<IEntitySystem, EntitySystem>();
+        engine_.use<IEntitySystem, EntitySystem>();
 
         // Register event system
-        // engine_.use<IEventSystem, EventSystem>();
+        engine_.use<IEventSystem, EventSystem>();
+
+        // Register asset system (needed by other systems)
+        engine_.use<IAssetSystem, AssetSystem>();
+
+        // Register config system
+        engine_.use<IConfigSystem, ConfigSystem>();
 
         // Register input system
-        // engine_.use<IInputSystem, InputSystem>();
+        engine_.use<IInputSystem, InputSystem>();
 
         // Register audio system
-        // engine_.use<IAudioSystem, AudioSystem>();
+        engine_.use<IAudioSystem, FMODAudioSystem>();
 
-        // Register asset system
-        // engine_.use<IAssetSystem, AssetSystem>();
-
-        // Register physics systems
-        // engine_.use<IPhysicsSystem, PhysicsSystem>();
-        // engine_.use<IPhysics3DSystem, Physics3DSystem>();
-
-        // Register graphics systems
-        // engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+        // Register graphics 3D system (Vulkan)
+        engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
 
         // Register animation system
-        // engine_.use<IAnimationSystem, AnimationSystem>();
+        engine_.use<IAnimationSystem, AnimationSystem>();
 
         spdlog::debug("[GameRunner] Default systems registered");
     }
@@ -279,6 +339,7 @@ private:
 
     std::filesystem::path mainScript_;
     std::filesystem::path gameRoot_;
+    std::filesystem::path assetLibraryPath_;
     bool verbose_ = false;
     bool debugMode_ = false;
     bool initialized_ = false;
@@ -293,8 +354,9 @@ void destroyGameRunner(GameRunner* runner) {
     delete runner;
 }
 
-bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript, bool verbose, bool debug) {
-    return runner->initialize(mainScript, verbose, debug);
+bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript,
+                      const std::filesystem::path& assetLibraryPath, bool verbose, bool debug) {
+    return runner->initialize(mainScript, assetLibraryPath, verbose, debug);
 }
 
 int runGame(GameRunner* runner) {

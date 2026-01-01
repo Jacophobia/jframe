@@ -65,7 +65,7 @@ function main.init()
     }
 
     if not bestow.graphics3d.initialize(gfxConfig) then
-        print("Failed to initialize graphics")
+        bestow.error("Failed to initialize graphics")
         return false
     end
 
@@ -88,6 +88,9 @@ function main.init()
         bestow.audio.initialize()
     end
 
+    -- Initialize state with proper types (must happen before any state access)
+    state.initialize()
+
     -- Create meshes
     state.cubeMesh = bestow.graphics3d.createCubeMesh(1.0)
     state.groundMesh = bestow.graphics3d.createPlaneMesh(1.0, 1.0, 1, 1)
@@ -97,19 +100,21 @@ function main.init()
 
     -- Load the first world
     if not levels.loadWorld("data/worlds/forest/world.lua") then
-        print("Warning: Could not load world, using defaults")
+        bestow.warn("Could not load world, using defaults")
     end
 
     -- Initialize random number generator
-    math.randomseed(os.time())
+    math.randomseed(bestow.util.time())
 
     -- Set initial game state
-    state.currentPhase = GamePhase.MainMenu
     state.running = true
     state.gameTime = 0
 
     -- Setup initial camera
     camera.setup()
+
+    -- Start at main menu (this triggers menu music via transitionTo)
+    main.transitionTo(GamePhase.MainMenu)
 
     -- Setup lighting
     bestow.graphics3d.setDirectionalLight({
@@ -118,7 +123,7 @@ function main.init()
         intensity = 1.5
     })
 
-    print("Snake game initialized")
+    bestow.info("Snake game initialized")
     return true
 end
 
@@ -215,7 +220,14 @@ function main.loop()
 
         -- Update audio
         if bestow.audio then
-            bestow.audio.update()
+            bestow.audio.update(dt)
+        end
+
+        -- Tracy profiling: mark frame end and send performance data
+        if bestow.profiler and bestow.profiler.isEnabled() then
+            bestow.profiler.plot("Frame Time (ms)", dt * 1000)
+            bestow.profiler.plot("FPS", 1.0 / dt)
+            bestow.profiler.frameMark()
         end
     end
 end
@@ -224,7 +236,7 @@ end
 function main.cleanup()
     bestow.input.shutdown()
     bestow.graphics3d.shutdown()
-    print("Snake game cleanup complete")
+    bestow.info("Snake game cleanup complete")
 end
 
 -- Transition to a new game phase
@@ -275,7 +287,7 @@ end
 -- Run the game
 function main.run()
     if not main.init() then
-        print("Failed to initialize game")
+        bestow.error("Failed to initialize game")
         return
     end
 

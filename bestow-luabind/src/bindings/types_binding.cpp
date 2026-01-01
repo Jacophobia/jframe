@@ -121,7 +121,8 @@ void bindTypes(sol::state& lua) {
             return std::format("Quat({}, {}, {}, {})", q.w, q.x, q.y, q.z);
         },
         "normalize", [](const Quat& q) { return glm::normalize(q); },
-        "inverse", [](const Quat& q) { return glm::inverse(q); }
+        "inverse", [](const Quat& q) { return glm::inverse(q); },
+        "rotateVector", [](const Quat& q, const Vec3& v) { return q * v; }
     );
 
     // Static constructors / factory
@@ -152,7 +153,18 @@ void bindTypes(sol::state& lua) {
     );
 
     // Static constructors / factories
-    lua["Color"]["new"] = [](int r, int g, int b, int a) {
+    // Auto-detect float (0-1) vs int (0-255) range
+    lua["Color"]["new"] = [](double r, double g, double b, double a) {
+        // If all values are <= 1.0, treat as normalized floats
+        if (r <= 1.0 && g <= 1.0 && b <= 1.0 && a <= 1.0) {
+            return Color::fromFloat(
+                static_cast<float>(r),
+                static_cast<float>(g),
+                static_cast<float>(b),
+                static_cast<float>(a)
+            );
+        }
+        // Otherwise treat as 0-255 integers
         return Color{
             static_cast<std::uint8_t>(r),
             static_cast<std::uint8_t>(g),

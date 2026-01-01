@@ -42,8 +42,11 @@ void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation);
 // Entity system binding (reflection-based component access)
 void bindEntitySystem(sol::state& lua, IEntitySystem& entity);
 
-// Future bindings (Step 5+)
-// void bindAssetSystem(sol::state& lua, IAssetSystem& assets);
+// Config and Assets bindings
+void bindConfigSystem(sol::state& lua, IConfigSystem& config);
+void bindAssetSystem(sol::state& lua, IAssetSystem& assets);
+
+// Future bindings
 // void bindEventSystem(sol::state& lua, IEventSystem& events);
 
 //=============================================================================

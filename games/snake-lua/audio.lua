@@ -6,12 +6,18 @@ local audio = {}
 -- Load sound configuration from Lua file
 function audio.loadSoundConfig()
     local state = app.state
-    local configPath = "data/config/sounds.lua"
 
-    -- Use bestow config system to parse Lua
-    local result = bestow.config.parseLuaFile(configPath)
+    -- Try to find sounds config in app.data namespace
+    -- ScriptManager loads data/config/sounds.lua as app.data.config.sounds
+    local result = app.data and app.data.config and app.data.config.sounds
+
+    -- Fallback to config system (deprecated path)
+    if not result and bestow.config then
+        result = bestow.config.parseLuaFile("data/config/sounds.lua")
+    end
+
     if not result then
-        print("No sounds.lua config found, audio disabled")
+        bestow.warn("No sounds.lua config found, audio disabled")
         return
     end
 
@@ -48,7 +54,7 @@ function audio.loadSoundConfig()
     end
 
     state.soundsLoaded = true
-    print("Sound config loaded successfully")
+    bestow.info("Sound config loaded successfully")
 end
 
 -- Try to load a sound effect
@@ -56,10 +62,10 @@ function audio.tryLoadSound(tbl, key)
     if not tbl[key] then return nil end
 
     local path = tbl[key]
-    print("Loading sound: " .. key .. " -> " .. path)
+    bestow.debug("Loading sound:", key, "->", path)
 
     -- Register and load the sound asset
-    local handle = bestow.assets.registerAsset(AssetType.Sound, path)
+    local handle = bestow.assets.registerAsset(bestow.assets.Type.Sound, path)
     if handle and handle:isValid() then
         bestow.assets.loadAsset(handle)
         return handle
@@ -72,10 +78,10 @@ function audio.tryLoadMusic(tbl, key)
     if not tbl[key] then return nil end
 
     local path = tbl[key]
-    print("Loading music: " .. key .. " -> " .. path)
+    bestow.debug("Loading music:", key, "->", path)
 
     -- Register and load the music asset
-    local handle = bestow.assets.registerAsset(AssetType.Sound, path)
+    local handle = bestow.assets.registerAsset(bestow.assets.Type.Sound, path)
     if handle and handle:isValid() then
         bestow.assets.loadAsset(handle)
         return handle
@@ -89,7 +95,7 @@ function audio.playSound(sound, volume)
     volume = volume or 1.0
     if not state.soundsLoaded or not sound or not sound:isValid() then return end
 
-    bestow.audio.playOnChannel(Channels.UI, {
+    bestow.audio.playOnChannel(bestow.audio.Channel.UI, {
         asset = sound,
         volume = volume,
         pitch = 1.0,
@@ -117,9 +123,14 @@ function audio.playMusicTrack(music, loop, fadeIn)
     local state = app.state
     loop = (loop == nil) and true or loop
     fadeIn = fadeIn or 1.0
-    if not state.soundsLoaded or not music or not music:isValid() then return end
+    if not state.soundsLoaded or not music or not music:isValid() then
+        bestow.debug("playMusicTrack: early return - soundsLoaded:", state.soundsLoaded,
+                     "music valid:", music and music:isValid())
+        return
+    end
 
-    bestow.audio.playOnChannel(Channels.Music, {
+    bestow.info("Playing music track with looping:", loop)
+    bestow.audio.playOnChannel(bestow.audio.Channel.Music, {
         asset = music,
         volume = 1.0,
         looping = loop,
@@ -130,7 +141,7 @@ end
 -- Stop music
 function audio.stopMusic(fadeOut)
     fadeOut = fadeOut or 1.0
-    bestow.audio.stopChannel(Channels.Music, fadeOut)
+    bestow.audio.stopChannel(bestow.audio.Channel.Music, fadeOut)
 end
 
 -- Convenience functions for specific sounds
