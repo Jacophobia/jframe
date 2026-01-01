@@ -1,0 +1,41 @@
+# bestow-luabind/CMakeLists.txt
+# Lua contract bindings - Exposes C++ contracts to Lua via bestow.* namespace
+
+add_library(bestow-luabind)
+
+target_sources(bestow-luabind
+    PUBLIC
+        FILE_SET CXX_MODULES FILES
+            src/bestow.luabind.cppm
+    PRIVATE
+        src/LuaContractBinder.cpp
+        src/bindings/types_binding.cpp
+        src/bindings/input_binding.cpp
+        src/bindings/audio_binding.cpp
+        src/bindings/physics_binding.cpp
+        src/bindings/physics3d_binding.cpp
+        src/bindings/graphics3d_binding.cpp
+        src/bindings/animation_binding.cpp
+        src/bindings/entity_binding.cpp
+        src/stubs/StubGenerator.cpp
+)
+
+target_link_libraries(bestow-luabind
+    PUBLIC
+        bestow-contract
+        bestow-core
+    PRIVATE
+        lua
+        sol2::sol2
+        spdlog::spdlog
+)
+
+target_compile_features(bestow-luabind PUBLIC cxx_std_23)
+
+# Enable module support
+set_target_properties(bestow-luabind PROPERTIES
+    CXX_SCAN_FOR_MODULES ON
+)
+
+# Enable import std; support
+target_use_std_module(bestow-luabind)

@@ -21,20 +21,25 @@ import bestow.animation.impl;  // AnimationSystem
 import animation.showcase;
 
 int main() {
-    // Initialize PathResolver with library path pointing to asset-library
+    // Initialize PathResolver with library path
     auto cwd = std::filesystem::current_path();
     bestow::PathResolver::initialize();
 
-    // Check if asset-library exists relative to current directory (running from project root)
-    // or if we're in build directory (need to go up)
+    // Look for library assets in order of preference:
+    // 1. "library/" - copied by CMake build (preferred for build output)
+    // 2. "asset-library/" - source repo location
+    // 3. "../../../asset-library" - running from deep in build directory
     std::filesystem::path libraryPath;
-    if (std::filesystem::exists(cwd / "asset-library")) {
+    if (std::filesystem::exists(cwd / "library")) {
+        libraryPath = cwd / "library";
+    } else if (std::filesystem::exists(cwd / "asset-library")) {
         libraryPath = cwd / "asset-library";
-    } else if (std::filesystem::exists(cwd.parent_path().parent_path() / "asset-library")) {
-        libraryPath = cwd.parent_path().parent_path() / "asset-library";
+    } else if (std::filesystem::exists(cwd.parent_path().parent_path().parent_path() / "asset-library")) {
+        // Running from build/macos-debug/demos/animation-showcase/
+        libraryPath = cwd.parent_path().parent_path().parent_path() / "asset-library";
     } else {
-        std::cerr << "Warning: Could not find asset-library directory from cwd: " << cwd << "\n";
-        libraryPath = cwd / "asset-library";  // Fallback
+        std::cerr << "Warning: Could not find library directory from cwd: " << cwd << "\n";
+        libraryPath = cwd / "library";  // Fallback to expected build output location
     }
     std::cerr << "Using library path: " << libraryPath << "\n";
     bestow::PathResolver::setLibraryPath(libraryPath.string());

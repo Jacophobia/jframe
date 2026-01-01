@@ -1,284 +1,418 @@
 # Data-Driven Design Guide
 
-Bestow uses a **data-driven architecture** where game content is defined in Lua, not C++. This guide explains what belongs in each layer.
+Bestow uses a **Lua-first architecture** where games are defined entirely in Lua. The C++ engine provides systems (graphics, physics, audio), and game developers write their logic, entities, and levels in Lua scripts.
 
 ## Core Principle: Lua First
 
-**Always put configuration and content in Lua unless there's a compelling technical reason not to.**
+**Games are Lua programs that use the Bestow engine.**
 
-The C++ layer provides the *engine* (systems, rendering, physics). The Lua layer provides the *content* (levels, entities, behaviors, tuning).
+```bash
+# Run a game
+bestow run games/my-game/main.lua
+```
 
-## What Goes in Lua
+The Lua layer defines *everything* about the game:
+- Game logic and systems
+- Entity definitions and blueprints
+- Levels and spawning
+- Configuration and tuning
 
-### Levels (`data/levels/*.lua`)
+The C++ layer provides the *engine*:
+- Rendering (Vulkan/OpenGL)
+- Physics (Box2D, Jolt)
+- Audio (FMOD)
+- Input handling
+- Entity/Component system
 
-ALL level content:
+## Two Lua Namespaces
+
+Bestow exposes two global Lua namespaces:
+
+### `bestow.*` - Engine API (C++ backed)
+
+Stable, C++-implemented contracts exposed to Lua:
 
 ```lua
-return {
-    name = "Demo Level 1",
+-- Entity operations
+local entity = bestow.entity.create()
+bestow.entity.addComponent(entity, "Transform3D", { position = Vec3.new(0, 0, 0) })
 
-    -- Player spawn point
-    spawnPoints = {
-        player = { x = 100, y = 400 },
-    },
+-- Input queries
+if bestow.input.isKeyDown(Keys.Space) then
+    player:jump()
+end
 
-    -- Every entity in the level
-    entities = {
-        { type = "platform", x = 400, y = 550, width = 800, height = 50 },
-        { type = "jump_zone", x = 150, y = 450, width = 150, height = 200 },
-        { type = "enemy", blueprint = "enemies/slime", x = 400, y = 500 },
-    }
-}
+-- Graphics
+local fog = Fog.new()
+fog.enabled = true
+fog.color = Color.new(0.5, 0.5, 0.5, 1)
+fog.density = 0.01
+fog.startDistance = 10
+fog.endDistance = 100
+bestow.graphics3d.setFog(fog)
+
+-- Physics
+bestow.physics3d.raycast(origin, direction, 100)
 ```
 
-### Blueprints (`data/blueprints/*.lua`)
+### `app.*` - Game Scripts (Your Code)
 
-Entity templates with component configurations:
+Your game scripts, auto-loaded and hot-reloadable:
 
 ```lua
-return {
-    type = "player",
-    tags = { "player", "controllable" },
+-- In main.lua
+local player = app.entities.player  -- Access other scripts
+local camera = app.systems.camera
 
-    physics = {
-        type = "dynamic",
-        width = 30,
-        height = 50,
-        fixedRotation = true
-    },
-
-    sprite = {
-        texture = "data/textures/player.png",
-        frameWidth = 32,
-        frameHeight = 32
-    }
-}
+function main.update(dt)
+    local movement = app.systems.movement
+    movement.update(dt)  -- Always resolve fresh for hot reload
+end
 ```
 
-### Configuration (`data/config/*.lua`)
+## Game Structure
 
-All gameplay parameters, tuning values, and settings:
+```
+my-game/
+├── main.lua                    # Entry point (required)
+├── app.config.lua              # Optional: folder ignore list
+├── entities/
+│   ├── player.lua             → app.entities.player
+│   └── enemies/
+│       ├── goblin.lua         → app.entities.enemies.goblin
+│       └── dragon.lua         → app.entities.enemies.dragon
+├── systems/
+│   ├── camera.lua             → app.systems.camera
+│   └── movement.lua           → app.systems.movement
+├── levels/
+│   └── dungeon.lua            → app.levels.dungeon
+└── assets/
+    ├── textures/
+    ├── sounds/
+    └── materials/
+```
+
+Files are auto-discovered and mapped to the `app.*` table based on their path.
+
+## main.lua Structure
+
+Every game needs a `main.lua` that returns a table:
 
 ```lua
--- config/player.lua
+-- main.lua
 return {
-    moveSpeed = 400.0,
-    jumpForce = 800.0,
-    health = { initial = 100, maximum = 100 },
-    stamina = { initial = 100, maximum = 100, regenRate = 20.0 }
-}
+    title = "My Game",
+    width = 1280,
+    height = 720,
 
--- config/abilities.lua
-return {
-    dash = {
-        cooldown = 2.0,
-        staminaCost = 25.0,
-        speedMultiplier = 3.0,
-        duration = 0.3
-    }
-}
-```
-
-### Input Mappings (`data/config/input.lua`)
-
-```lua
-return {
-    actions = {
-        move_left = { keyboard = "A", keyboard_alt = "Left" },
-        move_right = { keyboard = "D", keyboard_alt = "Right" },
-        jump = { keyboard = "Space" },
-        dash = { keyboard = "LeftShift" }
-    }
-}
-```
-
-### Audio/Visual Assets (`data/config/assets.lua`)
-
-```lua
-return {
-    textures = {
-        player = "textures/player.png",
-        platform = "textures/block.png"
-    },
-    sounds = {
-        jump = "audio/jump.wav",
-        coin = "audio/coin.wav"
-    }
-}
-```
-
-## What Goes in C++
-
-### Engine Systems
-
-- Entity System (creating/destroying entities)
-- Physics System (Box2D integration)
-- Graphics System (rendering)
-- Input System (polling hardware)
-- Audio System (FMOD integration)
-
-### Entity Factory Logic
-
-C++ reads Lua and creates entities:
-
-```cpp
-void Game::loadLevel(const std::string& path) {
-    auto levelData = lua.loadLevel(path);  // Parse Lua
-
-    for (const auto& entityDef : levelData.entities) {
-        createEntityFromDef(entityDef);  // Generic factory
-    }
-}
-
-void Game::createEntityFromDef(const EntityDef& def) {
-    if (def.type == "platform") {
-        createPlatform(def.x, def.y, def.width, def.height);
-    } else if (def.type == "jump_zone") {
-        createJumpZone(def.x, def.y, def.width, def.height);
-    }
-    // etc.
-}
-```
-
-### Core Game Loop
-
-```cpp
-void Game::updateFixed(DeltaTime dt) {
-    gas_->update(dt);
-    handleInput(dt);  // Uses config values loaded from Lua
-    updateCamera(dt);
-}
-```
-
-### System Interactions
-
-Complex interactions between systems that can't be expressed declaratively:
-
-```cpp
-void Game::handleJump() {
-    if (gas_->canActivateAbility(player_, jumpAbility_)) {
-        gas_->tryActivateAbility(player_, jumpAbility_);
-
-        // Apply physics impulse
-        Vec2 vel = physics_->getVelocity(player_);
-        vel.y = -config_.jumpForce;  // Value from Lua!
-        physics_->setVelocity(player_, vel);
-    }
-}
-```
-
-## Decision Guide
-
-| Content Type | Location | Reason |
-|-------------|----------|--------|
-| Entity positions | Lua | Level design changes frequently |
-| Platform dimensions | Lua | Easily tweakable without rebuild |
-| Player speed/jump force | Lua | Balance tuning |
-| Ability cooldowns | Lua | Balance tuning |
-| Input mappings | Lua | Player customization |
-| Spawn points | Lua | Level design |
-| Enemy patrol routes | Lua | Level design |
-| Animation frame data | Lua | Art pipeline |
-| Physics body definitions | Lua | Entity configuration |
-| **System implementations** | **C++** | Core engine code |
-| **Rendering pipeline** | **C++** | Performance critical |
-| **Entity factory dispatch** | **C++** | Type safety |
-| **Complex state machines** | **C++** | Performance/complexity |
-
-## Example: Wrong vs Right
-
-### Wrong: Hardcoded Level in C++
-
-```cpp
-// DON'T DO THIS
-void Game::createTestPlatforms() {
-    // Ground platform
-    physics->createBody(ground, PhysicsBodyDef{
-        .transform = {.x = 400.0f, .y = 550.0f},
-        .size = {800.0f, 20.0f}
-    });
-
-    // Left platform
-    physics->createBody(leftPlat, PhysicsBodyDef{
-        .transform = {.x = 200.0f, .y = 400.0f},
-        .size = {200.0f, 20.0f}
-    });
-}
-```
-
-### Right: Data-Driven Level
-
-**data/levels/level1.lua:**
-```lua
-return {
-    entities = {
-        { type = "platform", x = 400, y = 550, width = 800, height = 20 },
-        { type = "platform", x = 200, y = 400, width = 200, height = 20 },
-    }
-}
-```
-
-**Game.cpp:**
-```cpp
-void Game::loadLevel(const std::string& path) {
-    auto level = lua_.loadLevel(path);
-
-    for (const auto& e : level.entities) {
-        if (e.type == "platform") {
-            createPlatform(e.x, e.y, e.width, e.height);
+    -- Called once at startup
+    init = function()
+        local player = app.entities.player
+        app.main.state = {
+            playerEntity = player.create(),
+            score = 0
         }
-    }
+    end,
+
+    -- Called every frame
+    update = function(dt)
+        local state = app.main.state
+        local movement = app.systems.movement
+        movement.update(dt)
+        return state.running  -- Return false to quit
+    end,
+
+    -- Called every frame after update
+    render = function()
+        bestow.graphics3d.beginFrame()
+        -- Render game...
+        bestow.graphics3d.endFrame()
+    end,
+
+    -- Main entry point
+    run = function()
+        local main = app.main
+        main.init()
+
+        while true do
+            local dt = bestow.core.deltaTime()
+            if not main.update(dt) then break end
+            main.render()
+        end
+    end
+}
+```
+
+## Entity Definitions
+
+Define entity blueprints in `entities/`:
+
+```lua
+-- entities/player.lua
+return {
+    -- Default component values
+    defaults = {
+        Transform3D = {
+            position = Vec3.new(0, 1, 0),
+            rotation = Quat.identity(),
+            scale = Vec3.new(1, 1, 1)
+        },
+        PlayerController = {
+            moveSpeed = 5.0,
+            jumpForce = 10.0
+        }
+    },
+
+    -- Factory function
+    create = function(overrides)
+        local self = app.entities.player  -- Hot reload safe!
+        local entity = bestow.entity.create()
+
+        for compName, defaults in pairs(self.defaults) do
+            local data = {}
+            for k, v in pairs(defaults) do data[k] = v end
+            if overrides and overrides[compName] then
+                for k, v in pairs(overrides[compName]) do data[k] = v end
+            end
+            bestow.entity.addComponent(entity, compName, data)
+        end
+
+        return entity
+    end
+}
+```
+
+## System Definitions
+
+Define game systems in `systems/`:
+
+```lua
+-- systems/movement.lua
+return {
+    gravity = Vec3.new(0, -9.81, 0),
+
+    update = function(dt)
+        local self = app.systems.movement  -- Hot reload safe!
+
+        bestow.entity.each(function(entity)
+            if not bestow.entity.hasComponent(entity, "Velocity") then return end
+
+            local velocity = bestow.entity.getComponent(entity, "Velocity")
+            local transform = bestow.entity.getComponent(entity, "Transform3D")
+
+            -- Apply gravity
+            velocity.linear = velocity.linear + self.gravity * dt
+
+            -- Update position
+            transform.position = transform.position + velocity.linear * dt
+
+            bestow.entity.setComponent(entity, "Transform3D", transform)
+            bestow.entity.setComponent(entity, "Velocity", velocity)
+        end)
+    end
+}
+```
+
+## Level Definitions
+
+Define levels in `levels/`:
+
+```lua
+-- levels/dungeon.lua
+return {
+    name = "Dark Dungeon",
+
+    spawns = {
+        player = Vec3.new(0, 1, 0)
+    },
+
+    lighting = {
+        ambient = { color = Color.new(0.1, 0.1, 0.15, 1), intensity = 0.3 },
+        sun = { direction = Vec3.new(-0.5, -1, -0.5), intensity = 0.5 }
+    },
+
+    objects = {
+        { type = "torch", position = Vec3.new(5, 2, 0) },
+        { type = "chest", position = Vec3.new(-3, 0, 5) },
+    },
+
+    load = function()
+        local self = app.levels.dungeon
+        local player = app.entities.player.spawnAt(self.spawns.player)
+        app.main.state.player = player
+
+        for _, obj in ipairs(self.objects) do
+            -- Create level objects...
+        end
+    end
+}
+```
+
+## Hot Reload Rules
+
+**Critical**: Always access `app.*` inside functions, never at file scope:
+
+```lua
+-- WRONG: Cached at load time, breaks hot reload
+local physics = app.systems.physics
+
+return {
+    update = function(dt)
+        physics.step(dt)  -- Uses stale reference after reload!
+    end
 }
 
-void Game::createPlatform(float x, float y, float w, float h) {
-    Entity platform = entities_->createEntity();
-    entities_->emplace<PlatformTag>(platform);
-    physics_->createBody(platform, PhysicsBodyDef{
-        .type = BodyType::Static,
-        .transform = {.x = x, .y = y},
-        .size = {w, h}
-    });
+-- RIGHT: Resolved fresh each call
+return {
+    update = function(dt)
+        local physics = app.systems.physics  -- Fresh reference
+        physics.step(dt)
+    end
 }
+```
+
+The ScriptManager lints your code and warns about top-level `app.*` captures.
+
+## Disabled Functions
+
+For security and hot-reload correctness, these Lua functions are disabled:
+
+- `require()` - Use `app.*` instead
+- `dofile()` - Use `app.*` instead
+- `loadfile()` - Use `app.*` instead
+- `load()` - Dynamic code loading not allowed
+- `io.*` - File I/O not allowed
+- `os.execute()` - Shell access not allowed
+
+## bestow.* API Reference
+
+### Core Types
+
+```lua
+Vec2.new(x, y)
+Vec3.new(x, y, z)
+Vec4.new(x, y, z, w)
+Quat.new(x, y, z, w)
+Quat.identity()
+Quat.fromAxisAngle(axis, angle)
+Color.new(r, g, b, a)
+Mat4.identity()
+Mat4.lookAt(eye, target, up)
+Mat4.perspective(fov, aspect, near, far)
+```
+
+### Entity System
+
+```lua
+bestow.entity.create() -> Entity
+bestow.entity.destroy(entity)
+bestow.entity.isValid(entity) -> bool
+bestow.entity.addComponent(entity, typeName, data)
+bestow.entity.removeComponent(entity, typeName)
+bestow.entity.hasComponent(entity, typeName) -> bool
+bestow.entity.getComponent(entity, typeName) -> table or nil
+bestow.entity.setComponent(entity, typeName, data)
+bestow.entity.getField(entity, typeName, fieldName) -> value
+bestow.entity.setField(entity, typeName, fieldName, value)
+bestow.entity.each(callback)
+```
+
+### Input System
+
+```lua
+-- Keyboard
+bestow.input.isKeyDown(key) -> bool
+bestow.input.wasKeyJustPressed(key) -> bool
+bestow.input.wasKeyJustReleased(key) -> bool
+
+-- Action System (configurable mappings)
+bestow.input.isActionActive(action) -> bool
+bestow.input.wasActionJustPressed(action) -> bool
+bestow.input.wasActionJustReleased(action) -> bool
+bestow.input.getActionValue(action) -> number  -- For analog inputs
+
+-- Mouse
+bestow.input.getMousePosition() -> Vec2
+bestow.input.getMouseDelta() -> Vec2
+bestow.input.isMouseButtonDown(button) -> bool
+bestow.input.wasMouseButtonJustPressed(button) -> bool
+bestow.input.getScrollDelta() -> Vec2
+
+-- Modifiers
+bestow.input.isShiftPressed() -> bool
+bestow.input.isCtrlPressed() -> bool
+bestow.input.isAltPressed() -> bool
+
+-- Text Input (for UI text fields)
+bestow.input.enableTextInput()
+bestow.input.disableTextInput()
+bestow.input.getTextInput() -> string
+
+-- Controllers
+bestow.input.getConnectedControllerCount() -> integer
+bestow.input.isControllerConnected(index) -> bool
+
+-- Key Constants: Use global Keys table
+-- Keys.Space, Keys.Escape, Keys.W, Keys.A, Keys.S, Keys.D, etc.
+-- Or use bestow.input.Key.SPACE, bestow.input.Key.ESCAPE, etc.
+```
+
+### Graphics 3D
+
+```lua
+bestow.graphics3d.beginFrame()
+bestow.graphics3d.endFrame()
+bestow.graphics3d.setCamera(camera)           -- Camera3D struct
+bestow.graphics3d.setFog(fog)                 -- Fog struct
+bestow.graphics3d.setAmbientLight(color, intensity)
+bestow.graphics3d.drawMesh(mesh, material, transform)  -- Transform3D or Mat4
+```
+
+### Physics 3D
+
+```lua
+bestow.physics3d.createWorld(gravity) -> WorldHandle
+bestow.physics3d.stepWorld(world, dt)
+bestow.physics3d.createRigidBody(world, def) -> BodyHandle
+bestow.physics3d.createCharacter(world, def) -> CharacterHandle
+bestow.physics3d.raycast(world, from, to) -> RaycastResult or nil
+```
+
+### Audio
+
+```lua
+bestow.audio.loadSound(path) -> SoundHandle
+bestow.audio.playSound(handle, volume, pitch)
+bestow.audio.stopSound(handle)
+bestow.audio.setMasterVolume(volume)
+```
+
+### Animation
+
+```lua
+bestow.animation.createInstance(entity, skeleton)
+bestow.animation.setAnimation(entity, name, loop, speed)
+bestow.animation.crossfade(entity, name, duration)
+bestow.animation.getAnimationTime(entity) -> number
 ```
 
 ## Benefits
 
-1. **Iteration Speed**: Change levels without recompiling
-2. **Designer-Friendly**: Non-programmers can edit Lua
-3. **Hot Reload**: Changes can be applied at runtime (debug builds)
-4. **Version Control**: Level changes are easy to diff/review
-5. **Mod Support**: Players can create custom content
-6. **Testing**: Easy to create test scenarios
-
-## File Organization
-
-```
-data/
-├── blueprints/          # Entity templates
-│   ├── player.lua
-│   ├── platform.lua
-│   └── enemies/
-│       └── slime.lua
-├── config/              # Game configuration
-│   ├── player.lua       # Player settings
-│   ├── input.lua        # Input mappings
-│   ├── abilities.lua    # GAS definitions
-│   └── physics.lua      # Physics settings
-├── levels/              # Level definitions
-│   ├── level1.lua
-│   └── level2.lua
-└── traits/              # Reusable component configs
-    ├── physics_body.lua
-    └── health.lua
-```
+1. **Hot Reload**: Edit Lua, see changes instantly (no recompile)
+2. **Designer-Friendly**: Non-programmers can create content
+3. **Fast Iteration**: Tweak gameplay without waiting for builds
+4. **Modding Support**: Players can easily modify games
+5. **Version Control**: Lua changes are easy to diff and review
+6. **Testing**: Create test scenarios without rebuilding
 
 ## Summary
 
-**When in doubt, put it in Lua.**
+**Your game is a Lua program. Bestow is the engine it runs on.**
 
-Only use C++ for:
-- Engine system implementations
-- Performance-critical code paths
-- Complex logic that can't be expressed declaratively
-- Type-safe factory dispatch (but values still come from Lua!)
+- Define your game in `main.lua`
+- Put entities in `entities/`
+- Put systems in `systems/`
+- Put levels in `levels/`
+- Use `bestow.*` for engine features
+- Use `app.*` for your own scripts
+- Always access `app.*` inside functions (hot reload!)
