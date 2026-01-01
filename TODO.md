@@ -1,6 +1,69 @@
 # Bestow TODO
 
-> Last Updated: 2025-12-15
+> Last Updated: 2026-01-01
+
+---
+
+## Lua Snake Game Port (Completed 2026-01-01)
+
+The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 modules are complete and verified as 100% faithful to the C++ implementation.
+
+### Files Created
+- `main.lua` - Entry point and game loop
+- `config.lua` - Constants and configuration
+- `types.lua` - Data structures (GridPos, SnakeSegment, etc.)
+- `state.lua` - Game state management
+- `input.lua` - Input handling per phase
+- `rendering.lua` - All drawing functions
+- `game_logic.lua` - Snake movement, collision, food
+- `enemies.lua` - Enemy AI and management
+- `levels.lua` - Level/world loading
+- `audio.lua` - Sound and music
+- `ui.lua` - Menus and HUD
+- `camera.lua` - Camera management
+- `pixeltext.lua` - Pixel font rendering
+- `worldmap.lua` - World map rendering
+
+### Minor Issues (Non-Blocking)
+- [ ] **Audio disabled for testing** - Sound calls work but require sounds.lua config file
+- [ ] **BossFight phase defined but not implemented** - Matches C++ version (future feature)
+
+---
+
+## Lua Binding System Issues (Identified 2026-01-01)
+
+> Issues discovered during verification of Lua-driven engine implementation.
+
+### Critical - Must Fix
+
+| Issue | Location | Description | Priority |
+|-------|----------|-------------|----------|
+| **Animation stub API mismatch** | `bestow-luabind/src/stubs/StubGenerator.cpp` | Stubs define OLD entity-centric API (`setAnimation(entity, name)`), but binding uses NEW animator-handle API (`play(animator, clip)`) | CRITICAL |
+| **ScriptManager bypasses AssetSystem** | `bestow-script/src/ScriptManager.cpp:115,291` | Direct `std::ifstream` usage instead of IAssetSystem | MEDIUM |
+
+### Medium - Should Fix
+
+| Issue | Location | Description | Priority |
+|-------|----------|-------------|----------|
+| **Error codes discarded** | `physics3d_binding.cpp`, `graphics3d_binding.cpp`, `animation_binding.cpp` | `Result<T, Error>` returns `nil` on error, losing error code | MEDIUM |
+| **Missing Physics3D::syncTransforms binding** | `physics3d_binding.cpp` | Contract has method but not exposed to Lua | MEDIUM |
+| **Ragdoll creation not bound** | `animation_binding.cpp` | `hasRagdoll`, `getRagdollState` exist but `createRagdoll` missing | MEDIUM |
+
+### Low - Nice to Have
+
+| Issue | Location | Description | Priority |
+|-------|----------|-------------|----------|
+| **Audio stubs missing Channel constants** | `StubGenerator.cpp` | `Channels.Music`, `Channels.UI` etc. not documented | LOW |
+| **Input stubs need Key constants** | `StubGenerator.cpp` | Key table exists in binding but not in stubs | LOW |
+
+### Recommendations
+
+1. **Fix Animation Stubs** - Update `StubGenerator.cpp` lines 803-879 to match animator-based API
+2. **Add Error Handling Pattern** - Return `(value, nil)` on success, `(nil, errorCode)` on error
+3. **Document ScriptManager Exception** - Either route through AssetSystem or document why direct I/O is acceptable (similar to SaveSystem)
+4. **Bind syncTransforms** - Required for proper physics-entity synchronization
+
+---
 
 ## Critical Implementation Gaps (Updated 2025-12-14)
 
