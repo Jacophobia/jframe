@@ -49,6 +49,10 @@ void VulkanGraphics3DSystem::shutdown() {
         context_.destroyBuffer(lightUBO_);
         lightUBO_ = 0;
     }
+    if (debugLineBuffer_ != 0) {
+        context_.destroyBuffer(debugLineBuffer_);
+        debugLineBuffer_ = 0;
+    }
 
     // Cleanup skybox cubemap texture
     if (skyboxCubemapImage_ != 0) {
@@ -134,6 +138,20 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
         return false;
     }
     boneUBO_ = *bufferResult;
+
+    // Create debug line vertex buffer
+    // Each line has 2 vertices, each vertex is: pos(vec3) + color(vec4) = 7 floats = 28 bytes
+    VulkanBufferDef debugBufferDef;
+    debugBufferDef.size = MAX_DEBUG_LINES * 2 * sizeof(float) * 7;  // 10000 lines * 2 verts * 28 bytes
+    debugBufferDef.usage = VulkanBufferUsage::Vertex;
+    debugBufferDef.hostVisible = true;
+    debugBufferDef.persistentlyMapped = true;
+    auto debugBufferResult = context_.createBuffer(debugBufferDef);
+    if (debugBufferResult) {
+        debugLineBuffer_ = *debugBufferResult;
+    } else {
+        std::fprintf(stderr, "[Vulkan] Failed to create debug line buffer\n");
+    }
 
     // Create descriptor set layout for bone matrices
     VkDescriptorSetLayoutBinding boneBinding{};
@@ -913,25 +931,16 @@ void VulkanGraphics3DSystem::queueRenderItems(std::span<const RenderItem> items)
 }
 
 void VulkanGraphics3DSystem::flushRenderQueue() {
-    static int frameCount = 0;
-    frameCount++;
-
     // Only return early if BOTH queues are empty (skinned meshes need rendering too!)
     if (renderQueue_.empty() && skinnedRenderQueue_.empty()) {
-        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Both render queues are empty\n", frameCount);
         return;
     }
 
     VkCommandBuffer cmd = context_.getCurrentCommandBuffer();
     if (cmd == VK_NULL_HANDLE || pbrPipeline_ == 0) {
-        if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: cmd=%p, pbrPipeline=%u\n",
-                                          frameCount, (void*)cmd, pbrPipeline_);
         renderQueue_.clear();
         return;
     }
-
-    if (frameCount <= 3) std::fprintf(stderr, "[Vulkan] Frame %d: Rendering %zu items\n",
-                                      frameCount, renderQueue_.size());
 
     // Compute camera position for distance sorting
     Vec3 cameraWorldPos = camera_.transform.position;
@@ -1004,12 +1013,20 @@ void VulkanGraphics3DSystem::flushRenderQueue() {
     // Compute view-projection matrix
     Size windowSize = getWindowSize();
     auto& pos = camera_.transform.position;
-    glm::quat rot{camera_.transform.rotation.w, camera_.transform.rotation.x,
-                  camera_.transform.rotation.y, camera_.transform.rotation.z};
     glm::vec3 cameraPos{pos.x, pos.y, pos.z};
-    glm::vec3 forward = rot * glm::vec3{0.0f, 0.0f, -1.0f};
-    glm::vec3 up = rot * glm::vec3{0.0f, 1.0f, 0.0f};
-    glm::mat4 view = glm::lookAt(cameraPos, cameraPos + forward, up);
+    glm::vec3 up{0.0f, 1.0f, 0.0f};
+    glm::mat4 view;
+    if (useCameraTarget_) {
+        // Use look-at target directly (set via setCameraTarget)
+        glm::vec3 target{cameraTarget_.x, cameraTarget_.y, cameraTarget_.z};
+        view = glm::lookAt(cameraPos, target, up);
+    } else {
+        // Use rotation-based forward
+        glm::quat rot{camera_.transform.rotation.w, camera_.transform.rotation.x,
+                      camera_.transform.rotation.y, camera_.transform.rotation.z};
+        glm::vec3 forward = rot * glm::vec3{0.0f, 0.0f, -1.0f};
+        view = glm::lookAt(cameraPos, cameraPos + forward, up);
+    }
     float aspect = windowSize.height > 0 ?
         static_cast<float>(windowSize.width) / static_cast<float>(windowSize.height) : 1.0f;
     glm::mat4 projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
@@ -1317,6 +1334,11 @@ void VulkanGraphics3DSystem::setCamera(const Camera3D& camera) {
 
 Camera3D VulkanGraphics3DSystem::getCamera() const {
     return camera_;
+}
+
+void VulkanGraphics3DSystem::setCameraTarget(const Vec3& target) {
+    cameraTarget_ = target;
+    useCameraTarget_ = true;
 }
 
 Ray3D VulkanGraphics3DSystem::screenToWorldRay(Vec2 screenPos) const {
@@ -3210,10 +3232,86 @@ void VulkanGraphics3DSystem::updateLightUBO() {
 
 void VulkanGraphics3DSystem::renderDebugLines() {
     if (debugLines_.empty() || !debugRenderingEnabled_) return;
-    if (debugPipeline_ == 0) return;
+    if (debugPipeline_ == 0 || debugLineBuffer_ == 0) return;
 
-    // TODO: Debug line rendering needs proper buffer management (deferred destruction)
-    // For now, just clear the debug lines to prevent memory buildup
+    // Limit to max lines
+    std::size_t numLines = std::min(debugLines_.size(), MAX_DEBUG_LINES);
+    if (numLines == 0) return;
+
+    // Build vertex data: each line has 2 vertices (start and end)
+    // Each vertex: pos(vec3) + color(vec4) = 7 floats
+    std::vector<float> vertices;
+    vertices.reserve(numLines * 2 * 7);
+
+    for (std::size_t i = 0; i < numLines; ++i) {
+        const auto& line = debugLines_[i];
+        float r = line.color.r / 255.0f;
+        float g = line.color.g / 255.0f;
+        float b = line.color.b / 255.0f;
+        float a = line.color.a / 255.0f;
+
+        // Start vertex
+        vertices.push_back(line.start.x);
+        vertices.push_back(line.start.y);
+        vertices.push_back(line.start.z);
+        vertices.push_back(r);
+        vertices.push_back(g);
+        vertices.push_back(b);
+        vertices.push_back(a);
+
+        // End vertex
+        vertices.push_back(line.end.x);
+        vertices.push_back(line.end.y);
+        vertices.push_back(line.end.z);
+        vertices.push_back(r);
+        vertices.push_back(g);
+        vertices.push_back(b);
+        vertices.push_back(a);
+    }
+
+    // Upload vertex data to buffer
+    context_.uploadToBuffer(debugLineBuffer_, vertices.data(), vertices.size() * sizeof(float));
+
+    // Compute view-projection matrix
+    Size windowSize = getWindowSize();
+    auto& pos = camera_.transform.position;
+    glm::vec3 cameraPos{pos.x, pos.y, pos.z};
+    glm::vec3 up{0.0f, 1.0f, 0.0f};
+    glm::mat4 view;
+    if (useCameraTarget_) {
+        // Use look-at target directly
+        glm::vec3 target{cameraTarget_.x, cameraTarget_.y, cameraTarget_.z};
+        view = glm::lookAt(cameraPos, target, up);
+    } else {
+        // Use rotation-based forward
+        glm::quat rot{camera_.transform.rotation.w, camera_.transform.rotation.x,
+                      camera_.transform.rotation.y, camera_.transform.rotation.z};
+        glm::vec3 forward = rot * glm::vec3{0.0f, 0.0f, -1.0f};
+        view = glm::lookAt(cameraPos, cameraPos + forward, up);
+    }
+    float aspect = windowSize.height > 0 ?
+        static_cast<float>(windowSize.width) / static_cast<float>(windowSize.height) : 1.0f;
+    glm::mat4 projection = glm::perspective(glm::radians(camera_.fovY), aspect, camera_.nearPlane, camera_.farPlane);
+    projection[1][1] *= -1;  // Flip Y for Vulkan
+    glm::mat4 viewProjection = projection * view;
+
+    // Bind debug pipeline
+    context_.bindPipeline(debugPipeline_);
+    VkPipelineLayout layout = context_.getPipelineLayout(debugPipeline_);
+    VkCommandBuffer cmd = context_.getCurrentCommandBuffer();
+
+    // Push view-projection matrix
+    vkCmdPushConstants(cmd, layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &viewProjection);
+
+    // Bind vertex buffer
+    VkBuffer vertexBuffer = context_.getBuffer(debugLineBuffer_);
+    VkDeviceSize offset = 0;
+    vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, &offset);
+
+    // Draw lines
+    vkCmdDraw(cmd, static_cast<std::uint32_t>(numLines * 2), 1, 0, 0);
+
+    // Clear the debug lines (they are rendered once per frame)
     debugLines_.clear();
 }
 
