@@ -25,6 +25,7 @@ target_sources(bestow-luabind
         src/bindings/gamestate_binding.cpp
         src/bindings/save_binding.cpp
         src/bindings/events_binding.cpp
+        src/bindings/ui_binding.cpp
         src/bindings/metrics_binding.cpp
         src/stubs/StubGenerator.cpp
 )
@@ -41,6 +42,7 @@ target_link_libraries(bestow-luabind
         bestow-gamestate # For GameState bindings
         bestow-save      # For Save bindings
         bestow-events    # For Events bindings
+        bestow-ui        # For UI bindings
         unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog

@@ -147,6 +147,13 @@ void LuaContractBinder::bindAll() {
         spdlog::debug("[LuaContractBinder] Bound IEventSystem -> bestow.events");
     }
 
+    // UI System
+    if (engine_->has<IUISystem>()) {
+        bindUISystem(*lua_, engine_->get<IUISystem>());
+        boundSystems_.push_back("ui");
+        spdlog::debug("[LuaContractBinder] Bound IUISystem -> bestow.ui");
+    }
+
     // Metrics/Profiling System (always available, doesn't require a contract)
     bindMetricsSystem(*lua_);
     boundSystems_.push_back("metrics");

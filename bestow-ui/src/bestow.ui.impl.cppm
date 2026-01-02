@@ -379,6 +379,37 @@ private:
     };
     std::unordered_map<std::string, DataBindingEntry> dataBindings_;
 
+    //======================================================================
+    // Hot Reload Support
+    //======================================================================
+
+    // Track which asset handles correspond to which UI handles
+    struct DocumentAssetInfo {
+        AssetHandle assetHandle;
+        SubscriptionId subscriptionId = 0;
+        std::filesystem::path path;
+        bool wasVisible = false;
+    };
+    std::unordered_map<UIDocumentHandle, DocumentAssetInfo> documentAssets_;
+    std::unordered_map<UUID, UIDocumentHandle> assetToDocument_;
+
+    struct StyleSheetAssetInfo {
+        AssetHandle assetHandle;
+        SubscriptionId subscriptionId = 0;
+        std::filesystem::path path;
+        std::vector<UIDocumentHandle> appliedTo;  // Documents using this stylesheet
+    };
+    std::unordered_map<UIStyleSheetHandle, StyleSheetAssetInfo> styleSheetAssets_;
+    std::unordered_map<UUID, UIStyleSheetHandle> assetToStyleSheet_;
+
+    bool hotReloadEnabled_ = false;
+
+    // Hot reload callbacks
+    void onDocumentAssetChanged(AssetHandle handle, AssetType type);
+    void onStyleSheetAssetChanged(AssetHandle handle, AssetType type);
+    void reloadDocument(UIDocumentHandle docHandle);
+    void reloadStyleSheet(UIStyleSheetHandle styleHandle);
+
     // Helper methods
     UIElementHandle registerElement(Rml::Element* elem);
     Rml::Element* getElement(UIElementHandle handle);
@@ -579,6 +610,13 @@ Result<void, UIError> RmlUISystem::initialize(const UIConfig& config) {
         debugMode_ = true;
     }
 
+    // Enable hot reload for UI assets
+    if (assetSystem_) {
+        assetSystem_->enableHotReload(true);
+        hotReloadEnabled_ = true;
+        spdlog::info("[RmlUISystem] Hot reload enabled for UI assets");
+    }
+
     spdlog::info("[RmlUISystem] Initialized with {}x{} viewport", viewportWidth_, viewportHeight_);
     initialized_ = true;
     return {};
@@ -588,6 +626,24 @@ void RmlUISystem::shutdown() {
     if (!initialized_) {
         return;
     }
+
+    // Unsubscribe from all asset change notifications
+    if (assetSystem_) {
+        for (const auto& [docHandle, info] : documentAssets_) {
+            if (info.subscriptionId != 0) {
+                assetSystem_->unsubscribe(info.subscriptionId);
+            }
+        }
+        for (const auto& [styleHandle, info] : styleSheetAssets_) {
+            if (info.subscriptionId != 0) {
+                assetSystem_->unsubscribe(info.subscriptionId);
+            }
+        }
+    }
+    documentAssets_.clear();
+    assetToDocument_.clear();
+    styleSheetAssets_.clear();
+    assetToStyleSheet_.clear();
 
     // Clear all documents
     for (auto& [handle, doc] : documents_) {
@@ -662,6 +718,26 @@ Result<UIDocumentHandle, UIError> RmlUISystem::loadDocument(
     documents_[handle] = doc;
     documentHandles_[doc] = handle;
 
+    // Set up hot reload: subscribe to asset changes
+    if (hotReloadEnabled_) {
+        DocumentAssetInfo assetInfo;
+        assetInfo.assetHandle = assetHandle;
+        assetInfo.path = path;
+        assetInfo.wasVisible = false;
+
+        // Subscribe to changes for this specific asset
+        assetInfo.subscriptionId = assetSystem_->subscribe(assetHandle,
+            [this](AssetHandle h, AssetType t) {
+                onDocumentAssetChanged(h, t);
+            });
+
+        // Track mappings for fast lookup
+        documentAssets_[handle] = std::move(assetInfo);
+        assetToDocument_[assetHandle.uuid] = handle;
+
+        spdlog::debug("[RmlUISystem] Subscribed to hot reload for document: {}", path.string());
+    }
+
     return handle;
 }
 
@@ -690,6 +766,16 @@ Result<UIDocumentHandle, UIError> RmlUISystem::loadDocumentFromString(
 void RmlUISystem::unloadDocument(UIDocumentHandle handle) {
     auto it = documents_.find(handle);
     if (it == documents_.end()) return;
+
+    // Clean up hot reload subscription
+    auto assetIt = documentAssets_.find(handle);
+    if (assetIt != documentAssets_.end()) {
+        if (assetSystem_ && assetIt->second.subscriptionId != 0) {
+            assetSystem_->unsubscribe(assetIt->second.subscriptionId);
+        }
+        assetToDocument_.erase(assetIt->second.assetHandle.uuid);
+        documentAssets_.erase(assetIt);
+    }
 
     Rml::ElementDocument* doc = it->second;
     documentHandles_.erase(doc);
@@ -760,6 +846,25 @@ Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
     UIStyleSheetHandle handle = nextStyleHandle_++;
     styleSheetContents_[handle] = *content;
 
+    // Set up hot reload: subscribe to asset changes
+    if (hotReloadEnabled_) {
+        StyleSheetAssetInfo assetInfo;
+        assetInfo.assetHandle = assetHandle;
+        assetInfo.path = path;
+
+        // Subscribe to changes for this specific asset
+        assetInfo.subscriptionId = assetSystem_->subscribe(assetHandle,
+            [this](AssetHandle h, AssetType t) {
+                onStyleSheetAssetChanged(h, t);
+            });
+
+        // Track mappings for fast lookup
+        styleSheetAssets_[handle] = std::move(assetInfo);
+        assetToStyleSheet_[assetHandle.uuid] = handle;
+
+        spdlog::debug("[RmlUISystem] Subscribed to hot reload for stylesheet: {}", path.string());
+    }
+
     return handle;
 }
 
@@ -800,6 +905,16 @@ Result<void, UIError> RmlUISystem::applyStyleSheet(
 
     // Force document to re-process styles
     document->UpdateDocument();
+
+    // Track which documents use this stylesheet (for hot reload)
+    auto assetIt = styleSheetAssets_.find(styleSheet);
+    if (assetIt != styleSheetAssets_.end()) {
+        // Add doc to the list if not already there
+        auto& appliedTo = assetIt->second.appliedTo;
+        if (std::find(appliedTo.begin(), appliedTo.end(), doc) == appliedTo.end()) {
+            appliedTo.push_back(doc);
+        }
+    }
 
     return {};
 }
@@ -1136,6 +1251,11 @@ bool RmlUISystem::wantsMouseInput() const {
 }
 
 void RmlUISystem::update(DeltaTime dt) {
+    // Process hot reload file changes (event-driven via efsw)
+    if (hotReloadEnabled_ && assetSystem_) {
+        assetSystem_->update();
+    }
+
     if (context_) {
         context_->Update();
     }
@@ -1245,6 +1365,167 @@ Rml::Element* RmlUISystem::getElement(UIElementHandle handle) {
 Rml::ElementDocument* RmlUISystem::getDocument(UIDocumentHandle handle) {
     auto it = documents_.find(handle);
     return it != documents_.end() ? it->second : nullptr;
+}
+
+//==========================================================================
+// Hot Reload Implementation
+//==========================================================================
+
+void RmlUISystem::onDocumentAssetChanged(AssetHandle handle, AssetType type) {
+    // Find which document this asset corresponds to
+    auto it = assetToDocument_.find(handle.uuid);
+    if (it == assetToDocument_.end()) {
+        return;  // Not a document we're tracking
+    }
+
+    UIDocumentHandle docHandle = it->second;
+    spdlog::info("[RmlUISystem] Hot reload triggered for document (handle={})", docHandle);
+
+    reloadDocument(docHandle);
+}
+
+void RmlUISystem::onStyleSheetAssetChanged(AssetHandle handle, AssetType type) {
+    // Find which stylesheet this asset corresponds to
+    auto it = assetToStyleSheet_.find(handle.uuid);
+    if (it == assetToStyleSheet_.end()) {
+        return;  // Not a stylesheet we're tracking
+    }
+
+    UIStyleSheetHandle styleHandle = it->second;
+    spdlog::info("[RmlUISystem] Hot reload triggered for stylesheet (handle={})", styleHandle);
+
+    reloadStyleSheet(styleHandle);
+}
+
+void RmlUISystem::reloadDocument(UIDocumentHandle docHandle) {
+    auto assetIt = documentAssets_.find(docHandle);
+    if (assetIt == documentAssets_.end()) {
+        spdlog::warn("[RmlUISystem] Cannot reload document {}: no asset info", docHandle);
+        return;
+    }
+
+    auto docIt = documents_.find(docHandle);
+    if (docIt == documents_.end()) {
+        spdlog::warn("[RmlUISystem] Cannot reload document {}: not found", docHandle);
+        return;
+    }
+
+    Rml::ElementDocument* oldDoc = docIt->second;
+    const auto& assetInfo = assetIt->second;
+
+    // Remember visibility state
+    bool wasVisible = oldDoc->IsVisible();
+
+    // Reload the asset from disk
+    assetSystem_->reloadAsset(assetInfo.assetHandle);
+
+    if (!assetSystem_->isLoaded(assetInfo.assetHandle)) {
+        spdlog::error("[RmlUISystem] Failed to reload document: {}", assetInfo.path.string());
+        return;
+    }
+
+    // Get the new content
+    const auto* fileData = assetSystem_->getRawAsset(assetInfo.assetHandle);
+    if (!fileData) {
+        spdlog::error("[RmlUISystem] Failed to get reloaded document data");
+        return;
+    }
+
+    const auto* content = static_cast<const std::string*>(fileData);
+
+    // Close old document and remove element handles
+    documentHandles_.erase(oldDoc);
+    for (auto elemIt = elements_.begin(); elemIt != elements_.end(); ) {
+        if (elementHandles_.count(elemIt->second) > 0) {
+            // Check if this element belongs to the old document
+            // For safety, clear all element handles (they're document-owned anyway)
+            elemIt = elements_.erase(elemIt);
+        } else {
+            ++elemIt;
+        }
+    }
+    elementHandles_.clear();
+    oldDoc->Close();
+
+    // Load new document
+    Rml::ElementDocument* newDoc = context_->LoadDocumentFromMemory(
+        Rml::String(content->data(), content->size()), assetInfo.path.string());
+
+    if (!newDoc) {
+        spdlog::error("[RmlUISystem] Failed to parse reloaded document: {}", assetInfo.path.string());
+        documents_.erase(docIt);
+        return;
+    }
+
+    // Update mappings
+    documents_[docHandle] = newDoc;
+    documentHandles_[newDoc] = docHandle;
+
+    // Restore visibility
+    if (wasVisible) {
+        newDoc->Show();
+    }
+
+    spdlog::info("[RmlUISystem] Successfully reloaded document: {}", assetInfo.path.string());
+}
+
+void RmlUISystem::reloadStyleSheet(UIStyleSheetHandle styleHandle) {
+    auto assetIt = styleSheetAssets_.find(styleHandle);
+    if (assetIt == styleSheetAssets_.end()) {
+        spdlog::warn("[RmlUISystem] Cannot reload stylesheet {}: no asset info", styleHandle);
+        return;
+    }
+
+    const auto& assetInfo = assetIt->second;
+
+    // Reload the asset from disk
+    assetSystem_->reloadAsset(assetInfo.assetHandle);
+
+    if (!assetSystem_->isLoaded(assetInfo.assetHandle)) {
+        spdlog::error("[RmlUISystem] Failed to reload stylesheet: {}", assetInfo.path.string());
+        return;
+    }
+
+    // Get the new content
+    const auto* fileData = assetSystem_->getRawAsset(assetInfo.assetHandle);
+    if (!fileData) {
+        spdlog::error("[RmlUISystem] Failed to get reloaded stylesheet data");
+        return;
+    }
+
+    const auto* content = static_cast<const std::string*>(fileData);
+
+    // Update stored content
+    styleSheetContents_[styleHandle] = *content;
+
+    // Re-apply to all documents that use this stylesheet
+    for (UIDocumentHandle docHandle : assetInfo.appliedTo) {
+        auto* document = getDocument(docHandle);
+        if (!document) continue;
+
+        // Inject the updated stylesheet
+        Rml::ElementPtr styleElem = document->CreateElement("style");
+        if (styleElem) {
+            styleElem->SetInnerRML(*content);
+
+            // Find existing style elements and replace or add
+            Rml::Element* head = document->GetElementById("head");
+            if (!head) {
+                head = document;
+            }
+
+            if (head->GetNumChildren() > 0) {
+                head->InsertBefore(std::move(styleElem), head->GetFirstChild());
+            } else {
+                head->AppendChild(std::move(styleElem));
+            }
+
+            document->UpdateDocument();
+        }
+    }
+
+    spdlog::info("[RmlUISystem] Successfully reloaded stylesheet: {} (applied to {} documents)",
+                 assetInfo.path.string(), assetInfo.appliedTo.size());
 }
 
 #endif // BESTOW_HAS_RMLUI
