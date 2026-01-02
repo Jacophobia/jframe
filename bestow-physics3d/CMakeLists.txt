@@ -29,10 +29,6 @@ if(JOLT_FOUND)
     target_sources(bestow-physics3d
         PUBLIC FILE_SET CXX_MODULES FILES
             src/bestow.physics3d.impl.cppm
-        PRIVATE
-            src/FloatingOriginSystem.cpp
-            src/GravitySystem.cpp
-            src/PlanetaryLODSystem.cpp
     )
 
     target_link_libraries(bestow-physics3d
@@ -41,9 +37,6 @@ if(JOLT_FOUND)
             bestow-physics-common
             ${JOLT_TARGET}
             kangaru
-        PRIVATE
-            spdlog::spdlog
-            glm::glm
     )
 
     target_compile_features(bestow-physics3d PUBLIC cxx_std_23)

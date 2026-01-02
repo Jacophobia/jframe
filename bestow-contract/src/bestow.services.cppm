@@ -333,15 +333,6 @@ struct IBlueprintFactoryService : kgr::abstract_service<IBlueprintFactory> {};
 // Animation System
 struct IAnimationSystemService : kgr::abstract_service<IAnimationSystem> {};
 
-// Floating Origin System (large-world rendering)
-struct IFloatingOriginSystemService : kgr::abstract_service<IFloatingOriginSystem> {};
-
-// Gravity System (N-body orbital mechanics)
-struct IGravitySystemService : kgr::abstract_service<IGravitySystem> {};
-
-// Planetary LOD System (planet surface rendering)
-struct IPlanetaryLODSystemService : kgr::abstract_service<IPlanetaryLODSystem> {};
-
 //==========================================================================
 // Contract -> Service Type Mapping
 //
@@ -369,9 +360,6 @@ template<> struct ServiceFor<IGameStateSystem> { using type = IGameStateSystemSe
 template<> struct ServiceFor<IGASSystem> { using type = IGASSystemService; };
 template<> struct ServiceFor<IBlueprintFactory> { using type = IBlueprintFactoryService; };
 template<> struct ServiceFor<IAnimationSystem> { using type = IAnimationSystemService; };
-template<> struct ServiceFor<IFloatingOriginSystem> { using type = IFloatingOriginSystemService; };
-template<> struct ServiceFor<IGravitySystem> { using type = IGravitySystemService; };
-template<> struct ServiceFor<IPlanetaryLODSystem> { using type = IPlanetaryLODSystemService; };
 
 //==========================================================================
 // Application Interface
