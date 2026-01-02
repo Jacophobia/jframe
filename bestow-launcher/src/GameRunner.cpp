@@ -8,6 +8,7 @@ import std;
 import bestow.core;
 import bestow.services;
 import bestow.types;      // PathResolver
+import bestow.assets;     // AssetLibrary
 import bestow.script;
 import bestow.luabind;
 
@@ -140,12 +141,20 @@ public:
 
 private:
     void initializePathResolver() {
-        // PathResolver::initialize() uses AssetLibrary for robust auto-detection
-        // of the library path (checks env var, exe-relative, cwd-relative locations)
+        // Initialize PathResolver with basic defaults
         PathResolver::initialize();
 
-        // Log the auto-detected library path
-        spdlog::info("[GameRunner] Using library path: {}", PathResolver::getLibraryPath().string());
+        // Use AssetLibrary for robust auto-detection of library path
+        // (checks env var, exe-relative, cwd-relative locations)
+        auto assetLib = AssetLibrary::create();
+        if (assetLib) {
+            PathResolver::setLibraryPath(assetLib->root().string());
+            spdlog::info("[GameRunner] Using library path: {}", assetLib->root().string());
+        } else {
+            spdlog::warn("[GameRunner] Could not auto-detect asset library directory");
+            spdlog::warn("[GameRunner] Set BESTOW_LIBRARY_PATH environment variable to specify the location");
+            spdlog::info("[GameRunner] Using fallback library path: {}", PathResolver::getLibraryPath().string());
+        }
 
         // Set assets path to game root (where main.lua is located)
         spdlog::info("[GameRunner] Using assets path: {}", gameRoot_.string());
