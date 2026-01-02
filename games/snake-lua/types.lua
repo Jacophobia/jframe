@@ -122,6 +122,7 @@ function types.LevelMap()
         playerStart = types.GridPos(5, 5),
 
         foodRequired = 5,
+        lengthRequired = 15,  -- Win condition: snake must reach this length
         isBossLevel = false
     }
 end

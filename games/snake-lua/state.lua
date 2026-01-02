@@ -20,6 +20,7 @@ state.currentLevelIndex = 0
 state.currentWorldIndex = 0
 state.foodCollected = 0
 state.foodRequired = 5
+state.lengthRequired = 15  -- Win condition: reach this snake length
 state.levelMaxSize = 15
 state.levelOffsetX = 0
 state.levelOffsetZ = 0

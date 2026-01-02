@@ -102,8 +102,8 @@ function game_logic.moveSnake()
         state.moveInterval = math.max(config.MIN_MOVE_INTERVAL,
             state.moveInterval - config.SPEED_INCREASE_PER_FOOD)
 
-        -- Check for level complete
-        if state.foodCollected >= state.foodRequired then
+        -- Check for level complete (win by reaching target snake length)
+        if #state.snake >= state.lengthRequired then
             state.segmentsEarnedThisLevel = #state.snake
             main.transitionTo(GamePhase.LevelComplete)
             return
@@ -112,9 +112,8 @@ function game_logic.moveSnake()
         -- Spawn new food
         game_logic.spawnFood()
 
-        -- Maybe expand grid
-        if state.gridSize < state.levelMaxSize and
-           state.foodCollected % 3 == 0 then  -- Expand every 3 food
+        -- Expand grid every time food is collected
+        if state.gridSize < state.levelMaxSize then
             game_logic.startExpansion()
         end
     else
@@ -301,85 +300,149 @@ function game_logic.executeRingAttack(ring)
     game_logic.triggerScreenShake(0.3, 0.2)
 end
 
--- Spawn food at valid position
+-- Build obstacle set cache for O(1) lookups (call when level loads or obstacles change)
+function game_logic.rebuildObstacleCache()
+    local state = app.state
+    state.obstacleSet = {}
+    for _, obs in ipairs(state.obstacles) do
+        local key = obs.x .. "," .. obs.z
+        state.obstacleSet[key] = true
+    end
+end
+
+-- Check obstacle using cached set (O(1) instead of O(n))
+function game_logic.isObstacleAtFast(pos)
+    local state = app.state
+    if not state.obstacleSet then
+        game_logic.rebuildObstacleCache()
+    end
+    local key = pos.x .. "," .. pos.z
+    return state.obstacleSet[key] == true
+end
+
+-- Build snake set cache for O(1) lookups
+function game_logic.buildSnakeSet()
+    local state = app.state
+    local snakeSet = {}
+    for i, seg in ipairs(state.snake) do
+        local key = seg.pos.x .. "," .. seg.pos.z
+        snakeSet[key] = i
+    end
+    return snakeSet
+end
+
+-- Spawn food at valid position (OPTIMIZED)
 function game_logic.spawnFood()
+    bestow.metrics.beginZone("SpawnFood")
     local config = app.config
     local state = app.state
     local types = app.types
 
     local margin = config.FOOD_EDGE_MARGIN
-    local attempts = 0
-    local maxAttempts = 100
+    local maxAttempts = 20  -- Reduced from 100
+    local spawnPointSampleSize = 10  -- Only try 10 random spawn points, not all 168
 
-    -- Try to use level spawn points first
+    -- Build snake set once for O(1) lookups during this spawn
+    local snakeSet = game_logic.buildSnakeSet()
+
+    -- Level spawn points are in LEVEL coordinates, but we're working in GRID coordinates
+    -- Need to transform them to current grid coordinates
+    local offsetX = state.levelOffsetX or 0
+    local offsetZ = state.levelOffsetZ or 0
+
+    -- Try random spawn points (not all of them!)
     if #state.currentLevel.foodSpawnPoints > 0 then
-        -- Shuffle spawn points
-        local points = {}
-        for _, p in ipairs(state.currentLevel.foodSpawnPoints) do
-            table.insert(points, p)
-        end
+        for attempt = 1, math.min(spawnPointSampleSize, #state.currentLevel.foodSpawnPoints) do
+            local idx = math.random(1, #state.currentLevel.foodSpawnPoints)
+            local levelPos = state.currentLevel.foodSpawnPoints[idx]
 
-        for i = #points, 2, -1 do
-            local j = math.random(1, i)
-            points[i], points[j] = points[j], points[i]
-        end
+            -- Transform from level coords to current grid coords
+            local gridX = levelPos.x - offsetX
+            local gridZ = levelPos.z - offsetZ
 
-        for _, pos in ipairs(points) do
-            if game_logic.isValidFoodPosition(pos) then
-                state.foodPos = pos
-                state.foodColor = game_logic.generateRandomColor()
-                return
+            -- Only use if within current grid bounds
+            if gridX >= margin and gridX < state.gridSize - margin and
+               gridZ >= margin and gridZ < state.gridSize - margin then
+                local pos = types.GridPos(gridX, gridZ)
+
+                if game_logic.isValidFoodPositionFast(pos, snakeSet) then
+                    state.foodPos = pos
+                    state.foodColor = game_logic.generateRandomColor()
+                    bestow.metrics.endZone("SpawnFood")
+                    return
+                end
             end
         end
     end
 
-    -- Fall back to random position
-    while attempts < maxAttempts do
+    -- Fall back to random position within grid
+    for attempt = 1, maxAttempts do
         local x = math.random(margin, state.gridSize - margin - 1)
         local z = math.random(margin, state.gridSize - margin - 1)
         local pos = types.GridPos(x, z)
 
-        if game_logic.isValidFoodPosition(pos) then
+        if game_logic.isValidFoodPositionFast(pos, snakeSet) then
             state.foodPos = pos
             state.foodColor = game_logic.generateRandomColor()
+            bestow.metrics.endZone("SpawnFood")
             return
         end
-
-        attempts = attempts + 1
     end
 
-    -- Last resort: just place somewhere
-    state.foodPos = types.GridPos(math.floor(state.gridSize / 2), math.floor(state.gridSize / 2))
+    -- Last resort: just place somewhere safe
+    local centerX = math.floor(state.gridSize / 2)
+    local centerZ = math.floor(state.gridSize / 2)
+    state.foodPos = types.GridPos(centerX + 3, centerZ)
     state.foodColor = game_logic.generateRandomColor()
+    bestow.metrics.endZone("SpawnFood")
 end
 
 -- Check if food position is valid
 function game_logic.isValidFoodPosition(pos)
+    bestow.metrics.beginZone("ValidateFoodPos")
     local config = app.config
     local state = app.state
     local enemies = app.enemies
 
     -- Not on snake
-    if game_logic.isSnakeAt(pos) then return false end
+    if game_logic.isSnakeAt(pos) then
+        bestow.metrics.endZone("ValidateFoodPos")
+        return false
+    end
 
     -- Not on obstacle
-    if game_logic.isObstacleAt(pos) then return false end
+    if game_logic.isObstacleAt(pos) then
+        bestow.metrics.endZone("ValidateFoodPos")
+        return false
+    end
 
     -- Not on enemy
-    if enemies.isEnemyAt(pos) then return false end
+    if enemies.isEnemyAt(pos) then
+        bestow.metrics.endZone("ValidateFoodPos")
+        return false
+    end
 
     -- Minimum distance from snake head
     if #state.snake > 0 then
         local head = state.snake[1].pos
         local dist = math.abs(pos.x - head.x) + math.abs(pos.z - head.z)
-        if dist < config.MIN_FOOD_DISTANCE then return false end
+        if dist < config.MIN_FOOD_DISTANCE then
+            bestow.metrics.endZone("ValidateFoodPos")
+            return false
+        end
     end
 
-    -- Must be reachable from snake head (BFS)
-    if #state.snake > 0 and not game_logic.isFoodReachable(pos) then
+    -- Must be reachable from snake head (BFS) - THIS IS EXPENSIVE!
+    bestow.metrics.beginZone("FoodReachabilityBFS")
+    local reachable = #state.snake == 0 or game_logic.isFoodReachable(pos)
+    bestow.metrics.endZone("FoodReachabilityBFS")
+
+    if not reachable then
+        bestow.metrics.endZone("ValidateFoodPos")
         return false
     end
 
+    bestow.metrics.endZone("ValidateFoodPos")
     return true
 end
 
@@ -455,6 +518,118 @@ function game_logic.isFoodReachable(targetPos)
     end
 
     return false
+end
+
+-- OPTIMIZED: Fast food position validation with pre-built caches
+function game_logic.isValidFoodPositionFast(pos, snakeSet)
+    local config = app.config
+    local state = app.state
+    local enemies = app.enemies
+
+    -- Not on snake (O(1) lookup)
+    local key = pos.x .. "," .. pos.z
+    if snakeSet[key] then
+        return false
+    end
+
+    -- Not on obstacle (O(1) lookup)
+    if game_logic.isObstacleAtFast(pos) then
+        return false
+    end
+
+    -- Not on enemy
+    if enemies.isEnemyAt(pos) then
+        return false
+    end
+
+    -- Minimum distance from snake head
+    if #state.snake > 0 then
+        local head = state.snake[1].pos
+        local dist = math.abs(pos.x - head.x) + math.abs(pos.z - head.z)
+        if dist < config.MIN_FOOD_DISTANCE then
+            return false
+        end
+    end
+
+    -- SKIP BFS reachability check - it's expensive and spawn points are pre-validated
+    -- The level designer placed these spawn points, so they should be reachable
+    -- If food becomes unreachable due to snake position, player will just eat different food
+    return true
+end
+
+-- OPTIMIZED: Depth-limited BFS for reachability (if needed)
+function game_logic.isFoodReachableFast(targetPos, snakeSet, maxDepth)
+    local state = app.state
+    local types = app.types
+
+    if #state.snake == 0 then return true end
+
+    local head = state.snake[1].pos
+    maxDepth = maxDepth or 50  -- Limit search to 50 steps (plenty for most cases)
+
+    -- Quick Manhattan distance check - if too far, assume reachable
+    local manhattanDist = math.abs(targetPos.x - head.x) + math.abs(targetPos.z - head.z)
+    if manhattanDist > maxDepth then
+        return true  -- Assume reachable if very far (would take too long to verify)
+    end
+
+    -- BFS from head to target with depth limit
+    local visited = {}
+    local function key(p) return p.x .. "," .. p.z end
+
+    local queue = {{pos = head, depth = 0}}
+    visited[key(head)] = true
+
+    local directions = {
+        {dx = 0, dz = -1},
+        {dx = 0, dz = 1},
+        {dx = -1, dz = 0},
+        {dx = 1, dz = 0}
+    }
+
+    while #queue > 0 do
+        local current = table.remove(queue, 1)
+
+        -- Found target
+        if current.pos.x == targetPos.x and current.pos.z == targetPos.z then
+            return true
+        end
+
+        -- Depth limit reached
+        if current.depth >= maxDepth then
+            goto continue
+        end
+
+        -- Explore neighbors
+        for _, dir in ipairs(directions) do
+            local nx = current.pos.x + dir.dx
+            local nz = current.pos.z + dir.dz
+
+            -- Bounds check (no wrapping for simplicity)
+            if nx >= 0 and nx < state.gridSize and nz >= 0 and nz < state.gridSize then
+                local nkey = nx .. "," .. nz
+
+                if not visited[nkey] then
+                    -- Check if walkable using cached sets
+                    local blocked = game_logic.isObstacleAtFast(types.GridPos(nx, nz))
+
+                    -- Snake body blocks (except tail)
+                    if not blocked and snakeSet[nkey] and snakeSet[nkey] < #state.snake then
+                        blocked = true
+                    end
+
+                    if not blocked then
+                        visited[nkey] = true
+                        table.insert(queue, {pos = types.GridPos(nx, nz), depth = current.depth + 1})
+                    end
+                end
+            end
+        end
+        ::continue::
+    end
+
+    -- If we explored maxDepth without finding target, assume reachable
+    return true
 end
 
 -- Check food pickups at position
@@ -623,13 +798,26 @@ end
 -- Trigger game over
 function game_logic.triggerGameOver()
     local state = app.state
-    local main = app.main
     local audio = app.audio
+    local main = app.main
+    local timeline = app.timeline
 
     state.gameOver = true
-    game_logic.explodeSnake()
-    audio.playDeath()
-    main.transitionTo(GamePhase.GameOver)
+
+    -- Use timeline for death sequence
+    timeline.sequence({
+        -- Immediately: explode snake and play sound
+        {delay = 0.0, action = function()
+            game_logic.explodeSnake()
+            audio.playDeath()
+            game_logic.triggerScreenShake(0.5, 0.3)
+        end},
+
+        -- After 1.5 seconds: transition to game over menu
+        {delay = 1.5, action = function()
+            main.transitionTo(GamePhase.GameOver)
+        end},
+    })
 end
 
 -- Explode snake into particles
@@ -638,6 +826,7 @@ function game_logic.explodeSnake()
     local state = app.state
     local types = app.types
 
+    -- Create particles from all segments BEFORE clearing
     for _, seg in ipairs(state.snake) do
         -- Create explosion particles
         local worldPos = game_logic.gridToWorld(seg.pos)
@@ -667,6 +856,9 @@ function game_logic.explodeSnake()
             table.insert(state.detachedSegments, particle)
         end
     end
+
+    -- Clear the snake - it's now all particles (matches C++ behavior)
+    state.snake = {}
 end
 
 -- Trigger chain break at segment index

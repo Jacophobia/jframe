@@ -46,8 +46,30 @@ void bindEntitySystem(sol::state& lua, IEntitySystem& entity);
 void bindConfigSystem(sol::state& lua, IConfigSystem& config);
 void bindAssetSystem(sol::state& lua, IAssetSystem& assets);
 
+// Gameplay Ability System binding
+void bindGASSystem(sol::state& lua, IGASSystem& gas);
+
+// Level System binding
+void bindLevelSystem(sol::state& lua, ILevelSystem& level);
+
+// Blueprint Factory binding
+void bindBlueprintFactory(sol::state& lua, IBlueprintFactory& blueprints);
+
+// Game State System binding
+void bindGameStateSystem(sol::state& lua, IGameStateSystem& gamestate);
+
+// Save System binding
+void bindSaveSystem(sol::state& lua, ISaveSystem& save);
+
+// Event System binding
+void bindEventSystem(sol::state& lua, IEventSystem& events);
+
+// Metrics/Profiling System binding (always available, Tracy optional)
+void bindMetricsSystem(sol::state& lua);
+
 // Future bindings
-// void bindEventSystem(sol::state& lua, IEventSystem& events);
+// void bindAISystem(sol::state& lua, IAISystem& ai);
+// void bindCameraSystem(sol::state& lua, ICameraSystem& camera);
 
 //=============================================================================
 // LuaContractBinder - Main class for binding contracts to Lua

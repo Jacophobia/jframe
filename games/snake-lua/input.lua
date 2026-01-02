@@ -8,6 +8,11 @@ local input = {}
 function input.handleInput(dt)
     local state = app.state
 
+    -- Global: Toggle FPS display with F key
+    if bestow.input.wasKeyJustPressed(bestow.input.Keys.F) then
+        state.showFPS = not state.showFPS
+    end
+
     if state.currentPhase == GamePhase.MainMenu then
         input.handleMainMenuInput()
     elseif state.currentPhase == GamePhase.WorldMap then

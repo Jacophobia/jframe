@@ -19,6 +19,13 @@ target_sources(bestow-luabind
         src/bindings/entity_binding.cpp
         src/bindings/config_binding.cpp
         src/bindings/assets_binding.cpp
+        src/bindings/gas_binding.cpp
+        src/bindings/level_binding.cpp
+        src/bindings/blueprints_binding.cpp
+        src/bindings/gamestate_binding.cpp
+        src/bindings/save_binding.cpp
+        src/bindings/events_binding.cpp
+        src/bindings/metrics_binding.cpp
         src/stubs/StubGenerator.cpp
 )
 
@@ -27,7 +34,13 @@ target_link_libraries(bestow-luabind
         bestow-contract
         bestow-core
     PRIVATE
-        bestow-metrics  # For Tracy profiling support
+        bestow-metrics   # For Tracy profiling support
+        bestow-gas       # For GAS bindings
+        bestow-level     # For Level bindings
+        bestow-blueprints # For Blueprint bindings
+        bestow-gamestate # For GameState bindings
+        bestow-save      # For Save bindings
+        bestow-events    # For Events bindings
         lua
         sol2::sol2
         spdlog::spdlog

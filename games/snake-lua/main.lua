@@ -138,36 +138,77 @@ function main.loop()
     local rendering = app.rendering
     local ui = app.ui
     local worldmap = app.worldmap
+    local timeline = app.timeline
 
     local fixedDt = 1.0 / 60.0
     local accumulator = 0.0
 
+    -- FPS tracking (smoothed)
+    local fpsAccum = 0.0
+    local fpsFrames = 0
+    state.fps = 60.0
+    state.showFPS = true  -- Toggle with F key or config
+
     while state.running and not bestow.graphics3d.shouldClose() do
+        -- Begin frame metrics
+        bestow.metrics.beginFrame()
+
         local dt = bestow.core.deltaTime()
         accumulator = accumulator + dt
         state.gameTime = state.gameTime + dt
 
+        -- Update FPS counter (every 0.5 seconds for stability)
+        fpsAccum = fpsAccum + dt
+        fpsFrames = fpsFrames + 1
+        if fpsAccum >= 0.5 then
+            state.fps = fpsFrames / fpsAccum
+            fpsAccum = 0.0
+            fpsFrames = 0
+        end
+
         -- Fixed timestep updates
         while accumulator >= fixedDt do
             -- Update input
+            bestow.metrics.beginZone("Input")
             bestow.input.update()
-
-            -- Handle input based on current phase
             input.handleInput(fixedDt)
+            bestow.metrics.endZone("Input")
 
             -- Update game logic based on phase
+            bestow.metrics.beginZone("GameLogic")
             if state.currentPhase == GamePhase.MainMenu then
                 state.menuAnimTime = state.menuAnimTime + fixedDt
             elseif state.currentPhase == GamePhase.WorldMap then
                 levels.updateWorldMap(fixedDt)
             elseif state.currentPhase == GamePhase.Playing then
                 if not state.gameOver then
+                    -- Normal gameplay updates
+                    bestow.metrics.beginZone("GameLogic.update")
                     game_logic.update(fixedDt)
+                    bestow.metrics.endZone("GameLogic.update")
+
+                    bestow.metrics.beginZone("Enemies.update")
                     enemies.update(fixedDt)
-                    game_logic.updateDetachedSegments(fixedDt)
-                    game_logic.updateAnimations(fixedDt)
-                    camera.fullUpdate(fixedDt)
+                    bestow.metrics.endZone("Enemies.update")
+                else
+                    -- Death animation handled by timeline system
                 end
+
+                -- Update timeline system (handles timed events, sequences, lerps)
+                timeline.update(fixedDt)
+
+                -- These always update (even during death animation)
+                bestow.metrics.beginZone("Particles")
+                game_logic.updateDetachedSegments(fixedDt)
+                bestow.metrics.endZone("Particles")
+
+                bestow.metrics.beginZone("Animations")
+                game_logic.updateAnimations(fixedDt)
+                bestow.metrics.endZone("Animations")
+
+                bestow.metrics.beginZone("Camera")
+                camera.fullUpdate(fixedDt)
+                bestow.metrics.endZone("Camera")
             elseif state.currentPhase == GamePhase.Paused then
                 -- Paused - no updates
             elseif state.currentPhase == GamePhase.LevelComplete then
@@ -175,11 +216,13 @@ function main.loop()
             elseif state.currentPhase == GamePhase.GameOver then
                 state.menuAnimTime = state.menuAnimTime + fixedDt
             end
+            bestow.metrics.endZone("GameLogic")
 
             accumulator = accumulator - fixedDt
         end
 
         -- Render based on current phase
+        bestow.metrics.beginZone("Render")
         bestow.graphics3d.beginFrame()
 
         if state.currentPhase == GamePhase.MainMenu then
@@ -192,19 +235,33 @@ function main.loop()
                state.currentPhase == GamePhase.GameOver then
 
             -- Draw game world
+            bestow.metrics.beginZone("Render.Ground")
             rendering.drawGround()
+            bestow.metrics.endZone("Render.Ground")
+
+            bestow.metrics.beginZone("Render.Obstacles")
             rendering.drawObstacles()
+            bestow.metrics.endZone("Render.Obstacles")
+
+            bestow.metrics.beginZone("Render.Enemies")
             rendering.drawEnemies()
+            bestow.metrics.endZone("Render.Enemies")
+
+            bestow.metrics.beginZone("Render.Snake")
             rendering.drawSnake()
+            bestow.metrics.endZone("Render.Snake")
+
+            bestow.metrics.beginZone("Render.Effects")
             rendering.drawDetachedSegments()
             rendering.drawFoodPickups()
             rendering.drawFood()
             rendering.drawFoodPopEffect()
+            bestow.metrics.endZone("Render.Effects")
+
+            bestow.metrics.beginZone("Render.UI")
             rendering.drawGridBorder()
             rendering.drawHUD()
             rendering.drawLevelCompleteEffect()
-
-            -- Draw UI overlays
             ui.drawHUDText()
 
             if state.currentPhase == GamePhase.Paused then
@@ -214,26 +271,60 @@ function main.loop()
             elseif state.currentPhase == GamePhase.GameOver then
                 ui.drawGameOverMenu()
             end
+            bestow.metrics.endZone("Render.UI")
         end
 
         bestow.graphics3d.endFrame()
+        bestow.metrics.endZone("Render")
 
         -- Update audio
+        bestow.metrics.beginZone("Audio")
         if bestow.audio then
             bestow.audio.update(dt)
         end
+        bestow.metrics.endZone("Audio")
 
-        -- Tracy profiling: mark frame end and send performance data
-        if bestow.profiler and bestow.profiler.isEnabled() then
-            bestow.profiler.plot("Frame Time (ms)", dt * 1000)
-            bestow.profiler.plot("FPS", 1.0 / dt)
-            bestow.profiler.frameMark()
-        end
+        -- End frame metrics and send to Tracy
+        bestow.metrics.endFrame()
+
+        -- Plot key metrics
+        bestow.metrics.plot("Frame Time (ms)", dt * 1000)
+        bestow.metrics.plot("FPS", 1.0 / dt)
+        bestow.metrics.plot("Snake Length", #state.snake)
+        bestow.metrics.plot("Enemies", #state.enemies)
+        bestow.metrics.plot("Particles", #state.detachedSegments)
     end
 end
 
 -- Cleanup
 function main.cleanup()
+    -- Print metrics summary before shutdown
+    if bestow.metrics then
+        bestow.info("=== Performance Metrics Summary ===")
+        local summary = bestow.metrics.getSummary()
+        bestow.info(summary)
+
+        -- Print zone times for key operations
+        local zones = {
+            "SpawnFood", "ValidateFoodPos", "FoodReachabilityBFS",
+            "GameLogic", "GameLogic.update", "Enemies.update", "Particles", "Animations", "Camera",
+            "Render", "Render.Ground", "Render.Obstacles", "Render.Enemies", "Render.Snake", "Render.Effects", "Render.UI",
+            "Input", "Audio"
+        }
+        for _, zone in ipairs(zones) do
+            local time = bestow.metrics.getZoneTime(zone)
+            if time > 0 then
+                bestow.info("Zone", zone .. ":", string.format("%.3f ms", time))
+            end
+        end
+    end
+
+    -- Stop all audio and shutdown systems
+    if bestow.audio then
+        bestow.audio.stopAllSounds()
+        bestow.audio.shutdown()
+    end
+
     bestow.input.shutdown()
     bestow.graphics3d.shutdown()
     bestow.info("Snake game cleanup complete")

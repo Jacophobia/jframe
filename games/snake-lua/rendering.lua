@@ -381,7 +381,7 @@ function rendering.drawGridBorder()
     local borderColor = Color.new(80, 60, 40, 255)
     local y = 0.05
 
-    -- Draw the four sides
+    -- Draw the four sides of current border
     bestow.graphics3d.debugDrawLine(
         Vec3.new(-halfGrid, y, -halfGrid),
         Vec3.new(halfGrid, y, -halfGrid),
@@ -402,6 +402,39 @@ function rendering.drawGridBorder()
         Vec3.new(-halfGrid, y, -halfGrid),
         borderColor, 0.0, false
     )
+
+    -- Draw pulsing outer border during expansion (like C++ version)
+    if state.isExpanding then
+        local newHalfGrid = state.targetGridSize * config.CELL_SIZE * 0.5
+        local newY = 0.06  -- Slightly higher
+
+        -- Pulsing glow effect - yellow/gold color that pulses
+        local pulse = math.sin((state.expansionTimer or 0) * 15.0) * 0.5 + 0.5
+        local brightness = math.floor(180 + pulse * 75)
+        local glowColor = Color.new(brightness, brightness, math.floor(brightness * 0.6), 255)
+
+        -- Draw the four sides of the new outer border
+        bestow.graphics3d.debugDrawLine(
+            Vec3.new(-newHalfGrid, newY, -newHalfGrid),
+            Vec3.new(newHalfGrid, newY, -newHalfGrid),
+            glowColor, 0.0, false
+        )
+        bestow.graphics3d.debugDrawLine(
+            Vec3.new(newHalfGrid, newY, -newHalfGrid),
+            Vec3.new(newHalfGrid, newY, newHalfGrid),
+            glowColor, 0.0, false
+        )
+        bestow.graphics3d.debugDrawLine(
+            Vec3.new(newHalfGrid, newY, newHalfGrid),
+            Vec3.new(-newHalfGrid, newY, newHalfGrid),
+            glowColor, 0.0, false
+        )
+        bestow.graphics3d.debugDrawLine(
+            Vec3.new(-newHalfGrid, newY, newHalfGrid),
+            Vec3.new(-newHalfGrid, newY, -newHalfGrid),
+            glowColor, 0.0, false
+        )
+    end
 end
 
 -- Draw game HUD (food progress bar, snake length indicator)
@@ -412,33 +445,33 @@ function rendering.drawHUD()
     local hudY = 0.05  -- Just above ground
     local hudZ = -halfGrid - 0.5  -- Behind the play area
 
-    -- Food progress bar (how many food collected vs required)
-    local foodBarWidth = state.gridSize * config.CELL_SIZE * 0.6
-    local foodProgress = state.foodCollected / state.foodRequired
-    foodProgress = math.min(1.0, foodProgress)
+    -- Length progress bar (snake length vs required length for win)
+    local lengthBarWidth = state.gridSize * config.CELL_SIZE * 0.6
+    local lengthProgress = #state.snake / state.lengthRequired
+    lengthProgress = math.min(1.0, lengthProgress)
 
     -- Background (dark)
     local bgColor = Color.new(40, 40, 40, 255)
     bestow.graphics3d.debugDrawLine(
-        Vec3.new(-foodBarWidth * 0.5, hudY, hudZ),
-        Vec3.new(foodBarWidth * 0.5, hudY, hudZ),
+        Vec3.new(-lengthBarWidth * 0.5, hudY, hudZ),
+        Vec3.new(lengthBarWidth * 0.5, hudY, hudZ),
         bgColor, 0.0, false
     )
 
-    -- Foreground (gold/yellow for food)
-    local foodColor = Color.new(255, 200, 50, 255)
-    if foodProgress > 0 then
+    -- Foreground (green for snake length)
+    local lengthColor = Color.new(100, 255, 100, 255)
+    if lengthProgress > 0 then
         bestow.graphics3d.debugDrawLine(
-            Vec3.new(-foodBarWidth * 0.5, hudY + 0.02, hudZ),
-            Vec3.new(-foodBarWidth * 0.5 + foodBarWidth * foodProgress, hudY + 0.02, hudZ),
-            foodColor, 0.0, false
+            Vec3.new(-lengthBarWidth * 0.5, hudY + 0.02, hudZ),
+            Vec3.new(-lengthBarWidth * 0.5 + lengthBarWidth * lengthProgress, hudY + 0.02, hudZ),
+            lengthColor, 0.0, false
         )
     end
 
-    -- Segment count indicator (snake length) - vertical bar on left side
+    -- Food collected indicator - vertical bar on left side (secondary stat)
     local segmentBarHeight = 3.0
     local segmentBarX = -halfGrid - 0.5
-    local segmentProgress = math.min(1.0, #state.snake / 20.0)  -- Cap at 20 for display
+    local segmentProgress = math.min(1.0, state.foodCollected / 10.0)  -- Cap at 10 for display
 
     -- Background
     bestow.graphics3d.debugDrawLine(
@@ -447,20 +480,20 @@ function rendering.drawHUD()
         bgColor, 0.0, false
     )
 
-    -- Foreground (green for snake)
-    local snakeColor = Color.new(100, 255, 100, 255)
+    -- Foreground (gold for food collected)
+    local foodColor = Color.new(255, 200, 50, 255)
     if segmentProgress > 0 then
         bestow.graphics3d.debugDrawLine(
             Vec3.new(segmentBarX - 0.02, hudY, -halfGrid),
             Vec3.new(segmentBarX - 0.02, hudY + segmentBarHeight * segmentProgress, -halfGrid),
-            snakeColor, 0.0, false
+            foodColor, 0.0, false
         )
     end
 
-    -- Draw segment count as small markers
-    for i = 1, math.min(#state.snake, 20) do
-        local markerY = hudY + ((i - 1) / 20.0) * segmentBarHeight
-        local markerColor = (i == 1) and Color.new(255, 255, 100, 255) or snakeColor
+    -- Draw food count as small markers
+    for i = 1, math.min(state.foodCollected, 10) do
+        local markerY = hudY + ((i - 1) / 10.0) * segmentBarHeight
+        local markerColor = Color.new(255, 220, 80, 255)
         bestow.graphics3d.debugDrawLine(
             Vec3.new(segmentBarX - 0.1, markerY, -halfGrid),
             Vec3.new(segmentBarX + 0.05, markerY, -halfGrid),

@@ -71,6 +71,7 @@ local function bitSet(value, bit)
 end
 
 -- Draw a single character at 3D world position using debug lines
+-- Optimized: uses 2 lines per pixel instead of 5 for 2.5x performance
 function pixeltext.drawPixelChar(c, x, y, z, pixelSize, color)
     local pattern = pixeltext.getCharPattern(c)
 
@@ -78,21 +79,22 @@ function pixeltext.drawPixelChar(c, x, y, z, pixelSize, color)
         local colBits = pattern[col + 1]
         for row = 0, pixeltext.FONT_HEIGHT - 1 do
             if bitSet(colBits, row) then
-                -- Draw this pixel as a small square (horizontal lines)
+                -- Draw this pixel as 2 horizontal lines (optimized from 5)
                 local px = x + col * pixelSize
                 local py = y + (pixeltext.FONT_HEIGHT - 1 - row) * pixelSize
                 local halfPx = pixelSize * 0.45
 
-                -- Draw filled pixel using horizontal lines
-                local dy = -halfPx
-                while dy <= halfPx do
-                    bestow.graphics3d.debugDrawLine(
-                        Vec3.new(px - halfPx, py + dy, z),
-                        Vec3.new(px + halfPx, py + dy, z),
-                        color, 0.0, false
-                    )
-                    dy = dy + pixelSize * 0.2
-                end
+                -- Just 2 lines: top and bottom of pixel
+                bestow.graphics3d.debugDrawLine(
+                    Vec3.new(px - halfPx, py - halfPx * 0.5, z),
+                    Vec3.new(px + halfPx, py - halfPx * 0.5, z),
+                    color, 0.0, false
+                )
+                bestow.graphics3d.debugDrawLine(
+                    Vec3.new(px - halfPx, py + halfPx * 0.5, z),
+                    Vec3.new(px + halfPx, py + halfPx * 0.5, z),
+                    color, 0.0, false
+                )
             end
         end
     end
@@ -154,6 +156,7 @@ function pixeltext.drawBillboardText(text, worldX, worldY, worldZ, pixelSize, co
     local shadowOffset = pixelSize * 0.5
     local shadowPos = textPos + right * shadowOffset - up * shadowOffset + forward * 0.02
 
+    -- Draw both shadow and main text in a single pass to reduce overhead
     for i = 1, #text do
         local c = string.upper(string.sub(text, i, i))
         local pattern = pixeltext.getCharPattern(c)
@@ -167,49 +170,24 @@ function pixeltext.drawBillboardText(text, worldX, worldY, worldZ, pixelSize, co
                     local py = (pixeltext.FONT_HEIGHT - 1 - row) * pixelSize
                     local halfPx = pixelSize * 0.45
 
-                    -- Draw shadow pixel
-                    local dy = -halfPx
-                    while dy <= halfPx do
-                        local p1 = shadowPos + right * (px - halfPx) + up * (py + dy)
-                        local p2 = shadowPos + right * (px + halfPx) + up * (py + dy)
-                        bestow.graphics3d.debugDrawLine(
-                            Vec3.new(p1.x, p1.y, p1.z),
-                            Vec3.new(p2.x, p2.y, p2.z),
-                            shadowColor, 0.0, false
-                        )
-                        dy = dy + pixelSize * 0.25
-                    end
-                end
-            end
-        end
-    end
+                    -- Optimized: Just 1 line per pixel (was 4 lines)
+                    -- Shadow
+                    local sp1 = shadowPos + right * (px - halfPx) + up * py
+                    local sp2 = shadowPos + right * (px + halfPx) + up * py
+                    bestow.graphics3d.debugDrawLine(
+                        Vec3.new(sp1.x, sp1.y, sp1.z),
+                        Vec3.new(sp2.x, sp2.y, sp2.z),
+                        shadowColor, 0.0, false
+                    )
 
-    -- Main text
-    for i = 1, #text do
-        local c = string.upper(string.sub(text, i, i))
-        local pattern = pixeltext.getCharPattern(c)
-        local charOffset = startOffset + (i - 1) * charWidth
-
-        for col = 0, pixeltext.FONT_WIDTH - 1 do
-            local colBits = pattern[col + 1]
-            for row = 0, pixeltext.FONT_HEIGHT - 1 do
-                if bitSet(colBits, row) then
-                    local px = charOffset + col * pixelSize
-                    local py = (pixeltext.FONT_HEIGHT - 1 - row) * pixelSize
-                    local halfPx = pixelSize * 0.45
-
-                    -- Draw main text pixel
-                    local dy = -halfPx
-                    while dy <= halfPx do
-                        local p1 = textPos + right * (px - halfPx) + up * (py + dy)
-                        local p2 = textPos + right * (px + halfPx) + up * (py + dy)
-                        bestow.graphics3d.debugDrawLine(
-                            Vec3.new(p1.x, p1.y, p1.z),
-                            Vec3.new(p2.x, p2.y, p2.z),
-                            color, 0.0, false
-                        )
-                        dy = dy + pixelSize * 0.25
-                    end
+                    -- Main text
+                    local p1 = textPos + right * (px - halfPx) + up * py
+                    local p2 = textPos + right * (px + halfPx) + up * py
+                    bestow.graphics3d.debugDrawLine(
+                        Vec3.new(p1.x, p1.y, p1.z),
+                        Vec3.new(p2.x, p2.y, p2.z),
+                        color, 0.0, false
+                    )
                 end
             end
         end

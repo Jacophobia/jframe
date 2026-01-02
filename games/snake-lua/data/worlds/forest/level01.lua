@@ -5,7 +5,8 @@ return {
     name = "Forest Gate",
     width = 200,
     height = 200,
-    foodRequired = 5,  -- Low for testing, increase later
+    foodRequired = 5,  -- Still track food collected for progression/unlocks
+    lengthRequired = 10,  -- Win condition: grow snake to this length
 
     -- Player starts in the center
     playerStart = { x = 100, z = 100 },

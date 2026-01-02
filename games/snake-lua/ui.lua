@@ -323,17 +323,26 @@ function ui.drawHUDText()
     local segmentBarX = -halfGrid - 0.5
     local segmentBarHeight = 3.0
 
-    -- Food counter text (above the food bar) - e.g., "3/5"
-    local foodText = tostring(state.foodCollected) .. "/" .. tostring(state.foodRequired)
-    pixeltext.drawPixelTextShadow(foodText, 0.0, hudY + 0.6, hudZ - 0.3, 0.04, Color.new(255, 200, 50, 255))
+    -- Snake length progress text (above the food bar) - e.g., "7/15" (current length / required length)
+    local lengthText = tostring(#state.snake) .. "/" .. tostring(state.lengthRequired)
+    pixeltext.drawPixelTextShadow(lengthText, 0.0, hudY + 0.6, hudZ - 0.3, 0.04, Color.new(100, 255, 100, 255))
 
-    -- Snake length counter (next to segment bar)
-    local segmentText = tostring(#state.snake)
-    pixeltext.drawPixelTextShadow(segmentText, segmentBarX - 0.3, hudY + segmentBarHeight + 0.3, -halfGrid, 0.03, Color.new(100, 255, 100, 255))
+    -- Food collected counter (smaller, secondary display)
+    local foodText = "+" .. tostring(state.foodCollected)
+    pixeltext.drawPixelTextShadow(foodText, segmentBarX - 0.3, hudY + segmentBarHeight + 0.3, -halfGrid, 0.03, Color.new(255, 200, 50, 255))
 
     -- Level name (top of screen)
     if state.currentLevel.name and state.currentLevel.name ~= "" then
         pixeltext.drawPixelTextShadow(state.currentLevel.name, 0.0, 3.0, -halfGrid - 0.5, 0.05, Color.new(200, 200, 255, 255))
+    end
+
+    -- FPS counter (top-right corner, small)
+    if state.showFPS and state.fps then
+        local fpsText = tostring(math.floor(state.fps)) .. " FPS"
+        local fpsColor = state.fps >= 55 and Color.new(100, 255, 100, 255)  -- Green if good
+                      or state.fps >= 30 and Color.new(255, 255, 100, 255)  -- Yellow if ok
+                      or Color.new(255, 100, 100, 255)                       -- Red if bad
+        pixeltext.drawPixelTextShadow(fpsText, halfGrid - 1.0, 3.0, -halfGrid - 0.5, 0.03, fpsColor)
     end
 end
 

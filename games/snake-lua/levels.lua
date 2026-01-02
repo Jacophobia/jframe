@@ -69,6 +69,7 @@ function levels.parseLevelTable(tbl)
     state.currentLevel.width = tbl.width or 15
     state.currentLevel.height = tbl.height or 15
     state.currentLevel.foodRequired = tbl.foodRequired or 5
+    state.currentLevel.lengthRequired = tbl.lengthRequired or 15  -- Win condition: snake length
     state.currentLevel.isBossLevel = tbl.isBossLevel or false
 
     -- Player start position
@@ -121,6 +122,7 @@ function levels.parseLevelTable(tbl)
     -- Update grid size from level
     state.gridSize = state.currentLevel.width
     state.foodRequired = state.currentLevel.foodRequired
+    state.lengthRequired = state.currentLevel.lengthRequired
 
     bestow.info("Loaded level:", state.currentLevel.name,
           "(" .. state.currentLevel.width .. "x" .. state.currentLevel.height .. ")",
@@ -310,6 +312,7 @@ end
 function levels.rebuildVisibleObstacles()
     local state = app.state
     local types = app.types
+    local game_logic = app.game_logic
 
     state.obstacles = {}
 
@@ -325,6 +328,9 @@ function levels.rebuildVisibleObstacles()
             table.insert(state.obstacles, types.GridPos(gridX, gridZ))
         end
     end
+
+    -- Rebuild obstacle cache for O(1) collision checks
+    game_logic.rebuildObstacleCache()
 end
 
 -- Update world progress after level completion

@@ -105,8 +105,56 @@ void LuaContractBinder::bindAll() {
         spdlog::debug("[LuaContractBinder] Bound IAssetSystem -> bestow.assets");
     }
 
+    // Gameplay Ability System
+    if (engine_->has<IGASSystem>()) {
+        bindGASSystem(*lua_, engine_->get<IGASSystem>());
+        boundSystems_.push_back("gas");
+        spdlog::debug("[LuaContractBinder] Bound IGASSystem -> bestow.gas");
+    }
+
+    // Level System
+    if (engine_->has<ILevelSystem>()) {
+        bindLevelSystem(*lua_, engine_->get<ILevelSystem>());
+        boundSystems_.push_back("level");
+        spdlog::debug("[LuaContractBinder] Bound ILevelSystem -> bestow.level");
+    }
+
+    // Blueprint Factory
+    if (engine_->has<IBlueprintFactory>()) {
+        bindBlueprintFactory(*lua_, engine_->get<IBlueprintFactory>());
+        boundSystems_.push_back("blueprints");
+        spdlog::debug("[LuaContractBinder] Bound IBlueprintFactory -> bestow.blueprints");
+    }
+
+    // Game State System
+    if (engine_->has<IGameStateSystem>()) {
+        bindGameStateSystem(*lua_, engine_->get<IGameStateSystem>());
+        boundSystems_.push_back("gamestate");
+        spdlog::debug("[LuaContractBinder] Bound IGameStateSystem -> bestow.gamestate");
+    }
+
+    // Save System
+    if (engine_->has<ISaveSystem>()) {
+        bindSaveSystem(*lua_, engine_->get<ISaveSystem>());
+        boundSystems_.push_back("save");
+        spdlog::debug("[LuaContractBinder] Bound ISaveSystem -> bestow.save");
+    }
+
+    // Event System
+    if (engine_->has<IEventSystem>()) {
+        bindEventSystem(*lua_, engine_->get<IEventSystem>());
+        boundSystems_.push_back("events");
+        spdlog::debug("[LuaContractBinder] Bound IEventSystem -> bestow.events");
+    }
+
+    // Metrics/Profiling System (always available, doesn't require a contract)
+    bindMetricsSystem(*lua_);
+    boundSystems_.push_back("metrics");
+    spdlog::debug("[LuaContractBinder] Bound MetricsCollector -> bestow.metrics");
+
     // Future bindings will be added here as they're implemented:
-    // - IEventSystem -> bestow.events
+    // - IAISystem -> bestow.ai
+    // - ICameraSystem -> bestow.camera
 
     initialized_ = true;
     spdlog::info("[LuaContractBinder] Bound {} systems to Lua", boundSystems_.size());
