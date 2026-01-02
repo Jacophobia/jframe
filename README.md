@@ -1,171 +1,195 @@
 # Bestow Game Framework
 
-A modern C++23 game framework built with modularity, data-driven design, and performance in mind.
+A **Lua-first game engine** with a modern C++23 core. Write your game in Lua, run it instantly with no compilation.
 
 ## Quick Start
 
-**New to Bestow?** Start with the [Getting Started Guide](docs/Getting-Started.md) or the [Your First Application](tutorials/01-your-first-application.md) tutorial.
+### Run a Game
 
-### Minimal Example
+```bash
+# Run your game
+bestow run my-game/main.lua
 
-```cpp
-// game.cppm - Your game class
-class MyGame : public bestow::Application<MyGame,
-    bestow::IGraphics3DSystem,
-    bestow::IInputSystem>
-{
-public:
-    MyGame(IGraphics3DSystem& g, IInputSystem& i) : graphics_(&g), input_(&i) {}
-    void run() override { /* game loop */ }
-};
+# Create a new project
+bestow new my-game
+```
 
-// main.cpp - Wire up and run
-int main() {
-    bestow::core::Engine engine;
-    engine.use<bestow::IEventSystem, bestow::EventSystem>();
-    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
-    engine.use<bestow::IInputSystem, bestow::InputSystem>();
-    engine.run<MyGame>();  // Dependencies auto-injected!
+### Minimal Example (main.lua)
+
+```lua
+return {
+    title = "My Game",
+    width = 1280,
+    height = 720,
+
+    init = function()
+        local player = bestow.entity.create()
+        bestow.entity.addComponent(player, "Transform3D", {
+            position = Vec3.new(0, 1, 0)
+        })
+        app.main.state = { player = player }
+    end,
+
+    update = function(dt)
+        -- Move with ,AOE (Dvorak) or arrow keys
+        if bestow.input.isKeyDown(Keys.Comma) then
+            local pos = bestow.entity.getField(app.main.state.player, "Transform3D", "position")
+            pos.z = pos.z - 5 * dt
+            bestow.entity.setField(app.main.state.player, "Transform3D", "position", pos)
+        end
+        return not bestow.input.wasKeyJustPressed(Keys.Escape)
+    end,
+
+    render = function()
+        bestow.graphics3d.beginFrame()
+        bestow.graphics3d.endFrame()
+    end,
+
+    run = function()
+        app.main.init()
+        while app.main.update(bestow.core.deltaTime()) do
+            app.main.render()
+        end
+    end
 }
 ```
 
+That's it! No compilation, no build system, no CMake. Just Lua.
+
 ---
 
-## Start Your Own Game
+## Two Ways to Use Bestow
 
-The easiest way to start is to copy the **template project**:
+| Approach | Best For | Documentation |
+|----------|----------|---------------|
+| **Lua CLI** (Recommended) | Game developers, designers, rapid prototyping | [Getting Started](docs/Getting-Started.md), [Lua API](docs/Data-Driven-Design.md) |
+| **C++ Library** | Engine developers, performance-critical code, custom systems | [C++ Guide](docs/Using-CPP-Library.md), [Architecture](docs/Architecture.md) |
+
+### Lua CLI (Recommended for Most Users)
+
+Write your entire game in Lua. The engine handles rendering, physics, audio, and input.
 
 ```bash
-# Copy the template
-cp -r template/ ~/Projects/my-game
-cd ~/Projects/my-game
-
-# Edit CMakeLists.txt to set BESTOW_DIR path
-# Then build!
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
-./build/my-game
+bestow run main.lua          # Run your game
+bestow new my-game           # Create new project
+bestow run --hot-reload      # Enable hot reload
 ```
 
-### Template Structure
-
+**Project structure:**
 ```
-template/
-├── CMakeLists.txt              # Build config (edit BESTOW_DIR path)
-├── README.md                   # Detailed usage instructions
-└── src/
-    ├── main.cpp                # Engine setup and system registration
-    └── game.cppm               # Your game class with DI
+my-game/
+├── main.lua                 # Entry point
+├── entities/
+│   └── player.lua          # → app.entities.player
+├── systems/
+│   └── movement.lua        # → app.systems.movement
+├── levels/
+│   └── level1.lua          # → app.levels.level1
+└── assets/
+    ├── textures/
+    └── sounds/
 ```
 
-See [template/README.md](template/README.md) for detailed documentation.
+**Key benefits:**
+- ✅ No compilation - edit and run instantly
+- ✅ Hot reload - see changes without restarting
+- ✅ Simple project structure - just Lua files
+- ✅ Full engine power - graphics, physics, audio, input
+
+### C++ Library (For Engine Developers)
+
+Use Bestow as a C++ library when you need:
+- Custom engine systems
+- Maximum performance
+- Direct hardware access
+- Integration with existing C++ codebases
+
+```cpp
+// main.cpp
+import bestow.core;
+import bestow.vulkan.impl;
+
+class MyGame : public bestow::Application<MyGame, bestow::IGraphics3DSystem> {
+public:
+    MyGame(bestow::IGraphics3DSystem& graphics) : graphics_(&graphics) {}
+    void run() override { /* game loop */ }
+};
+
+int main() {
+    bestow::core::Engine engine;
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
+    engine.run<MyGame>();
+}
+```
+
+See [Using Bestow as a C++ Library](docs/Using-CPP-Library.md) for complete documentation.
 
 ---
 
 ## Documentation
 
-### Learning Path
+### For Game Developers (Lua)
 
-| Step | Resource | Description |
-|------|----------|-------------|
-| 1 | [Getting Started](docs/Getting-Started.md) | Quick overview and setup |
-| 2 | [Your First Application](tutorials/01-your-first-application.md) | Step-by-step tutorial |
-| 3 | [Template Project](template/README.md) | Reference implementation |
-| 4 | [Example Games](games/) | Complete game implementations |
+| Document | Description |
+|----------|-------------|
+| [Getting Started](docs/Getting-Started.md) | Quick start with Lua CLI |
+| [CLI Reference](docs/CLI.md) | All `bestow` commands and options |
+| [Lua API Reference](docs/Data-Driven-Design.md) | Complete `bestow.*` and `app.*` API |
+| [Example Games](games/) | Complete game implementations |
 
-### Reference
+### For Engine Developers (C++)
 
-- [Architecture](docs/Architecture.md) - System design overview
-- [API Reference](docs/api/) - System API documentation
-- [Technical Design](docs/bestow-technical-design.md) - Deep dive into architecture
+| Document | Description |
+|----------|-------------|
+| [Using C++ Library](docs/Using-CPP-Library.md) | C++ integration guide |
+| [Architecture](docs/Architecture.md) | System design overview |
+| [API Reference](docs/api/) | System API documentation |
+| [Technical Design](docs/bestow-technical-design.md) | Deep dive into architecture |
 
 ### For Contributors
 
-- [Development Guidelines](CLAUDE.md) - Coding standards and workflow
-- [System Implementation Guide](docs/SYSTEM-IMPLEMENTATION-GUIDE.md) - Adding new systems
-- [Project Status](docs/PROJECT-STATUS.md) - Implementation progress
+| Document | Description |
+|----------|-------------|
+| [Development Guidelines](CLAUDE.md) | Coding standards and workflow |
+| [System Implementation Guide](docs/SYSTEM-IMPLEMENTATION-GUIDE.md) | Adding new systems |
+| [Project Status](docs/PROJECT-STATUS.md) | Implementation progress |
 
 ---
-
-## Core Concepts
-
-### Contract-Based Architecture
-
-Bestow uses **contracts** (interfaces) to decouple systems:
-
-```cpp
-// Your game only depends on contracts (interfaces)
-class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem> { ... };
-
-// main.cpp chooses the implementations
-engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();  // Could be OpenGL!
-engine.use<IInputSystem, InputSystem>();
-```
-
-### Application Pattern
-
-Inherit from `Application<YourGame, Dependencies...>`:
-
-```cpp
-class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem, IAudioSystem>
-{
-public:
-    // Constructor params match template args
-    MyGame(IGraphics3DSystem& g, IInputSystem& i, IAudioSystem& a) { ... }
-    void run() override { /* your game */ }
-};
-
-engine.run<MyGame>();  // Dependencies auto-detected and injected!
-```
-
-### Engine API
-
-```cpp
-// Register implementations
-engine.use<IContract, Implementation>();
-
-// Check availability (for optional systems)
-if (engine.has<IAudioSystem>()) { ... }
-
-// Get systems
-auto& graphics = engine.get<IGraphics3DSystem>();
-auto* audio = engine.tryGet<IAudioSystem>();  // nullptr if not registered
-```
-
----
-
-## Build
-
-```bash
-# Configure
-cmake --preset macos-debug  # or windows-debug, linux-debug
-
-# Build
-cmake --build --preset macos-debug
-
-# Test
-ctest --preset macos-debug
-```
-
-## Requirements
-
-- **C++23** compiler (Clang 20+, GCC 13+, MSVC 19.38+)
-- **CMake 3.28+** (for C++ module support)
-- **Vulkan SDK**
-- **vcpkg** for dependencies
-
-See [docs/Installation.md](docs/Installation.md) for detailed setup.
 
 ## Features
 
-- Modern C++23 with modules (`import std;`)
-- Contract-based dependency injection
-- Entity Component System (EnTT)
-- Vulkan 3D rendering (OpenGL fallback available)
-- Data-driven design with Lua scripting
-- 2D physics with Box2D
-- Audio with FMOD
-- Cross-platform (macOS, Windows, Linux)
+- **Lua-first design** - Write games in Lua, no compilation needed
+- **Hot reload** - Edit Lua files and see changes instantly
+- **Vulkan rendering** - Modern 3D graphics (OpenGL fallback available)
+- **Physics** - Box2D for 2D, Jolt for 3D
+- **Audio** - FMOD integration for sound and music
+- **Entity Component System** - Powered by EnTT
+- **Cross-platform** - macOS, Windows, Linux
+
+## CLI Installation
+
+```bash
+# macOS (Homebrew)
+brew install bestow
+
+# Build from source
+cmake --preset macos-release
+cmake --build --preset macos-release
+sudo cmake --install build/macos-release
+```
+
+See [docs/Installation.md](docs/Installation.md) for detailed setup.
+
+## Requirements
+
+**For Lua game development:**
+- `bestow` CLI tool (see installation above)
+
+**For C++ development:**
+- C++23 compiler (Clang 20+, GCC 13+, MSVC 19.38+)
+- CMake 3.28+
+- Vulkan SDK
+- vcpkg for dependencies
 
 ## License
 
