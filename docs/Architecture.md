@@ -1,17 +1,25 @@
 # Architecture Guide
 
-This guide provides a comprehensive overview of Bestow's architecture, design patterns, and system interactions.
+This guide provides a comprehensive overview of Bestow's internal architecture for **engine developers and contributors**.
+
+> **For game developers:** If you're building games with Bestow, you probably want:
+> - [Getting Started](Getting-Started.md) - Quick start with Lua CLI
+> - [Lua API Reference](Data-Driven-Design.md) - Complete `bestow.*` API
+> - [CLI Reference](CLI.md) - Command-line options
+>
+> This document covers the C++ engine internals.
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [Module-Based Architecture](#module-based-architecture)
-3. [System Overview](#system-overview)
-4. [Dependency Injection](#dependency-injection)
-5. [Data-Driven Design](#data-driven-design)
-6. [The Game Loop](#the-game-loop)
-7. [Key Design Patterns](#key-design-patterns)
-8. [Performance Architecture](#performance-architecture)
+2. [Two Ways to Use Bestow](#two-ways-to-use-bestow)
+3. [Module-Based Architecture](#module-based-architecture)
+4. [System Overview](#system-overview)
+5. [Dependency Injection](#dependency-injection)
+6. [Data-Driven Design](#data-driven-design)
+7. [The Game Loop](#the-game-loop)
+8. [Key Design Patterns](#key-design-patterns)
+9. [Performance Architecture](#performance-architecture)
 
 ---
 
@@ -19,18 +27,75 @@ This guide provides a comprehensive overview of Bestow's architecture, design pa
 
 Bestow is built on several core architectural principles:
 
-1. **Program to Interfaces** - All systems implement abstract interfaces for testability and flexibility
-2. **Composition Over Inheritance** - Entity Component System (ECS) architecture
-3. **Data-Driven Design** - Game content defined in Lua, not C++
-4. **Dependency Injection** - Systems are wired together via EngineBuilder
-5. **C++23 Modules** - Modern module system for faster compilation and better encapsulation
+1. **Lua-First Design** - Games are written in Lua, run via `bestow run main.lua`
+2. **Program to Interfaces** - All systems implement abstract interfaces for testability and flexibility
+3. **Composition Over Inheritance** - Entity Component System (ECS) architecture
+4. **Data-Driven Design** - Game content defined in Lua, not C++
+5. **Dependency Injection** - Systems are wired together via Engine
+6. **C++23 Modules** - Modern module system for faster compilation and better encapsulation
 
 ### Philosophy
 
+- **Lua provides the game** - Logic, entities, levels, configuration
 - **C++ provides the engine** - Systems, rendering, physics, audio
-- **Lua provides the content** - Levels, entities, blueprints, configuration
 - **Interfaces define contracts** - Implementation details are hidden
 - **Hot reload first** - Change content without recompiling
+
+---
+
+## Two Ways to Use Bestow
+
+### Lua CLI (Recommended for Games)
+
+Game developers write Lua code and run it with the `bestow` CLI:
+
+```bash
+bestow run my-game/main.lua
+```
+
+The CLI:
+1. Initializes the C++ engine with default system implementations
+2. Loads and executes the Lua game code
+3. Exposes engine systems via the `bestow.*` Lua namespace
+4. Manages the game loop, hot reload, and shutdown
+
+**Game developers never touch C++.** They use the Lua API documented in [Data-Driven-Design.md](Data-Driven-Design.md).
+
+### C++ Library (For Engine Developers)
+
+Engine developers and power users can use Bestow as a C++ library:
+
+```cpp
+bestow::core::Engine engine;
+engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
+engine.run<MyGame>();
+```
+
+See [Using-CPP-Library.md](Using-CPP-Library.md) for complete C++ documentation.
+
+### Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                    Game Developer Layer                       │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  main.lua, entities/, systems/, levels/                 │ │
+│  │  Uses: bestow.* and app.* Lua namespaces                │ │
+│  └─────────────────────────────────────────────────────────┘ │
+├──────────────────────────────────────────────────────────────┤
+│                      Bestow CLI                               │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │  bestow run main.lua                                    │ │
+│  │  Initializes engine, runs Lua, manages hot reload       │ │
+│  └─────────────────────────────────────────────────────────┘ │
+├──────────────────────────────────────────────────────────────┤
+│                   Engine Layer (C++)                          │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │ Graphics │ │ Physics  │ │  Audio   │ │ Entity/Input/etc │ │
+│  │ (Vulkan) │ │ (Box2D)  │ │ (FMOD)   │ │                  │ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────────────┘ │
+└──────────────────────────────────────────────────────────────┘
+```
 
 ---
 

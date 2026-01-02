@@ -63,3 +63,23 @@ if(APPLE)
         MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
     )
 endif()
+
+# Installation rules
+include(GNUInstallDirs)
+
+# Install the bestow executable
+install(TARGETS bestow
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# Install template directory for 'bestow init' command
+# This places template at: <prefix>/share/bestow/template
+# Which is found by: exeDir / ".." / "share" / "bestow" / "template"
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/bestow/template
+    FILES_MATCHING
+        PATTERN "*.md"
+        PATTERN "*.lua"
+        PATTERN "*.json"
+)

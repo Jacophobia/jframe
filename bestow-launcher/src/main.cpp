@@ -3,6 +3,18 @@
 
 #include <spdlog/spdlog.h>
 
+// Platform-specific includes for executable path detection
+#if defined(__APPLE__)
+    #include <mach-o/dyld.h>
+    #include <climits>
+#elif defined(__linux__)
+    #include <unistd.h>
+    #include <linux/limits.h>
+#elif defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#endif
+
 import std;
 import bestow.luabind;  // For StubGenerator
 
@@ -16,6 +28,7 @@ enum class Command {
     Run,
     GenerateStubs,
     New,
+    Init,
     Version,
     Help
 };
@@ -163,6 +176,147 @@ return {
     return 0;
 }
 
+//=============================================================================
+// Template Directory Discovery
+//=============================================================================
+
+std::optional<std::filesystem::path> findTemplateDirectory() {
+    // 1. Check environment variable override
+    if (const char* envPath = std::getenv("BESTOW_TEMPLATE_PATH")) {
+        std::filesystem::path templatePath(envPath);
+        if (std::filesystem::exists(templatePath) && std::filesystem::is_directory(templatePath)) {
+            return templatePath;
+        }
+        spdlog::warn("BESTOW_TEMPLATE_PATH is set but path does not exist: {}", envPath);
+    }
+
+    // 2. Get executable directory and search relative to it
+    std::filesystem::path exeDir;
+
+#if defined(__APPLE__)
+    char path[PATH_MAX];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        // _NSGetExecutablePath returns the invoked path (may be symlink)
+        // Use realpath to resolve to actual executable location
+        char resolvedPath[PATH_MAX];
+        if (realpath(path, resolvedPath) != nullptr) {
+            exeDir = std::filesystem::path(resolvedPath).parent_path();
+        } else {
+            exeDir = std::filesystem::path(path).parent_path();
+        }
+    }
+#elif defined(__linux__)
+    char path[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
+    if (count != -1) {
+        path[count] = '\0';
+        exeDir = std::filesystem::path(path).parent_path();
+    }
+#elif defined(_WIN32)
+    char path[MAX_PATH];
+    GetModuleFileNameA(nullptr, path, MAX_PATH);
+    exeDir = std::filesystem::path(path).parent_path();
+#endif
+
+    // Search patterns relative to executable
+    // Covers various installation layouts:
+    // - Unix FHS: /usr/local/bin/bestow + /usr/local/share/bestow/template
+    // - Windows: C:\Program Files\Bestow\bestow.exe + C:\Program Files\Bestow\share\bestow\template
+    // - Development: ./build/bestow + ./template
+    std::vector<std::filesystem::path> searchPaths = {
+        exeDir / "template",                              // Dev: exe alongside template/
+        exeDir / ".." / "template",                       // Dev: exe in build/, template in root
+        exeDir / ".." / "share" / "bestow" / "template",  // Unix FHS: exe in bin/
+        exeDir / "share" / "bestow" / "template",         // Windows: exe in install root
+        exeDir / ".." / "lib" / "bestow" / "template",    // Alternative lib layout
+        exeDir / "library" / "template",                  // Bestow library layout
+        exeDir / ".." / "library" / "template",           // Bestow library layout (exe in bin/)
+    };
+
+    // Also check BESTOW_LIBRARY_PATH + template
+    if (const char* libPath = std::getenv("BESTOW_LIBRARY_PATH")) {
+        searchPaths.push_back(std::filesystem::path(libPath) / "template");
+    }
+
+    for (const auto& searchPath : searchPaths) {
+        std::error_code ec;
+        auto canonical = std::filesystem::canonical(searchPath, ec);
+        if (!ec && std::filesystem::exists(canonical) && std::filesystem::is_directory(canonical)) {
+            return canonical;
+        }
+    }
+
+    // 3. Fallback: check relative to cwd
+    std::filesystem::path cwdTemplate = std::filesystem::current_path() / "template";
+    if (std::filesystem::exists(cwdTemplate) && std::filesystem::is_directory(cwdTemplate)) {
+        return cwdTemplate;
+    }
+
+    return std::nullopt;
+}
+
+void copyDirectoryRecursive(const std::filesystem::path& src, const std::filesystem::path& dst,
+                            int& copiedFiles, int& skippedFiles) {
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
+        const auto& srcPath = entry.path();
+        auto relativePath = std::filesystem::relative(srcPath, src);
+        auto dstPath = dst / relativePath;
+
+        if (entry.is_directory()) {
+            std::filesystem::create_directories(dstPath);
+        } else if (entry.is_regular_file()) {
+            if (std::filesystem::exists(dstPath)) {
+                spdlog::warn("Skipping existing file: {}", relativePath.string());
+                ++skippedFiles;
+            } else {
+                std::filesystem::create_directories(dstPath.parent_path());
+                std::filesystem::copy_file(srcPath, dstPath);
+                spdlog::debug("Copied: {}", relativePath.string());
+                ++copiedFiles;
+            }
+        }
+    }
+}
+
+int handleInit([[maybe_unused]] const CommandLineArgs& args) {
+    spdlog::info("Bestow Engine - Initializing project in current directory...");
+
+    auto templateDir = findTemplateDirectory();
+    if (!templateDir) {
+        spdlog::error("Could not find template directory");
+        spdlog::info("Set BESTOW_TEMPLATE_PATH environment variable to specify location");
+        return 1;
+    }
+
+    spdlog::info("Using template from: {}", templateDir->string());
+
+    std::filesystem::path targetDir = std::filesystem::current_path();
+
+    int copiedFiles = 0;
+    int skippedFiles = 0;
+
+    try {
+        copyDirectoryRecursive(*templateDir, targetDir, copiedFiles, skippedFiles);
+    } catch (const std::filesystem::filesystem_error& e) {
+        spdlog::error("Failed to copy template files: {}", e.what());
+        return 1;
+    }
+
+    spdlog::info("");
+    spdlog::info("Initialized project with {} files", copiedFiles);
+    if (skippedFiles > 0) {
+        spdlog::info("Skipped {} existing files", skippedFiles);
+    }
+    spdlog::info("");
+    spdlog::info("Added:");
+    spdlog::info("  CLAUDE.md           - AI agent guidance for game development");
+    spdlog::info("  .claude/skills/     - Claude skills for Bestow game development");
+    spdlog::info("");
+
+    return 0;
+}
+
 int handleVersion([[maybe_unused]] const CommandLineArgs& args) {
     printVersion();
     return 0;
@@ -205,6 +359,9 @@ int main(int argc, char* argv[]) {
 
         case Command::New:
             return handleNew(*args);
+
+        case Command::Init:
+            return handleInit(*args);
 
         case Command::Version:
             return handleVersion(*args);

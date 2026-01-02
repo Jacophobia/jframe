@@ -12,6 +12,7 @@ enum class Command {
     Run,
     GenerateStubs,
     New,
+    Init,
     Version,
     Help
 };
@@ -34,7 +35,8 @@ void printUsage(const char* programName) {
     spdlog::info("Commands:");
     spdlog::info("  run <main.lua>      Run a game from its main Lua script");
     spdlog::info("  generate-stubs <out> Generate IDE type stubs to output directory");
-    spdlog::info("  new <name>          Create a new project from template");
+    spdlog::info("  new <name>          Create a new project in a new directory");
+    spdlog::info("  init                Initialize current directory with template files");
     spdlog::info("  version             Show version information");
     spdlog::info("  help                Show this help message");
     spdlog::info("");
@@ -111,6 +113,12 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
             }
             args.projectName = argv[i + 1];
             i += 2;
+            continue;
+        }
+
+        if (arg == "init") {
+            args.command = Command::Init;
+            ++i;
             continue;
         }
 
