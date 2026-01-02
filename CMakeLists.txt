@@ -65,6 +65,8 @@ add_subdirectory(bestow-animation)
 add_subdirectory(bestow-ai)
 add_subdirectory(bestow-camera)
 add_subdirectory(bestow-config)
+add_subdirectory(bestow-script)
+add_subdirectory(bestow-luabind)
 add_subdirectory(bestow-gas)
 add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
@@ -101,6 +103,11 @@ if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
     add_subdirectory(demos/animation-showcase)
 endif()
 
+# Single executable launcher (requires Vulkan for full functionality)
+if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
+    add_subdirectory(bestow-launcher)
+endif()
+
 # Template uses proper contract-based DI architecture
 # See template/README.md for usage
 
@@ -131,6 +138,8 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-ai
     bestow-camera
     bestow-config
+    bestow-script
+    bestow-luabind
     bestow-gas
     bestow-blueprints
     bestow-ui

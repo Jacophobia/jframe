@@ -508,6 +508,7 @@ public:
 
     void setCamera(const Camera3D& camera) override;
     Camera3D getCamera() const override;
+    void setCameraTarget(const Vec3& target) override;
 
     Ray3D screenToWorldRay(Vec2 screenPos) const override;
     std::optional<Vec2> worldToScreen(const Vec3& worldPos) const override;
@@ -738,6 +739,8 @@ public:
 private:
     VulkanContext context_;
     Camera3D camera_;
+    Vec3 cameraTarget_{0.0f, 0.0f, 0.0f};
+    bool useCameraTarget_ = false;
     Color clearColor_ = Color::black();
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
@@ -795,6 +798,8 @@ private:
         float timeRemaining;
     };
     std::vector<DebugLine> debugLines_;
+    VulkanBufferHandle debugLineBuffer_ = 0;
+    static constexpr std::size_t MAX_DEBUG_LINES = 10000;
 
     // Initialization state
     bool initialized_ = false;

@@ -141,8 +141,174 @@ public:
         // Entity system doesn't need per-frame updates by default
     }
 
+    //======================================================================
+    // Reflection-Based Component Access (for Lua/Scripting)
+    //======================================================================
+
+    void registerComponentType(std::string_view typeName,
+                                ComponentTypeInfo typeInfo) override {
+        componentTypes_[std::string(typeName)] = std::move(typeInfo);
+    }
+
+    void unregisterComponentType(std::string_view typeName) override {
+        componentTypes_.erase(std::string(typeName));
+        componentFactories_.erase(std::string(typeName));
+    }
+
+    bool isComponentTypeRegistered(std::string_view typeName) const override {
+        return componentTypes_.contains(std::string(typeName));
+    }
+
+    std::optional<ComponentTypeInfo> getComponentTypeInfo(
+        std::string_view typeName) const override {
+        auto it = componentTypes_.find(std::string(typeName));
+        if (it != componentTypes_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    std::vector<std::string> getRegisteredComponentTypes() const override {
+        std::vector<std::string> result;
+        result.reserve(componentTypes_.size());
+        for (const auto& [name, info] : componentTypes_) {
+            result.push_back(name);
+        }
+        return result;
+    }
+
+    bool addComponentByName(Entity entity,
+                             std::string_view typeName,
+                             const ComponentData& data) override {
+        if (!isValid(entity)) {
+            return false;
+        }
+
+        auto it = componentFactories_.find(std::string(typeName));
+        if (it == componentFactories_.end()) {
+            return false;
+        }
+
+        return it->second.add(entity, data, registry_);
+    }
+
+    bool removeComponentByName(Entity entity,
+                                std::string_view typeName) override {
+        if (!isValid(entity)) {
+            return false;
+        }
+
+        auto it = componentFactories_.find(std::string(typeName));
+        if (it == componentFactories_.end()) {
+            return false;
+        }
+
+        return it->second.remove(entity, registry_);
+    }
+
+    bool hasComponentByName(Entity entity,
+                             std::string_view typeName) const override {
+        if (!isValid(entity)) {
+            return false;
+        }
+
+        auto it = componentFactories_.find(std::string(typeName));
+        if (it == componentFactories_.end()) {
+            return false;
+        }
+
+        return it->second.has(entity, registry_);
+    }
+
+    std::optional<ComponentData> getComponentByName(
+        Entity entity,
+        std::string_view typeName) const override {
+        if (!isValid(entity)) {
+            return std::nullopt;
+        }
+
+        auto it = componentFactories_.find(std::string(typeName));
+        if (it == componentFactories_.end()) {
+            return std::nullopt;
+        }
+
+        return it->second.get(entity, registry_);
+    }
+
+    bool setComponentByName(Entity entity,
+                             std::string_view typeName,
+                             const ComponentData& data) override {
+        if (!isValid(entity)) {
+            return false;
+        }
+
+        auto it = componentFactories_.find(std::string(typeName));
+        if (it == componentFactories_.end()) {
+            return false;
+        }
+
+        return it->second.set(entity, data, registry_);
+    }
+
+    std::optional<ComponentFieldValue> getComponentField(
+        Entity entity,
+        std::string_view typeName,
+        std::string_view fieldName) const override {
+        auto data = getComponentByName(entity, typeName);
+        if (!data) {
+            return std::nullopt;
+        }
+
+        auto it = data->find(std::string(fieldName));
+        if (it != data->end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool setComponentField(Entity entity,
+                            std::string_view typeName,
+                            std::string_view fieldName,
+                            const ComponentFieldValue& value) override {
+        ComponentData data;
+        data[std::string(fieldName)] = value;
+        return setComponentByName(entity, typeName, data);
+    }
+
+    std::vector<ComponentFieldInfo> getComponentFields(
+        std::string_view typeName) const override {
+        auto it = componentTypes_.find(std::string(typeName));
+        if (it != componentTypes_.end()) {
+            return it->second.fields;
+        }
+        return {};
+    }
+
+    //======================================================================
+    // Component Factory Registration (for Lua/Scripting)
+    //======================================================================
+
+    /// Type-erased component factory functions
+    struct ComponentFactory {
+        std::function<bool(Entity, const ComponentData&, entt::registry&)> add;
+        std::function<bool(Entity, entt::registry&)> remove;
+        std::function<bool(Entity, const entt::registry&)> has;
+        std::function<std::optional<ComponentData>(Entity, const entt::registry&)> get;
+        std::function<bool(Entity, const ComponentData&, entt::registry&)> set;
+    };
+
+    /// Register factory functions for a component type.
+    /// This must be called in addition to registerComponentType() for
+    /// the ByName methods to work.
+    void registerComponentFactory(std::string_view typeName,
+                                   ComponentFactory factory) {
+        componentFactories_[std::string(typeName)] = std::move(factory);
+    }
+
 private:
     entt::registry registry_;
+    std::unordered_map<std::string, ComponentTypeInfo> componentTypes_;
+    std::unordered_map<std::string, ComponentFactory> componentFactories_;
 
 public:
     // Forward declaration - defined after class is complete

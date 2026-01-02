@@ -11,7 +11,13 @@
 - OpenGL (`bestow-graphics3d`) is secondary and may lag behind in features
 - Vulkan should be the most polished and feature-complete backend
 
-**Lua-First Design:** Lua is the primary interface for game developers using Bestow. Configuration, materials, levels, blueprints, and game logic should be Lua-driven wherever possible. Game developers should spend most of their time in Lua files, not C++.
+**Lua-First Design:** Lua is the primary interface for game developers. Games are run with `bestow run main.lua` where:
+- **`bestow.*`** namespace exposes C++ engine contracts (graphics, physics, audio, input, entity)
+- **`app.*`** namespace contains game scripts (entities/, systems/, levels/) with hot reload
+- Game developers spend most time in Lua files, not C++
+- The C++ layer provides the engine; Lua provides the game
+
+See `docs/Data-Driven-Design.md` for the complete Lua API reference.
 
 ## Language Standard
 

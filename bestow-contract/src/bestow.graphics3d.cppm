@@ -489,6 +489,9 @@ public:
     virtual void setCamera(const Camera3D& camera) = 0;
     virtual Camera3D getCamera() const = 0;
 
+    /// Set camera look-at target (overrides rotation-based orientation)
+    virtual void setCameraTarget(const Vec3& target) = 0;
+
     /// Convert screen position (pixels) to world ray
     virtual Ray3D screenToWorldRay(Vec2 screenPos) const = 0;
 

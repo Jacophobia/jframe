@@ -1,6 +1,97 @@
 # Bestow TODO
 
-> Last Updated: 2025-12-15
+> Last Updated: 2026-01-01
+
+---
+
+## Lua Snake Game Port (Completed 2026-01-01)
+
+The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 modules are complete and verified as 100% faithful to the C++ implementation.
+
+### Files Created
+- `main.lua` - Entry point and game loop
+- `config.lua` - Constants and configuration
+- `types.lua` - Data structures (GridPos, SnakeSegment, etc.)
+- `state.lua` - Game state management
+- `input.lua` - Input handling per phase
+- `rendering.lua` - All drawing functions
+- `game_logic.lua` - Snake movement, collision, food
+- `enemies.lua` - Enemy AI and management
+- `levels.lua` - Level/world loading
+- `audio.lua` - Sound and music
+- `ui.lua` - Menus and HUD
+- `camera.lua` - Camera management
+- `pixeltext.lua` - Pixel font rendering
+- `worldmap.lua` - World map rendering
+
+### Minor Issues (Non-Blocking)
+- [ ] **Audio disabled for testing** - Sound calls work but require sounds.lua config file
+- [ ] **BossFight phase defined but not implemented** - Matches C++ version (future feature)
+
+---
+
+## Config System Deprecation (Added 2026-01-01)
+
+> With the Lua-first architecture (`bestow run main.lua`), the entire game runs in Lua. The ConfigSystem's Lua parsing functionality is now redundant since ScriptManager handles all Lua file loading into the `app.*` namespace.
+
+### Problem
+- ConfigSystem provides `parseLuaFile()` which duplicates ScriptManager's role
+- Games now have two places that interpret Lua: ConfigSystem and ScriptManager
+- This creates confusion and potential inconsistency
+
+### Migration Plan
+1. [ ] Remove `bestow.config.parseLuaFile()` usage from snake-lua game
+   - Replace level loading with direct `app.levels.*` access
+   - Replace world loading with direct `app.worlds.*` access
+2. [ ] Move Lua parsing entirely to ScriptManager
+   - Levels should be loaded as `games/snake-lua/levels/level01.lua` → `app.levels.level01`
+   - Worlds should be loaded as `games/snake-lua/worlds/forest.lua` → `app.worlds.forest`
+3. [ ] Deprecate or remove ConfigSystem's Lua functionality
+   - Keep JSON/user settings functionality if needed
+   - Remove `parseLuaFile()` and `parseLuaString()` methods
+4. [ ] Update documentation to reflect Lua-first approach
+
+### Benefits
+- Single source of truth for Lua parsing (ScriptManager)
+- Hot reload works automatically via ScriptManager's file watcher
+- Simpler mental model for game developers
+
+---
+
+## Lua Binding System Issues (Identified 2026-01-01)
+
+> Issues discovered during verification of Lua-driven engine implementation.
+> Updated 2026-01-01: Several issues were false positives - stubs already matched bindings.
+
+### Resolved Issues
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| ~~Animation stub API mismatch~~ | ✅ FALSE POSITIVE | Stubs already use animator-handle API |
+| ~~Input stubs need Key constants~~ | ✅ FALSE POSITIVE | Keys table already present (lines 451-479) |
+| ~~Missing Physics3D::syncTransforms~~ | ✅ FIXED | Added to `physics3d_binding.cpp` |
+| ~~Audio stubs missing Channel constants~~ | ✅ FIXED | Added `bestow.audio.Channel` table to stubs |
+
+### Remaining Issues
+
+| Issue | Location | Description | Priority |
+|-------|----------|-------------|----------|
+| **Error codes discarded** | `physics3d_binding.cpp`, `graphics3d_binding.cpp`, `animation_binding.cpp` | `Result<T, Error>` returns `nil` on error, losing error code | MEDIUM |
+| **ScriptManager bypasses AssetSystem** | `bestow-script/src/ScriptManager.cpp:115,291` | Direct `std::ifstream` usage instead of IAssetSystem | LOW (intentional exception) |
+
+### Architectural Limitations (By Design)
+
+| Feature | Reason | Workaround |
+|---------|--------|------------|
+| **Ragdoll creation from Lua** | `createRagdoll()` requires `IPhysics3DSystem&` reference | Call from C++ or extend binding to accept both systems |
+| **Ragdoll activation from Lua** | `activateRagdoll()` requires `IPhysics3DSystem&` reference | Same as above |
+
+### Recommendations
+
+1. **Add Error Handling Pattern** - Return `(value, nil)` on success, `(nil, errorCode)` on error for better Lua debugging
+2. **Document ScriptManager Exception** - ScriptManager intentionally uses direct file I/O (similar to SaveSystem exception) for hot reload control
+
+---
 
 ## Critical Implementation Gaps (Updated 2025-12-14)
 
