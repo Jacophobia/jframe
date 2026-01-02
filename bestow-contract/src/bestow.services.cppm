@@ -266,7 +266,6 @@ export import bestow.blueprints;
 export import bestow.ui;
 export import bestow.gamestate;
 export import bestow.animation;
-export import bestow.spatial;
 
 export namespace bestow {
 

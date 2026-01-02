@@ -659,4 +659,263 @@ public:
     virtual PhysicsStats3D getStats() const = 0;
 };
 
+//==========================================================================
+// Floating Origin System Interface
+//==========================================================================
+// The floating origin system enables rendering of astronomical-scale worlds
+// by keeping the camera near the coordinate origin and rebasing all world
+// coordinates when the camera moves too far from the origin.
+
+/// Interface for floating origin management
+class IFloatingOriginSystem {
+public:
+    virtual ~IFloatingOriginSystem() = default;
+
+    //----------------------------------------------------------------------
+    // Core Operations
+    //----------------------------------------------------------------------
+
+    /// Set the camera's absolute world position (double precision)
+    virtual void setCameraWorldPosition(const Vec3d& worldPosition) = 0;
+
+    /// Get the current floating origin in world coordinates
+    [[nodiscard]] virtual Vec3d getOrigin() const = 0;
+
+    /// Get the camera position relative to the current origin (for rendering)
+    [[nodiscard]] virtual Vec3 getCameraRenderPosition() const = 0;
+
+    /// Get the camera's absolute world position
+    [[nodiscard]] virtual Vec3d getCameraWorldPosition() const = 0;
+
+    //----------------------------------------------------------------------
+    // Coordinate Conversion
+    //----------------------------------------------------------------------
+
+    /// Convert an absolute world position to camera-relative render position
+    [[nodiscard]] virtual Vec3 toRenderPosition(const Vec3d& worldPosition) const = 0;
+
+    /// Convert a camera-relative render position back to world coordinates
+    [[nodiscard]] virtual Vec3d toWorldPosition(const Vec3& renderPosition) const = 0;
+
+    /// Convert a CelestialTransform to a render-ready Transform3D
+    [[nodiscard]] virtual Transform3D toRenderTransform(const CelestialTransform& celestial) const = 0;
+
+    //----------------------------------------------------------------------
+    // Origin Shift Management
+    //----------------------------------------------------------------------
+
+    /// Get the current shift epoch (increments each time origin shifts)
+    [[nodiscard]] virtual std::uint32_t getShiftEpoch() const = 0;
+
+    /// Check if an entity needs rebasing based on its last known epoch
+    [[nodiscard]] virtual bool needsRebase(std::uint32_t lastEpoch) const = 0;
+
+    /// Force an origin shift to a specific position
+    virtual void forceOriginShift(const Vec3d& newOrigin) = 0;
+
+    //----------------------------------------------------------------------
+    // Configuration
+    //----------------------------------------------------------------------
+
+    /// Set the floating origin configuration
+    virtual void setConfig(const FloatingOriginConfig& config) = 0;
+
+    /// Get the current configuration
+    [[nodiscard]] virtual FloatingOriginConfig getConfig() const = 0;
+
+    //----------------------------------------------------------------------
+    // System Update
+    //----------------------------------------------------------------------
+
+    /// Update the system (call once per frame)
+    virtual void update(DeltaTime dt) = 0;
+};
+
+//==========================================================================
+// N-Body Gravity System Interface
+//==========================================================================
+// Provides realistic gravitational simulation for celestial bodies.
+
+/// Keplerian orbital elements for analytical orbit representation
+struct OrbitalElements {
+    double semiMajorAxis = 0.0;      // a - meters
+    double eccentricity = 0.0;       // e - dimensionless [0, 1) for ellipse
+    double inclination = 0.0;        // i - radians
+    double longitudeOfAscendingNode = 0.0;  // Ω (RAAN) - radians
+    double argumentOfPeriapsis = 0.0;       // ω - radians
+    double meanAnomaly = 0.0;        // M - radians
+    double epoch = 0.0;              // Reference time for mean anomaly
+};
+
+/// State vector (position + velocity) for a body
+struct OrbitalState {
+    Vec3d position{0.0, 0.0, 0.0};   // Position in meters
+    Vec3d velocity{0.0, 0.0, 0.0};   // Velocity in m/s
+};
+
+/// Integration method for orbital simulation
+enum class IntegrationMethod : std::uint8_t {
+    VelocityVerlet,   // Symplectic, energy-conserving, recommended for orbits
+    RungeKutta4,      // High accuracy for short periods
+    Euler,            // Fast but unstable - only for debugging
+    Kepler            // Analytical propagation - for time-accelerated simulation
+};
+
+/// Interface for N-body gravitational simulation
+class IGravitySystem {
+public:
+    virtual ~IGravitySystem() = default;
+
+    //----------------------------------------------------------------------
+    // Body Management
+    //----------------------------------------------------------------------
+
+    virtual void registerBody(Entity entity, const CelestialBodyDef& def) = 0;
+    virtual void unregisterBody(Entity entity) = 0;
+    [[nodiscard]] virtual std::optional<OrbitalState> getBodyState(Entity entity) const = 0;
+    virtual void setBodyState(Entity entity, const OrbitalState& state) = 0;
+
+    //----------------------------------------------------------------------
+    // Gravity Calculation
+    //----------------------------------------------------------------------
+
+    [[nodiscard]] virtual Vec3d calculateGravityAt(const Vec3d& position) const = 0;
+    [[nodiscard]] virtual std::optional<Entity> getDominantBody(const Vec3d& position) const = 0;
+    [[nodiscard]] virtual double calculateSOI(Entity body) const = 0;
+
+    //----------------------------------------------------------------------
+    // Orbit Prediction
+    //----------------------------------------------------------------------
+
+    [[nodiscard]] virtual OrbitalElements stateToElements(
+        const OrbitalState& state, double centralBodyMu) const = 0;
+    [[nodiscard]] virtual OrbitalState elementsToState(
+        const OrbitalElements& elements, double centralBodyMu) const = 0;
+    [[nodiscard]] virtual OrbitalElements propagateElements(
+        const OrbitalElements& elements, double centralBodyMu, double deltaTime) const = 0;
+    [[nodiscard]] virtual std::vector<Vec3d> predictTrajectory(
+        Entity body, double duration, int numPoints) const = 0;
+
+    //----------------------------------------------------------------------
+    // Simulation Control
+    //----------------------------------------------------------------------
+
+    virtual void setIntegrationMethod(IntegrationMethod method) = 0;
+    virtual void setTimeAcceleration(double factor) = 0;
+    [[nodiscard]] virtual double getTimeAcceleration() const = 0;
+    virtual void setPaused(bool paused) = 0;
+    [[nodiscard]] virtual bool isPaused() const = 0;
+    virtual void update(DeltaTime dt) = 0;
+};
+
+//==========================================================================
+// Planetary LOD System Interface
+//==========================================================================
+// Implements CDLOD (Chunked LOD) for seamless planetary terrain rendering.
+
+/// Cube face for cube-to-sphere projection
+enum class CubeFace : std::uint8_t {
+    PositiveX = 0, NegativeX = 1,
+    PositiveY = 2, NegativeY = 3,
+    PositiveZ = 4, NegativeZ = 5
+};
+
+/// Configuration for a planet's terrain
+struct PlanetaryTerrainConfig {
+    double radius = 6371000.0;       // Planet radius in meters
+    double maxHeight = 10000.0;      // Maximum terrain height
+    double atmosphereRadius = 0.0;   // Atmosphere outer radius
+    int maxLODLevels = 14;           // Number of LOD levels
+    int patchResolution = 32;        // Vertices per side
+    float lodDistanceMultiplier = 2.0f;
+    bool useTessellation = true;
+    bool useProceduralDetail = true;
+    float heightMapScale = 1.0f;
+};
+
+/// A terrain patch in the LOD quadtree
+struct TerrainPatch {
+    std::uint64_t id = 0;
+    CubeFace face = CubeFace::PositiveZ;
+    int lodLevel = 0;
+    int quadrant = 0;
+    Vec4 uvBounds{0.0f, 0.0f, 1.0f, 1.0f};
+    Vec3d boundingCenter{0.0, 0.0, 0.0};
+    double boundingRadius = 0.0;
+    double cameraDistance = 0.0;
+    bool visible = true;
+    bool dirty = true;
+};
+
+/// Mesh data for a terrain patch
+struct TerrainPatchMesh {
+    std::vector<Vec3> vertices;
+    std::vector<Vec3> normals;
+    std::vector<Vec2> texCoords;
+    std::vector<std::uint32_t> indices;
+    std::vector<Vec3> skirtVertices;
+    std::vector<std::uint32_t> skirtIndices;
+};
+
+/// Height sample callback for terrain generation
+using HeightSampleCallback = std::function<float(double lat, double lon, CubeFace face, Vec2 uv)>;
+
+/// Interface for planetary terrain LOD management
+class IPlanetaryLODSystem {
+public:
+    virtual ~IPlanetaryLODSystem() = default;
+
+    //----------------------------------------------------------------------
+    // Planet Registration
+    //----------------------------------------------------------------------
+
+    virtual void registerPlanet(Entity entity, const PlanetaryTerrainConfig& config) = 0;
+    virtual void unregisterPlanet(Entity entity) = 0;
+    virtual void setHeightSampler(Entity entity, HeightSampleCallback sampler) = 0;
+
+    //----------------------------------------------------------------------
+    // LOD Updates
+    //----------------------------------------------------------------------
+
+    virtual void update(const Vec3d& cameraWorldPosition, DeltaTime dt) = 0;
+    [[nodiscard]] virtual std::span<const TerrainPatch> getVisiblePatches(Entity planet) const = 0;
+    [[nodiscard]] virtual const TerrainPatchMesh* getPatchMesh(std::uint64_t patchId) const = 0;
+
+    //----------------------------------------------------------------------
+    // Queries
+    //----------------------------------------------------------------------
+
+    [[nodiscard]] virtual int getLODLevel(Entity planet) const = 0;
+    [[nodiscard]] virtual double getHeightAt(Entity planet, const Vec3d& worldPos) const = 0;
+    [[nodiscard]] virtual Vec3 getSurfaceNormal(Entity planet, const Vec3d& worldPos) const = 0;
+    [[nodiscard]] virtual Vec3d latLonToWorld(Entity planet, double latitude, double longitude,
+                                               double altitude = 0.0) const = 0;
+    [[nodiscard]] virtual void worldToLatLon(Entity planet, const Vec3d& worldPos,
+                                              double& outLatitude, double& outLongitude,
+                                              double& outAltitude) const = 0;
+
+    //----------------------------------------------------------------------
+    // Configuration
+    //----------------------------------------------------------------------
+
+    virtual void setPlanetTransform(Entity planet, const CelestialTransform& transform) = 0;
+    [[nodiscard]] virtual PlanetaryTerrainConfig getConfig(Entity planet) const = 0;
+    virtual void setConfig(Entity planet, const PlanetaryTerrainConfig& config) = 0;
+
+    //----------------------------------------------------------------------
+    // Debug
+    //----------------------------------------------------------------------
+
+    struct LODStats {
+        int visiblePatches = 0;
+        int totalPatches = 0;
+        int currentLODLevel = 0;
+        std::size_t meshMemoryUsed = 0;
+        int patchesSplit = 0;
+        int patchesMerged = 0;
+    };
+
+    [[nodiscard]] virtual LODStats getStats(Entity planet) const = 0;
+};
+
 }  // namespace bestow

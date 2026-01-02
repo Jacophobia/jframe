@@ -1,4 +1,4 @@
-// bestow-spatial/src/GravitySystem.cpp
+// bestow-physics3d/src/GravitySystem.cpp
 // N-body gravity system implementation
 
 module;
@@ -10,12 +10,12 @@ module;
 #include <cmath>
 #include <numbers>
 
-module bestow.spatial.impl;
+module bestow.physics3d.impl;
 
 import std;
 import bestow.services;
 
-namespace bestow::spatial {
+namespace bestow {
 
 GravitySystem::GravitySystem(IEventSystem* events)
     : pIEventSystem_(events)
@@ -564,4 +564,4 @@ void GravitySystem::propagateKepler(double dt) {
     }
 }
 
-}  // namespace bestow::spatial
+}  // namespace bestow

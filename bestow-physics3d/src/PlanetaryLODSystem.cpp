@@ -1,4 +1,4 @@
-// bestow-spatial/src/PlanetaryLODSystem.cpp
+// bestow-physics3d/src/PlanetaryLODSystem.cpp
 // Planetary terrain LOD system implementation using CDLOD algorithm
 
 module;
@@ -11,12 +11,12 @@ module;
 #include <cmath>
 #include <algorithm>
 
-module bestow.spatial.impl;
+module bestow.physics3d.impl;
 
 import std;
 import bestow.services;
 
-namespace bestow::spatial {
+namespace bestow {
 
 namespace {
     constexpr double PI = 3.14159265358979323846;
@@ -592,4 +592,4 @@ IPlanetaryLODSystem::LODStats PlanetaryLODSystem::getStats(Entity planet) const 
     return {};
 }
 
-}  // namespace bestow::spatial
+}  // namespace bestow

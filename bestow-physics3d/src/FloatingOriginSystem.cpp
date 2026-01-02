@@ -1,4 +1,4 @@
-// bestow-spatial/src/FloatingOriginSystem.cpp
+// bestow-physics3d/src/FloatingOriginSystem.cpp
 // Floating origin system implementation for large-world rendering
 
 module;
@@ -10,12 +10,12 @@ module;
 #include <spdlog/spdlog.h>
 #include <cmath>
 
-module bestow.spatial.impl;
+module bestow.physics3d.impl;
 
 import std;
 import bestow.services;
 
-namespace bestow::spatial {
+namespace bestow {
 
 FloatingOriginSystem::FloatingOriginSystem(IEventSystem* events)
     : pIEventSystem_(events)
@@ -164,4 +164,4 @@ void FloatingOriginSystem::performOriginShift(const Vec3d& newOrigin) {
     }
 }
 
-}  // namespace bestow::spatial
+}  // namespace bestow

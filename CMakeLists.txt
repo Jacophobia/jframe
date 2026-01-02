@@ -71,7 +71,6 @@ add_subdirectory(bestow-gas)
 add_subdirectory(bestow-blueprints)
 add_subdirectory(bestow-ui)
 add_subdirectory(bestow-gamestate)
-add_subdirectory(bestow-spatial)
 
 # Vulkan rendering backend (optional)
 if(BESTOW_BUILD_VULKAN)
@@ -144,7 +143,6 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-blueprints
     bestow-ui
     bestow-gamestate
-    bestow-spatial
 )
 
 # Add optional 3D physics system (requires Jolt Physics)
