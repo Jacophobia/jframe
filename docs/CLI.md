@@ -108,6 +108,67 @@ my-game/
 
 ---
 
+### `bestow init`
+
+Initialize the current directory with Bestow template files.
+
+```bash
+bestow init
+```
+
+This command copies template files into your current directory:
+- `CLAUDE.md` - AI agent guidance for Bestow game development
+- `.claude/skills/` - Claude skills covering all Bestow systems
+
+**Use Cases:**
+- Add AI assistance to an existing project
+- Set up Claude skills for a game you're developing
+- Initialize a directory before running `bestow run`
+
+**Example:**
+```bash
+mkdir my-game
+cd my-game
+bestow init
+
+# Now create your main.lua and start developing
+```
+
+**Notes:**
+- Does not overwrite existing files (skips with a warning)
+- Safe to run multiple times
+- Template files are installed alongside bestow (no network required)
+
+---
+
+### `bestow generate-stubs`
+
+Generate IDE type stubs for Lua autocomplete.
+
+```bash
+bestow generate-stubs <output-dir>
+```
+
+**Arguments:**
+| Argument | Description |
+|----------|-------------|
+| `<output-dir>` | Directory to write stub files |
+
+**Example:**
+```bash
+bestow generate-stubs ./stubs
+
+# Add to VS Code settings.json:
+# "Lua.workspace.library": ["./stubs"]
+```
+
+This generates EmmyLua-annotated stub files for:
+- `bestow.*` API (entity, input, graphics3d, audio, etc.)
+- Global types (Vec2, Vec3, Quat, Color, Mat4)
+- Component definitions
+
+---
+
 ### `bestow build`
 
 Package a game for distribution (coming soon).
@@ -168,6 +229,8 @@ bestow help run
 | `BESTOW_VSYNC` | Enable vsync (`0`, `1`) | `1` |
 | `BESTOW_LOG_LEVEL` | Logging level (`debug`, `info`, `warn`, `error`) | `info` |
 | `BESTOW_ASSETS_PATH` | Additional asset search paths (colon-separated) | - |
+| `BESTOW_LIBRARY_PATH` | Path to engine library assets | Auto-detected |
+| `BESTOW_TEMPLATE_PATH` | Path to template files for `bestow init` | Auto-detected |
 
 **Example:**
 ```bash

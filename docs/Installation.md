@@ -531,6 +531,78 @@ If these files exist, FMOD is installed correctly.
 
 ---
 
+## Installing Bestow
+
+After building, install the `bestow` CLI and supporting files to your system:
+
+### macOS / Linux
+
+```bash
+# Install to /usr/local (default)
+sudo cmake --install build/macos-debug   # or linux-debug
+
+# Or specify a custom prefix
+cmake --install build/macos-debug --prefix ~/.local
+```
+
+This installs:
+- `bestow` executable to `<prefix>/bin/`
+- Template files to `<prefix>/share/bestow/template/`
+
+Add to your PATH if using a custom prefix:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+### Windows
+
+```cmd
+# Install to C:\Program Files\Bestow (requires admin)
+cmake --install build\windows-debug
+
+# Or specify a custom prefix
+cmake --install build\windows-debug --prefix C:\Bestow
+```
+
+This installs:
+- `bestow.exe` to `<prefix>\bin\`
+- Template files to `<prefix>\share\bestow\template\`
+
+Add to your PATH:
+1. Open "Edit the system environment variables"
+2. Click "Environment Variables"
+3. Under "System variables", edit "Path"
+4. Add `C:\Bestow\bin` (or your install location)
+
+### Verify Installation
+
+```bash
+bestow version
+bestow help
+```
+
+### Initialize a New Project
+
+Once installed, create games with:
+
+```bash
+# Create a new project directory
+bestow new my-game
+cd my-game
+
+# Or initialize in current directory with Claude skills
+bestow init
+
+# Run your game
+bestow run main.lua
+```
+
+The `bestow init` command copies:
+- `CLAUDE.md` - AI agent guidance for game development
+- `.claude/skills/` - Claude skills for all Bestow systems
+
+---
+
 ## Verifying Your Installation
 
 After completing all installation steps, verify everything works:

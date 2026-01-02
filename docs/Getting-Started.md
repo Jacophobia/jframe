@@ -335,13 +335,28 @@ See [Data-Driven-Design.md](Data-Driven-Design.md) for the complete API referenc
 ## CLI Commands
 
 ```bash
-bestow new <name>              # Create new project
+bestow new <name>              # Create new project in new directory
+bestow init                    # Initialize current directory with template files
 bestow run <main.lua>          # Run game
 bestow run --hot-reload        # Enable hot reload
 bestow run --debug             # Enable debug overlay
+bestow generate-stubs <dir>    # Generate IDE autocomplete stubs
 bestow version                 # Show version info
 bestow help                    # Show all commands
 ```
+
+### AI-Assisted Development
+
+Run `bestow init` to add Claude skills for AI-assisted game development:
+
+```bash
+cd my-game
+bestow init
+```
+
+This adds:
+- `CLAUDE.md` - Guidelines for AI agents building Bestow games
+- `.claude/skills/` - Skills for every Bestow system (entity, input, physics, etc.)
 
 See [CLI.md](CLI.md) for the complete CLI reference.
 

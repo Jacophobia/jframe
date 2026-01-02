@@ -220,13 +220,18 @@ std::optional<std::filesystem::path> findTemplateDirectory() {
 #endif
 
     // Search patterns relative to executable
+    // Covers various installation layouts:
+    // - Unix FHS: /usr/local/bin/bestow + /usr/local/share/bestow/template
+    // - Windows: C:\Program Files\Bestow\bestow.exe + C:\Program Files\Bestow\share\bestow\template
+    // - Development: ./build/bestow + ./template
     std::vector<std::filesystem::path> searchPaths = {
-        exeDir / "template",
-        exeDir / ".." / "template",
-        exeDir / ".." / "share" / "bestow" / "template",
-        exeDir / ".." / "lib" / "bestow" / "template",
-        exeDir / "library" / "template",
-        exeDir / ".." / "library" / "template",
+        exeDir / "template",                              // Dev: exe alongside template/
+        exeDir / ".." / "template",                       // Dev: exe in build/, template in root
+        exeDir / ".." / "share" / "bestow" / "template",  // Unix FHS: exe in bin/
+        exeDir / "share" / "bestow" / "template",         // Windows: exe in install root
+        exeDir / ".." / "lib" / "bestow" / "template",    // Alternative lib layout
+        exeDir / "library" / "template",                  // Bestow library layout
+        exeDir / ".." / "library" / "template",           // Bestow library layout (exe in bin/)
     };
 
     // Also check BESTOW_LIBRARY_PATH + template
