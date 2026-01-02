@@ -197,7 +197,14 @@ std::optional<std::filesystem::path> findTemplateDirectory() {
     char path[PATH_MAX];
     uint32_t size = sizeof(path);
     if (_NSGetExecutablePath(path, &size) == 0) {
-        exeDir = std::filesystem::path(path).parent_path();
+        // _NSGetExecutablePath returns the invoked path (may be symlink)
+        // Use realpath to resolve to actual executable location
+        char resolvedPath[PATH_MAX];
+        if (realpath(path, resolvedPath) != nullptr) {
+            exeDir = std::filesystem::path(resolvedPath).parent_path();
+        } else {
+            exeDir = std::filesystem::path(path).parent_path();
+        }
     }
 #elif defined(__linux__)
     char path[PATH_MAX];
