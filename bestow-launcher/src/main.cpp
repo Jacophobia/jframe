@@ -24,7 +24,6 @@ struct CommandLineArgs {
     Command command = Command::None;
     std::filesystem::path mainScript;
     std::filesystem::path outputDir;
-    std::filesystem::path assetLibraryPath;
     std::string projectName;
     bool verbose = false;
     bool debug = false;
@@ -39,7 +38,7 @@ class GameRunner;
 GameRunner* createGameRunner();
 void destroyGameRunner(GameRunner* runner);
 bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript,
-                      const std::filesystem::path& assetLibraryPath, bool verbose, bool debug);
+                      bool verbose, bool debug);
 int runGame(GameRunner* runner);
 
 // Custom deleter that calls destroyGameRunner
@@ -63,8 +62,7 @@ int handleRun(const CommandLineArgs& args) {
     spdlog::info("Bestow Engine - Running game...");
 
     GameRunnerPtr runner(createGameRunner());
-    if (!initializeRunner(runner.get(), args.mainScript, args.assetLibraryPath,
-                          args.verbose, args.debug)) {
+    if (!initializeRunner(runner.get(), args.mainScript, args.verbose, args.debug)) {
         spdlog::error("Failed to initialize game runner");
         return 1;
     }
