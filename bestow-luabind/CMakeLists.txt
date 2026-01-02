@@ -41,9 +41,15 @@ target_link_libraries(bestow-luabind
         bestow-gamestate # For GameState bindings
         bestow-save      # For Save bindings
         bestow-events    # For Events bindings
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog
+)
+
+# Configure sol2 for LuaJIT
+target_compile_definitions(bestow-luabind PUBLIC
+    SOL_LUAJIT=1
+    SOL_USING_CXX_LUA=0
 )
 
 # Tracy include directory for profiler bindings

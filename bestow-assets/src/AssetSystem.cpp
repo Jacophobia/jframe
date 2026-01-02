@@ -1502,4 +1502,33 @@ const LuaMaterialData* AssetSystem::getLuaMaterialData(AssetHandle handle) const
     }
 }
 
+//=============================================================================
+// Library Discovery
+//=============================================================================
+
+std::optional<AssetLibrary> AssetSystem::getAssetLibrary() const {
+    return assetLibrary_;
+}
+
+std::vector<LibraryAssetInfo> AssetSystem::listLibraryAssets(std::string_view relativeDir) const {
+    if (!assetLibrary_) {
+        return {};
+    }
+    return assetLibrary_->listAssets(relativeDir);
+}
+
+std::vector<LibraryAssetInfo> AssetSystem::listLibraryAssetsRecursive(std::string_view relativeDir) const {
+    if (!assetLibrary_) {
+        return {};
+    }
+    return assetLibrary_->listAssetsRecursive(relativeDir);
+}
+
+std::vector<std::string> AssetSystem::listLibraryCategories() const {
+    if (!assetLibrary_) {
+        return {};
+    }
+    return assetLibrary_->listCategories();
+}
+
 }  // namespace bestow

@@ -15,7 +15,7 @@ target_sources(bestow-gas
 target_link_libraries(bestow-gas
     PUBLIC
         bestow-contract
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         kangaru::kangaru
 )

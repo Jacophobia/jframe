@@ -24,7 +24,7 @@ target_link_libraries(bestow
         bestow-config
         bestow-script
         bestow-luabind
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog
 )
@@ -50,3 +50,36 @@ set_target_properties(bestow PROPERTIES
 
 # Enable import std; support
 target_use_std_module(bestow)
+
+# macOS app bundle configuration
+# Uses Info.plist with LSArchitecturePriority to force Rosetta 2 for LuaJIT
+if(APPLE)
+    set_target_properties(bestow PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "Bestow"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.bestow.launcher"
+        MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
+    )
+endif()
+
+# Installation rules
+include(GNUInstallDirs)
+
+# Install the bestow executable
+install(TARGETS bestow
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# Install template directory for 'bestow init' command
+# This places template at: <prefix>/share/bestow/template
+# Which is found by: exeDir / ".." / "share" / "bestow" / "template"
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/bestow/template
+    FILES_MATCHING
+        PATTERN "*.md"
+        PATTERN "*.lua"
+        PATTERN "*.json"
+)

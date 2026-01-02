@@ -971,6 +971,8 @@ private:
         }
 
         // Default library path to a "library" subdirectory (can be overridden)
+        // For robust auto-detection, callers should use AssetLibrary::create()
+        // from bestow.assets and then call setLibraryPath() with the result.
         libraryPath_ = assetsPath_ / "library";
     }
 

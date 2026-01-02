@@ -12,7 +12,7 @@ target_sources(bestow-level
 target_link_libraries(bestow-level
     PUBLIC
         bestow-contract
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         kangaru::kangaru
 )

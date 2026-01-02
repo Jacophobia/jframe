@@ -12,12 +12,507 @@ module;
 #include <unordered_map>
 #include <vector>
 
+// Platform-specific includes for executable path detection
+#if defined(__APPLE__)
+    #include <mach-o/dyld.h>
+    #include <climits>
+#elif defined(__linux__)
+    #include <unistd.h>
+    #include <linux/limits.h>
+#elif defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#endif
+
 export module bestow.assets;
 
 import std;
 import bestow.types;
 
 export namespace bestow {
+
+//==========================================================================
+// Asset Library - Auto-detection and Discovery
+//==========================================================================
+
+/// Error codes for AssetLibrary operations
+enum class AssetLibraryError {
+    None = 0,
+    LibraryNotFound,
+    AssetNotFound,
+    InvalidPath,
+    IOError,
+};
+
+/// Convert AssetLibraryError to string
+[[nodiscard]] inline const char* assetLibraryErrorString(AssetLibraryError err) noexcept {
+    switch (err) {
+        case AssetLibraryError::None:            return "No error";
+        case AssetLibraryError::LibraryNotFound: return "Asset library directory not found";
+        case AssetLibraryError::AssetNotFound:   return "Asset not found";
+        case AssetLibraryError::InvalidPath:     return "Invalid path";
+        case AssetLibraryError::IOError:         return "I/O error";
+    }
+    return "Unknown error";
+}
+
+/// Configuration for AssetLibrary auto-detection
+struct AssetLibraryConfig {
+    /// Environment variable name to check for library path override
+    std::string envOverride = "BESTOW_LIBRARY_PATH";
+
+    /// Folder names to search for (in order of preference)
+    std::vector<std::string> folderNames = {"library", "asset-library"};
+
+    /// Additional search paths to check
+    std::vector<std::filesystem::path> additionalSearchPaths = {};
+
+    /// Whether to search relative to current working directory
+    bool allowCwdFallback = true;
+
+    /// Maximum depth to search upward from executable directory
+    int maxUpwardSearchDepth = 5;
+};
+
+/// Represents a discovered asset in the library
+struct LibraryAssetInfo {
+    std::string relativePath;           // Path relative to library root (e.g., "shaders/debug3d.frag")
+    std::string libraryPath;            // Full :library:/ path (e.g., ":library:/shaders/debug3d.frag")
+    std::string name;                   // File name without path (e.g., "debug3d.frag")
+    std::string stem;                   // Name without extension (e.g., "debug3d")
+    std::string extension;              // Extension including dot (e.g., ".frag")
+    std::string category;               // Top-level directory (e.g., "shaders")
+    bool isDirectory = false;
+};
+
+/// Automatic asset library path resolution and discovery
+///
+/// AssetLibrary provides robust auto-detection of the engine's asset library
+/// directory without requiring a CLI argument. It searches in the following order:
+///
+/// 1. Environment variable override (BESTOW_LIBRARY_PATH by default)
+/// 2. Paths relative to the executable directory (library/, ../library/, etc.)
+/// 3. Additional search paths configured by the user
+/// 4. Paths relative to current working directory (as fallback)
+///
+/// Usage:
+///   auto lib = AssetLibrary::create();
+///   if (lib) {
+///       auto shaderPath = lib->get("shaders/default.frag");
+///       if (shaderPath) {
+///           // Use *shaderPath
+///       }
+///
+///       // List all shaders for autocomplete
+///       auto shaders = lib->listAssets("shaders");
+///   }
+class AssetLibrary {
+public:
+    /// Factory function - returns nullopt if library root cannot be found
+    [[nodiscard]] static std::optional<AssetLibrary> create(AssetLibraryConfig config = {}) {
+        AssetLibrary lib(std::move(config));
+        if (lib.initError_ != AssetLibraryError::None) {
+            return std::nullopt;
+        }
+        return lib;
+    }
+
+    /// Factory with error output
+    [[nodiscard]] static std::optional<AssetLibrary> create(AssetLibraryConfig config,
+                                                             AssetLibraryError& outError) {
+        AssetLibrary lib(std::move(config));
+        outError = lib.initError_;
+        if (lib.initError_ != AssetLibraryError::None) {
+            return std::nullopt;
+        }
+        return lib;
+    }
+
+    /// Get absolute path to an asset, returns nullopt if not found
+    [[nodiscard]] std::optional<std::filesystem::path> get(std::string_view relativePath) const noexcept {
+        std::error_code ec;
+        std::filesystem::path assetPath = root_ / relativePath;
+
+        if (!std::filesystem::exists(assetPath, ec) || ec) {
+            return std::nullopt;
+        }
+
+        std::filesystem::path canonical = std::filesystem::canonical(assetPath, ec);
+        if (ec) {
+            return std::nullopt;
+        }
+
+        return canonical;
+    }
+
+    /// Get with explicit error reporting
+    [[nodiscard]] std::optional<std::filesystem::path> get(std::string_view relativePath,
+                                                            AssetLibraryError& outError) const noexcept {
+        std::error_code ec;
+        std::filesystem::path assetPath = root_ / relativePath;
+
+        if (!std::filesystem::exists(assetPath, ec)) {
+            outError = ec ? AssetLibraryError::IOError : AssetLibraryError::AssetNotFound;
+            return std::nullopt;
+        }
+
+        std::filesystem::path canonical = std::filesystem::canonical(assetPath, ec);
+        if (ec) {
+            outError = AssetLibraryError::IOError;
+            return std::nullopt;
+        }
+
+        outError = AssetLibraryError::None;
+        return canonical;
+    }
+
+    /// Check if an asset exists
+    [[nodiscard]] bool exists(std::string_view relativePath) const noexcept {
+        std::error_code ec;
+        return std::filesystem::exists(root_ / relativePath, ec) && !ec;
+    }
+
+    /// Get the root directory of the asset library
+    [[nodiscard]] const std::filesystem::path& root() const noexcept {
+        return root_;
+    }
+
+    /// Get absolute path without checking existence (useful for write targets)
+    [[nodiscard]] std::optional<std::filesystem::path> resolve(std::string_view relativePath) const noexcept {
+        std::error_code ec;
+        std::filesystem::path result = std::filesystem::weakly_canonical(root_ / relativePath, ec);
+        if (ec) {
+            return std::nullopt;
+        }
+        return result;
+    }
+
+    /// List all assets in a subdirectory (non-recursive)
+    /// Returns vector of LibraryAssetInfo for each file/directory found
+    [[nodiscard]] std::vector<LibraryAssetInfo> listAssets(std::string_view relativeDir = "") const {
+        std::vector<LibraryAssetInfo> results;
+        std::error_code ec;
+        std::filesystem::path dir = relativeDir.empty() ? root_ : root_ / relativeDir;
+
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            return results;
+        }
+
+        std::string category = relativeDir.empty() ? "" : std::string(relativeDir);
+        // Extract top-level category
+        if (!category.empty()) {
+            auto slashPos = category.find('/');
+            if (slashPos != std::string::npos) {
+                category = category.substr(0, slashPos);
+            }
+        }
+
+        for (auto it = std::filesystem::directory_iterator(dir, ec);
+             it != std::filesystem::directory_iterator() && !ec;
+             it.increment(ec)) {
+
+            LibraryAssetInfo info;
+            auto relPath = std::filesystem::relative(it->path(), root_, ec);
+            if (ec) continue;
+
+            info.relativePath = relPath.string();
+            info.libraryPath = ":library:/" + info.relativePath;
+            info.name = it->path().filename().string();
+            info.stem = it->path().stem().string();
+            info.extension = it->path().extension().string();
+            info.category = category.empty() ? info.name : category;
+            info.isDirectory = it->is_directory();
+
+            results.push_back(std::move(info));
+        }
+
+        return results;
+    }
+
+    /// List all assets in a subdirectory (recursive)
+    /// Returns vector of LibraryAssetInfo for each file found (not directories)
+    [[nodiscard]] std::vector<LibraryAssetInfo> listAssetsRecursive(std::string_view relativeDir = "") const {
+        std::vector<LibraryAssetInfo> results;
+        std::error_code ec;
+        std::filesystem::path dir = relativeDir.empty() ? root_ : root_ / relativeDir;
+
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            return results;
+        }
+
+        for (auto it = std::filesystem::recursive_directory_iterator(dir, ec);
+             it != std::filesystem::recursive_directory_iterator() && !ec;
+             it.increment(ec)) {
+
+            if (it->is_directory()) continue;  // Only return files
+
+            LibraryAssetInfo info;
+            auto relPath = std::filesystem::relative(it->path(), root_, ec);
+            if (ec) continue;
+
+            info.relativePath = relPath.string();
+            info.libraryPath = ":library:/" + info.relativePath;
+            info.name = it->path().filename().string();
+            info.stem = it->path().stem().string();
+            info.extension = it->path().extension().string();
+            info.isDirectory = false;
+
+            // Extract category from first path component
+            std::string relStr = info.relativePath;
+            auto slashPos = relStr.find('/');
+            info.category = (slashPos != std::string::npos) ? relStr.substr(0, slashPos) : "";
+
+            results.push_back(std::move(info));
+        }
+
+        return results;
+    }
+
+    /// Get all top-level categories (directories) in the library
+    [[nodiscard]] std::vector<std::string> listCategories() const {
+        std::vector<std::string> categories;
+        std::error_code ec;
+
+        for (auto it = std::filesystem::directory_iterator(root_, ec);
+             it != std::filesystem::directory_iterator() && !ec;
+             it.increment(ec)) {
+
+            if (it->is_directory()) {
+                categories.push_back(it->path().filename().string());
+            }
+        }
+
+        return categories;
+    }
+
+    /// Iterate over files in a subdirectory (non-recursive)
+    template<typename Callback>
+    bool forEach(std::string_view relativeDir, Callback&& callback) const noexcept {
+        std::error_code ec;
+        std::filesystem::path dir = root_ / relativeDir;
+
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            return false;
+        }
+
+        for (auto it = std::filesystem::directory_iterator(dir, ec);
+             it != std::filesystem::directory_iterator() && !ec;
+             it.increment(ec)) {
+            callback(it->path());
+        }
+
+        return !ec;
+    }
+
+    /// Iterate over files in a subdirectory (recursive)
+    template<typename Callback>
+    bool forEachRecursive(std::string_view relativeDir, Callback&& callback) const noexcept {
+        std::error_code ec;
+        std::filesystem::path dir = root_ / relativeDir;
+
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            return false;
+        }
+
+        for (auto it = std::filesystem::recursive_directory_iterator(dir, ec);
+             it != std::filesystem::recursive_directory_iterator() && !ec;
+             it.increment(ec)) {
+            callback(it->path());
+        }
+
+        return !ec;
+    }
+
+private:
+    AssetLibraryConfig config_;
+    std::filesystem::path root_;
+    AssetLibraryError initError_ = AssetLibraryError::None;
+
+    explicit AssetLibrary(AssetLibraryConfig config)
+        : config_(std::move(config))
+    {
+        auto root = resolveLibraryRoot();
+        if (root) {
+            root_ = std::move(*root);
+            initError_ = AssetLibraryError::None;
+        } else {
+            initError_ = AssetLibraryError::LibraryNotFound;
+        }
+    }
+
+    [[nodiscard]] std::optional<std::filesystem::path> resolveLibraryRoot() const noexcept {
+        // 1. Check environment variable override
+        if (auto path = tryEnvOverride()) {
+            return path;
+        }
+
+        // 2. Check paths relative to executable
+        if (auto path = tryExeRelative()) {
+            return path;
+        }
+
+        // 3. Check additional search paths
+        for (const auto& searchPath : config_.additionalSearchPaths) {
+            if (isValidAssetRoot(searchPath)) {
+                std::error_code ec;
+                auto canonical = std::filesystem::canonical(searchPath, ec);
+                if (!ec) {
+                    return canonical;
+                }
+            }
+        }
+
+        // 4. Check current working directory fallback
+        if (config_.allowCwdFallback) {
+            if (auto path = tryCwdRelative()) {
+                return path;
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<std::filesystem::path> tryEnvOverride() const noexcept {
+        const char* envVal = std::getenv(config_.envOverride.c_str());
+        if (envVal && *envVal) {
+            std::filesystem::path envPath(envVal);
+            if (isValidAssetRoot(envPath)) {
+                std::error_code ec;
+                auto canonical = std::filesystem::canonical(envPath, ec);
+                if (!ec) {
+                    return canonical;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<std::filesystem::path> tryExeRelative() const noexcept {
+        auto exeDir = getExecutableDir();
+        if (!exeDir) {
+            return std::nullopt;
+        }
+
+        // Build candidate paths relative to executable
+        std::vector<std::filesystem::path> candidates;
+
+        // Check each folder name at various relative locations
+        for (const auto& folderName : config_.folderNames) {
+            // Same directory as executable
+            candidates.push_back(*exeDir / folderName);
+            // One level up (common for build directories)
+            candidates.push_back(*exeDir / ".." / folderName);
+            // Standard install location (Unix)
+            candidates.push_back(*exeDir / ".." / "share" / folderName);
+            // macOS bundle Resources
+            candidates.push_back(*exeDir / ".." / "Resources" / folderName);
+        }
+
+        // Search upward from executable directory
+        std::filesystem::path current = *exeDir;
+        for (int depth = 0; depth < config_.maxUpwardSearchDepth; ++depth) {
+            for (const auto& folderName : config_.folderNames) {
+                candidates.push_back(current / folderName);
+            }
+            std::error_code ec;
+            auto parent = current.parent_path();
+            if (parent == current) break;  // Reached root
+            current = parent;
+        }
+
+        // Find the first valid candidate
+        for (const auto& candidate : candidates) {
+            if (isValidAssetRoot(candidate)) {
+                std::error_code ec;
+                auto canonical = std::filesystem::canonical(candidate, ec);
+                if (!ec) {
+                    return canonical;
+                }
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<std::filesystem::path> tryCwdRelative() const noexcept {
+        std::error_code ec;
+        std::filesystem::path cwd = std::filesystem::current_path(ec);
+        if (ec) {
+            return std::nullopt;
+        }
+
+        std::vector<std::filesystem::path> candidates;
+        for (const auto& folderName : config_.folderNames) {
+            candidates.push_back(cwd / folderName);
+            candidates.push_back(cwd / ".." / folderName);
+        }
+
+        for (const auto& candidate : candidates) {
+            if (isValidAssetRoot(candidate)) {
+                auto canonical = std::filesystem::canonical(candidate, ec);
+                if (!ec) {
+                    return canonical;
+                }
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    [[nodiscard]] static bool isValidAssetRoot(const std::filesystem::path& path) noexcept {
+        std::error_code ec;
+        return std::filesystem::is_directory(path, ec) && !ec;
+    }
+
+    [[nodiscard]] static std::optional<std::filesystem::path> getExecutableDir() noexcept {
+        std::error_code ec;
+
+        #if defined(__APPLE__)
+            char buf[PATH_MAX];
+            uint32_t size = sizeof(buf);
+            if (_NSGetExecutablePath(buf, &size) == 0) {
+                auto canonical = std::filesystem::canonical(buf, ec);
+                if (!ec) {
+                    return canonical.parent_path();
+                }
+            } else {
+                std::vector<char> dynBuf(size);
+                if (_NSGetExecutablePath(dynBuf.data(), &size) == 0) {
+                    auto canonical = std::filesystem::canonical(dynBuf.data(), ec);
+                    if (!ec) {
+                        return canonical.parent_path();
+                    }
+                }
+            }
+
+        #elif defined(__linux__)
+            char buf[PATH_MAX];
+            ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+            if (len > 0) {
+                buf[len] = '\0';
+                return std::filesystem::path(buf).parent_path();
+            }
+
+        #elif defined(_WIN32)
+            char buf[MAX_PATH];
+            DWORD len = GetModuleFileNameA(NULL, buf, MAX_PATH);
+            if (len > 0 && len < MAX_PATH) {
+                return std::filesystem::path(buf).parent_path();
+            }
+            std::vector<char> dynBuf(32768);
+            len = GetModuleFileNameA(NULL, dynBuf.data(), static_cast<DWORD>(dynBuf.size()));
+            if (len > 0 && len < dynBuf.size()) {
+                return std::filesystem::path(dynBuf.data()).parent_path();
+            }
+        #endif
+
+        return std::nullopt;
+    }
+};
+
+//==========================================================================
+// Asset Data Structures
+//==========================================================================
 
 // Texture data structure - exported so consumers can access loaded texture data
 struct TextureData {
@@ -419,6 +914,31 @@ public:
     /// Get parsed Lua material data from a handle returned by loadMaterial()
     /// Returns nullptr if handle is invalid or asset not loaded
     virtual const LuaMaterialData* getLuaMaterialData(AssetHandle handle) const = 0;
+
+    //======================================================================
+    // Library Discovery (for IDE Autocomplete)
+    //======================================================================
+    //
+    // These methods enable discovery of available assets in the library
+    // for IDE autocomplete and runtime exploration. Useful for Lua bindings
+    // that expose library contents as nested tables for autocomplete.
+    //
+
+    /// Get the asset library instance (for path resolution and listing)
+    /// Returns nullopt if library was not found during initialization
+    virtual std::optional<AssetLibrary> getAssetLibrary() const = 0;
+
+    /// List all assets in a library subdirectory (non-recursive)
+    /// Example: listLibraryAssets("shaders") returns all files in :library:/shaders/
+    virtual std::vector<LibraryAssetInfo> listLibraryAssets(std::string_view relativeDir = "") const = 0;
+
+    /// List all assets in a library subdirectory (recursive)
+    /// Returns all files (not directories) in the subtree
+    virtual std::vector<LibraryAssetInfo> listLibraryAssetsRecursive(std::string_view relativeDir = "") const = 0;
+
+    /// Get all top-level categories (directories) in the library
+    /// Example: returns ["shaders", "textures", "fonts", "materials"]
+    virtual std::vector<std::string> listLibraryCategories() const = 0;
 };
 
 }  // namespace bestow

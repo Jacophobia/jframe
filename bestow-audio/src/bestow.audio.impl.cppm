@@ -1,5 +1,5 @@
 // bestow-audio/src/bestow.audio.impl.cppm
-// Audio system implementation using FMOD
+// Audio system implementations: FMOD (primary) and Miniaudio (fallback)
 
 module;
 
@@ -9,12 +9,17 @@ module;
 #include <fmod.h>
 #endif
 
+
 export module bestow.audio.impl;
 
 import std;
 import bestow.services;  // Re-exports all contracts including bestow.audio, bestow.assets, bestow.types
 
 export namespace bestow {
+
+// ============================================================================
+// FMOD Audio System (Primary)
+// ============================================================================
 
 class FMODAudioSystem : public IAudioSystem {
 public:
@@ -113,7 +118,7 @@ public:
     struct Service;
 };
 
-// Service type for Engine::use<IAudioSystem, AudioSystem>()
+// Service type for Engine::use<IAudioSystem, FMODAudioSystem>()
 struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {
     static auto construct(kgr::inject_t<IAssetSystemService> d1)
         -> kgr::inject_result<IAssetSystem*> {
@@ -121,10 +126,99 @@ struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::ove
     }
 };
 
-// Alias for cleaner API: AudioSystem instead of FMODAudioSystem
-using AudioSystem = FMODAudioSystem;
+// ============================================================================
+// Miniaudio Audio System (Fallback)
+// ============================================================================
 
-// Backwards compatibility alias
-using AudioSystemService = FMODAudioSystem::Service;
+#ifdef BESTOW_HAS_MINIAUDIO
+
+class MiniaudioSystem : public IAudioSystem {
+public:
+    explicit MiniaudioSystem(IAssetSystem* assetSystem = nullptr);
+    ~MiniaudioSystem() override;
+
+    // Non-copyable, non-movable (due to pimpl)
+    MiniaudioSystem(const MiniaudioSystem&) = delete;
+    MiniaudioSystem& operator=(const MiniaudioSystem&) = delete;
+    MiniaudioSystem(MiniaudioSystem&&) = delete;
+    MiniaudioSystem& operator=(MiniaudioSystem&&) = delete;
+
+    bool initialize() override;
+    void shutdown() override;
+
+    void update(DeltaTime dt) override;
+
+    // Channel-based audio
+    void playOnChannel(Channel channel, const ChannelSound& sound) override;
+    void stopChannel(Channel channel, float fadeOutTime = 0.0f) override;
+    void pauseChannel(Channel channel) override;
+    void resumeChannel(Channel channel) override;
+    void setChannelVolume(Channel channel, Volume volume) override;
+    void setChannelPitch(Channel channel, float pitch) override;
+    void seekChannel(Channel channel, float position) override;
+    ChannelState getChannelState(Channel channel) const override;
+    bool isChannelPlaying(Channel channel) const override;
+
+    // Positional audio
+    SoundHandle playPositional(const PositionalSound& sound) override;
+    void stopPositional(SoundHandle handle) override;
+    void updatePositionalPosition(SoundHandle handle, Vec3 position) override;
+    bool isPositionalPlaying(SoundHandle handle) const override;
+
+    // Listener
+    void setListener(const AudioListener& listener) override;
+    AudioListener getListener() const override;
+
+    // Global controls
+    void setMasterVolume(Volume volume) override;
+    Volume getMasterVolume() const override;
+    void pauseAll() override;
+    void resumeAll() override;
+    void stopAll() override;
+
+    // Channel groups
+    void setGroupVolume(const std::string& group, Volume volume) override;
+    void assignChannelToGroup(Channel channel, const std::string& group) override;
+
+    // Hot reload support
+    void invalidateSoundCache();
+
+private:
+    // Pimpl idiom - miniaudio types are only visible in the implementation
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+
+    IAssetSystem* assetSystem_ = nullptr;
+
+public:
+    struct Service;
+};
+
+// Service type for Engine::use<IAudioSystem, MiniaudioSystem>()
+struct MiniaudioSystem::Service : kgr::single_service<MiniaudioSystem>, kgr::overrides<IAudioSystemService> {
+    static auto construct(kgr::inject_t<IAssetSystemService> d1)
+        -> kgr::inject_result<IAssetSystem*> {
+        return kgr::inject(&d1.forward());
+    }
+};
+
+#endif  // BESTOW_HAS_MINIAUDIO
+
+// ============================================================================
+// Default Audio System Selection
+// ============================================================================
+
+// AudioSystem alias: Use FMOD if available, otherwise use Miniaudio if available
+#if defined(BESTOW_HAS_FMOD)
+    using AudioSystem = FMODAudioSystem;
+    using AudioSystemService = FMODAudioSystem::Service;
+#elif defined(BESTOW_HAS_MINIAUDIO)
+    using AudioSystem = MiniaudioSystem;
+    using AudioSystemService = MiniaudioSystem::Service;
+#else
+    // Stub mode: Use FMOD class but it will run in stub mode
+    using AudioSystem = FMODAudioSystem;
+    using AudioSystemService = FMODAudioSystem::Service;
+#endif
 
 }  // namespace bestow

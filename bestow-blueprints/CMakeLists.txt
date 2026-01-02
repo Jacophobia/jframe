@@ -19,5 +19,5 @@ target_link_libraries(bestow-blueprints
         kangaru::kangaru
     PRIVATE
         sol2::sol2
-        lua
+        unofficial::luajit::luajit
 )

@@ -1,96 +1,119 @@
 # Getting Started with Bestow
 
-Bestow is a **Lua-first game engine** where games are defined in Lua and powered by a C++23 engine. This guide shows how to create your first game.
+Bestow is a **Lua-first game engine**. Write your game in Lua, run it instantly with `bestow run`.
+
+> **Looking for C++ documentation?** See [Using Bestow as a C++ Library](Using-CPP-Library.md) for integrating Bestow into C++ projects.
 
 ## Prerequisites
 
-- **CMake 3.28+** with C++23 module support
-- **LLVM Clang 20+** (macOS) or **MSVC 19.38+** (Windows)
-- **Vulkan SDK** installed
-- **vcpkg** for dependencies
+**For Lua game development**, you only need:
+- The `bestow` CLI tool
 
-See `docs/Installation.md` for detailed setup.
-
-## Quick Start (Lua)
-
-### 1. Create Your Game Directory
-
+**Installation:**
 ```bash
-# Create a new game project
-bestow new my-game
+# macOS (Homebrew)
+brew install bestow
 
-# This creates:
-# my-game/
-# ├── main.lua
-# ├── entities/
-# ├── systems/
-# ├── levels/
-# └── assets/
+# Or build from source - see docs/Installation.md
 ```
 
-### 2. Edit main.lua
+---
+
+## Your First Game (5 Minutes)
+
+### 1. Create a Project
+
+```bash
+bestow new my-game
+cd my-game
+```
+
+This creates:
+```
+my-game/
+├── main.lua           # Entry point
+├── entities/          # Entity blueprints
+├── systems/           # Game systems
+├── levels/            # Level definitions
+└── assets/            # Textures, sounds, etc.
+```
+
+### 2. Run It
+
+```bash
+bestow run main.lua
+```
+
+You should see a window with a basic scene. Press **Escape** to quit.
+
+### 3. Edit and Reload
+
+Open `main.lua` in your editor. Try changing the title:
 
 ```lua
--- my-game/main.lua
 return {
-    title = "My First Game",
+    title = "My Awesome Game",  -- Change this
+    ...
+}
+```
+
+With hot reload enabled, changes appear instantly:
+```bash
+bestow run main.lua --hot-reload
+```
+
+---
+
+## Understanding main.lua
+
+Every Bestow game has a `main.lua` that returns a table with these functions:
+
+```lua
+-- main.lua
+return {
+    -- Window configuration
+    title = "My Game",
     width = 1280,
     height = 720,
 
+    -- Called once at startup
     init = function()
-        print("Game starting!")
-
-        -- Create player entity
+        -- Create entities, load assets, set up game state
         local player = bestow.entity.create()
         bestow.entity.addComponent(player, "Transform3D", {
             position = Vec3.new(0, 1, 0)
         })
 
-        -- Store in game state
+        -- Store state in app.main.state (survives hot reload)
         app.main.state = {
             player = player,
-            running = true
+            score = 0
         }
     end,
 
+    -- Called every frame
     update = function(dt)
         local state = app.main.state
 
-        -- Move player with ,AOE (Dvorak) or WASD
-        local movement = Vec3.new(0, 0, 0)
+        -- Handle input (,AOE for Dvorak, WASD for QWERTY)
         if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
-            movement.z = -1
-        end
-        if bestow.input.isKeyDown(Keys.O) or bestow.input.isKeyDown(Keys.S) then
-            movement.z = 1
-        end
-        if bestow.input.isKeyDown(Keys.A) then
-            movement.x = -1
-        end
-        if bestow.input.isKeyDown(Keys.E) or bestow.input.isKeyDown(Keys.D) then
-            movement.x = 1
-        end
-
-        if movement:length() > 0 then
-            movement = movement:normalize() * 5.0 * dt
             local pos = bestow.entity.getField(state.player, "Transform3D", "position")
-            bestow.entity.setField(state.player, "Transform3D", "position", pos + movement)
+            pos.z = pos.z - 5 * dt
+            bestow.entity.setField(state.player, "Transform3D", "position", pos)
         end
 
-        -- ESC to quit
-        if bestow.input.wasKeyJustPressed(Keys.Escape) then
-            state.running = false
-        end
-
-        return state.running
+        -- Return false to quit
+        return not bestow.input.wasKeyJustPressed(Keys.Escape)
     end,
 
+    -- Called every frame for rendering
     render = function()
         bestow.graphics3d.beginFrame()
-        -- Rendering happens automatically for entities with MeshRenderer
+        -- Entities with MeshRenderer are drawn automatically
         bestow.graphics3d.endFrame()
     end,
 
+    -- Main entry point
     run = function()
         local main = app.main
         main.init()
@@ -104,17 +127,13 @@ return {
 }
 ```
 
-### 3. Run Your Game
+---
 
-```bash
-bestow run my-game/main.lua
-```
+## Adding Game Scripts
 
-That's it! No compilation needed.
+Create additional Lua files and they're automatically available via `app.*`:
 
-## Adding More Scripts
-
-Create additional files and they're automatically available via `app.*`:
+### Entity Blueprints
 
 ```lua
 -- entities/player.lua
@@ -132,42 +151,125 @@ return {
     end
 }
 
--- Use it in main.lua:
+-- Use in main.lua:
 local player = app.entities.player.create(Vec3.new(0, 1, 0))
 ```
 
-## Hot Reload
-
-Edit any Lua file and save - changes apply immediately without restarting!
-
-Just remember: always access `app.*` inside functions:
+### Game Systems
 
 ```lua
--- WRONG: breaks hot reload
-local player = app.entities.player
-
--- RIGHT: hot reload safe
+-- systems/movement.lua
 return {
+    speed = 5.0,
+
     update = function(dt)
-        local player = app.entities.player  -- Resolved fresh each call
+        local self = app.systems.movement
+
+        bestow.entity.each(function(entity)
+            if bestow.entity.hasComponent(entity, "PlayerController") then
+                self.handlePlayerInput(entity, dt)
+            end
+        end)
+    end,
+
+    handlePlayerInput = function(entity, dt)
+        local self = app.systems.movement
+        local movement = Vec3.new(0, 0, 0)
+
+        if bestow.input.isKeyDown(Keys.Comma) then movement.z = -1 end
+        if bestow.input.isKeyDown(Keys.O) then movement.z = 1 end
+        if bestow.input.isKeyDown(Keys.A) then movement.x = -1 end
+        if bestow.input.isKeyDown(Keys.E) then movement.x = 1 end
+
+        if movement:length() > 0 then
+            movement = movement:normalize() * self.speed * dt
+            local pos = bestow.entity.getField(entity, "Transform3D", "position")
+            bestow.entity.setField(entity, "Transform3D", "position", pos + movement)
+        end
     end
 }
 ```
+
+### Levels
+
+```lua
+-- levels/dungeon.lua
+return {
+    name = "Dark Dungeon",
+
+    spawn = Vec3.new(0, 1, 0),
+
+    load = function()
+        local self = app.levels.dungeon
+        local player = app.entities.player.create(self.spawn)
+        app.main.state.player = player
+
+        -- Create environment
+        app.entities.torch.create(Vec3.new(5, 2, 0))
+        app.entities.torch.create(Vec3.new(-5, 2, 0))
+    end
+}
+```
+
+---
+
+## Hot Reload
+
+Bestow supports hot reload - edit Lua files and see changes without restarting.
+
+```bash
+bestow run main.lua --hot-reload
+```
+
+### Hot Reload Rules
+
+**Always access `app.*` inside functions:**
+
+```lua
+-- WRONG: Cached at load time, breaks hot reload
+local movement = app.systems.movement
+
+return {
+    update = function(dt)
+        movement.update(dt)  -- Stale reference after reload!
+    end
+}
+
+-- RIGHT: Resolved fresh each call
+return {
+    update = function(dt)
+        local movement = app.systems.movement  -- Fresh reference
+        movement.update(dt)
+    end
+}
+```
+
+**Store state in `app.main.state`:**
+
+```lua
+-- State persists across hot reloads
+app.main.state = {
+    player = player,
+    score = 0
+}
+```
+
+---
 
 ## Controls
 
 Bestow uses **Dvorak-friendly** default controls:
 
-| Action | Dvorak | QWERTY Equivalent |
-|--------|--------|-------------------|
-| Up | `,` (comma) | W |
-| Down | `O` | S |
-| Left | `A` | A |
-| Right | `E` | D |
+| Action | Dvorak | QWERTY | Arrow Keys |
+|--------|--------|--------|------------|
+| Forward | `,` (comma) | W | Up |
+| Back | `O` | S | Down |
+| Left | `A` | A | Left |
+| Right | `E` | D | Right |
 
-Arrow keys also work.
+---
 
-## Lua API Overview
+## Lua API Quick Reference
 
 ### Types
 
@@ -175,6 +277,7 @@ Arrow keys also work.
 Vec2.new(x, y)
 Vec3.new(x, y, z)
 Quat.identity()
+Quat.fromAxisAngle(axis, angle)
 Color.new(r, g, b, a)
 Mat4.identity()
 ```
@@ -182,106 +285,113 @@ Mat4.identity()
 ### Entity System
 
 ```lua
-bestow.entity.create()
+bestow.entity.create() -> Entity
 bestow.entity.destroy(entity)
-bestow.entity.addComponent(entity, "ComponentName", {data})
-bestow.entity.getComponent(entity, "ComponentName")
-bestow.entity.hasComponent(entity, "ComponentName")
-bestow.entity.each(function(entity) ... end)
+bestow.entity.isValid(entity) -> bool
+bestow.entity.addComponent(entity, typeName, data)
+bestow.entity.removeComponent(entity, typeName)
+bestow.entity.hasComponent(entity, typeName) -> bool
+bestow.entity.getComponent(entity, typeName) -> table
+bestow.entity.setComponent(entity, typeName, data)
+bestow.entity.getField(entity, typeName, fieldName) -> value
+bestow.entity.setField(entity, typeName, fieldName, value)
+bestow.entity.each(callback)
 ```
 
 ### Input
 
 ```lua
-bestow.input.isKeyDown(key)
-bestow.input.wasKeyJustPressed(key)
-bestow.input.isActionActive(action)
-bestow.input.getMousePosition()
+bestow.input.isKeyDown(key) -> bool
+bestow.input.wasKeyJustPressed(key) -> bool
+bestow.input.wasKeyJustReleased(key) -> bool
+bestow.input.getMousePosition() -> Vec2
+bestow.input.getMouseDelta() -> Vec2
+bestow.input.isMouseButtonDown(button) -> bool
 ```
 
-### Graphics
+### Graphics 3D
 
 ```lua
 bestow.graphics3d.beginFrame()
 bestow.graphics3d.endFrame()
-bestow.graphics3d.setCamera(camera)           -- Camera3D struct
-bestow.graphics3d.setFog(fog)                 -- Fog struct
-bestow.graphics3d.drawMesh(mesh, material, transform)  -- Transform3D or Mat4
+bestow.graphics3d.setCamera(camera)
+bestow.graphics3d.setFog(fog)
+bestow.graphics3d.drawMesh(mesh, material, transform)
 ```
 
-See `docs/Data-Driven-Design.md` for complete API reference.
+### Audio
+
+```lua
+bestow.audio.loadSound(path) -> SoundHandle
+bestow.audio.playSound(handle, volume, pitch)
+bestow.audio.stopSound(handle)
+bestow.audio.setMasterVolume(volume)
+```
+
+See [Data-Driven-Design.md](Data-Driven-Design.md) for the complete API reference.
 
 ---
 
-## Alternative: C++ Approach
-
-For maximum performance or when you need direct C++ control, you can also write games in C++:
-
-### 1. Create Game Class
-
-```cpp
-// src/game.cppm
-export module my.game;
-
-import bestow.services;
-import bestow.types;
-
-export class MyGame : public bestow::Application<MyGame,
-    bestow::IGraphics3DSystem,
-    bestow::IInputSystem>
-{
-public:
-    MyGame(bestow::IGraphics3DSystem& graphics, bestow::IInputSystem& input)
-        : graphics_(&graphics), input_(&input) {}
-
-    void run() override {
-        // Initialize, game loop, cleanup
-    }
-
-private:
-    bestow::IGraphics3DSystem* graphics_;
-    bestow::IInputSystem* input_;
-};
-```
-
-### 2. Create Entry Point
-
-```cpp
-// src/main.cpp
-import bestow.core;
-import bestow.services;
-import bestow.vulkan.impl;
-import bestow.input.impl;
-import my.game;
-
-int main() {
-    bestow::core::Engine engine;
-    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
-    engine.use<bestow::IInputSystem, bestow::InputSystem>();
-    engine.run<MyGame>();
-    return 0;
-}
-```
-
-### 3. Build and Run
+## CLI Commands
 
 ```bash
-cmake --preset macos-debug
-cmake --build --preset macos-debug
-./build/macos-debug/my-game
+bestow new <name>              # Create new project in new directory
+bestow init                    # Initialize current directory with template files
+bestow run <main.lua>          # Run game
+bestow run --hot-reload        # Enable hot reload
+bestow run --debug             # Enable debug overlay
+bestow generate-stubs <dir>    # Generate IDE autocomplete stubs
+bestow version                 # Show version info
+bestow help                    # Show all commands
 ```
+
+### AI-Assisted Development
+
+Run `bestow init` to add Claude skills for AI-assisted game development:
+
+```bash
+cd my-game
+bestow init
+```
+
+This adds:
+- `CLAUDE.md` - Guidelines for AI agents building Bestow games
+- `.claude/skills/` - Skills for every Bestow system (entity, input, physics, etc.)
+
+See [CLI.md](CLI.md) for the complete CLI reference.
 
 ---
 
 ## Example Games
 
-- **`games/lua-demo/`** - Simple Lua game demonstrating the Lua-first approach
-- **`games/game1/`** - 3D Snake game in C++ (multi-executable approach)
-- **`demos/animation-showcase/`** - Animation system demo
+Explore complete game implementations:
+
+| Game | Description | Location |
+|------|-------------|----------|
+| Snake | Classic snake game in 3D | `games/snake-lua/` |
+| Lua Demo | Basic 3D scene with controls | `games/lua-demo/` |
+
+Run them:
+```bash
+bestow run games/snake-lua/main.lua
+bestow run games/lua-demo/main.lua
+```
+
+---
 
 ## Next Steps
 
-- Read `docs/Data-Driven-Design.md` for the complete Lua API
-- Study `games/lua-demo/` for a Lua game example
-- Check `docs/api/` for system API reference
-- See `CLAUDE.md` for development guidelines
+1. **Learn the full API** - [Data-Driven-Design.md](Data-Driven-Design.md)
+2. **Study example games** - `games/` directory
+3. **Explore system docs** - `docs/systems/` directory
+4. **Join the community** - Report issues on GitHub
+
+---
+
+## Need C++?
+
+For custom engine systems, maximum performance, or C++ integration:
+
+- [Using Bestow as a C++ Library](Using-CPP-Library.md)
+- [Architecture Guide](Architecture.md)
+- [C++ API Reference](api/)

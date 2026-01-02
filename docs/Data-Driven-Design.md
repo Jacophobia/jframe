@@ -1,4 +1,11 @@
-# Data-Driven Design Guide
+# Lua API Reference
+
+This is the complete API reference for writing games in Lua with Bestow.
+
+> **Quick links:**
+> - [Getting Started](Getting-Started.md) - First game tutorial
+> - [CLI Reference](CLI.md) - Command-line options
+> - [Example Games](../games/) - Complete game examples
 
 Bestow uses a **Lua-first architecture** where games are defined entirely in Lua. The C++ engine provides systems (graphics, physics, audio), and game developers write their logic, entities, and levels in Lua scripts.
 

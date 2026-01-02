@@ -50,7 +50,7 @@ target_link_libraries(bestow-vulkan
         glfw
         glm::glm
     PRIVATE
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
 )
 

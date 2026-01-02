@@ -22,7 +22,7 @@ target_link_libraries(bestow-assets
         efsw::efsw
         spdlog::spdlog
         unofficial::shaderc::shaderc
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
 )
 

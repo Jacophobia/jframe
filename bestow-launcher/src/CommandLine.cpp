@@ -12,6 +12,7 @@ enum class Command {
     Run,
     GenerateStubs,
     New,
+    Init,
     Version,
     Help
 };
@@ -20,7 +21,6 @@ struct CommandLineArgs {
     Command command = Command::None;
     std::filesystem::path mainScript;
     std::filesystem::path outputDir;
-    std::filesystem::path assetLibraryPath;
     std::string projectName;
     bool verbose = false;
     bool debug = false;
@@ -35,18 +35,17 @@ void printUsage(const char* programName) {
     spdlog::info("Commands:");
     spdlog::info("  run <main.lua>      Run a game from its main Lua script");
     spdlog::info("  generate-stubs <out> Generate IDE type stubs to output directory");
-    spdlog::info("  new <name>          Create a new project from template");
+    spdlog::info("  new <name>          Create a new project in a new directory");
+    spdlog::info("  init                Initialize current directory with template files");
     spdlog::info("  version             Show version information");
     spdlog::info("  help                Show this help message");
     spdlog::info("");
     spdlog::info("Options:");
     spdlog::info("  -v, --verbose              Enable verbose logging");
     spdlog::info("  -d, --debug                Enable debug mode (no hot reload, extra logging)");
-    spdlog::info("  --asset-library <path>     Path to asset library (default: auto-detect)");
     spdlog::info("");
     spdlog::info("Examples:");
     spdlog::info("  {} run games/my-game/main.lua", programName);
-    spdlog::info("  {} run main.lua --asset-library /path/to/asset-library", programName);
     spdlog::info("  {} generate-stubs sdk/stubs/", programName);
     spdlog::info("  {} new my-platformer", programName);
     spdlog::info("");
@@ -82,15 +81,6 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
             ++i;
             continue;
         }
-        if (arg == "--asset-library") {
-            if (i + 1 >= argc) {
-                spdlog::error("--asset-library requires a path");
-                return std::nullopt;
-            }
-            args.assetLibraryPath = argv[i + 1];
-            i += 2;
-            continue;
-        }
 
         // Check for commands
         if (arg == "run") {
@@ -123,6 +113,12 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
             }
             args.projectName = argv[i + 1];
             i += 2;
+            continue;
+        }
+
+        if (arg == "init") {
+            args.command = Command::Init;
+            ++i;
             continue;
         }
 
