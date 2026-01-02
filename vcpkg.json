@@ -22,7 +22,7 @@
         "glm",
         "spdlog",
         "fmt",
-        "lua",
+        "luajit",
         "sol2",
         "nlohmann-json",
         "cereal",

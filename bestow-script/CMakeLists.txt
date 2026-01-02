@@ -16,7 +16,7 @@ target_link_libraries(bestow-script
     PUBLIC
         bestow-contract
     PRIVATE
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog
         efsw::efsw

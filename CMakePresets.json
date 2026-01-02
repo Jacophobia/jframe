@@ -17,15 +17,16 @@
         {
             "name": "macos-debug",
             "inherits": "base",
-            "displayName": "macOS Debug (Clang)",
-            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses LLVM triplet for ABI compatibility.",
+            "displayName": "macOS Debug (Clang x86_64 for LuaJIT/Rosetta)",
+            "description": "Builds x86_64 binaries for Rosetta 2 to avoid LuaJIT ARM64 JIT memory limitations.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang",
                 "CMAKE_CXX_COMPILER": "/opt/homebrew/opt/llvm@20/bin/clang++",
                 "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm",
+                "VCPKG_TARGET_TRIPLET": "x64-osx-llvm",
                 "VCPKG_MANIFEST_FEATURES": "vulkan",
                 "BESTOW_BUILD_VULKAN": "ON"
             },
@@ -38,16 +39,17 @@
         {
             "name": "macos-release",
             "inherits": "base",
-            "displayName": "macOS Release (Clang)",
-            "description": "Uses CC/CXX env vars - set BESTOW_CC and BESTOW_CXX. Uses LLVM triplet for ABI compatibility.",
+            "displayName": "macOS Release (Clang x86_64 for LuaJIT/Rosetta)",
+            "description": "Builds x86_64 binaries for Rosetta 2 to avoid LuaJIT ARM64 JIT memory limitations.",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
                 "BESTOW_DEV_TOOLS": "OFF",
                 "BESTOW_BUILD_TESTS": "OFF",
                 "BESTOW_BUILD_EXAMPLES": "OFF",
                 "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm"
+                "VCPKG_TARGET_TRIPLET": "x64-osx-llvm"
             },
             "condition": {
                 "type": "equals",

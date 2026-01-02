@@ -15,7 +15,7 @@ target_link_libraries(bestow-config
     PUBLIC
         bestow-contract
     PRIVATE
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog
         kangaru::kangaru
