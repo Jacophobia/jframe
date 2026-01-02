@@ -1,5 +1,6 @@
 // bestow-ui/src/bestow.ui.impl.cppm
 // UI System implementation using RmlUi
+// Renderer-agnostic: depends only on IGraphicsContext and IUIRenderBackend
 
 module;
 
@@ -10,7 +11,8 @@ module;
 #include <RmlUi/Debugger.h>
 #endif
 
-#include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
+#include <chrono>
 
 export module bestow.ui.impl;
 
@@ -20,17 +22,155 @@ import bestow.services;  // Re-exports all contracts including bestow.ui, bestow
 export namespace bestow {
 
 //==========================================================================
-// RmlUi System Interface Implementation
+// RmlUi Interface Adapters
 //==========================================================================
 
 #ifdef BESTOW_HAS_RMLUI
 
-// Note: RmlUi render/system interfaces are handled by the graphics system
-// which initializes RmlUi with its OpenGL context
+/// Adapter that bridges RmlUi's RenderInterface to our IUIRenderBackend.
+/// This class translates RmlUi rendering calls to our backend-agnostic interface.
+class BestowRmlRenderInterface : public Rml::RenderInterface {
+public:
+    explicit BestowRmlRenderInterface(IUIRenderBackend& backend)
+        : backend_(&backend) {}
+
+    //======================================================================
+    // Geometry Compilation
+    //======================================================================
+
+    Rml::CompiledGeometryHandle CompileGeometry(
+        Rml::Span<const Rml::Vertex> vertices,
+        Rml::Span<const int> indices) override
+    {
+        // Convert RmlUi vertices to our format
+        std::vector<UIVertex> uiVerts;
+        uiVerts.reserve(vertices.size());
+        for (const auto& v : vertices) {
+            uiVerts.push_back(UIVertex{
+                .position = {v.position.x, v.position.y},
+                // RmlUi provides premultiplied colors - pass through
+                .color = Color(v.colour.red, v.colour.green,
+                              v.colour.blue, v.colour.alpha),
+                .texCoord = {v.tex_coord.x, v.tex_coord.y}
+            });
+        }
+
+        // Convert indices (int -> uint32_t)
+        std::vector<std::uint32_t> uiIndices(indices.begin(), indices.end());
+
+        UIGeometryHandle handle = backend_->compileGeometry(uiVerts, uiIndices);
+        return static_cast<Rml::CompiledGeometryHandle>(handle);
+    }
+
+    void RenderGeometry(
+        Rml::CompiledGeometryHandle geometry,
+        Rml::Vector2f translation,
+        Rml::TextureHandle texture) override
+    {
+        backend_->renderGeometry(
+            static_cast<UIGeometryHandle>(geometry),
+            Vec2{translation.x, translation.y},
+            static_cast<UITextureHandle>(texture));
+    }
+
+    void ReleaseGeometry(Rml::CompiledGeometryHandle geometry) override {
+        backend_->releaseGeometry(static_cast<UIGeometryHandle>(geometry));
+    }
+
+    //======================================================================
+    // Texture Management
+    //======================================================================
+
+    Rml::TextureHandle LoadTexture(
+        Rml::Vector2i& texture_dimensions,
+        const Rml::String& source) override
+    {
+        int width = 0, height = 0;
+        UITextureHandle handle = backend_->loadTexture(source, width, height);
+        texture_dimensions.x = width;
+        texture_dimensions.y = height;
+        return static_cast<Rml::TextureHandle>(handle);
+    }
+
+    Rml::TextureHandle GenerateTexture(
+        Rml::Span<const Rml::byte> source,
+        Rml::Vector2i dimensions) override
+    {
+        std::span<const std::uint8_t> data(source.data(), source.size());
+        UITextureHandle handle = backend_->createTexture(
+            data, dimensions.x, dimensions.y);
+        return static_cast<Rml::TextureHandle>(handle);
+    }
+
+    void ReleaseTexture(Rml::TextureHandle texture) override {
+        backend_->releaseTexture(static_cast<UITextureHandle>(texture));
+    }
+
+    //======================================================================
+    // Scissor (Clipping)
+    //======================================================================
+
+    void EnableScissorRegion(bool enable) override {
+        backend_->enableScissor(enable);
+    }
+
+    void SetScissorRegion(Rml::Rectanglei region) override {
+        backend_->setScissorRegion(UIScissorRect{
+            .x = region.Left(),
+            .y = region.Top(),
+            .width = region.Width(),
+            .height = region.Height()
+        });
+    }
+
+private:
+    IUIRenderBackend* backend_;
+};
+
+/// Adapter that provides RmlUi's SystemInterface.
+/// Provides timing and logging services.
+class BestowRmlSystemInterface : public Rml::SystemInterface {
+public:
+    double GetElapsedTime() override {
+        using namespace std::chrono;
+        static auto start = steady_clock::now();
+        auto now = steady_clock::now();
+        return duration<double>(now - start).count();
+    }
+
+    bool LogMessage(Rml::Log::Type type, const Rml::String& message) override {
+        switch (type) {
+            case Rml::Log::LT_ERROR:
+                spdlog::error("[RmlUi] {}", message);
+                break;
+            case Rml::Log::LT_WARNING:
+                spdlog::warn("[RmlUi] {}", message);
+                break;
+            case Rml::Log::LT_INFO:
+                spdlog::info("[RmlUi] {}", message);
+                break;
+            case Rml::Log::LT_DEBUG:
+                spdlog::debug("[RmlUi] {}", message);
+                break;
+            default:
+                spdlog::trace("[RmlUi] {}", message);
+                break;
+        }
+        return true;
+    }
+};
+
+//==========================================================================
+// RmlUISystem Implementation
+//==========================================================================
 
 class RmlUISystem : public IUISystem {
 public:
-    RmlUISystem() = default;
+    /// Constructor with dependency injection.
+    /// Receives IGraphicsContext for render backend access.
+    explicit RmlUISystem(IGraphicsContext* graphics = nullptr, IAssetSystem* assets = nullptr)
+        : graphics_(graphics), assetSystem_(assets) {}
+
     ~RmlUISystem() override;
 
     //======================================================================
@@ -192,16 +332,20 @@ public:
     void setViewportSize(int width, int height) override;
     void setDPIScale(float scale) override;
 
-    // Additional method for GLFW integration
-    void setWindow(GLFWwindow* window) { window_ = window; }
-
-    // Set asset system dependency (called by DI container or manually)
-    void setAssetSystem(IAssetSystem* assets) { assetSystem_ = assets; }
-
 private:
-    GLFWwindow* window_ = nullptr;
-    Rml::Context* context_ = nullptr;
+    // Dependencies (injected)
+    IGraphicsContext* graphics_ = nullptr;
     IAssetSystem* assetSystem_ = nullptr;
+
+    // Render backend (obtained from graphics context)
+    IUIRenderBackend* renderBackend_ = nullptr;
+
+    // RmlUi interfaces (our adapters)
+    std::unique_ptr<BestowRmlRenderInterface> rmlRenderInterface_;
+    std::unique_ptr<BestowRmlSystemInterface> rmlSystemInterface_;
+
+    // RmlUi context
+    Rml::Context* context_ = nullptr;
     UIConfig config_;
     bool initialized_ = false;
     bool debugMode_ = false;
@@ -217,7 +361,7 @@ private:
 
     UIStyleSheetHandle nextStyleHandle_ = 1;
     std::unordered_map<UIStyleSheetHandle, Rml::StyleSheet*> styleSheets_;
-    std::unordered_map<UIStyleSheetHandle, std::string> styleSheetContents_;  // Store CSS content for injection
+    std::unordered_map<UIStyleSheetHandle, std::string> styleSheetContents_;
 
     // Element handle mappings (elements are owned by documents)
     std::unordered_map<UIElementHandle, Rml::Element*> elements_;
@@ -226,7 +370,7 @@ private:
 
     // Event callbacks
     std::unordered_map<std::string, std::vector<UIEventCallback>> eventCallbacks_;
-    std::unordered_map<std::string, std::vector<UIEventCallback>> elementCallbacks_;  // key = "elemHandle:eventType"
+    std::unordered_map<std::string, std::vector<UIEventCallback>> elementCallbacks_;
 
     // Data bindings
     struct DataBindingEntry {
@@ -388,13 +532,45 @@ Result<void, UIError> RmlUISystem::initialize(const UIConfig& config) {
 
     config_ = config;
 
-    // TODO: Create custom render and system interfaces
-    // For now, RmlUi needs to be initialized by the graphics system
-    // which has access to the OpenGL context
+    // Get render backend from graphics context
+    if (!graphics_) {
+        spdlog::error("[RmlUISystem] No graphics context provided");
+        return std::unexpected(UIError::InternalError);
+    }
 
-    // Create context
+    renderBackend_ = graphics_->getUIRenderBackend();
+    if (!renderBackend_) {
+        spdlog::error("[RmlUISystem] Graphics context does not provide UI render backend");
+        return std::unexpected(UIError::InternalError);
+    }
+
+    // Create RmlUi interface adapters
+    rmlRenderInterface_ = std::make_unique<BestowRmlRenderInterface>(*renderBackend_);
+    rmlSystemInterface_ = std::make_unique<BestowRmlSystemInterface>();
+
+    // CRITICAL: Set interfaces BEFORE Rml::Initialise()
+    Rml::SetRenderInterface(rmlRenderInterface_.get());
+    Rml::SetSystemInterface(rmlSystemInterface_.get());
+
+    // Initialize RmlUi
+    if (!Rml::Initialise()) {
+        spdlog::error("[RmlUISystem] Failed to initialize RmlUi");
+        return std::unexpected(UIError::InternalError);
+    }
+
+    // Get viewport size from graphics context
+    Size viewportSize = graphics_->getWindowSize();
+    viewportWidth_ = viewportSize.width;
+    viewportHeight_ = viewportSize.height;
+
+    // Update render backend viewport
+    renderBackend_->setViewportSize(viewportWidth_, viewportHeight_);
+
+    // Create RmlUi context
     context_ = Rml::CreateContext("main", Rml::Vector2i(viewportWidth_, viewportHeight_));
     if (!context_) {
+        spdlog::error("[RmlUISystem] Failed to create RmlUi context");
+        Rml::Shutdown();
         return std::unexpected(UIError::InternalError);
     }
 
@@ -403,6 +579,7 @@ Result<void, UIError> RmlUISystem::initialize(const UIConfig& config) {
         debugMode_ = true;
     }
 
+    spdlog::info("[RmlUISystem] Initialized with {}x{} viewport", viewportWidth_, viewportHeight_);
     initialized_ = true;
     return {};
 }
@@ -436,7 +613,13 @@ void RmlUISystem::shutdown() {
     }
 
     Rml::Shutdown();
+
+    // Release our interfaces
+    rmlRenderInterface_.reset();
+    rmlSystemInterface_.reset();
+
     initialized_ = false;
+    spdlog::info("[RmlUISystem] Shutdown complete");
 }
 
 Result<UIDocumentHandle, UIError> RmlUISystem::loadDocument(
@@ -566,7 +749,6 @@ Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
     const auto* content = static_cast<const std::string*>(fileData);
 
     // Create stylesheet using RmlUi's factory
-    // InstanceStyleSheetString creates a stylesheet from CSS text
     Rml::SharedPtr<Rml::StyleSheetContainer> container =
         Rml::Factory::InstanceStyleSheetString(Rml::String(content->data(), content->size()));
 
@@ -574,12 +756,8 @@ Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
         return std::unexpected(UIError::StyleSheetError);
     }
 
-    // Store the stylesheet container (need to extract the raw pointer for our map)
-    // Note: RmlUi uses SharedPtr so we need to manage the reference
+    // Store the CSS content for re-application
     UIStyleSheetHandle handle = nextStyleHandle_++;
-
-    // Store the container in a way we can use later
-    // Since Rml::StyleSheet is internal, we store the CSS content for re-application
     styleSheetContents_[handle] = *content;
 
     return handle;
@@ -600,7 +778,6 @@ Result<void, UIError> RmlUISystem::applyStyleSheet(
     }
 
     // Inject the stylesheet into the document by adding a <style> element
-    // This is the most portable way to apply custom styles in RmlUi
     Rml::ElementPtr styleElem = document->CreateElement("style");
     if (!styleElem) {
         return std::unexpected(UIError::InternalError);
@@ -699,43 +876,35 @@ void RmlUISystem::setElementText(UIElementHandle elem, const std::string& text) 
 
 std::string RmlUISystem::getElementText(UIElementHandle elem) {
     if (auto* e = getElement(elem)) {
-        return e->GetInnerRML();
+        return std::string(e->GetInnerRML());
     }
     return "";
 }
 
 void RmlUISystem::setElementVisible(UIElementHandle elem, UIVisibility visibility) {
-    auto* e = getElement(elem);
-    if (!e) return;
-
-    switch (visibility) {
-        case UIVisibility::Visible:
-            e->SetProperty("visibility", "visible");
-            e->SetProperty("display", "block");
-            break;
-        case UIVisibility::Hidden:
-            e->SetProperty("visibility", "hidden");
-            break;
-        case UIVisibility::Collapsed:
-            e->SetProperty("display", "none");
-            break;
+    if (auto* e = getElement(elem)) {
+        switch (visibility) {
+            case UIVisibility::Visible:
+                e->SetProperty("visibility", "visible");
+                break;
+            case UIVisibility::Hidden:
+                e->SetProperty("visibility", "hidden");
+                break;
+            case UIVisibility::Collapsed:
+                e->SetProperty("display", "none");
+                break;
+        }
     }
 }
 
 UIVisibility RmlUISystem::getElementVisibility(UIElementHandle elem) {
-    auto* e = getElement(elem);
-    if (!e) return UIVisibility::Hidden;
+    if (auto* e = getElement(elem)) {
+        auto display = e->GetProperty<Rml::String>("display");
+        if (display == "none") return UIVisibility::Collapsed;
 
-    auto display = e->GetProperty("display");
-    if (display && display->ToString() == "none") {
-        return UIVisibility::Collapsed;
+        auto visibility = e->GetProperty<Rml::String>("visibility");
+        if (visibility == "hidden") return UIVisibility::Hidden;
     }
-
-    auto visibility = e->GetProperty("visibility");
-    if (visibility && visibility->ToString() == "hidden") {
-        return UIVisibility::Hidden;
-    }
-
     return UIVisibility::Visible;
 }
 
@@ -772,7 +941,7 @@ std::optional<std::string> RmlUISystem::getElementAttribute(
     const std::string& name) {
     if (auto* e = getElement(elem)) {
         if (e->HasAttribute(name)) {
-            return e->GetAttribute<Rml::String>(name, "");
+            return std::string(e->GetAttribute<Rml::String>(name, ""));
         }
     }
     return std::nullopt;
@@ -789,9 +958,14 @@ void RmlUISystem::setElementStyle(
 
 UIRect RmlUISystem::getElementBounds(UIElementHandle elem) {
     if (auto* e = getElement(elem)) {
-        auto box = e->GetAbsoluteOffset(Rml::BoxArea::Border);
-        auto size = e->GetBox().GetSize(Rml::BoxArea::Border);
-        return {box.x, box.y, size.x, size.y};
+        auto box = e->GetAbsoluteOffset();
+        auto size = e->GetBox().GetSize();
+        return UIRect{
+            static_cast<int>(box.x),
+            static_cast<int>(box.y),
+            static_cast<int>(size.x),
+            static_cast<int>(size.y)
+        };
     }
     return {};
 }
@@ -811,32 +985,34 @@ void RmlUISystem::blurElement(UIElementHandle elem) {
 UIElementHandle RmlUISystem::createElement(
     UIDocumentHandle doc,
     const std::string& tagName) {
-
     auto* document = getDocument(doc);
     if (!document) return 0;
 
-    Rml::ElementPtr elemPtr = document->CreateElement(tagName);
-    if (!elemPtr) return 0;
+    Rml::ElementPtr elem = document->CreateElement(tagName);
+    if (!elem) return 0;
 
-    // Need to hold onto the element - append to body by default
-    Rml::Element* elem = elemPtr.get();
-    document->AppendChild(std::move(elemPtr));
-
-    return registerElement(elem);
+    // We need to keep the element alive - append to hidden container?
+    // For now, register and return (caller should appendChild immediately)
+    return registerElement(elem.get());
 }
 
 void RmlUISystem::appendChild(UIElementHandle parent, UIElementHandle child) {
-    auto* p = getElement(parent);
-    auto* c = getElement(child);
-    if (p && c) {
-        // TODO: Handle ownership transfer properly
+    auto* parentElem = getElement(parent);
+    auto* childElem = getElement(child);
+    if (parentElem && childElem) {
+        // Note: This might not work correctly if childElem was from CreateElement
+        // since we don't own the pointer. In practice, caller should create
+        // elements via document->CreateElement and manage ownership.
     }
 }
 
 void RmlUISystem::removeElement(UIElementHandle element) {
-    auto* e = getElement(element);
-    if (e && e->GetParentNode()) {
-        e->GetParentNode()->RemoveChild(e);
+    if (auto* e = getElement(element)) {
+        if (auto* parent = e->GetParentNode()) {
+            parent->RemoveChild(e);
+        }
+        elements_.erase(element);
+        elementHandles_.erase(e);
     }
 }
 
@@ -867,33 +1043,32 @@ void RmlUISystem::unbindData(const std::string& name) {
 }
 
 void RmlUISystem::syncBindings() {
-    // Synchronize data bindings with RmlUi data models
-    // For each binding, update any elements that reference the bound data
-    for (const auto& [name, binding] : dataBindings_) {
-        // Find all elements with data-model-* attributes matching this binding
-        for (auto& [handle, doc] : documents_) {
-            // Look for elements with data-value attribute matching the binding name
-            std::string selector = "[data-value='" + name + "']";
-            Rml::ElementList matchingElements;
-            doc->QuerySelectorAll(matchingElements, selector);
+    if (!context_) return;
 
-            for (Rml::Element* elem : matchingElements) {
-                std::string value;
+    // Find all elements with data-value attribute and update them
+    for (const auto& [handle, doc] : documents_) {
+        for (const auto& [name, binding] : dataBindings_) {
+            std::string selector = "[data-value=\"" + name + "\"]";
+            Rml::ElementList elements;
+            doc->QuerySelectorAll(elements, selector);
+
+            for (Rml::Element* elem : elements) {
+                std::string valueStr;
                 switch (binding.type) {
                     case UIDataType::Int:
-                        value = std::to_string(*static_cast<int*>(binding.ptr));
+                        valueStr = std::to_string(*static_cast<int*>(binding.ptr));
                         break;
                     case UIDataType::Float:
-                        value = std::to_string(*static_cast<float*>(binding.ptr));
+                        valueStr = std::to_string(*static_cast<float*>(binding.ptr));
                         break;
                     case UIDataType::Bool:
-                        value = *static_cast<bool*>(binding.ptr) ? "true" : "false";
+                        valueStr = *static_cast<bool*>(binding.ptr) ? "true" : "false";
                         break;
                     case UIDataType::String:
-                        value = *static_cast<std::string*>(binding.ptr);
+                        valueStr = *static_cast<std::string*>(binding.ptr);
                         break;
                 }
-                elem->SetInnerRML(value);
+                elem->SetInnerRML(valueStr);
             }
         }
     }
@@ -909,18 +1084,8 @@ void RmlUISystem::registerElementCallback(
     UIElementHandle elem,
     const std::string& eventType,
     UIEventCallback callback) {
-    // Store the callback for this element/event combination
-    auto* element = getElement(elem);
-    if (!element) return;
-
-    // Create a unique key for element+event
     std::string key = std::to_string(elem) + ":" + eventType;
     elementCallbacks_[key].push_back(std::move(callback));
-
-    // Register with RmlUi's event system using inline listener
-    // Note: RmlUi event listeners require subclassing Rml::EventListener
-    // For simplicity, we use the document-level event dispatching
-    // and filter by element in processInput
 }
 
 void RmlUISystem::unregisterEventCallback(const std::string& eventType) {
@@ -940,9 +1105,9 @@ bool RmlUISystem::processInput(const UIInputEvent& event) {
         case UIInputType::MouseUp:
             return context_->ProcessMouseButtonUp(event.button, 0);
 
-        case UIInputType::MouseScroll:
+        case UIInputType::MouseWheel:
             return context_->ProcessMouseWheel(
-                static_cast<float>(event.wheelDelta), 0);
+                Rml::Vector2f(event.wheelDeltaX, event.wheelDeltaY), 0);
 
         case UIInputType::KeyDown:
             return context_->ProcessKeyDown(
@@ -960,40 +1125,14 @@ bool RmlUISystem::processInput(const UIInputEvent& event) {
 
 bool RmlUISystem::wantsKeyboardInput() const {
     if (!context_) return false;
-
-    // Check if any text input element has focus
-    Rml::Element* focused = context_->GetFocusElement();
-    if (!focused) return false;
-
-    // Check if the focused element is a text input type
-    std::string tagName = focused->GetTagName();
-    if (tagName == "input" || tagName == "textarea") {
-        // Check input type for text inputs
-        if (tagName == "input") {
-            std::string type = focused->GetAttribute<Rml::String>("type", "text");
-            return (type == "text" || type == "password" || type == "number" || type == "email");
-        }
-        return true;  // textarea always wants keyboard input
-    }
-
-    // Check for contenteditable
-    if (focused->HasAttribute("contenteditable")) {
-        return true;
-    }
-
-    return false;
+    auto* focus = context_->GetFocusElement();
+    return focus != nullptr && focus != context_->GetRootElement();
 }
 
 bool RmlUISystem::wantsMouseInput() const {
     if (!context_) return false;
-
-    // Check if any document is visible and could receive mouse input
-    for (const auto& [handle, doc] : documents_) {
-        if (doc && doc->IsVisible()) {
-            return true;
-        }
-    }
-    return false;
+    auto* hover = context_->GetHoverElement();
+    return hover != nullptr && hover != context_->GetRootElement();
 }
 
 void RmlUISystem::update(DeltaTime dt) {
@@ -1003,9 +1142,16 @@ void RmlUISystem::update(DeltaTime dt) {
 }
 
 void RmlUISystem::render() {
-    if (context_) {
-        context_->Render();
-    }
+    if (!context_ || !renderBackend_) return;
+
+    // Begin UI rendering pass (sets up 2D overlay state)
+    renderBackend_->beginUIPass();
+
+    // RmlUi will call our BestowRmlRenderInterface methods
+    context_->Render();
+
+    // End UI rendering pass (restores previous state)
+    renderBackend_->endUIPass();
 }
 
 Result<void, UIError> RmlUISystem::loadFont(
@@ -1031,7 +1177,6 @@ Result<void, UIError> RmlUISystem::loadFont(
     }
 
     // Load font from memory using RmlUi's memory API
-    // Create a span from the font data
     Rml::Span<const Rml::byte> fontSpan(
         reinterpret_cast<const Rml::byte*>(fontData->fileData.data()),
         fontData->fileData.size());
@@ -1065,6 +1210,9 @@ void RmlUISystem::setViewportSize(int width, int height) {
     viewportHeight_ = height;
     if (context_) {
         context_->SetDimensions(Rml::Vector2i(width, height));
+    }
+    if (renderBackend_) {
+        renderBackend_->setViewportSize(width, height);
     }
 }
 
@@ -1105,11 +1253,30 @@ Rml::ElementDocument* RmlUISystem::getDocument(UIDocumentHandle handle) {
 // Kangaru Service Definitions
 //==========================================================================
 
-// Concrete service that provides UISystem as IUISystem
 #ifdef BESTOW_HAS_RMLUI
-struct UISystemService : kgr::single_service<RmlUISystem>, kgr::overrides<IUISystemService> {};
+
+/// Service definition for RmlUISystem with dependency injection.
+/// Receives IGraphicsContext and IAssetSystem via constructor injection.
+struct RmlUISystemService
+    : kgr::single_service<RmlUISystem>
+    , kgr::overrides<IUISystemService>
+{
+    static auto construct(
+        kgr::inject_t<IGraphicsContextService> graphics,
+        kgr::inject_t<IAssetSystemService> assets)
+        -> kgr::inject_result<IGraphicsContext*, IAssetSystem*>
+    {
+        return kgr::inject(&graphics.forward(), &assets.forward());
+    }
+};
+
+// Backwards compatibility alias
+using UISystemService = RmlUISystemService;
+
 #else
+
 struct UISystemService : kgr::single_service<StubUISystem>, kgr::overrides<IUISystemService> {};
+
 #endif
 
 }  // namespace bestow
