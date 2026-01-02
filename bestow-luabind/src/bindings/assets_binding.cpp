@@ -138,6 +138,62 @@ void bindAssetSystem(sol::state& lua, IAssetSystem& assets) {
         assets.reloadAsset(handle);
     };
 
+    //-------------------------------------------------------------------------
+    // Library Discovery (for IDE autocomplete and exploration)
+    //-------------------------------------------------------------------------
+
+    // LibraryAssetInfo usertype for discovery results
+    lua.new_usertype<LibraryAssetInfo>("LibraryAssetInfo",
+        "relativePath", &LibraryAssetInfo::relativePath,
+        "libraryPath", &LibraryAssetInfo::libraryPath,
+        "name", &LibraryAssetInfo::name,
+        "stem", &LibraryAssetInfo::stem,
+        "extension", &LibraryAssetInfo::extension,
+        "category", &LibraryAssetInfo::category,
+        "isDirectory", &LibraryAssetInfo::isDirectory
+    );
+
+    // List assets in a library subdirectory (non-recursive)
+    // Returns array of LibraryAssetInfo
+    assetsTable["listLibraryAssets"] = [&assets](sol::optional<std::string> relativeDir) {
+        return assets.listLibraryAssets(relativeDir.value_or(""));
+    };
+
+    // List assets in a library subdirectory (recursive, files only)
+    assetsTable["listLibraryAssetsRecursive"] = [&assets](sol::optional<std::string> relativeDir) {
+        return assets.listLibraryAssetsRecursive(relativeDir.value_or(""));
+    };
+
+    // Get top-level categories (directories) in the library
+    // Returns array of strings like {"shaders", "textures", "fonts"}
+    assetsTable["listLibraryCategories"] = [&assets]() {
+        return assets.listLibraryCategories();
+    };
+
+    // Build a nested library table for autocomplete
+    // Creates: bestow.assets.library.shaders.debug3d_frag = ":library:/shaders/debug3d.frag"
+    sol::table libraryTable = lua.create_table();
+    auto categories = assets.listLibraryCategories();
+    for (const auto& category : categories) {
+        sol::table categoryTable = lua.create_table();
+        auto categoryAssets = assets.listLibraryAssetsRecursive(category);
+        for (const auto& asset : categoryAssets) {
+            // Convert path to valid Lua identifier (replace . and / with _)
+            std::string key = asset.relativePath;
+            // Remove category prefix
+            if (key.starts_with(category + "/")) {
+                key = key.substr(category.size() + 1);
+            }
+            // Replace path separators and dots with underscores
+            for (char& c : key) {
+                if (c == '/' || c == '.' || c == '-') c = '_';
+            }
+            categoryTable[key] = asset.libraryPath;
+        }
+        libraryTable[category] = categoryTable;
+    }
+    assetsTable["library"] = libraryTable;
+
     bestow["assets"] = assetsTable;
 }
 

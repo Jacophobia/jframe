@@ -63,7 +63,8 @@ const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 class AssetSystem : public IAssetSystem {
 public:
     explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
-        : pIEventSystem_(pIEventSystem) {}
+        : pIEventSystem_(pIEventSystem)
+        , assetLibrary_(AssetLibrary::create()) {}
     ~AssetSystem() override = default;
 
     void update() override;
@@ -126,6 +127,12 @@ public:
     // Lua material loading
     AssetHandle loadMaterial(const std::filesystem::path& luaPath) override;
     const LuaMaterialData* getLuaMaterialData(AssetHandle handle) const override;
+
+    // Library discovery
+    std::optional<AssetLibrary> getAssetLibrary() const override;
+    std::vector<LibraryAssetInfo> listLibraryAssets(std::string_view relativeDir = "") const override;
+    std::vector<LibraryAssetInfo> listLibraryAssetsRecursive(std::string_view relativeDir = "") const override;
+    std::vector<std::string> listLibraryCategories() const override;
 
 private:
     struct AssetEntry {
@@ -209,6 +216,9 @@ private:
 
     // Helper to notify subscribers when an asset changes
     void notifySubscribers(AssetHandle handle, AssetType type);
+
+    // Asset library for path resolution and discovery
+    std::optional<AssetLibrary> assetLibrary_;
 
     // Injected dependencies
     IEventSystem* pIEventSystem_ = nullptr;
