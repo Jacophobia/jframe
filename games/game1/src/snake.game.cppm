@@ -134,7 +134,11 @@ private:
     //======================================================================
     int mainMenuSelection_ = 0;
     int pauseMenuSelection_ = 0;
+    int gameOverMenuSelection_ = 0;
     float menuAnimTime_ = 0.0f;
+    static constexpr int GAME_OVER_RETRY = 0;
+    static constexpr int GAME_OVER_QUIT = 1;
+    static constexpr int GAME_OVER_COUNT = 2;
     static constexpr int MAIN_MENU_PLAY = 0;
     static constexpr int MAIN_MENU_QUIT = 1;
     static constexpr int MAIN_MENU_COUNT = 2;
@@ -325,6 +329,95 @@ private:
                       pixelSize, shadowColor, centered);
         // Main text
         drawPixelText(text, centerX, y, z, pixelSize, color, centered);
+    }
+
+    // Draw billboarded text that faces the camera (spherical - perpendicular to view)
+    void drawBillboardText(const std::string& text, float worldX, float worldY, float worldZ,
+                           float pixelSize, const bestow::Color& color) {
+        if (!graphics_) return;
+
+        // Get camera info
+        bestow::Camera3D cam = graphics_->getCamera();
+        glm::vec3 cameraPos{cam.transform.position.x, cam.transform.position.y, cam.transform.position.z};
+        glm::vec3 textPos{worldX, worldY, worldZ};
+
+        // Spherical billboard: text plane is perpendicular to camera view direction
+        // This makes text appear "flat" from the camera's perspective
+        glm::vec3 forward = glm::normalize(cameraPos - textPos);  // Points toward camera
+
+        // Use camera's actual up direction for consistent orientation
+        glm::quat camRot{cam.transform.rotation.w, cam.transform.rotation.x,
+                         cam.transform.rotation.y, cam.transform.rotation.z};
+        glm::vec3 camUp = camRot * glm::vec3(0.0f, 1.0f, 0.0f);
+
+        // Calculate billboard axes
+        glm::vec3 right = glm::normalize(glm::cross(camUp, forward));
+        glm::vec3 up = glm::normalize(glm::cross(forward, right));
+
+        // Calculate text dimensions
+        float charWidth = FONT_WIDTH * pixelSize + pixelSize;
+        float totalWidth = text.length() * charWidth - pixelSize;
+        float startOffset = -totalWidth * 0.5f;
+
+        // Shadow first
+        bestow::Color shadowColor{20, 20, 20, 200};
+        float shadowOffset = pixelSize * 0.5f;
+        glm::vec3 shadowPos = textPos + right * shadowOffset - up * shadowOffset + forward * 0.02f;
+
+        for (size_t i = 0; i < text.length(); ++i) {
+            char c = std::toupper(text[i]);
+            auto pattern = getCharPattern(c);
+            float charOffset = startOffset + i * charWidth;
+
+            for (int col = 0; col < FONT_WIDTH; ++col) {
+                uint8_t colBits = pattern[col];
+                for (int row = 0; row < FONT_HEIGHT; ++row) {
+                    if (colBits & (1 << row)) {
+                        float px = charOffset + col * pixelSize;
+                        float py = (FONT_HEIGHT - 1 - row) * pixelSize;
+                        float halfPx = pixelSize * 0.45f;
+
+                        // Draw shadow pixel
+                        for (float dy = -halfPx; dy <= halfPx; dy += pixelSize * 0.25f) {
+                            glm::vec3 p1 = shadowPos + right * (px - halfPx) + up * (py + dy);
+                            glm::vec3 p2 = shadowPos + right * (px + halfPx) + up * (py + dy);
+                            graphics_->debugDrawLine(
+                                {p1.x, p1.y, p1.z}, {p2.x, p2.y, p2.z},
+                                shadowColor, 0.0f, false
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Main text
+        for (size_t i = 0; i < text.length(); ++i) {
+            char c = std::toupper(text[i]);
+            auto pattern = getCharPattern(c);
+            float charOffset = startOffset + i * charWidth;
+
+            for (int col = 0; col < FONT_WIDTH; ++col) {
+                uint8_t colBits = pattern[col];
+                for (int row = 0; row < FONT_HEIGHT; ++row) {
+                    if (colBits & (1 << row)) {
+                        float px = charOffset + col * pixelSize;
+                        float py = (FONT_HEIGHT - 1 - row) * pixelSize;
+                        float halfPx = pixelSize * 0.45f;
+
+                        // Draw main text pixel
+                        for (float dy = -halfPx; dy <= halfPx; dy += pixelSize * 0.25f) {
+                            glm::vec3 p1 = textPos + right * (px - halfPx) + up * (py + dy);
+                            glm::vec3 p2 = textPos + right * (px + halfPx) + up * (py + dy);
+                            graphics_->debugDrawLine(
+                                {p1.x, p1.y, p1.z}, {p2.x, p2.y, p2.z},
+                                color, 0.0f, false
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 
     //======================================================================
@@ -597,6 +690,7 @@ private:
                 break;
             case GamePhase::GameOver:
                 gameOver_ = true;
+                gameOverMenuSelection_ = 0;  // Reset to RETRY
                 // Play game over sound and switch to menu music
                 playSound(soundGameOver_);
                 playMusicTrack(musicMenu_);  // Switch back to calm menu music
@@ -1804,11 +1898,27 @@ private:
         }
 
         if (gameOver_) {
-            if (input_->wasKeyJustPressed(GLFW_KEY_R)) {
-                restartGame();
+            // Navigate game over menu
+            if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
+                input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+                gameOverMenuSelection_ = (gameOverMenuSelection_ - 1 + GAME_OVER_COUNT) % GAME_OVER_COUNT;
+                playSound(soundMenuMove_);
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
-                running_ = false;
+            if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
+                input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+                gameOverMenuSelection_ = (gameOverMenuSelection_ + 1) % GAME_OVER_COUNT;
+                playSound(soundMenuMove_);
+            }
+
+            // Select option
+            if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
+                input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+                playSound(soundMenuSelect_);
+                if (gameOverMenuSelection_ == GAME_OVER_RETRY) {
+                    restartGame();
+                } else if (gameOverMenuSelection_ == GAME_OVER_QUIT) {
+                    transitionTo(GamePhase::WorldMap);
+                }
             }
             return;
         }
@@ -2528,18 +2638,29 @@ private:
                 }
             }
 
-            // Selection ring for selected node
+            // Selection ring for selected node - smooth circle with glow effect
             if (isSelected) {
                 float ringRadius = 0.6f;
+                float pulse = std::sin(worldMapCursorBob_ * 2.0f) * 0.1f;
+                ringRadius += pulse;
                 bestow::Color ringColor{255, 255, 100, 255};
-                int segments = 16;
+                bestow::Color glowColor{255, 255, 200, 128};
+                int segments = 48;  // Smooth circle
                 for (int s = 0; s < segments; ++s) {
                     float angle1 = (static_cast<float>(s) / segments) * 3.14159f * 2.0f;
                     float angle2 = (static_cast<float>(s + 1) / segments) * 3.14159f * 2.0f;
+                    // Inner ring
                     graphics_->debugDrawLine(
-                        {x + std::cos(angle1) * ringRadius, 0.05f, z + std::sin(angle1) * ringRadius},
-                        {x + std::cos(angle2) * ringRadius, 0.05f, z + std::sin(angle2) * ringRadius},
+                        {x + std::cos(angle1) * ringRadius, 0.08f, z + std::sin(angle1) * ringRadius},
+                        {x + std::cos(angle2) * ringRadius, 0.08f, z + std::sin(angle2) * ringRadius},
                         ringColor, 0.0f, false
+                    );
+                    // Outer glow ring
+                    float outerRadius = ringRadius + 0.1f;
+                    graphics_->debugDrawLine(
+                        {x + std::cos(angle1) * outerRadius, 0.06f, z + std::sin(angle1) * outerRadius},
+                        {x + std::cos(angle2) * outerRadius, 0.06f, z + std::sin(angle2) * outerRadius},
+                        glowColor, 0.0f, false
                     );
                 }
             }
@@ -2578,14 +2699,10 @@ private:
             }
         }
 
-        // Title indicator
-        bestow::Color titleColor{255, 255, 200, 255};
-        float titleY = 4.0f;
-        graphics_->debugDrawLine(
-            {worldMapCameraTarget_.x - 2.0f, titleY, worldMapCameraTarget_.z - 3.0f},
-            {worldMapCameraTarget_.x + 2.0f, titleY, worldMapCameraTarget_.z - 3.0f},
-            titleColor, 0.0f, false
-        );
+        // World title text
+        drawPixelTextShadow(currentWorld_.name,
+            worldMapCameraTarget_.x, 4.0f, worldMapCameraTarget_.z - 3.0f,
+            0.08f, bestow::Color{200, 220, 255, 255});
     }
 
     void initializeWorldMap() {
@@ -3150,22 +3267,33 @@ private:
             }
         }
 
-        // Game over indicator
+        // Game over menu
         if (gameOver_) {
-            // Red flashing X across the play area
-            float flash = std::sin(gameTime_ * 4.0f) * 0.5f + 0.5f;
-            uint8_t brightness = static_cast<uint8_t>(100 + flash * 155);
-            bestow::Color deathColor{brightness, 30, 30, 255};
+            // Darken overlay
+            bestow::Color overlayColor{20, 10, 10, 180};
+            for (float z = -halfGrid; z <= halfGrid; z += 0.3f) {
+                graphics_->debugDrawLine({-halfGrid, 0.1f, z}, {halfGrid, 0.1f, z}, overlayColor, 0.0f, false);
+            }
 
-            float xSize = halfGrid * 0.7f;
-            graphics_->debugDrawLine({-xSize, 0.5f, -xSize}, {xSize, 0.5f, xSize}, deathColor, 0.0f, false);
-            graphics_->debugDrawLine({xSize, 0.5f, -xSize}, {-xSize, 0.5f, xSize}, deathColor, 0.0f, false);
-
-            // Game Over text using pixel font
-            drawPixelTextShadow("GAME OVER", 0.0f, 2.5f, 0.0f, 0.12f,
+            // Game Over title
+            drawPixelTextShadow("GAME OVER", 0.0f, 2.8f, 0.0f, 0.12f,
                                 bestow::Color{255, 100, 100, 255});
-            drawPixelTextShadow("PRESS O TO RESTART", 0.0f, 1.5f, 0.0f, 0.04f,
-                                bestow::Color{200, 200, 200, 255});
+
+            // Menu options
+            std::array<const char*, 2> options = {"RETRY", "QUIT"};
+            for (int i = 0; i < 2; ++i) {
+                bool selected = (i == gameOverMenuSelection_);
+                bestow::Color textColor = selected
+                    ? bestow::Color{255, 220, 100, 255}  // Gold for selected
+                    : bestow::Color{150, 150, 160, 255}; // Gray for unselected
+                float pixelSize = selected ? 0.07f : 0.05f;
+                float y = 1.8f - i * 0.6f;
+                drawPixelTextShadow(options[i], 0.0f, y, 0.0f, pixelSize, textColor);
+            }
+
+            // Controls hint
+            drawPixelText(",O SELECT", 0.0f, 0.5f, 0.0f, 0.025f,
+                          bestow::Color{120, 120, 140, 255}, true);
         }
 
         // ==================== HUD TEXT LABELS (Pixel Font) ====================
@@ -3363,30 +3491,31 @@ private:
         drawHintCube(hintX, 0.3f, hintZ + 0.5f);
 
         // ==================== TEXT LABELS (Pixel Font) ====================
-        // Title text - "SERPENT"
+        // Title text - "SERPENT" (billboarded to face camera)
         float titlePixelSize = 0.15f;
-        drawPixelTextShadow("SERPENT", 0.0f, 2.0f, titleZ, titlePixelSize,
-                            bestow::Color{100, 255, 150, 255});
+        drawBillboardText("SERPENT", 0.0f, 2.0f, titleZ, titlePixelSize,
+                          bestow::Color{100, 255, 150, 255});
 
-        // Menu option labels
+        // Menu option labels (billboarded) - high contrast colors
         std::array<const char*, MAIN_MENU_COUNT> menuLabels = {"PLAY", "QUIT"};
         for (int i = 0; i < MAIN_MENU_COUNT; ++i) {
             float z = menuZ + static_cast<float>(i) * menuSpacing;
             bool selected = (i == mainMenuSelection_);
 
+            // White text for selected, light gray for unselected - high contrast
             bestow::Color textColor = selected
-                ? bestow::Color{255, 220, 100, 255}  // Gold for selected
-                : bestow::Color{180, 180, 200, 255}; // Gray for unselected
+                ? bestow::Color{255, 255, 255, 255}  // Pure white for selected
+                : bestow::Color{120, 120, 140, 255}; // Darker gray for unselected
 
-            float textY = selected ? 1.5f : 1.2f;
+            float textY = selected ? 2.2f : 1.8f;  // Position text higher above cubes
             float pixelSize = selected ? 0.08f : 0.05f;
 
-            drawPixelTextShadow(menuLabels[i], 0.0f, textY, z, pixelSize, textColor);
+            drawBillboardText(menuLabels[i], 0.0f, textY, z, pixelSize, textColor);
         }
 
-        // Controls hint text
-        drawPixelText(",O SELECT", hintX, 0.8f, hintZ + 1.5f, 0.03f,
-                      bestow::Color{150, 150, 170, 255}, false);
+        // Controls hint text (billboarded)
+        drawBillboardText(",O SELECT", hintX, 0.8f, hintZ + 1.5f, 0.03f,
+                          bestow::Color{150, 150, 170, 255});
     }
 
     void drawPauseMenu() {

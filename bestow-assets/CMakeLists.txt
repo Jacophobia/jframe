@@ -9,6 +9,7 @@ target_sources(bestow-assets
         src/loaders/TextureLoader.cpp
         src/loaders/SoundLoader.cpp
         src/loaders/FontLoader.cpp
+        src/loaders/ModelLoader.cpp
 )
 
 target_link_libraries(bestow-assets
@@ -28,5 +29,9 @@ target_link_libraries(bestow-assets
 if(TARGET stb)
     target_link_libraries(bestow-assets PRIVATE stb)
 endif()
+
+# assimp for FBX, glTF, OBJ model loading
+find_package(assimp CONFIG REQUIRED)
+target_link_libraries(bestow-assets PRIVATE assimp::assimp)
 
 target_compile_features(bestow-assets PUBLIC cxx_std_23)

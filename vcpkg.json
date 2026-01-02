@@ -42,7 +42,9 @@
         "tinygltf",
         "rmlui",
         "kangaru",
-        "shaderc"
+        "shaderc",
+        "ozz-animation",
+        "assimp"
     ],
     "features": {
         "vulkan": {

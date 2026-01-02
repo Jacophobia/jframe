@@ -507,6 +507,7 @@ public:
 
     void setCamera(const Camera3D& camera) override;
     Camera3D getCamera() const override;
+    void setCameraTarget(const Vec3& target) override;
 
     Ray3D screenToWorldRay(Vec2 screenPos) const override;
     std::optional<Vec2> worldToScreen(const Vec3& worldPos) const override;
@@ -737,6 +738,8 @@ public:
 private:
     VulkanContext context_;
     Camera3D camera_;
+    Vec3 cameraTarget_{0.0f, 0.0f, 0.0f};
+    bool useCameraTarget_ = false;
     Color clearColor_ = Color::black();
     bool isFullscreen_ = false;
     float renderScale_ = 1.0f;
@@ -794,6 +797,8 @@ private:
         float timeRemaining;
     };
     std::vector<DebugLine> debugLines_;
+    VulkanBufferHandle debugLineBuffer_ = 0;
+    static constexpr std::size_t MAX_DEBUG_LINES = 10000;
 
     // Initialization state
     bool initialized_ = false;
@@ -848,11 +853,38 @@ private:
     // Render queue
     std::vector<RenderItem> renderQueue_;
 
+    // Skinned mesh render queue (separate because it needs bone transforms)
+    struct SkinnedRenderItem {
+        MeshHandle mesh;
+        MaterialHandle material;
+        Mat4 worldMatrix;
+        std::vector<Mat4> boneTransforms;
+    };
+    std::vector<SkinnedRenderItem> skinnedRenderQueue_;
+
     // Pipelines
     VulkanPipelineHandle pbrPipeline_ = 0;
     VulkanPipelineHandle unlitPipeline_ = 0;
     VulkanPipelineHandle debugPipeline_ = 0;
     VulkanPipelineHandle skyboxPipeline_ = 0;
+    VulkanPipelineHandle skinnedPipeline_ = 0;  // For skeletal animation
+
+    // Bone matrix buffer for skinned mesh rendering
+    static constexpr std::size_t MAX_BONES = 100;
+    VulkanBufferHandle boneUBO_ = 0;
+    VkDescriptorSetLayout boneDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorSet boneDescriptorSet_ = VK_NULL_HANDLE;
+    VkDescriptorPool boneDescriptorPool_ = VK_NULL_HANDLE;
+
+    // Material texture descriptor set (set 1 for skinned pipeline)
+    VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool textureDescriptorPool_ = VK_NULL_HANDLE;
+    VulkanImageHandle defaultWhiteTexture_ = 0;
+    VkDescriptorSet defaultTextureDescriptorSet_ = VK_NULL_HANDLE;
+
+    // Per-material texture descriptor sets
+    std::map<MaterialHandle, VkDescriptorSet> materialTextureDescriptorSets_;
+    std::map<MaterialHandle, VulkanImageHandle> materialTextures_;  // GPU textures for materials
 
     // Lua material pipeline cache (material name -> pipeline handle)
     std::unordered_map<std::string, VulkanPipelineHandle> materialPipelineCache_;

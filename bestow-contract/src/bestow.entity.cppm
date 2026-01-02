@@ -6,7 +6,11 @@ module;
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 
 // Use compatibility header for MSVC C++23 module support
@@ -17,6 +21,68 @@ export module bestow.entity;
 import bestow.types;
 
 export namespace bestow {
+
+//==========================================================================
+// Component Field Types (for Lua/Script Reflection)
+//==========================================================================
+
+/// Type of a component field, used for reflection
+enum class ComponentFieldType : std::uint8_t {
+    Unknown,
+    Bool,
+    Int,
+    Float,
+    Double,
+    String,
+    Vec2,
+    Vec3,
+    Vec4,
+    Quat,
+    Color,
+    Entity,
+    Handle,      // Generic handle type (uint64)
+    Enum,        // Integer-backed enum
+    Struct,      // Nested struct (not directly supported, use sub-fields)
+    Array        // Array/vector (not directly supported yet)
+};
+
+/// Information about a single field in a component
+struct ComponentFieldInfo {
+    std::string name;
+    ComponentFieldType type = ComponentFieldType::Unknown;
+    std::size_t offset = 0;      // Byte offset within the component
+    std::size_t size = 0;        // Size in bytes
+    bool readOnly = false;       // If true, cannot be modified from Lua
+    std::string enumTypeName;    // For Enum types, the enum's type name
+};
+
+/// Dynamic value container for component field values
+/// Used for getting/setting component values by name at runtime
+using ComponentFieldValue = std::variant<
+    std::monostate,    // null/unset
+    bool,
+    std::int64_t,      // For all integer types
+    double,            // For float/double
+    std::string,
+    Vec2,
+    Vec3,
+    Vec4,
+    Quat,
+    Color,
+    Entity,
+    std::uint64_t      // For handles
+>;
+
+/// A map of field name to value, representing a component's data
+using ComponentData = std::unordered_map<std::string, ComponentFieldValue>;
+
+/// Information about a registered component type
+struct ComponentTypeInfo {
+    std::string name;
+    std::size_t size = 0;
+    std::vector<ComponentFieldInfo> fields;
+    bool canConstruct = false;   // Can be constructed from Lua
+};
 
 struct EntitySelector {
     std::vector<entt::id_type> requiredComponents;
@@ -204,6 +270,81 @@ public:
 
     virtual void each(std::function<void(Entity)> callback) = 0;
     virtual void update(DeltaTime dt) = 0;
+
+    //======================================================================
+    // Reflection-Based Component Access (for Lua/Scripting)
+    //======================================================================
+
+    /// Register a component type for runtime reflection.
+    /// Must be called before any ByName methods for that component.
+    /// @param typeName The string name to use for this component
+    /// @param typeInfo Information about the component's fields
+    virtual void registerComponentType(std::string_view typeName,
+                                        ComponentTypeInfo typeInfo) = 0;
+
+    /// Unregister a component type from runtime reflection.
+    virtual void unregisterComponentType(std::string_view typeName) = 0;
+
+    /// Check if a component type is registered for reflection.
+    virtual bool isComponentTypeRegistered(std::string_view typeName) const = 0;
+
+    /// Get information about a registered component type.
+    /// @return The type info if registered, nullopt otherwise
+    virtual std::optional<ComponentTypeInfo> getComponentTypeInfo(
+        std::string_view typeName) const = 0;
+
+    /// Get list of all registered component type names.
+    virtual std::vector<std::string> getRegisteredComponentTypes() const = 0;
+
+    /// Add a component to an entity by type name.
+    /// @param entity The entity to add the component to
+    /// @param typeName The registered name of the component type
+    /// @param data Initial field values (optional fields use defaults)
+    /// @return true if component was added, false if type unknown or entity invalid
+    virtual bool addComponentByName(Entity entity,
+                                     std::string_view typeName,
+                                     const ComponentData& data = {}) = 0;
+
+    /// Remove a component from an entity by type name.
+    /// @return true if component was removed, false if not present or type unknown
+    virtual bool removeComponentByName(Entity entity,
+                                        std::string_view typeName) = 0;
+
+    /// Check if an entity has a component by type name.
+    virtual bool hasComponentByName(Entity entity,
+                                     std::string_view typeName) const = 0;
+
+    /// Get a component's data by type name.
+    /// @return The component's field values if present, nullopt otherwise
+    virtual std::optional<ComponentData> getComponentByName(
+        Entity entity,
+        std::string_view typeName) const = 0;
+
+    /// Set a component's field values by type name.
+    /// Only updates fields present in data, leaves others unchanged.
+    /// @return true if component was updated, false if not present or type unknown
+    virtual bool setComponentByName(Entity entity,
+                                     std::string_view typeName,
+                                     const ComponentData& data) = 0;
+
+    /// Get a single field value from a component.
+    /// @return The field value if present, nullopt otherwise
+    virtual std::optional<ComponentFieldValue> getComponentField(
+        Entity entity,
+        std::string_view typeName,
+        std::string_view fieldName) const = 0;
+
+    /// Set a single field value on a component.
+    /// @return true if field was set, false if component/field not found
+    virtual bool setComponentField(Entity entity,
+                                    std::string_view typeName,
+                                    std::string_view fieldName,
+                                    const ComponentFieldValue& value) = 0;
+
+    /// Get information about a component's fields.
+    /// @return Field info list if type is registered, empty vector otherwise
+    virtual std::vector<ComponentFieldInfo> getComponentFields(
+        std::string_view typeName) const = 0;
 };
 
 }  // namespace bestow

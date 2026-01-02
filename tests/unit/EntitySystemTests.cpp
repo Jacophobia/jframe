@@ -171,14 +171,47 @@ public:
         }
     }
     
-    void* addComponent(Entity entity, entt::id_type typeId, const void* data, std::size_t size) override { 
+    void* addComponent(Entity entity, entt::id_type typeId, const void* data, std::size_t size) override {
         return nullptr; // Stub
     }
     void removeComponent(Entity entity, entt::id_type typeId) override {} // Stub
     void* getComponent(Entity entity, entt::id_type typeId) override { return nullptr; } // Stub
     const void* getComponent(Entity entity, entt::id_type typeId) const override { return nullptr; } // Stub
     bool hasComponent(Entity entity, entt::id_type typeId) const override { return false; } // Stub
-    
+
+    // Reflection-based component access (stubs for mock)
+    void registerComponentType(std::string_view typeName,
+                               ComponentTypeInfo typeInfo) override {}
+    void unregisterComponentType(std::string_view typeName) override {}
+    bool isComponentTypeRegistered(std::string_view typeName) const override { return false; }
+    std::optional<ComponentTypeInfo> getComponentTypeInfo(std::string_view typeName) const override {
+        return std::nullopt;
+    }
+    std::vector<std::string> getRegisteredComponentTypes() const override { return {}; }
+
+    bool addComponentByName(Entity entity, std::string_view typeName,
+                            const ComponentData& data) override { return false; }
+    bool removeComponentByName(Entity entity, std::string_view typeName) override { return false; }
+    bool hasComponentByName(Entity entity, std::string_view typeName) const override { return false; }
+    std::optional<ComponentData> getComponentByName(Entity entity,
+                                                     std::string_view typeName) const override {
+        return std::nullopt;
+    }
+    bool setComponentByName(Entity entity, std::string_view typeName,
+                            const ComponentData& data) override { return false; }
+
+    std::optional<ComponentFieldValue> getComponentField(Entity entity,
+                                                          std::string_view typeName,
+                                                          std::string_view fieldName) const override {
+        return std::nullopt;
+    }
+    bool setComponentField(Entity entity, std::string_view typeName,
+                           std::string_view fieldName,
+                           const ComponentFieldValue& value) override { return false; }
+    std::vector<ComponentFieldInfo> getComponentFields(std::string_view typeName) const override {
+        return {};
+    }
+
 private:
     entt::registry registry_;
 };

@@ -627,6 +627,9 @@ struct Vertex3D {
     Vec3 normal{0.0f, 1.0f, 0.0f};
     Vec2 texCoord{0.0f};
     Vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
+    // Bone data for skeletal animation (up to 4 bones per vertex)
+    std::uint8_t boneIndices[4]{0, 0, 0, 0};
+    float boneWeights[4]{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 using MeshHandle = std::uint64_t;
@@ -902,6 +905,16 @@ public:
         inst.libraryPath_ = std::filesystem::path(path);
         if (!inst.libraryPath_.is_absolute()) {
             inst.libraryPath_ = inst.assetsPath_ / inst.libraryPath_;
+        }
+    }
+
+    /// Set the assets path explicitly (for game assets like models, textures)
+    /// If not set, defaults to executable directory or current working directory
+    static void setAssetsPath(std::string_view path) {
+        auto& inst = instance();
+        inst.assetsPath_ = std::filesystem::path(path);
+        if (!inst.assetsPath_.is_absolute()) {
+            inst.assetsPath_ = std::filesystem::current_path() / inst.assetsPath_;
         }
     }
 

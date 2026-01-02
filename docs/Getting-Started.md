@@ -1,6 +1,6 @@
 # Getting Started with Bestow
 
-Bestow is a modern C++23 game engine with contract-based dependency injection. This guide shows how to create your first game.
+Bestow is a **Lua-first game engine** where games are defined in Lua and powered by a C++23 engine. This guide shows how to create your first game.
 
 ## Prerequisites
 
@@ -11,224 +11,146 @@ Bestow is a modern C++23 game engine with contract-based dependency injection. T
 
 See `docs/Installation.md` for detailed setup.
 
-## Quick Start
+## Quick Start (Lua)
 
-### 1. Create Your Game Class
-
-Your game inherits from `Application<>` and lists its dependencies as template parameters:
-
-```cpp
-// src/game.cppm
-export module my.game;
-
-import bestow.services;   // Contracts + Application base
-import bestow.types;
-import bestow.graphics3d;
-
-export class MyGame : public bestow::Application<MyGame,
-    bestow::IGraphics3DSystem,
-    bestow::IInputSystem>
-{
-public:
-    // Constructor params match template args
-    MyGame(bestow::IGraphics3DSystem& graphics, bestow::IInputSystem& input)
-        : graphics_(&graphics), input_(&input) {}
-
-    void run() override {
-        initialize();
-        gameLoop();
-        cleanup();
-    }
-
-private:
-    bool initialize() {
-        // Setup graphics
-        bestow::Graphics3DConfig config{
-            .windowWidth = 1280,
-            .windowHeight = 720,
-            .windowTitle = "My First Game",
-            .vsync = true
-        };
-        if (!graphics_->initialize(config)) return false;
-
-        // Create a cube mesh
-        auto result = graphics_->createCubeMesh(1.0f);
-        if (result) cubeMesh_ = *result;
-
-        material_ = graphics_->getDefaultPBRMaterial();
-
-        // Setup camera
-        bestow::Camera3D cam;
-        cam.fovY = 45.0f;
-        cam.transform.position = {5.0f, 5.0f, 5.0f};
-        graphics_->setCamera(cam);
-
-        // Setup lighting
-        graphics_->setDirectionalLight({
-            .direction = {0.5f, -1.0f, 0.3f},
-            .color = {1.0f, 1.0f, 1.0f},
-            .intensity = 1.0f
-        });
-
-        return true;
-    }
-
-    void gameLoop() {
-        while (!graphics_->shouldClose()) {
-            input_->update();
-
-            // Handle input (ESC to quit)
-            if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) break;
-
-            // Rotate cube
-            rotation_ += 0.016f;
-
-            // Render
-            graphics_->beginFrame();
-            bestow::Mat4 transform = glm::rotate(
-                glm::identity<glm::mat4>(),
-                rotation_,
-                glm::vec3(0.0f, 1.0f, 0.0f)
-            );
-            graphics_->drawMesh(cubeMesh_, material_, transform);
-            graphics_->endFrame();
-        }
-    }
-
-    void cleanup() {
-        input_->shutdown();
-        graphics_->shutdown();
-    }
-
-    bestow::IGraphics3DSystem* graphics_;
-    bestow::IInputSystem* input_;
-    bestow::MeshHandle cubeMesh_ = 0;
-    bestow::MaterialHandle material_ = 0;
-    float rotation_ = 0.0f;
-};
-```
-
-### 2. Create Entry Point
-
-```cpp
-// src/main.cpp
-import std;
-import bestow.core;           // Engine class
-import bestow.services;       // Contract interfaces
-
-// Import implementations you want to use
-import bestow.vulkan.impl;    // VulkanGraphics3DSystem
-import bestow.input.impl;     // InputSystem
-import bestow.events.impl;    // EventSystem (often needed as dependency)
-import bestow.assets.impl;    // AssetSystem (often needed as dependency)
-import bestow.config.impl;    // ConfigSystem
-import bestow.shader.impl;    // ShaderSystem
-
-import my.game;
-
-int main() {
-    bestow::core::Engine engine;
-
-    // Register system implementations
-    engine.use<bestow::IEventSystem, bestow::EventSystem>();
-    engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
-    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
-    engine.use<bestow::IShaderSystem, bestow::OpenGLShaderSystem>();
-    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
-    engine.use<bestow::IInputSystem, bestow::InputSystem>();
-
-    // Run your game - dependencies auto-injected!
-    engine.run<MyGame>();
-
-    return 0;
-}
-```
-
-### 3. Create CMakeLists.txt
-
-```cmake
-cmake_minimum_required(VERSION 3.28)
-project(MyGame CXX)
-
-# Point to Bestow
-add_subdirectory(path/to/bestow bestow)
-
-add_executable(my-game src/main.cpp)
-
-target_sources(my-game
-    PUBLIC FILE_SET CXX_MODULES FILES
-        src/game.cppm
-)
-
-target_link_libraries(my-game
-    PRIVATE
-        bestow-contract
-        bestow-core
-        bestow-vulkan
-        bestow-input
-        bestow-events
-        bestow-assets
-        bestow-config
-        bestow-shader
-)
-
-target_compile_features(my-game PRIVATE cxx_std_23)
-target_use_std_module(my-game)
-```
-
-### 4. Build and Run
+### 1. Create Your Game Directory
 
 ```bash
-cmake --preset macos-debug  # or windows-debug, linux-debug
-cmake --build --preset macos-debug
-./build/macos-debug/my-game
+# Create a new game project
+bestow new my-game
+
+# This creates:
+# my-game/
+# ├── main.lua
+# ├── entities/
+# ├── systems/
+# ├── levels/
+# └── assets/
 ```
 
-## The Application Pattern
+### 2. Edit main.lua
 
-Bestow uses a CRTP base class for automatic dependency injection:
+```lua
+-- my-game/main.lua
+return {
+    title = "My First Game",
+    width = 1280,
+    height = 720,
 
-```cpp
-// Inherit from Application<YourClass, Dependencies...>
-class MyGame : public Application<MyGame, IGraphics3DSystem, IInputSystem, IAudioSystem>
-{
-public:
-    // Constructor params must match template dependencies (in order)
-    MyGame(IGraphics3DSystem& g, IInputSystem& i, IAudioSystem& a)
-        : graphics_(&g), input_(&i), audio_(&a) {}
+    init = function()
+        print("Game starting!")
 
-    void run() override { /* your game loop */ }
-};
+        -- Create player entity
+        local player = bestow.entity.create()
+        bestow.entity.addComponent(player, "Transform3D", {
+            position = Vec3.new(0, 1, 0)
+        })
 
-// In main.cpp - just call run<>() without listing deps!
-engine.run<MyGame>();  // Dependencies auto-detected from base class
+        -- Store in game state
+        app.main.state = {
+            player = player,
+            running = true
+        }
+    end,
+
+    update = function(dt)
+        local state = app.main.state
+
+        -- Move player with ,AOE (Dvorak) or WASD
+        local movement = Vec3.new(0, 0, 0)
+        if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
+            movement.z = -1
+        end
+        if bestow.input.isKeyDown(Keys.O) or bestow.input.isKeyDown(Keys.S) then
+            movement.z = 1
+        end
+        if bestow.input.isKeyDown(Keys.A) then
+            movement.x = -1
+        end
+        if bestow.input.isKeyDown(Keys.E) or bestow.input.isKeyDown(Keys.D) then
+            movement.x = 1
+        end
+
+        if movement:length() > 0 then
+            movement = movement:normalize() * 5.0 * dt
+            local pos = bestow.entity.getField(state.player, "Transform3D", "position")
+            bestow.entity.setField(state.player, "Transform3D", "position", pos + movement)
+        end
+
+        -- ESC to quit
+        if bestow.input.wasKeyJustPressed(Keys.Escape) then
+            state.running = false
+        end
+
+        return state.running
+    end,
+
+    render = function()
+        bestow.graphics3d.beginFrame()
+        -- Rendering happens automatically for entities with MeshRenderer
+        bestow.graphics3d.endFrame()
+    end,
+
+    run = function()
+        local main = app.main
+        main.init()
+
+        while true do
+            local dt = bestow.core.deltaTime()
+            if not main.update(dt) then break end
+            main.render()
+        end
+    end
+}
 ```
 
-## Engine API
+### 3. Run Your Game
 
-### Registering Systems
-
-```cpp
-// Register implementation for a contract
-engine.use<IContract, Implementation>();
-
-// Examples
-engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
-engine.use<IAudioSystem, AudioSystem>();
+```bash
+bestow run my-game/main.lua
 ```
 
-### Checking System Availability
+That's it! No compilation needed.
 
-```cpp
-// Check if a system is registered
-if (engine.has<IAudioSystem>()) {
-    auto& audio = engine.get<IAudioSystem>();
+## Adding More Scripts
+
+Create additional files and they're automatically available via `app.*`:
+
+```lua
+-- entities/player.lua
+return {
+    create = function(position)
+        local entity = bestow.entity.create()
+        bestow.entity.addComponent(entity, "Transform3D", {
+            position = position or Vec3.new(0, 1, 0)
+        })
+        bestow.entity.addComponent(entity, "MeshRenderer", {
+            mesh = "primitives/cube",
+            material = "materials/player"
+        })
+        return entity
+    end
 }
 
-// Get system or nullptr
-auto* audio = engine.tryGet<IAudioSystem>();
-if (audio) {
-    audio->playSound(...);
+-- Use it in main.lua:
+local player = app.entities.player.create(Vec3.new(0, 1, 0))
+```
+
+## Hot Reload
+
+Edit any Lua file and save - changes apply immediately without restarting!
+
+Just remember: always access `app.*` inside functions:
+
+```lua
+-- WRONG: breaks hot reload
+local player = app.entities.player
+
+-- RIGHT: hot reload safe
+return {
+    update = function(dt)
+        local player = app.entities.player  -- Resolved fresh each call
+    end
 }
 ```
 
@@ -245,18 +167,121 @@ Bestow uses **Dvorak-friendly** default controls:
 
 Arrow keys also work.
 
-## Example Game
+## Lua API Overview
 
-See `games/game1/` for a complete 3D Snake game example demonstrating:
-- 3D isometric rendering
-- Camera following
-- Grid-based movement
-- Input handling
-- Game state management
+### Types
+
+```lua
+Vec2.new(x, y)
+Vec3.new(x, y, z)
+Quat.identity()
+Color.new(r, g, b, a)
+Mat4.identity()
+```
+
+### Entity System
+
+```lua
+bestow.entity.create()
+bestow.entity.destroy(entity)
+bestow.entity.addComponent(entity, "ComponentName", {data})
+bestow.entity.getComponent(entity, "ComponentName")
+bestow.entity.hasComponent(entity, "ComponentName")
+bestow.entity.each(function(entity) ... end)
+```
+
+### Input
+
+```lua
+bestow.input.isKeyDown(key)
+bestow.input.wasKeyJustPressed(key)
+bestow.input.isActionActive(action)
+bestow.input.getMousePosition()
+```
+
+### Graphics
+
+```lua
+bestow.graphics3d.beginFrame()
+bestow.graphics3d.endFrame()
+bestow.graphics3d.setCamera(camera)           -- Camera3D struct
+bestow.graphics3d.setFog(fog)                 -- Fog struct
+bestow.graphics3d.drawMesh(mesh, material, transform)  -- Transform3D or Mat4
+```
+
+See `docs/Data-Driven-Design.md` for complete API reference.
+
+---
+
+## Alternative: C++ Approach
+
+For maximum performance or when you need direct C++ control, you can also write games in C++:
+
+### 1. Create Game Class
+
+```cpp
+// src/game.cppm
+export module my.game;
+
+import bestow.services;
+import bestow.types;
+
+export class MyGame : public bestow::Application<MyGame,
+    bestow::IGraphics3DSystem,
+    bestow::IInputSystem>
+{
+public:
+    MyGame(bestow::IGraphics3DSystem& graphics, bestow::IInputSystem& input)
+        : graphics_(&graphics), input_(&input) {}
+
+    void run() override {
+        // Initialize, game loop, cleanup
+    }
+
+private:
+    bestow::IGraphics3DSystem* graphics_;
+    bestow::IInputSystem* input_;
+};
+```
+
+### 2. Create Entry Point
+
+```cpp
+// src/main.cpp
+import bestow.core;
+import bestow.services;
+import bestow.vulkan.impl;
+import bestow.input.impl;
+import my.game;
+
+int main() {
+    bestow::core::Engine engine;
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
+    engine.use<bestow::IInputSystem, bestow::InputSystem>();
+    engine.run<MyGame>();
+    return 0;
+}
+```
+
+### 3. Build and Run
+
+```bash
+cmake --preset macos-debug
+cmake --build --preset macos-debug
+./build/macos-debug/my-game
+```
+
+---
+
+## Example Games
+
+- **`games/lua-demo/`** - Simple Lua game demonstrating the Lua-first approach
+- **`games/game1/`** - 3D Snake game in C++ (multi-executable approach)
+- **`demos/animation-showcase/`** - Animation system demo
 
 ## Next Steps
 
-- Read `template/README.md` for detailed template documentation
-- Study `games/game1/` for a complete example
+- Read `docs/Data-Driven-Design.md` for the complete Lua API
+- Study `games/lua-demo/` for a Lua game example
 - Check `docs/api/` for system API reference
 - See `CLAUDE.md` for development guidelines

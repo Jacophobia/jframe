@@ -31,9 +31,17 @@ target_link_libraries(snake-game
         bestow-audio       # Audio system
         bestow-assets      # Asset system
         bestow-config      # Config system
+
+        # Required for MSVC C++23 modules - kangaru inline constexpr values
+        kangaru::kangaru
 )
 
 target_compile_features(snake-game PRIVATE cxx_std_23)
+
+# MSVC workaround: force include kangaru_compat.hpp to fix inline constexpr issues with C++23 modules
+if(MSVC)
+    target_compile_options(snake-game PRIVATE /FI"bestow/kangaru_compat.hpp")
+endif()
 
 # Enable import std; support
 target_use_std_module(snake-game)
@@ -47,16 +55,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
     )
 endif()
 
-# Copy Vulkan GLSL shaders to output directory for runtime loading
-add_custom_command(TARGET snake-game POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_SOURCE_DIR}/bestow-vulkan/shaders/basic3d.vert"
-        "${CMAKE_SOURCE_DIR}/bestow-vulkan/shaders/basic3d.frag"
-        "${CMAKE_SOURCE_DIR}/bestow-vulkan/shaders/debug.vert"
-        "${CMAKE_SOURCE_DIR}/bestow-vulkan/shaders/debug.frag"
-        "$<TARGET_FILE_DIR:snake-game>/"
-    COMMENT "Copying Vulkan shaders to output directory"
-)
+# Note: Shaders are now included in asset-library/shaders and copied via the library copy below
 
 # Copy asset-library to output directory as "library" (for :library:/ path resolution)
 if(EXISTS "${CMAKE_SOURCE_DIR}/asset-library")

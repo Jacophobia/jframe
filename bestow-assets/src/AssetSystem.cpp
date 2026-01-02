@@ -35,6 +35,7 @@ module;
 module bestow.assets.impl;
 
 import bestow.events;  // For Events namespace
+import bestow.types;   // For PathResolver
 
 namespace bestow {
 
@@ -447,20 +448,10 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
             }
 
             case AssetType::Model: {
-                // Load model file as raw binary for Graphics3D to parse
-                // (glTF, FBX parsing requires external libraries in Graphics3D)
-                std::ifstream file(sourcePath, std::ios::binary | std::ios::ate);
-                if (!file.is_open()) {
-                    throw std::runtime_error("Failed to open model file: " + sourcePath.string());
-                }
-
-                auto fileSize = file.tellg();
-                file.seekg(0, std::ios::beg);
-
-                ModelData modelData;
-                // ModelData will be populated by Graphics3D when loaded
+                // Load model using assimp (FBX, glTF, OBJ, etc.)
+                ModelData modelData = loadModelFromFile(sourcePath);
+                loadedSize = modelData.meshes.size() * sizeof(MeshData);  // Approximate
                 loadedData = std::move(modelData);
-                loadedSize = static_cast<size_t>(fileSize);
                 break;
             }
 

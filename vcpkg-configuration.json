@@ -5,5 +5,6 @@
         "baseline": "9aee6e968f51e15ee93606f064691d8f6d228190"
     },
     "registries": [],
-    "overlay-triplets": ["./triplets"]
+    "overlay-triplets": ["./triplets"],
+    "overlay-ports": ["./custom-ports"]
 }
