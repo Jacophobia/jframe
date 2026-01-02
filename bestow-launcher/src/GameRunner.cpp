@@ -8,6 +8,7 @@ import std;
 import bestow.core;
 import bestow.services;
 import bestow.types;      // PathResolver
+import bestow.assets;     // AssetLibrary
 import bestow.script;
 import bestow.luabind;
 
@@ -30,11 +31,9 @@ public:
 
     /// Initialize the engine with all default systems
     bool initialize(const std::filesystem::path& mainScript,
-                    const std::filesystem::path& assetLibraryPath,
                     bool verbose, bool debugMode) {
         mainScript_ = mainScript;
         gameRoot_ = mainScript.parent_path();
-        assetLibraryPath_ = assetLibraryPath;
         verbose_ = verbose;
         debugMode_ = debugMode;
 
@@ -142,45 +141,22 @@ public:
 
 private:
     void initializePathResolver() {
+        // Initialize PathResolver with basic defaults
         PathResolver::initialize();
 
-        std::filesystem::path libraryPath;
-
-        // If asset library path was explicitly provided, use it
-        if (!assetLibraryPath_.empty()) {
-            if (std::filesystem::exists(assetLibraryPath_)) {
-                libraryPath = assetLibraryPath_;
-            } else {
-                spdlog::error("[GameRunner] Specified asset-library path does not exist: {}",
-                              assetLibraryPath_.string());
-                libraryPath = assetLibraryPath_;  // Use it anyway, might be created later
-            }
+        // Use AssetLibrary for robust auto-detection of library path
+        // (checks env var, exe-relative, cwd-relative locations)
+        auto assetLib = AssetLibrary::create();
+        if (assetLib) {
+            PathResolver::setLibraryPath(assetLib->root().string());
+            spdlog::info("[GameRunner] Using library path: {}", assetLib->root().string());
         } else {
-            // Auto-detect library path
-            auto cwd = std::filesystem::current_path();
-
-            // Look for library assets in order of preference:
-            // 1. "library/" - copied by CMake build (preferred for build output)
-            // 2. "asset-library/" - source repo location
-            // 3. Search up from cwd for asset-library
-            if (std::filesystem::exists(cwd / "library")) {
-                libraryPath = cwd / "library";
-            } else if (std::filesystem::exists(cwd / "asset-library")) {
-                libraryPath = cwd / "asset-library";
-            } else if (std::filesystem::exists(cwd.parent_path().parent_path().parent_path() / "asset-library")) {
-                // Running from build/macos-debug/bestow-launcher/
-                libraryPath = cwd.parent_path().parent_path().parent_path() / "asset-library";
-            } else {
-                spdlog::warn("[GameRunner] Could not find asset-library directory from cwd: {}", cwd.string());
-                spdlog::warn("[GameRunner] Use --asset-library <path> to specify the location");
-                libraryPath = cwd / "asset-library";  // Fallback
-            }
+            spdlog::warn("[GameRunner] Could not auto-detect asset library directory");
+            spdlog::warn("[GameRunner] Set BESTOW_LIBRARY_PATH environment variable to specify the location");
+            spdlog::info("[GameRunner] Using fallback library path: {}", PathResolver::getLibraryPath().string());
         }
 
-        spdlog::info("[GameRunner] Using library path: {}", libraryPath.string());
-        PathResolver::setLibraryPath(libraryPath.string());
-
-        // Set assets path to game root
+        // Set assets path to game root (where main.lua is located)
         spdlog::info("[GameRunner] Using assets path: {}", gameRoot_.string());
         PathResolver::setAssetsPath(gameRoot_.string());
     }
@@ -339,7 +315,6 @@ private:
 
     std::filesystem::path mainScript_;
     std::filesystem::path gameRoot_;
-    std::filesystem::path assetLibraryPath_;
     bool verbose_ = false;
     bool debugMode_ = false;
     bool initialized_ = false;
@@ -355,8 +330,8 @@ void destroyGameRunner(GameRunner* runner) {
 }
 
 bool initializeRunner(GameRunner* runner, const std::filesystem::path& mainScript,
-                      const std::filesystem::path& assetLibraryPath, bool verbose, bool debug) {
-    return runner->initialize(mainScript, assetLibraryPath, verbose, debug);
+                      bool verbose, bool debug) {
+    return runner->initialize(mainScript, verbose, debug);
 }
 
 int runGame(GameRunner* runner) {
