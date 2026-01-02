@@ -1,5 +1,5 @@
 // bestow-contract/src/bestow.graphics.cppm
-// Graphics system interface
+// 2D Graphics system interface
 
 module;
 
@@ -11,10 +11,11 @@ export module bestow.graphics;
 import bestow.types;
 import bestow.assets;  // For IAssetSystem forward reference
 import bestow.entity;  // For IEntitySystem in renderEntities
+import bestow.graphics.context;  // Base interface for all graphics systems
 
 export namespace bestow {
 
-class IGraphicsSystem {
+class IGraphicsSystem : public IGraphicsContext {
 public:
     virtual ~IGraphicsSystem() = default;
 
@@ -77,12 +78,20 @@ public:
     // Window Management
     //======================================================================
 
-    virtual Size getWindowSize() const = 0;
+    // Inherited from IGraphicsContext:
+    // - Size getWindowSize() const
+    // - void* getNativeWindowHandle() const
+
     virtual void setWindowSize(Size size) = 0;
     virtual bool isFullscreen() const = 0;
     virtual void setFullscreen(bool fullscreen) = 0;
     virtual bool shouldClose() const = 0;
-    virtual void* getNativeWindowHandle() const = 0;
+
+    // These are additional IGraphicsContext methods that must be implemented:
+    // - IUIRenderBackend* getUIRenderBackend()
+    // - bool isInFrame() const
+    // - void* getRenderContext() const
+    // - void* getCurrentCommandBuffer() const
 
     //======================================================================
     // Render State

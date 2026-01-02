@@ -60,6 +60,131 @@ struct FontAtlas {
     AssetHandle fontHandle;
 };
 
+//==========================================================================
+// UI Render Backend - Low-level 2D rendering for UI systems
+//==========================================================================
+
+/// Internal resource for compiled UI geometry
+struct GeometryResource {
+    GLuint vao = 0;
+    GLuint vbo = 0;
+    GLuint ebo = 0;
+    std::uint32_t indexCount = 0;
+};
+
+/// OpenGL implementation of IUIRenderBackend.
+/// Provides 2D rendering primitives for UI systems like RmlUi.
+class OpenGLUIRenderBackend : public IUIRenderBackend {
+public:
+    OpenGLUIRenderBackend();
+    ~OpenGLUIRenderBackend() override;
+
+    //======================================================================
+    // Lifecycle
+    //======================================================================
+
+    bool initialize() override;
+    void shutdown() override;
+    bool isInitialized() const override;
+
+    //======================================================================
+    // Geometry Management
+    //======================================================================
+
+    UIGeometryHandle compileGeometry(
+        std::span<const UIVertex> vertices,
+        std::span<const std::uint32_t> indices) override;
+    void releaseGeometry(UIGeometryHandle geometry) override;
+
+    //======================================================================
+    // Rendering
+    //======================================================================
+
+    void beginUIPass() override;
+    void renderGeometry(
+        UIGeometryHandle geometry,
+        Vec2 translation,
+        UITextureHandle texture = InvalidUITexture) override;
+    void endUIPass() override;
+
+    //======================================================================
+    // Texture Management
+    //======================================================================
+
+    UITextureHandle loadTexture(
+        const std::filesystem::path& path,
+        int& outWidth,
+        int& outHeight) override;
+    UITextureHandle createTexture(
+        std::span<const std::uint8_t> data,
+        int width,
+        int height) override;
+    void releaseTexture(UITextureHandle texture) override;
+
+    //======================================================================
+    // Scissor (Clipping)
+    //======================================================================
+
+    void enableScissor(bool enable) override;
+    void setScissorRegion(const UIScissorRect& region) override;
+
+    //======================================================================
+    // Viewport
+    //======================================================================
+
+    void setViewportSize(int width, int height) override;
+    Size getViewportSize() const override;
+
+    //======================================================================
+    // Statistics
+    //======================================================================
+
+    std::uint32_t getDrawCallCount() const override;
+    std::uint32_t getTriangleCount() const override;
+
+private:
+    GLuint createShaderProgram(const char* vertSource, const char* fragSource);
+    void createWhiteTexture();
+
+    bool initialized_ = false;
+    bool inUIPass_ = false;
+
+    // Shader resources
+    GLuint shaderProgram_ = 0;
+    GLint projectionLoc_ = -1;
+    GLint translationLoc_ = -1;
+    GLint hasTextureLoc_ = -1;
+    GLint textureLoc_ = -1;
+
+    // Geometry cache
+    std::unordered_map<UIGeometryHandle, GeometryResource> geometryCache_;
+    UIGeometryHandle nextGeometryHandle_ = 1;
+
+    // Texture cache
+    std::unordered_map<UITextureHandle, GLuint> textureCache_;
+    std::unordered_map<UITextureHandle, std::pair<int, int>> textureDimensions_;
+    UITextureHandle nextTextureHandle_ = 1;
+    GLuint whiteTexture_ = 0;
+
+    // Viewport
+    int viewportWidth_ = 0;
+    int viewportHeight_ = 0;
+
+    // Statistics
+    std::uint32_t drawCallCount_ = 0;
+    std::uint32_t triangleCount_ = 0;
+
+    // Saved OpenGL state for restore after UI pass
+    GLint savedBlendSrcRGB_ = 0;
+    GLint savedBlendDstRGB_ = 0;
+    GLint savedBlendSrcAlpha_ = 0;
+    GLint savedBlendDstAlpha_ = 0;
+    GLboolean savedBlendEnabled_ = GL_FALSE;
+    GLboolean savedDepthTestEnabled_ = GL_FALSE;
+    GLboolean savedScissorEnabled_ = GL_FALSE;
+    GLboolean savedCullFaceEnabled_ = GL_FALSE;
+};
+
 class OpenGLGraphicsSystem : public IGraphicsSystem {
 public:
     explicit OpenGLGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
@@ -149,8 +274,19 @@ public:
     void setViewportCulling(bool enabled) override;
     bool isViewportCullingEnabled() const override;
 
+    //======================================================================
+    // IGraphicsContext (inherited from IGraphicsSystem)
+    //======================================================================
+
+    IUIRenderBackend* getUIRenderBackend() override;
+    bool isInFrame() const override;
+    void* getRenderContext() const override;
+    void* getCurrentCommandBuffer() const override;
+
 private:
     GLFWwindow* window_ = nullptr;
+    bool inFrame_ = false;
+    std::unique_ptr<OpenGLUIRenderBackend> uiRenderBackend_;
     Camera camera_;
     Color clearColor_ = Color::black();
     bool isFullscreen_ = false;
@@ -981,9 +1117,22 @@ public:
     const Graphics3DRuntimeConfig& getRuntimeConfig() const override;
     bool reloadRuntimeConfig() override;
 
+    //======================================================================
+    // IGraphicsContext Implementation
+    //======================================================================
+
+    bestow::IUIRenderBackend* getUIRenderBackend() override;
+    bool isInFrame() const override { return inFrame_; }
+    void* getRenderContext() const override { return window_; }
+    void* getCurrentCommandBuffer() const override { return nullptr; }  // N/A for OpenGL
+
 private:
     // Lifecycle
     bool initialized_ = false;
+
+    // IGraphicsContext state
+    bool inFrame_ = false;
+    std::unique_ptr<OpenGLUIRenderBackend> uiRenderBackend_;
 
     // Window
     GLFWwindow* window_ = nullptr;
@@ -1227,6 +1376,7 @@ void OpenGLGraphics3DSystem::shutdown() {
 }
 
 void OpenGLGraphics3DSystem::beginFrame() {
+    inFrame_ = true;
     stats_ = RenderStats{};
 
     // Normalize Color (uint8_t 0-255) to float (0.0-1.0) for glClearColor
@@ -1248,6 +1398,7 @@ void OpenGLGraphics3DSystem::endFrame() {
         renderDebugLines();
     }
 
+    inFrame_ = false;
     glfwSwapBuffers(window_);
     glfwPollEvents();
 
@@ -4510,6 +4661,22 @@ bool OpenGLGraphics3DSystem::reloadRuntimeConfig() {
         return false;
     }
     return loadRuntimeConfig(configPath_);
+}
+
+//==========================================================================
+// IGraphicsContext Implementation
+//==========================================================================
+
+IUIRenderBackend* OpenGLGraphics3DSystem::getUIRenderBackend() {
+    if (!uiRenderBackend_) {
+        uiRenderBackend_ = std::make_unique<OpenGLUIRenderBackend>();
+        if (!uiRenderBackend_->initialize()) {
+            spdlog::error("OpenGLGraphics3DSystem: Failed to initialize UI render backend");
+            uiRenderBackend_.reset();
+            return nullptr;
+        }
+    }
+    return uiRenderBackend_.get();
 }
 
 //==========================================================================

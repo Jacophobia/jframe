@@ -16,6 +16,7 @@ import bestow.types;
 import bestow.assets;
 import bestow.entity;
 import bestow.config;
+import bestow.graphics.context;  // Base interface for all graphics systems
 
 export namespace bestow {
 
@@ -353,7 +354,7 @@ struct Graphics3DRuntimeConfig {
 // IGraphics3DSystem Interface
 //==========================================================================
 
-class IGraphics3DSystem {
+class IGraphics3DSystem : public IGraphicsContext {
 public:
     virtual ~IGraphics3DSystem() = default;
 
@@ -607,12 +608,20 @@ public:
     // Window Management
     //======================================================================
 
-    virtual Size getWindowSize() const = 0;
+    // Inherited from IGraphicsContext:
+    // - Size getWindowSize() const
+    // - void* getNativeWindowHandle() const
+
     virtual void setWindowSize(Size size) = 0;
     virtual bool isFullscreen() const = 0;
     virtual void setFullscreen(bool fullscreen) = 0;
     virtual bool shouldClose() const = 0;
-    virtual void* getNativeWindowHandle() const = 0;
+
+    // These are additional IGraphicsContext methods that must be implemented:
+    // - IUIRenderBackend* getUIRenderBackend()
+    // - bool isInFrame() const
+    // - void* getRenderContext() const
+    // - void* getCurrentCommandBuffer() const
 
     //======================================================================
     // Render State

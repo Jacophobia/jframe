@@ -14,6 +14,7 @@ module;
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <spdlog/spdlog.h>
 
 #define GL_SILENCE_DEPRECATION
 #include <GLFW/glfw3.h>
@@ -175,6 +176,7 @@ bool OpenGLGraphicsSystem::initialize(int width, int height, const std::string& 
 }
 
 void OpenGLGraphicsSystem::beginFrame() {
+    inFrame_ = true;
     glClearColor(
         clearColor_.r / 255.0f,
         clearColor_.g / 255.0f,
@@ -188,6 +190,7 @@ void OpenGLGraphicsSystem::beginFrame() {
 void OpenGLGraphicsSystem::endFrame() {
     if (spriteBatch_.empty()) {
         glFlush();  // Ensure clear command completes before swap
+        inFrame_ = false;
         glfwSwapBuffers(window_);
         glfwPollEvents();
         return;
@@ -272,6 +275,7 @@ void OpenGLGraphicsSystem::endFrame() {
     glBindVertexArray(0);
     glUseProgram(0);
 
+    inFrame_ = false;
     glfwSwapBuffers(window_);
     glfwPollEvents();
 }
@@ -1346,6 +1350,40 @@ void OpenGLGraphicsSystem::renderEntities(IEntitySystem& entities,
             }
         }
     }
+}
+
+//==========================================================================
+// IGraphicsContext Implementation
+//==========================================================================
+
+IUIRenderBackend* OpenGLGraphicsSystem::getUIRenderBackend() {
+    // Create lazily on first call
+    if (!uiRenderBackend_) {
+        uiRenderBackend_ = std::make_unique<OpenGLUIRenderBackend>();
+        if (!uiRenderBackend_->initialize()) {
+            spdlog::error("Failed to initialize OpenGL UI render backend");
+            uiRenderBackend_.reset();
+            return nullptr;
+        }
+        // Set viewport size
+        auto size = getWindowSize();
+        uiRenderBackend_->setViewportSize(size.width, size.height);
+    }
+    return uiRenderBackend_.get();
+}
+
+bool OpenGLGraphicsSystem::isInFrame() const {
+    return inFrame_;
+}
+
+void* OpenGLGraphicsSystem::getRenderContext() const {
+    // OpenGL context is thread-bound, no explicit context object
+    return nullptr;
+}
+
+void* OpenGLGraphicsSystem::getCurrentCommandBuffer() const {
+    // OpenGL doesn't have command buffers
+    return nullptr;
 }
 
 }  // namespace bestow
