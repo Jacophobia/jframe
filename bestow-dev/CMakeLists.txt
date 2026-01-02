@@ -21,7 +21,7 @@ target_link_libraries(bestow-dev
         efsw::efsw
         glfw
         glad::glad
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
 )
 

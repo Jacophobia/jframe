@@ -13,7 +13,7 @@ target_link_libraries(bestow-components
     PUBLIC
         bestow-contract
     PRIVATE
-        lua
+        unofficial::luajit::luajit
         sol2::sol2
 )
 
