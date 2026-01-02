@@ -64,6 +64,9 @@ void bindSaveSystem(sol::state& lua, ISaveSystem& save);
 // Event System binding
 void bindEventSystem(sol::state& lua, IEventSystem& events);
 
+// UI System binding
+void bindUISystem(sol::state& lua, IUISystem& ui);
+
 // Metrics/Profiling System binding (always available, Tracy optional)
 void bindMetricsSystem(sol::state& lua);
 

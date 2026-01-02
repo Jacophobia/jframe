@@ -9,6 +9,7 @@ module;
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <spdlog/spdlog.h>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 #include <stb_image.h>  // For decoding embedded compressed textures
@@ -337,6 +338,7 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
 }
 
 void VulkanGraphics3DSystem::beginFrame() {
+    inFrame_ = true;
     renderQueue_.clear();
     context_.beginFrame();
     updateCameraUBO();
@@ -347,6 +349,7 @@ void VulkanGraphics3DSystem::beginFrame() {
 void VulkanGraphics3DSystem::endFrame() {
     flushRenderQueue();
     renderDebugLines();
+    inFrame_ = false;
     context_.endFrame();
 
     // Update timed debug lines
@@ -3325,6 +3328,22 @@ void VulkanGraphics3DSystem::renderDebugLines() {
 
     // Clear the debug lines (they are rendered once per frame)
     debugLines_.clear();
+}
+
+//==========================================================================
+// IGraphicsContext Implementation
+//==========================================================================
+
+IUIRenderBackend* VulkanGraphics3DSystem::getUIRenderBackend() {
+    if (!uiRenderBackend_) {
+        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_);
+        if (!uiRenderBackend_->initialize()) {
+            spdlog::error("VulkanGraphics3DSystem: Failed to initialize UI render backend");
+            uiRenderBackend_.reset();
+            return nullptr;
+        }
+    }
+    return uiRenderBackend_.get();
 }
 
 }  // namespace bestow::vulkan
