@@ -21,14 +21,14 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
     //=========================================================================
 
     lua.new_enum<UIError>("UIError", {
-        {"None", UIError::None},
+        {"Success", UIError::Success},
         {"DocumentNotFound", UIError::DocumentNotFound},
         {"ElementNotFound", UIError::ElementNotFound},
+        {"InvalidDocument", UIError::InvalidDocument},
         {"ParseError", UIError::ParseError},
         {"StyleSheetError", UIError::StyleSheetError},
         {"FontNotFound", UIError::FontNotFound},
-        {"InvalidHandle", UIError::InvalidHandle},
-        {"NotInitialized", UIError::NotInitialized},
+        {"TextureNotFound", UIError::TextureNotFound},
         {"InternalError", UIError::InternalError}
     });
 
@@ -36,7 +36,7 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
         {"MouseMove", UIInputType::MouseMove},
         {"MouseDown", UIInputType::MouseDown},
         {"MouseUp", UIInputType::MouseUp},
-        {"MouseWheel", UIInputType::MouseWheel},
+        {"MouseScroll", UIInputType::MouseScroll},
         {"KeyDown", UIInputType::KeyDown},
         {"KeyUp", UIInputType::KeyUp},
         {"TextInput", UIInputType::TextInput}
@@ -71,8 +71,15 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
         sol::constructors<UIConfig()>(),
         "baseScale", &UIConfig::baseScale,
         "enableDebugMode", &UIConfig::enableDebugMode,
-        "assetsPath", &UIConfig::assetsPath,
-        "fontsPath", &UIConfig::fontsPath
+        // Use property accessors to convert std::filesystem::path to/from string
+        "assetsPath", sol::property(
+            [](const UIConfig& c) { return c.assetsPath.string(); },
+            [](UIConfig& c, const std::string& s) { c.assetsPath = s; }
+        ),
+        "fontsPath", sol::property(
+            [](const UIConfig& c) { return c.fontsPath.string(); },
+            [](UIConfig& c, const std::string& s) { c.fontsPath = s; }
+        )
     );
 
     lua.new_usertype<UIInputEvent>("UIInputEvent",
@@ -81,8 +88,7 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
         "x", &UIInputEvent::x,
         "y", &UIInputEvent::y,
         "button", &UIInputEvent::button,
-        "wheelDeltaX", &UIInputEvent::wheelDeltaX,
-        "wheelDeltaY", &UIInputEvent::wheelDeltaY,
+        "wheelDelta", &UIInputEvent::wheelDelta,
         "keyCode", &UIInputEvent::keyCode,
         "modifiers", &UIInputEvent::modifiers,
         "character", &UIInputEvent::character
@@ -193,7 +199,9 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
 
     uiTable["getElementById"] = [&ui](UIDocumentHandle doc, const std::string& id)
         -> sol::optional<UIElementHandle> {
-        return ui.getElementById(doc, id);
+        auto result = ui.getElementById(doc, id);
+        if (result) return *result;
+        return sol::nullopt;
     };
 
     uiTable["getElementsByClass"] = [&ui](UIDocumentHandle doc, const std::string& className) {
@@ -209,7 +217,9 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
     };
 
     uiTable["getParent"] = [&ui](UIElementHandle elem) -> sol::optional<UIElementHandle> {
-        return ui.getParent(elem);
+        auto result = ui.getParent(elem);
+        if (result) return *result;
+        return sol::nullopt;
     };
 
     //-------------------------------------------------------------------------
@@ -252,7 +262,9 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
 
     uiTable["getAttribute"] = [&ui](UIElementHandle elem, const std::string& name)
         -> sol::optional<std::string> {
-        return ui.getElementAttribute(elem, name);
+        auto result = ui.getElementAttribute(elem, name);
+        if (result) return *result;
+        return sol::nullopt;
     };
 
     uiTable["setStyle"] = [&ui](UIElementHandle elem,
@@ -346,13 +358,12 @@ void bindUISystem(sol::state& lua, IUISystem& ui) {
         if (eventTable["x"].valid()) event.x = eventTable["x"].get<int>();
         if (eventTable["y"].valid()) event.y = eventTable["y"].get<int>();
         if (eventTable["button"].valid()) event.button = eventTable["button"].get<int>();
-        if (eventTable["wheelDeltaX"].valid()) event.wheelDeltaX = eventTable["wheelDeltaX"].get<float>();
-        if (eventTable["wheelDeltaY"].valid()) event.wheelDeltaY = eventTable["wheelDeltaY"].get<float>();
+        if (eventTable["wheelDelta"].valid()) event.wheelDelta = eventTable["wheelDelta"].get<int>();
         if (eventTable["keyCode"].valid()) event.keyCode = eventTable["keyCode"].get<int>();
         if (eventTable["modifiers"].valid()) event.modifiers = eventTable["modifiers"].get<int>();
         if (eventTable["character"].valid()) {
             std::string charStr = eventTable["character"].get<std::string>();
-            if (!charStr.empty()) event.character = charStr[0];
+            if (!charStr.empty()) event.character = static_cast<char32_t>(charStr[0]);
         }
         return ui.processInput(event);
     };

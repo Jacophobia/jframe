@@ -11,7 +11,23 @@ function(find_dependencies)
     find_package(glm CONFIG REQUIRED)
     find_package(spdlog CONFIG REQUIRED)
     find_package(fmt CONFIG REQUIRED)
-    find_package(unofficial-luajit CONFIG REQUIRED)
+
+    # LuaJIT - vcpkg provides pkgconfig, not cmake config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
+    # Create alias target for compatibility and add luajit include path globally
+    # LuaJIT installs headers to luajit-2.1/ subdirectory, sol2 expects them at root
+    if(NOT TARGET unofficial::luajit::luajit)
+        add_library(unofficial::luajit::luajit INTERFACE IMPORTED)
+        target_link_libraries(unofficial::luajit::luajit INTERFACE PkgConfig::LUAJIT)
+        # Add luajit include path so sol2 can find lua.h
+        target_include_directories(unofficial::luajit::luajit INTERFACE
+            "${LUAJIT_INCLUDE_DIRS}"
+        )
+    endif()
+    # Also add to global include path for sol2 compatibility
+    include_directories(SYSTEM "${LUAJIT_INCLUDE_DIRS}")
+
     find_package(sol2 CONFIG REQUIRED)
     find_package(nlohmann_json CONFIG REQUIRED)
     find_package(cereal CONFIG REQUIRED)

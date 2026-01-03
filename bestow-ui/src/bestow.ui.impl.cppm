@@ -1076,10 +1076,10 @@ UIRect RmlUISystem::getElementBounds(UIElementHandle elem) {
         auto box = e->GetAbsoluteOffset();
         auto size = e->GetBox().GetSize();
         return UIRect{
-            static_cast<int>(box.x),
-            static_cast<int>(box.y),
-            static_cast<int>(size.x),
-            static_cast<int>(size.y)
+            static_cast<float>(box.x),
+            static_cast<float>(box.y),
+            static_cast<float>(size.x),
+            static_cast<float>(size.y)
         };
     }
     return {};
@@ -1220,9 +1220,9 @@ bool RmlUISystem::processInput(const UIInputEvent& event) {
         case UIInputType::MouseUp:
             return context_->ProcessMouseButtonUp(event.button, 0);
 
-        case UIInputType::MouseWheel:
+        case UIInputType::MouseScroll:
             return context_->ProcessMouseWheel(
-                Rml::Vector2f(event.wheelDeltaX, event.wheelDeltaY), 0);
+                Rml::Vector2f(0, static_cast<float>(event.wheelDelta)), 0);
 
         case UIInputType::KeyDown:
             return context_->ProcessKeyDown(

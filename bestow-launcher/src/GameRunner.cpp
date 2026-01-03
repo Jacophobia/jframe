@@ -32,10 +32,11 @@ public:
     /// Initialize the engine with all default systems
     bool initialize(const std::filesystem::path& mainScript,
                     bool verbose, bool debugMode) {
-        mainScript_ = mainScript;
-        gameRoot_ = mainScript.parent_path();
         verbose_ = verbose;
         debugMode_ = debugMode;
+
+        mainScript_ = mainScript;
+        gameRoot_ = mainScript.parent_path();
 
         if (verbose_) {
             spdlog::set_level(spdlog::level::debug);

@@ -139,9 +139,18 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Path to pre-compiled std module
     set(BESTOW_STD_PCM "${BESTOW_PCM_DIR}/std.pcm")
 
-    # Get macOS sysroot for LLVM
-    if(APPLE AND CMAKE_OSX_SYSROOT)
-        set(BESTOW_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
+    # Get macOS sysroot and architecture flags for LLVM
+    set(BESTOW_ARCH_FLAGS "")
+    if(APPLE)
+        if(CMAKE_OSX_SYSROOT)
+            set(BESTOW_SYSROOT_FLAG "-isysroot" "${CMAKE_OSX_SYSROOT}")
+        else()
+            set(BESTOW_SYSROOT_FLAG "")
+        endif()
+        # Pass target architecture for cross-compilation (e.g., x86_64 on arm64)
+        if(CMAKE_OSX_ARCHITECTURES)
+            set(BESTOW_ARCH_FLAGS "-arch" "${CMAKE_OSX_ARCHITECTURES}")
+        endif()
     else()
         set(BESTOW_SYSROOT_FLAG "")
     endif()
@@ -155,6 +164,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
                 -std=c++23
                 -stdlib=libc++
                 -pthread
+                ${BESTOW_ARCH_FLAGS}
                 ${BESTOW_SYSROOT_FLAG}
                 --precompile
                 "${LIBC++_STD_MODULE}"
@@ -186,6 +196,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
                     -std=c++23
                     -stdlib=libc++
                     -pthread
+                    ${BESTOW_ARCH_FLAGS}
                     ${BESTOW_SYSROOT_FLAG}
                     --precompile
                     "${LIBC++_STD_MODULE}"
