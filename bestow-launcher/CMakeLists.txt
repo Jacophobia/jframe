@@ -144,3 +144,15 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
         PATTERN "*.lua"
         PATTERN "*.json"
 )
+
+# On macOS, also install template into app bundle Resources directory
+# This ensures 'bestow init' works when running from the bundled app
+if(APPLE)
+    install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
+        DESTINATION ${CMAKE_INSTALL_BINDIR}/bestow.app/Contents/Resources/template
+        FILES_MATCHING
+            PATTERN "*.md"
+            PATTERN "*.lua"
+            PATTERN "*.json"
+    )
+endif()

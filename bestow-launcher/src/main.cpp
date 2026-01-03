@@ -232,6 +232,7 @@ std::optional<std::filesystem::path> findTemplateDirectory() {
         exeDir / ".." / "lib" / "bestow" / "template",    // Alternative lib layout
         exeDir / "library" / "template",                  // Bestow library layout
         exeDir / ".." / "library" / "template",           // Bestow library layout (exe in bin/)
+        exeDir / ".." / "Resources" / "template",         // macOS app bundle: Contents/Resources/template
     };
 
     // Also check BESTOW_LIBRARY_PATH + template
