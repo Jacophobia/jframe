@@ -73,6 +73,16 @@ install(TARGETS bestow
     BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
+# Create symlink for easy command-line access on macOS
+if(APPLE)
+    install(CODE "
+        set(BESTOW_BUNDLE \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/bestow.app/Contents/MacOS/bestow\")
+        set(BESTOW_LINK \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/bestow\")
+        message(STATUS \"Creating symlink: \${BESTOW_LINK} -> \${BESTOW_BUNDLE}\")
+        execute_process(COMMAND \${CMAKE_COMMAND} -E create_symlink \${BESTOW_BUNDLE} \${BESTOW_LINK})
+    ")
+endif()
+
 # Install template directory for 'bestow init' command
 # This places template at: <prefix>/share/bestow/template
 # Which is found by: exeDir / ".." / "share" / "bestow" / "template"
