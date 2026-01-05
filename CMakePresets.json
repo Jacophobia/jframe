@@ -112,7 +112,9 @@
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx",
+                "VCPKG_MANIFEST_FEATURES": "vulkan",
+                "BESTOW_BUILD_VULKAN": "ON"
             },
             "condition": {
                 "type": "equals",

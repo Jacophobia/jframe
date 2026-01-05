@@ -3,6 +3,11 @@
 
 # Define the package target
 function(create_package_target)
+    # Only create package targets if bestow executable is being built
+    if(NOT TARGET bestow)
+        message(STATUS "Package targets not created: 'bestow' target not found (requires BESTOW_BUILD_VULKAN=ON)")
+        return()
+    endif()
     # Determine platform-specific settings
     if(WIN32)
         set(PLATFORM_NAME "windows-x64")
