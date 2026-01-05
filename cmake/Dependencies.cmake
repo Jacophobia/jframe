@@ -55,10 +55,8 @@ function(find_dependencies)
     find_package(kangaru CONFIG REQUIRED)
     find_package(unofficial-shaderc CONFIG REQUIRED)
 
-    # Development tools (optional in release)
-    if(BESTOW_DEV_TOOLS)
-        find_package(efsw CONFIG REQUIRED)
-    endif()
+    # File watcher (needed for hot reload support in assets/scripts)
+    find_package(efsw CONFIG REQUIRED)
 
     # 3D Graphics dependencies (with FetchContent fallback)
     find_package(tinyobjloader CONFIG QUIET)

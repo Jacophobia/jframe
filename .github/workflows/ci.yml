@@ -10,6 +10,9 @@ env:
   VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
+  # =============================================================================
+  # Debug Build & Test (runs on all pushes and PRs)
+  # =============================================================================
   build:
     strategy:
       fail-fast: false
@@ -21,9 +24,6 @@ jobs:
           - os: ubuntu-24.04
             preset: linux-debug
             name: Linux
-          # Windows re-enabled: Added bestow/entt_compat.hpp header that brings
-          # EnTT internal comparison operators into scope for MSVC C++23 modules.
-          # See include/bestow/entt_compat.hpp for details.
           - os: windows-2022
             preset: windows-debug
             name: Windows
@@ -264,3 +264,296 @@ jobs:
             build/${{ matrix.preset }}/bin
             build/${{ matrix.preset }}/compile_commands.json
           retention-days: 7
+
+  # =============================================================================
+  # Release Build & Package (only on mainline pushes)
+  # =============================================================================
+  release-build:
+    if: github.ref == 'refs/heads/mainline' && github.event_name == 'push'
+    needs: build  # Only run after debug builds pass
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            preset: macos-release
+            artifact_name: bestow-macos-x64
+            name: macOS
+          - os: ubuntu-24.04
+            preset: linux-release
+            artifact_name: bestow-linux-x64
+            name: Linux
+          - os: windows-2022
+            preset: windows-release
+            artifact_name: bestow-windows-x64
+            name: Windows
+
+    name: Package (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export GitHub Actions cache variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      # =========================================================================
+      # macOS Setup
+      # =========================================================================
+      - name: Cache Homebrew packages (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        id: homebrew-cache
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/llvm@20
+            /opt/homebrew/opt/llvm@20
+          key: homebrew-macos-14-llvm20-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            homebrew-macos-14-llvm20-
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          if [ ! -d "/opt/homebrew/opt/llvm@20" ]; then
+            brew update
+            brew install llvm@20
+          fi
+          brew list ninja &>/dev/null || brew install ninja
+          brew list cmake &>/dev/null || brew install cmake
+
+          if [ -d "/opt/homebrew/opt/llvm@20" ]; then
+            LLVM_PATH="/opt/homebrew/opt/llvm@20"
+          elif [ -d "/usr/local/opt/llvm@20" ]; then
+            LLVM_PATH="/usr/local/opt/llvm@20"
+          else
+            echo "Error: LLVM@20 not found"
+            exit 1
+          fi
+
+          echo "Using LLVM at: $LLVM_PATH"
+          echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+
+          SDK_PATH=$(xcrun --show-sdk-path)
+          echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+
+      # =========================================================================
+      # Linux Setup
+      # =========================================================================
+      - name: Cache apt packages (Linux)
+        if: runner.os == 'Linux'
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >-
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libgl1-mesa-dev libglu1-mesa-dev
+            libasound2-dev libpulse-dev
+            libwayland-dev libxkbcommon-dev
+            autoconf autoconf-archive automake libtool libltdl-dev
+            ninja-build wget lsb-release software-properties-common gnupg
+          version: 1.0
+
+      - name: Cache LLVM 20 (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        id: llvm-cache
+        with:
+          path: |
+            /usr/lib/llvm-20
+            /usr/bin/clang-20
+            /usr/bin/clang++-20
+            /usr/bin/llvm-*-20
+          key: llvm-20-ubuntu-24.04-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            llvm-20-ubuntu-24.04-
+
+      - name: Install Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if [ ! -f "/usr/bin/clang-20" ]; then
+            wget https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            sudo ./llvm.sh 20 all
+          fi
+
+          echo "BESTOW_CC=/usr/bin/clang-20" >> $GITHUB_ENV
+          echo "BESTOW_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
+          echo "VCPKG_DEFAULT_TRIPLET=x64-linux-libcxx" >> $GITHUB_ENV
+          echo "VCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/triplets" >> $GITHUB_ENV
+
+      # =========================================================================
+      # vcpkg Setup
+      # =========================================================================
+      - name: Setup vcpkg
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
+          runVcpkgInstall: false
+
+      - name: Set VCPKG_ROOT (Unix)
+        if: runner.os != 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
+      - name: Set VCPKG_ROOT (Windows)
+        if: runner.os == 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+          restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
+
+      # =========================================================================
+      # Build & Package
+      # =========================================================================
+      - name: Configure (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          CMAKE_EXTRA_ARGS=""
+          if [ "$(uname)" = "Darwin" ] && [ -n "$SDKROOT" ]; then
+            CMAKE_EXTRA_ARGS="-DCMAKE_OSX_SYSROOT=$SDKROOT"
+          fi
+          cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER=$BESTOW_CC \
+            -DCMAKE_CXX_COMPILER=$BESTOW_CXX \
+            $CMAKE_EXTRA_ARGS
+
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --parallel
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --config Release --parallel
+
+      - name: Create Package (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --target package-zip
+
+      - name: Create Package (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --config Release --target package-zip
+
+      - name: Upload distribution package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            build/${{ matrix.preset }}/dist/*.zip
+            build/${{ matrix.preset }}/dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 90
+
+  # =============================================================================
+  # Create Release (after all packages built)
+  # =============================================================================
+  create-release:
+    if: github.ref == 'refs/heads/mainline' && github.event_name == 'push'
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for commit info
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display downloaded files
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" -o -name "*.tar.gz" | head -20
+
+      - name: Get version info
+        id: version
+        run: |
+          # Get short commit hash
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=$SHORT_SHA" >> $GITHUB_OUTPUT
+
+          # Get commit date
+          COMMIT_DATE=$(git show -s --format=%cs HEAD)
+          echo "commit_date=$COMMIT_DATE" >> $GITHUB_OUTPUT
+
+          # Create release tag
+          RELEASE_TAG="nightly-${COMMIT_DATE}-${SHORT_SHA}"
+          echo "release_tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+          echo "Release tag: $RELEASE_TAG"
+
+      - name: Delete existing nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Delete any existing nightly releases to keep only the latest
+          gh release list --limit 100 | grep "nightly-" | awk '{print $1}' | while read tag; do
+            echo "Deleting old nightly release: $tag"
+            gh release delete "$tag" --yes --cleanup-tag || true
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: "Nightly Build (${{ steps.version.outputs.commit_date }})"
+          body: |
+            Automated nightly build from mainline branch.
+
+            **Commit:** ${{ github.sha }}
+            **Date:** ${{ steps.version.outputs.commit_date }}
+
+            ## Downloads
+            - **Windows:** `bestow-windows-x64.zip`
+            - **macOS:** `bestow-macos-x64.tar.gz`
+            - **Linux:** `bestow-linux-x64.tar.gz`
+
+            ## Usage
+            Extract the archive and run:
+            ```bash
+            # Windows
+            cd bin && bestow.exe run ../examples/snake-lua/main.lua
+
+            # macOS/Linux
+            cd bin && ./bestow run ../examples/snake-lua/main.lua
+            ```
+
+            See README.txt in the archive for more details.
+          draft: false
+          prerelease: true
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.tar.gz

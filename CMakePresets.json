@@ -49,7 +49,9 @@
                 "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
                 "CMAKE_OSX_ARCHITECTURES": "x86_64",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "x64-osx-llvm"
+                "VCPKG_TARGET_TRIPLET": "x64-osx-llvm",
+                "VCPKG_MANIFEST_FEATURES": "vulkan",
+                "BESTOW_BUILD_VULKAN": "ON"
             },
             "condition": {
                 "type": "equals",
@@ -92,7 +94,9 @@
                 "CMAKE_BUILD_TYPE": "Release",
                 "BESTOW_DEV_TOOLS": "OFF",
                 "BESTOW_BUILD_TESTS": "OFF",
-                "BESTOW_BUILD_EXAMPLES": "OFF"
+                "BESTOW_BUILD_EXAMPLES": "OFF",
+                "VCPKG_MANIFEST_FEATURES": "vulkan",
+                "BESTOW_BUILD_VULKAN": "ON"
             },
             "condition": {
                 "type": "equals",
@@ -127,7 +131,9 @@
                 "BESTOW_BUILD_TESTS": "OFF",
                 "BESTOW_BUILD_EXAMPLES": "OFF",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx"
+                "VCPKG_TARGET_TRIPLET": "x64-linux-libcxx",
+                "VCPKG_MANIFEST_FEATURES": "vulkan",
+                "BESTOW_BUILD_VULKAN": "ON"
             },
             "condition": {
                 "type": "equals",

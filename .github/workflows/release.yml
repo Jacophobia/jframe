@@ -16,12 +16,8 @@ jobs:
         include:
           - os: macos-14
             preset: macos-release
-            artifact_name: bestow-macos-arm64
-            name: macOS (Apple Silicon)
-          - os: macos-13
-            preset: macos-release
             artifact_name: bestow-macos-x64
-            name: macOS (Intel)
+            name: macOS
           - os: ubuntu-24.04
             preset: linux-release
             artifact_name: bestow-linux-x64
@@ -48,13 +44,29 @@ jobs:
       # =========================================================================
       # macOS Setup
       # =========================================================================
+      - name: Cache Homebrew packages (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        id: homebrew-cache
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /opt/homebrew/Cellar/llvm@20
+            /opt/homebrew/opt/llvm@20
+          key: homebrew-macos-14-llvm20-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            homebrew-macos-14-llvm20-
+
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew update
-          brew install llvm@20 ninja cmake
+          if [ ! -d "/opt/homebrew/opt/llvm@20" ]; then
+            brew update
+            brew install llvm@20
+          fi
+          brew list ninja &>/dev/null || brew install ninja
+          brew list cmake &>/dev/null || brew install cmake
 
-          # Determine Homebrew prefix (different on ARM vs Intel)
           if [ -d "/opt/homebrew/opt/llvm@20" ]; then
             LLVM_PATH="/opt/homebrew/opt/llvm@20"
           elif [ -d "/usr/local/opt/llvm@20" ]; then
@@ -65,82 +77,66 @@ jobs:
           fi
 
           echo "Using LLVM at: $LLVM_PATH"
-          echo "CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
-          echo "CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
+          echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
+          echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
 
-          # Set library paths for consistent libc++ usage
+          SDK_PATH=$(xcrun --show-sdk-path)
+          echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
           echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I${LLVM_PATH}/include" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
 
-          # Verify version
           ${LLVM_PATH}/bin/clang++ --version
 
       # =========================================================================
       # Linux Setup
       # =========================================================================
-      - name: Install system libraries (Linux)
+      - name: Cache apt packages (Linux)
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libgl1-mesa-dev libglu1-mesa-dev \
-            libasound2-dev libpulse-dev \
-            libwayland-dev libxkbcommon-dev \
+        uses: awalsh128/cache-apt-pkgs-action@latest
+        with:
+          packages: >-
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+            libgl1-mesa-dev libglu1-mesa-dev
+            libasound2-dev libpulse-dev
+            libwayland-dev libxkbcommon-dev
+            autoconf autoconf-archive automake libtool libltdl-dev
             ninja-build wget lsb-release software-properties-common gnupg
+          version: 1.0
 
-      - name: Install LLVM (Linux)
+      - name: Cache LLVM 20 (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/cache@v4
+        id: llvm-cache
+        with:
+          path: |
+            /usr/lib/llvm-20
+            /usr/bin/clang-20
+            /usr/bin/clang++-20
+            /usr/bin/llvm-*-20
+          key: llvm-20-ubuntu-24.04-${{ hashFiles('.github/workflows/release.yml') }}
+          restore-keys: |
+            llvm-20-ubuntu-24.04-
+
+      - name: Install Clang (Linux)
         if: runner.os == 'Linux'
         run: |
-          # Install LLVM 20 from LLVM apt repository
-          wget https://apt.llvm.org/llvm.sh
-          chmod +x llvm.sh
-          sudo ./llvm.sh 20 all
+          if [ ! -f "/usr/bin/clang-20" ]; then
+            wget https://apt.llvm.org/llvm.sh
+            chmod +x llvm.sh
+            sudo ./llvm.sh 20 all
+          fi
 
-          echo "CC=clang-20" >> $GITHUB_ENV
-          echo "CXX=clang++-20" >> $GITHUB_ENV
+          echo "BESTOW_CC=/usr/bin/clang-20" >> $GITHUB_ENV
+          echo "BESTOW_CXX=/usr/bin/clang++-20" >> $GITHUB_ENV
+          echo "VCPKG_DEFAULT_TRIPLET=x64-linux-libcxx" >> $GITHUB_ENV
+          echo "VCPKG_OVERLAY_TRIPLETS=${{ github.workspace }}/triplets" >> $GITHUB_ENV
 
-      - name: Verify LLVM (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          clang++-20 --version
-
-      # =========================================================================
-      # Windows Setup
-      # =========================================================================
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          # Download LLVM 20 from GitHub releases
-          $llvmVersion = "20.1.6"
-          $llvmUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvmVersion}/LLVM-${llvmVersion}-win64.exe"
-          $installerPath = "$env:TEMP\llvm-installer.exe"
-
-          Write-Host "Downloading LLVM ${llvmVersion}..."
-          Invoke-WebRequest -Uri $llvmUrl -OutFile $installerPath
-
-          Write-Host "Installing LLVM..."
-          Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait
-
-          # Add to PATH and set environment variables
-          $llvmBin = "C:\Program Files\LLVM\bin"
-          echo "$llvmBin" >> $env:GITHUB_PATH
-          echo "CC=$llvmBin\clang.exe" >> $env:GITHUB_ENV
-          echo "CXX=$llvmBin\clang++.exe" >> $env:GITHUB_ENV
-
-      - name: Install Ninja (Windows)
-        if: runner.os == 'Windows'
-        run: choco install ninja -y
-
-      - name: Verify LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          & "C:\Program Files\LLVM\bin\clang++.exe" --version
+          /usr/bin/clang++-20 --version
 
       # =========================================================================
-      # vcpkg Setup
+      # vcpkg Setup (all platforms)
       # =========================================================================
       - name: Setup vcpkg
         uses: lukka/run-vcpkg@v11
@@ -148,50 +144,74 @@ jobs:
           vcpkgGitCommitId: "9aee6e968f51e15ee93606f064691d8f6d228190"
           runVcpkgInstall: false
 
+      - name: Set VCPKG_ROOT (Unix)
+        if: runner.os != 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $GITHUB_ENV
+
+      - name: Set VCPKG_ROOT (Windows)
+        if: runner.os == 'Windows'
+        run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
+
+      - name: Restore vcpkg cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+          restore-keys: |
+            vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
+
       # =========================================================================
-      # Build Release
+      # Build & Package
       # =========================================================================
       - name: Configure (Unix)
         if: runner.os != 'Windows'
         run: |
-          export VCPKG_ROOT="${{ github.workspace }}/vcpkg"
-          cmake --preset ${{ matrix.preset }}
+          CMAKE_EXTRA_ARGS=""
+          if [ "$(uname)" = "Darwin" ] && [ -n "$SDKROOT" ]; then
+            CMAKE_EXTRA_ARGS="-DCMAKE_OSX_SYSROOT=$SDKROOT"
+          fi
+          cmake --preset ${{ matrix.preset }} \
+            -DCMAKE_C_COMPILER=$BESTOW_CC \
+            -DCMAKE_CXX_COMPILER=$BESTOW_CXX \
+            $CMAKE_EXTRA_ARGS
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $env:VCPKG_ROOT = "${{ github.workspace }}\vcpkg"
-          cmake --preset ${{ matrix.preset }}
+        run: cmake --preset ${{ matrix.preset }}
 
-      - name: Build
+      - name: Save vcpkg cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            build/${{ matrix.preset }}/vcpkg_installed
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         run: cmake --build --preset ${{ matrix.preset }} --parallel
 
-      - name: Install
-        run: cmake --install build/${{ matrix.preset }} --prefix install/${{ matrix.artifact_name }}
-
-      # =========================================================================
-      # Package
-      # =========================================================================
-      - name: Create archive (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cd install
-          tar -czvf ${{ matrix.artifact_name }}.tar.gz ${{ matrix.artifact_name }}
-
-      - name: Create archive (Windows)
+      - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: |
-          cd install
-          Compress-Archive -Path ${{ matrix.artifact_name }} -DestinationPath ${{ matrix.artifact_name }}.zip
+        run: cmake --build --preset ${{ matrix.preset }} --config Release --parallel
+
+      - name: Create Package (Unix)
+        if: runner.os != 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --target package-zip
+
+      - name: Create Package (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build --preset ${{ matrix.preset }} --config Release --target package-zip
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: |
-            install/${{ matrix.artifact_name }}.tar.gz
-            install/${{ matrix.artifact_name }}.zip
+            build/${{ matrix.preset }}/dist/*.zip
+            build/${{ matrix.preset }}/dist/*.tar.gz
           if-no-files-found: error
 
   # =============================================================================
@@ -211,7 +231,9 @@ jobs:
           path: artifacts
 
       - name: Display structure
-        run: ls -la artifacts/*/
+        run: |
+          echo "Downloaded artifacts:"
+          find artifacts -type f -name "*.zip" -o -name "*.tar.gz"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

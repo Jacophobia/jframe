@@ -97,13 +97,13 @@ if(BESTOW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Example games (require Vulkan)
-if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
+# Example games (require Vulkan, only for dev builds)
+if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan AND BESTOW_DEV_TOOLS)
     add_subdirectory(games/game1)
 endif()
 
-# Demos (require Vulkan)
-if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
+# Demos (require Vulkan, only for dev builds)
+if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan AND BESTOW_DEV_TOOLS)
     add_subdirectory(demos/animation-showcase)
 endif()
 

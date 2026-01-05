@@ -11,7 +11,7 @@ module;
 #include <glm/gtc/quaternion.hpp>
 #include <spdlog/spdlog.h>
 #include <bestow/sol2_compat.hpp>
-#include <spdlog/spdlog.h>
+#include <bestow/entt_compat.hpp>
 #include <stb_image.h>  // For decoding embedded compressed textures
 
 module bestow.vulkan.impl;
