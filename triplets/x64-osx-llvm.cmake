@@ -58,7 +58,11 @@ if(LLVM_PATH)
             "-DCMAKE_OSX_SYSROOT=${MACOS_SDK_PATH}"
         )
         # Set C/CXX flags for x86_64 architecture targeting
+        # Note: We use -stdlib=libc++ but rely on system libc++ for x86_64 linking
+        # The LLVM's libc++ is ARM64-only on ARM64 Homebrew, so we can't use it for cross-compile
         set(VCPKG_C_FLAGS "-isysroot ${MACOS_SDK_PATH} -arch x86_64")
-        set(VCPKG_CXX_FLAGS "-isysroot ${MACOS_SDK_PATH} -arch x86_64")
+        set(VCPKG_CXX_FLAGS "-isysroot ${MACOS_SDK_PATH} -arch x86_64 -stdlib=libc++")
+        # Use system library paths for linking, not LLVM's ARM64 libraries
+        set(VCPKG_LINKER_FLAGS "-arch x86_64 -isysroot ${MACOS_SDK_PATH}")
     endif()
 endif()

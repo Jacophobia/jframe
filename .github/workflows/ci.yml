@@ -91,11 +91,12 @@ jobs:
           echo "Using macOS SDK at: $SDK_PATH"
           echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
 
-          # Set library paths for consistent libc++ usage
-          echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
+          # Note: We don't set LDFLAGS to use LLVM's lib paths because
+          # when cross-compiling for x86_64 on ARM64 runners, LLVM's libraries
+          # are ARM64 and can't be linked. The triplet handles this.
           echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CFLAGS=-isysroot ${SDK_PATH} -arch x86_64" >> $GITHUB_ENV
+          echo "CXXFLAGS=-isysroot ${SDK_PATH} -arch x86_64 -stdlib=libc++" >> $GITHUB_ENV
 
           # Verify version
           ${LLVM_PATH}/bin/clang++ --version
@@ -347,10 +348,12 @@ jobs:
 
           SDK_PATH=$(xcrun --show-sdk-path)
           echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
-          echo "LDFLAGS=-L${LLVM_PATH}/lib -L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++" >> $GITHUB_ENV
+          # Note: We don't set LDFLAGS to use LLVM's lib paths because
+          # when cross-compiling for x86_64 on ARM64 runners, LLVM's libraries
+          # are ARM64 and can't be linked. The triplet handles this.
           echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CFLAGS=-isysroot ${SDK_PATH} -arch x86_64" >> $GITHUB_ENV
+          echo "CXXFLAGS=-isysroot ${SDK_PATH} -arch x86_64 -stdlib=libc++" >> $GITHUB_ENV
 
       # =========================================================================
       # Linux Setup
