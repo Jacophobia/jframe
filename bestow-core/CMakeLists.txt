@@ -9,6 +9,7 @@ target_sources(bestow-core
         src/JobSystem.cpp
         src/Easing.cpp
         src/Timer.cpp
+        $<$<CXX_COMPILER_ID:MSVC>:src/kangaru_symbols.cpp>
 )
 
 # Engine is now a simple composition root that uses Kangaru DI

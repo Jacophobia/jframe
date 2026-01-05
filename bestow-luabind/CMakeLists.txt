@@ -61,6 +61,11 @@ endif()
 
 target_compile_features(bestow-luabind PUBLIC cxx_std_23)
 
+# MSVC needs /bigobj for large translation units (sol2 templates)
+if(MSVC)
+    target_compile_options(bestow-luabind PRIVATE /bigobj)
+endif()
+
 # Enable module support
 set_target_properties(bestow-luabind PROPERTIES
     CXX_SCAN_FOR_MODULES ON

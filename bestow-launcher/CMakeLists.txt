@@ -1,6 +1,9 @@
 # bestow-launcher/CMakeLists.txt
 # Single executable entry point - `bestow run <game.lua>`
 
+# Include Windows runtime helper for DLL copying
+include(WindowsRuntime)
+
 add_executable(bestow)
 
 target_sources(bestow
@@ -50,6 +53,11 @@ set_target_properties(bestow PROPERTIES
 
 # Enable import std; support
 target_use_std_module(bestow)
+
+# Windows: Copy all runtime DLLs to output directory
+if(WIN32)
+    copy_runtime_dlls(bestow)
+endif()
 
 # macOS app bundle configuration
 # Uses Info.plist with LSArchitecturePriority to force Rosetta 2 for LuaJIT

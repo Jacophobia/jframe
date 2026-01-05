@@ -11,6 +11,11 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# MSVC conformance flags for proper C++17+ inline constexpr handling
+if(MSVC)
+    add_compile_options(/permissive- /Zc:__cplusplus /Zc:inline)
+endif()
+
 # Options
 option(BESTOW_BUILD_TESTS "Build tests" ON)
 option(BESTOW_ENABLE_TRACY "Enable Tracy profiler" ON)

@@ -12,18 +12,30 @@ function(find_dependencies)
     find_package(spdlog CONFIG REQUIRED)
     find_package(fmt CONFIG REQUIRED)
 
-    # LuaJIT - vcpkg provides pkgconfig, not cmake config
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
-    # Create alias target for compatibility and add luajit include path globally
-    # LuaJIT installs headers to luajit-2.1/ subdirectory, sol2 expects them at root
+    # LuaJIT - vcpkg provides pkgconfig on Unix, direct lib on Windows
     if(NOT TARGET unofficial::luajit::luajit)
-        add_library(unofficial::luajit::luajit INTERFACE IMPORTED)
-        target_link_libraries(unofficial::luajit::luajit INTERFACE PkgConfig::LUAJIT)
-        # Add luajit include path so sol2 can find lua.h
-        target_include_directories(unofficial::luajit::luajit INTERFACE
-            "${LUAJIT_INCLUDE_DIRS}"
-        )
+        if(WIN32)
+            # On Windows, vcpkg installs LuaJIT directly without cmake config
+            # Headers are in luajit-2.1/ subdirectory, library is lua51.lib
+            add_library(unofficial::luajit::luajit INTERFACE IMPORTED)
+            target_include_directories(unofficial::luajit::luajit INTERFACE
+                "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include/luajit"
+            )
+            target_link_libraries(unofficial::luajit::luajit INTERFACE
+                "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib/lua51.lib"
+            )
+            set(LUAJIT_INCLUDE_DIRS "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include/luajit")
+        else()
+            # On Unix, use pkg-config
+            find_package(PkgConfig REQUIRED)
+            pkg_check_modules(LUAJIT REQUIRED IMPORTED_TARGET luajit)
+            add_library(unofficial::luajit::luajit INTERFACE IMPORTED)
+            target_link_libraries(unofficial::luajit::luajit INTERFACE PkgConfig::LUAJIT)
+            # Add luajit include path so sol2 can find lua.h
+            target_include_directories(unofficial::luajit::luajit INTERFACE
+                "${LUAJIT_INCLUDE_DIRS}"
+            )
+        endif()
     endif()
     # Also add to global include path for sol2 compatibility
     include_directories(SYSTEM "${LUAJIT_INCLUDE_DIRS}")

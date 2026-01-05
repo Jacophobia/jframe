@@ -53,3 +53,4 @@ saves/
 
 # Generated files
 compile_commands.json
+.claude/
