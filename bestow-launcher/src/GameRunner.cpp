@@ -181,8 +181,8 @@ private:
         // Register input system
         engine_.use<IInputSystem, InputSystem>();
 
-        // Register audio system
-        engine_.use<IAudioSystem, FMODAudioSystem>();
+        // Register audio system (uses FMOD if available, otherwise miniaudio)
+        engine_.use<IAudioSystem, AudioSystem>();
 
         // Register graphics 3D system (Vulkan)
         engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
