@@ -55,4 +55,5 @@ saves/
 # Generated files
 compile_commands.json
 .claude/
+!template/.claude/
 dist/

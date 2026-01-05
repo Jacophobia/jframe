@@ -1,146 +1,113 @@
 ---
 name: audio-system
-description: Play music, sound effects, and positional 3D audio in Bestow. Use when adding sounds, background music, adjusting volume, or implementing spatial audio.
+description: Play music, sound effects, and positional audio in Bestow. Use when implementing background music, UI sounds, 3D spatial audio, volume control, or audio mixing.
 ---
 
 # Audio System
 
-The audio system handles music, sound effects, and 3D positional audio.
+The audio system handles all game audio including music, sound effects, and 3D positional audio.
 
-**Key Principle:** Audio assets are referenced by path. The engine loads and manages the actual audio data. Never try to read audio files directly.
+## Complete API Reference
 
-## Channel-Based Audio
+### Channel-Based Audio
 
-Channels are persistent audio slots for music and ambient sounds. Playing a new sound on a channel replaces the previous sound.
-
-### Predefined Channels
+Channels are for dedicated audio streams like music, ambience, and UI:
 
 ```lua
-Channels.Music    -- 0: Background music
-Channels.Ambience -- 1: Environmental sounds
-Channels.UI       -- 2: Interface sounds
-Channels.Voice    -- 3: Dialogue/narration
+-- Play sound on a channel
+bestow.audio.playOnChannel(channel: Channel, sound: ChannelSound | table)
+
+-- ChannelSound table structure:
+{
+    asset = AssetHandle,     -- Required: registered asset handle
+    volume = 1.0,            -- Optional: 0.0 to 1.0
+    pitch = 1.0,             -- Optional: playback speed multiplier
+    looping = false,         -- Optional: loop the sound
+    fadeInTime = 0.0         -- Optional: fade in duration in seconds
+}
+
+-- Stop channel (with optional fade out)
+bestow.audio.stopChannel(channel: Channel)
+bestow.audio.stopChannel(channel: Channel, fadeOutTime: float)
+
+-- Pause/resume
+bestow.audio.pauseChannel(channel: Channel)
+bestow.audio.resumeChannel(channel: Channel)
+
+-- Adjust properties
+bestow.audio.setChannelVolume(channel: Channel, volume: float)
+bestow.audio.setChannelPitch(channel: Channel, pitch: float)
+
+-- Seek to position (in seconds)
+bestow.audio.seekChannel(channel: Channel, position: float)
+
+-- Query state
+bestow.audio.isChannelPlaying(channel: Channel) -> bool
+bestow.audio.getChannelState(channel: Channel) -> ChannelState
+-- ChannelState = { isPlaying: bool, isPaused: bool, position: float, length: float, volume: float }
+
+-- Predefined channels
+bestow.audio.Channel.Music     -- Background music
+bestow.audio.Channel.Ambience  -- Environmental sounds
+bestow.audio.Channel.UI        -- Interface sounds
 ```
 
-### Playing on Channels
-
-```lua
--- Play background music
-bestow.audio.playOnChannel(Channels.Music, {
-    path = "sounds/music/battle.ogg",
-    volume = 0.8,
-    pitch = 1.0,
-    looping = true,
-    fadeInTime = 2.0      -- Fade in over 2 seconds
-})
-
--- Play ambient sound
-bestow.audio.playOnChannel(Channels.Ambience, {
-    path = "sounds/ambience/forest.ogg",
-    volume = 0.5,
-    looping = true
-})
-
--- Play UI sound (no looping)
-bestow.audio.playOnChannel(Channels.UI, {
-    path = "sounds/ui/click.wav",
-    volume = 1.0
-})
-```
-
-### Channel Control
-
-```lua
--- Stop with fade out
-bestow.audio.stopChannel(Channels.Music, 1.5)  -- 1.5 second fade
-
--- Stop immediately
-bestow.audio.stopChannel(Channels.Music, 0)
-
--- Pause/Resume
-bestow.audio.pauseChannel(Channels.Music)
-bestow.audio.resumeChannel(Channels.Music)
-
--- Adjust volume (0.0 to 1.0)
-bestow.audio.setChannelVolume(Channels.Music, 0.5)
-
--- Adjust pitch (1.0 = normal, 2.0 = octave up, 0.5 = octave down)
-bestow.audio.setChannelPitch(Channels.Music, 1.1)
-
--- Seek to position (seconds)
-bestow.audio.seekChannel(Channels.Music, 30.0)
-
--- Check if playing
-if bestow.audio.isChannelPlaying(Channels.Music) then
-    -- Music is playing
-end
-```
-
-## One-Shot Sound Effects
-
-For sounds that play once and don't need control:
-
-```lua
--- Play sound effect
-bestow.audio.playOnChannel(Channels.UI, {
-    path = "sounds/sfx/explosion.wav",
-    volume = 1.0,
-    pitch = 0.9 + math.random() * 0.2  -- Random pitch variation
-})
-```
-
-## Positional (3D) Audio
+### Positional (3D) Audio
 
 For sounds that exist in 3D space:
 
 ```lua
 -- Play positional sound
-local handle = bestow.audio.playPositional({
-    path = "sounds/sfx/gunshot.wav",
-    position = Vec3.new(10, 0, 5),
-    volume = 1.0,
-    pitch = 1.0,
-    minDistance = 5.0,    -- Full volume within this radius
-    maxDistance = 50.0,   -- Inaudible beyond this
-    velocity = Vec3.new(0, 0, 0)  -- For Doppler effect
-})
+bestow.audio.playPositional(sound: PositionalSound | table) -> SoundHandle
 
--- Update position for moving sounds
-bestow.audio.updatePositionalPosition(handle, newPosition)
+-- PositionalSound table structure:
+{
+    asset = AssetHandle,      -- Required: registered asset handle
+    position = Vec3,          -- Required: world position
+    volume = 1.0,             -- Optional: base volume
+    pitch = 1.0,              -- Optional: playback speed
+    minDistance = 1.0,        -- Optional: full volume distance
+    maxDistance = 100.0       -- Optional: silence distance
+}
 
 -- Stop positional sound
-bestow.audio.stopPositional(handle)
+bestow.audio.stopPositional(handle: SoundHandle)
+
+-- Update position (for moving sources)
+bestow.audio.updatePositionalPosition(handle: SoundHandle, position: Vec3)
 
 -- Check if still playing
-if bestow.audio.isPositionalPlaying(handle) then
-    -- Sound is still active
-end
+bestow.audio.isPositionalPlaying(handle: SoundHandle) -> bool
 ```
 
-### Audio Listener
+### 3D Audio Listener
 
-The listener is the "ears" - usually the camera or player:
+The listener is typically attached to the camera or player:
 
 ```lua
--- Set listener position (call every frame)
-bestow.audio.setListener({
-    position = cameraPosition,
-    forward = cameraForward,
-    up = Vec3.new(0, 1, 0),
-    velocity = playerVelocity  -- For Doppler effect
-})
+-- Set listener position and orientation
+bestow.audio.setListener(listener: AudioListener)
+
+-- AudioListener structure:
+{
+    position = Vec3,       -- World position
+    forward = Vec3,        -- Forward direction (normalized)
+    up = Vec3,             -- Up direction (normalized)
+    velocity = Vec3        -- For doppler effect (optional)
+}
+
+-- Get current listener
+bestow.audio.getListener() -> AudioListener
 ```
 
-## Master Volume
+### Global Controls
 
 ```lua
--- Set master volume (affects everything)
-bestow.audio.setMasterVolume(0.8)
+-- Master volume (affects all audio)
+bestow.audio.setMasterVolume(volume: float)
+bestow.audio.getMasterVolume() -> float
 
--- Get current master volume
-local vol = bestow.audio.getMasterVolume()
-
--- Pause/Resume all audio
+-- Global pause/resume (for pause menu)
 bestow.audio.pauseAll()
 bestow.audio.resumeAll()
 
@@ -148,158 +115,201 @@ bestow.audio.resumeAll()
 bestow.audio.stopAll()
 ```
 
-## Audio Groups
+### Channel Groups
 
-Organize sounds into groups for volume control:
+For controlling categories of audio together:
 
 ```lua
--- Set volume for a group
-bestow.audio.setGroupVolume("music", 0.7)
-bestow.audio.setGroupVolume("sfx", 1.0)
-bestow.audio.setGroupVolume("voice", 0.9)
+-- Set volume for a group (e.g., "sfx", "music", "voice")
+bestow.audio.setGroupVolume(group: string, volume: float)
 
--- Assign channel to group
-bestow.audio.assignChannelToGroup(Channels.Music, "music")
-bestow.audio.assignChannelToGroup(Channels.UI, "sfx")
+-- Assign a channel to a group
+bestow.audio.assignChannelToGroup(channel: Channel, group: string)
 ```
 
-## Audio System Module Pattern
+## Common Patterns
 
-Create an audio system to manage game sounds:
+### Background Music
 
 ```lua
--- systems/audio.lua
+-- In init() or level start
+local function playBackgroundMusic()
+    local musicHandle = bestow.assets.registerAsset(
+        bestow.assets.Type.Music,
+        "music/level1_theme.ogg"
+    )
+    bestow.assets.loadAsset(musicHandle)
+
+    bestow.audio.playOnChannel(bestow.audio.Channel.Music, {
+        asset = musicHandle,
+        volume = 0.7,
+        looping = true,
+        fadeInTime = 2.0
+    })
+end
+
+-- To change music
+local function crossfadeToMusic(newMusicPath, fadeDuration)
+    -- Fade out current
+    bestow.audio.stopChannel(bestow.audio.Channel.Music, fadeDuration)
+
+    -- Load and play new
+    local handle = bestow.assets.registerAsset(bestow.assets.Type.Music, newMusicPath)
+    bestow.assets.loadAsset(handle)
+
+    bestow.audio.playOnChannel(bestow.audio.Channel.Music, {
+        asset = handle,
+        volume = 0.7,
+        looping = true,
+        fadeInTime = fadeDuration
+    })
+end
+```
+
+### UI Sound Effects
+
+```lua
+-- Preload UI sounds in init()
+local uiSounds = {}
+
+local function loadUISounds()
+    local sounds = {
+        click = "sounds/ui/click.wav",
+        hover = "sounds/ui/hover.wav",
+        confirm = "sounds/ui/confirm.wav",
+        cancel = "sounds/ui/cancel.wav"
+    }
+
+    for name, path in pairs(sounds) do
+        uiSounds[name] = bestow.assets.registerAsset(bestow.assets.Type.Sound, path)
+        bestow.assets.loadAsset(uiSounds[name])
+    end
+end
+
+-- Play UI sound
+local function playUISound(name, volume)
+    volume = volume or 1.0
+    bestow.audio.playOnChannel(bestow.audio.Channel.UI, {
+        asset = uiSounds[name],
+        volume = volume
+    })
+end
+
+-- Usage
+playUISound("click")
+playUISound("hover", 0.5)
+```
+
+### 3D Footstep Sounds
+
+```lua
+local footstepHandle = nil
+
+local function initFootsteps()
+    footstepHandle = bestow.assets.registerAsset(
+        bestow.assets.Type.Sound,
+        "sounds/footstep.wav"
+    )
+    bestow.assets.loadAsset(footstepHandle)
+end
+
+local function playFootstep(position)
+    bestow.audio.playPositional({
+        asset = footstepHandle,
+        position = position,
+        volume = 0.8,
+        minDistance = 1.0,
+        maxDistance = 20.0
+    })
+end
+
+-- Call from movement system
+local function onStep()
+    local playerPos = bestow.entity.getField(
+        app.main.state.player,
+        "Transform3D",
+        "position"
+    )
+    playFootstep(playerPos)
+end
+```
+
+### Audio Listener Following Camera
+
+```lua
+-- In camera system update
+local function updateAudioListener()
+    local cam = bestow.graphics3d.getCamera()
+
+    bestow.audio.setListener({
+        position = cam.transform.position,
+        forward = cam.transform.rotation:rotateVector(Vec3.forward()),
+        up = cam.transform.rotation:rotateVector(Vec3.up()),
+        velocity = Vec3.zero()  -- Add actual velocity for doppler
+    })
+end
+```
+
+### Settings Menu Audio Controls
+
+```lua
+-- systems/settings.lua
 return {
-    -- Sound configuration
-    sounds = {
-        jump = { path = "sounds/sfx/jump.wav", volume = 0.7 },
-        land = { path = "sounds/sfx/land.wav", volume = 0.5 },
-        hit = { path = "sounds/sfx/hit.wav", volume = 0.8 },
-        pickup = { path = "sounds/sfx/pickup.wav", volume = 0.6 },
-        death = { path = "sounds/sfx/death.wav", volume = 1.0 }
-    },
+    masterVolume = 1.0,
+    musicVolume = 0.7,
+    sfxVolume = 1.0,
 
-    music = {
-        menu = { path = "sounds/music/menu.ogg", volume = 0.6 },
-        gameplay = { path = "sounds/music/gameplay.ogg", volume = 0.5 },
-        boss = { path = "sounds/music/boss.ogg", volume = 0.7 }
-    },
-
-    -- Play a sound effect
-    playSfx = function(name)
-        local self = app.systems.audio
-        local sound = self.sounds[name]
-        if sound then
-            bestow.audio.playOnChannel(Channels.UI, {
-                path = sound.path,
-                volume = sound.volume
-            })
-        end
+    applyAudioSettings = function()
+        local self = app.systems.settings
+        bestow.audio.setMasterVolume(self.masterVolume)
+        bestow.audio.setGroupVolume("music", self.musicVolume)
+        bestow.audio.setGroupVolume("sfx", self.sfxVolume)
     end,
 
-    -- Play with random pitch variation
-    playSfxRandomized = function(name)
-        local self = app.systems.audio
-        local sound = self.sounds[name]
-        if sound then
-            bestow.audio.playOnChannel(Channels.UI, {
-                path = sound.path,
-                volume = sound.volume,
-                pitch = 0.9 + math.random() * 0.2
-            })
-        end
+    setMasterVolume = function(volume)
+        local self = app.systems.settings
+        self.masterVolume = math.max(0, math.min(1, volume))
+        self.applyAudioSettings()
     end,
 
-    -- Play music with crossfade
-    playMusic = function(name)
-        local self = app.systems.audio
-        local music = self.music[name]
-        if music then
-            bestow.audio.stopChannel(Channels.Music, 1.0)  -- Fade out current
-
-            -- Delay new music slightly for crossfade
-            bestow.audio.playOnChannel(Channels.Music, {
-                path = music.path,
-                volume = music.volume,
-                looping = true,
-                fadeInTime = 1.0
-            })
-        end
+    setMusicVolume = function(volume)
+        local self = app.systems.settings
+        self.musicVolume = math.max(0, math.min(1, volume))
+        self.applyAudioSettings()
     end,
 
-    -- Stop all music
-    stopMusic = function()
-        bestow.audio.stopChannel(Channels.Music, 1.5)
-    end,
-
-    -- Update listener position
-    updateListener = function()
-        local state = app.main.state
-        if state.player then
-            local pos = bestow.entity.getField(state.player, "Transform3D", "position")
-            local camera = bestow.camera3d.getCamera()
-
-            bestow.audio.setListener({
-                position = camera.position,
-                forward = camera.forward or Vec3.new(0, 0, -1),
-                up = Vec3.new(0, 1, 0)
-            })
-        end
+    setSFXVolume = function(volume)
+        local self = app.systems.settings
+        self.sfxVolume = math.max(0, math.min(1, volume))
+        self.applyAudioSettings()
     end
 }
 ```
 
-Usage:
-```lua
--- In game code
-app.systems.audio.playSfx("jump")
-app.systems.audio.playMusic("gameplay")
-
--- In update loop
-app.systems.audio.updateListener()
-```
-
-## Audio for Common Events
+### Pause Menu Audio
 
 ```lua
--- Player jump
-if bestow.input.wasKeyJustPressed(Keys.Space) and state.grounded then
-    app.systems.audio.playSfx("jump")
+local function pauseGame()
+    app.main.state.paused = true
+    bestow.audio.pauseAll()
+
+    -- Play pause sound (UI channel might be exempt from pauseAll)
+    playUISound("pause")
 end
 
--- Taking damage
-function takeDamage(entity, amount)
-    local health = bestow.entity.getComponent(entity, "Health")
-    health.current = health.current - amount
-    bestow.entity.setComponent(entity, "Health", health)
-
-    app.systems.audio.playSfx("hit")
-
-    if health.current <= 0 then
-        app.systems.audio.playSfx("death")
-    end
-end
-
--- Collecting item
-function collectItem(player, item)
-    app.systems.audio.playSfx("pickup")
-    bestow.entity.destroy(item)
-end
-
--- Level transition
-function changeLevel(levelName)
-    app.systems.audio.playMusic(levelName)
-    app.levels[levelName].load()
+local function resumeGame()
+    app.main.state.paused = false
+    bestow.audio.resumeAll()
 end
 ```
 
 ## Best Practices
 
-1. **Reference sounds by path** - Never try to load audio data directly
-2. **Use channels for persistent sounds** - Music, ambience, UI
-3. **Use positional audio for 3D sounds** - Explosions, footsteps, voices
-4. **Update listener every frame** - Keep 3D audio synchronized
-5. **Add pitch variation to repeated sounds** - Prevents mechanical feel
-6. **Fade music transitions** - Smoother than hard cuts
-7. **Group related sounds** - Easier volume management
-8. **Keep SFX short** - Channel audio replaces, doesn't layer
+1. **Preload frequently used sounds** - Register and load in init()
+2. **Use channels for dedicated streams** - Music, ambience, UI should have their own channels
+3. **Use positional audio for world sounds** - Footsteps, explosions, NPCs
+4. **Update the listener every frame** - Attach to camera or player
+5. **Provide volume controls** - Master, music, SFX sliders in settings
+6. **Fade transitions** - Use fadeInTime/fadeOutTime for smooth transitions
+7. **Keep sound effects short** - Long sounds should be music/ambience
+8. **Match minDistance to object size** - Larger objects need larger minDistance
