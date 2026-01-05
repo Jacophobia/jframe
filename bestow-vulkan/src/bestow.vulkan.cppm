@@ -30,6 +30,11 @@ struct VulkanConfig {
     int headlessWidth = 1920;
     int headlessHeight = 1080;
     void* window = nullptr;  // Optional: use existing GLFW window instead of creating one
+
+    // Large-world rendering options (for space games, etc.)
+    bool useReversedZ = false;       // Use reversed-Z depth buffer (near=1, far=0)
+    bool useLogarithmicDepth = false; // Use logarithmic depth in shaders
+    float logDepthCoefficient = 1.0f; // Coefficient C for log(C*z + 1)
 };
 
 //==========================================================================

@@ -637,6 +637,22 @@ public:
 
     PhysicsStats3D getStats() const override;
 
+    //======================================================================
+    // Large-World Rendering (Floating Origin)
+    //======================================================================
+
+    void setCameraWorldPosition(const Vec3d& worldPosition) override;
+    [[nodiscard]] Vec3d getFloatingOrigin() const override;
+    [[nodiscard]] Vec3 getCameraRenderPosition() const override;
+    [[nodiscard]] Vec3d getCameraWorldPosition() const override;
+    [[nodiscard]] Vec3 toRenderPosition(const Vec3d& worldPosition) const override;
+    [[nodiscard]] Vec3d toWorldPosition(const Vec3& renderPosition) const override;
+    [[nodiscard]] std::uint32_t getOriginShiftEpoch() const override;
+    [[nodiscard]] bool needsRebase(std::uint32_t lastEpoch) const override;
+    void forceOriginShift(const Vec3d& newOrigin) override;
+    void setFloatingOriginConfig(const FloatingOriginConfig& config) override;
+    [[nodiscard]] FloatingOriginConfig getFloatingOriginConfig() const override;
+
 private:
     JPH::BodyID* getBodyID(Entity entity) const;
     Entity getEntity(JPH::BodyID bodyId) const;
@@ -701,6 +717,12 @@ private:
 
     // Stats
     mutable PhysicsStats3D lastStats_;
+
+    // Floating origin for large-world support
+    FloatingOriginConfig floatingOriginConfig_;
+    Vec3d currentOrigin_{0.0, 0.0, 0.0};
+    Vec3d cameraWorldPosition_{0.0, 0.0, 0.0};
+    std::uint32_t originShiftEpoch_ = 0;
 
     bool initialized_ = false;
 };
@@ -2548,6 +2570,83 @@ JPH::Ref<JPH::Shape> JoltPhysics3DSystem::createShape(const PhysicsBodyDef3D& de
         default:
             return nullptr;
     }
+}
+
+//==========================================================================
+// Large-World Rendering (Floating Origin) Implementation
+//==========================================================================
+
+void JoltPhysics3DSystem::setCameraWorldPosition(const Vec3d& worldPosition) {
+    cameraWorldPosition_ = worldPosition;
+    
+    // Check if we need to shift the origin
+    Vec3d distFromOrigin = cameraWorldPosition_ - currentOrigin_;
+    double distSquared = distFromOrigin.x * distFromOrigin.x + 
+                         distFromOrigin.y * distFromOrigin.y + 
+                         distFromOrigin.z * distFromOrigin.z;
+    
+    double threshold = floatingOriginConfig_.shiftThreshold;
+    if (distSquared > threshold * threshold) {
+        // Snap to grid if configured
+        Vec3d newOrigin = cameraWorldPosition_;
+        if (floatingOriginConfig_.gridSize > 0.0) {
+            double grid = floatingOriginConfig_.gridSize;
+            newOrigin.x = std::floor(newOrigin.x / grid) * grid;
+            newOrigin.y = std::floor(newOrigin.y / grid) * grid;
+            newOrigin.z = std::floor(newOrigin.z / grid) * grid;
+        }
+        forceOriginShift(newOrigin);
+    }
+}
+
+Vec3d JoltPhysics3DSystem::getFloatingOrigin() const {
+    return currentOrigin_;
+}
+
+Vec3 JoltPhysics3DSystem::getCameraRenderPosition() const {
+    return toRenderPosition(cameraWorldPosition_);
+}
+
+Vec3d JoltPhysics3DSystem::getCameraWorldPosition() const {
+    return cameraWorldPosition_;
+}
+
+Vec3 JoltPhysics3DSystem::toRenderPosition(const Vec3d& worldPosition) const {
+    Vec3d relativePos = worldPosition - currentOrigin_;
+    return Vec3(
+        static_cast<float>(relativePos.x),
+        static_cast<float>(relativePos.y),
+        static_cast<float>(relativePos.z)
+    );
+}
+
+Vec3d JoltPhysics3DSystem::toWorldPosition(const Vec3& renderPosition) const {
+    return currentOrigin_ + Vec3d(
+        static_cast<double>(renderPosition.x),
+        static_cast<double>(renderPosition.y),
+        static_cast<double>(renderPosition.z)
+    );
+}
+
+std::uint32_t JoltPhysics3DSystem::getOriginShiftEpoch() const {
+    return originShiftEpoch_;
+}
+
+bool JoltPhysics3DSystem::needsRebase(std::uint32_t lastEpoch) const {
+    return lastEpoch != originShiftEpoch_;
+}
+
+void JoltPhysics3DSystem::forceOriginShift(const Vec3d& newOrigin) {
+    currentOrigin_ = newOrigin;
+    ++originShiftEpoch_;
+}
+
+void JoltPhysics3DSystem::setFloatingOriginConfig(const FloatingOriginConfig& config) {
+    floatingOriginConfig_ = config;
+}
+
+FloatingOriginConfig JoltPhysics3DSystem::getFloatingOriginConfig() const {
+    return floatingOriginConfig_;
 }
 
 //==========================================================================

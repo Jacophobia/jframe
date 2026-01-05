@@ -124,6 +124,7 @@ public:
     VulkanStats getStats() const;
 
     bool isHeadless() const { return config_.headless; }
+    const VulkanConfig& getConfig() const { return config_; }
     Size getWindowSize() const;
     void setWindowSize(Size size);
 

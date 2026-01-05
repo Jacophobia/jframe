@@ -11,6 +11,13 @@ module;
 #include <glm/mat3x3.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/quaternion.hpp>
+// Double-precision types for large-world coordinates
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/ext/vector_double2.hpp>
+#include <glm/ext/vector_double3.hpp>
+#include <glm/ext/vector_double4.hpp>
+#include <glm/ext/matrix_double4x4.hpp>
+#include <glm/ext/quaternion_double.hpp>
 
 export module bestow.types;
 
@@ -31,7 +38,7 @@ template<typename T, typename E = std::error_code>
 using Result = std::expected<T, E>;
 
 //==========================================================================
-// Math Types
+// Math Types (Single Precision - for GPU/rendering)
 //==========================================================================
 
 using Vec2 = glm::vec2;
@@ -40,6 +47,19 @@ using Vec4 = glm::vec4;
 using Mat3 = glm::mat3;
 using Mat4 = glm::mat4;
 using Quat = glm::quat;
+
+//==========================================================================
+// Math Types (Double Precision - for large-world coordinates)
+//==========================================================================
+// Use these for astronomical-scale simulations (solar system, space games)
+// where single-precision floats lose accuracy at large distances.
+// Convert to single-precision only when sending to GPU.
+
+using Vec2d = glm::dvec2;
+using Vec3d = glm::dvec3;
+using Vec4d = glm::dvec4;
+using Mat4d = glm::dmat4;
+using Quatd = glm::dquat;
 
 struct Transform2D {
     float x = 0.0f;
@@ -733,6 +753,131 @@ struct Light3DComponent {
 };
 
 //==========================================================================
+// Large-World / Celestial Types (for space games, planetary scale)
+//==========================================================================
+// These types use double-precision coordinates for astronomical distances.
+// The floating origin system keeps the camera near the origin to maintain
+// GPU rendering precision while storing absolute positions in doubles.
+
+/// Double-precision 3D transform for celestial/large-world objects
+/// Store positions in meters from a reference point (e.g., solar system barycenter)
+struct CelestialTransform {
+    Vec3d position{0.0, 0.0, 0.0};       // World position in meters (double precision)
+    Quatd rotation{1.0, 0.0, 0.0, 0.0};  // Orientation (double precision for stability)
+    Vec3 scale{1.0f, 1.0f, 1.0f};        // Scale (float is sufficient)
+
+    /// Convert to camera-relative single-precision for GPU rendering
+    [[nodiscard]] Transform3D toRelative(const Vec3d& cameraOrigin) const {
+        Vec3d relativePos = position - cameraOrigin;
+        return Transform3D{
+            .position = Vec3(static_cast<float>(relativePos.x),
+                            static_cast<float>(relativePos.y),
+                            static_cast<float>(relativePos.z)),
+            .rotation = Quat(static_cast<float>(rotation.w),
+                            static_cast<float>(rotation.x),
+                            static_cast<float>(rotation.y),
+                            static_cast<float>(rotation.z)),
+            .scale = scale
+        };
+    }
+
+    static CelestialTransform identity() { return {}; }
+};
+
+/// Celestial body definition for planets, moons, asteroids, etc.
+struct CelestialBodyDef {
+    std::string name;
+    double mass = 0.0;                    // Mass in kilograms
+    double radius = 0.0;                  // Mean radius in meters
+    CelestialTransform transform;
+    Vec3d velocity{0.0, 0.0, 0.0};        // Velocity in meters/second
+    double soiRadius = 0.0;               // Sphere of Influence radius (calculated)
+    std::optional<Entity> parent;         // Parent body (for moons orbiting planets)
+    bool hasAtmosphere = false;
+    double atmosphereHeight = 0.0;        // Height of atmosphere in meters
+};
+
+/// Physics constants for orbital mechanics
+namespace OrbitalConstants {
+    /// Gravitational constant G in m³/(kg·s²)
+    inline constexpr double G = 6.67430e-11;
+
+    /// Standard gravitational parameters (μ = G*M) for common bodies
+    inline constexpr double MU_SUN = 1.32712440018e20;      // m³/s²
+    inline constexpr double MU_EARTH = 3.986004418e14;      // m³/s²
+    inline constexpr double MU_MOON = 4.9048695e12;         // m³/s²
+
+    /// Common distances in meters
+    inline constexpr double AU = 1.495978707e11;            // Astronomical Unit
+    inline constexpr double EARTH_RADIUS = 6.371e6;         // Earth mean radius
+    inline constexpr double MOON_DISTANCE = 3.844e8;        // Earth-Moon distance
+}
+
+/// Floating origin configuration
+struct FloatingOriginConfig {
+    /// Grid size for discrete origin shifts (meters)
+    /// Default: 65536m (64km) - provides good precision balance
+    double gridSize = 65536.0;
+
+    /// Threshold distance before triggering a shift (typically half of gridSize)
+    double shiftThreshold = 32768.0;
+
+    /// Maximum safe distance from origin for float32 precision
+    /// Beyond this, rendering artifacts become visible
+    static constexpr double MAX_SAFE_DISTANCE = 16777216.0;  // 2^24 meters
+
+    /// Minimum frames between origin shifts (prevents rapid shifting)
+    int shiftCooldownFrames = 2;
+};
+
+//==========================================================================
+// Depth Buffer Configuration for Large-World Rendering
+//==========================================================================
+
+/// Depth buffer configuration for extreme depth ranges (space games, etc.)
+struct DepthBufferConfig {
+    /// Use reversed-Z depth buffer (near=1.0, far=0.0)
+    /// This provides much better depth precision distribution
+    /// Required for near:far ratios > 1:10000
+    bool useReversedZ = false;
+
+    /// Use logarithmic depth in shaders
+    /// Provides additional precision for extreme depth ranges
+    /// Adds slight GPU cost but enables near:far ratios of 1:1e12+
+    bool useLogarithmicDepth = false;
+
+    /// Coefficient for logarithmic depth (C in: log(C*z + 1) / log(C*far + 1))
+    /// Higher values push more precision toward near plane
+    /// Typical values: 1.0 (balanced), 0.001 (for space games)
+    float logDepthCoefficient = 1.0f;
+
+    /// Far plane multiplier for infinite projection
+    /// When using infinite far plane, this scales the effective range
+    /// Used in reversed-Z infinite projection matrices
+    float infiniteFarPlaneScale = 1.0f;
+};
+
+/// Extended camera configuration for space/large-world games
+struct LargeWorldCamera {
+    Camera3D camera;
+    DepthBufferConfig depthConfig;
+
+    /// Near plane for close-up rendering (meters)
+    /// For space games: 0.01m to 0.1m typical
+    float nearPlane = 0.1f;
+
+    /// Far plane for distant rendering (meters)
+    /// For solar system scale: 1e12+ meters (past Pluto)
+    /// With reversed-Z + logarithmic depth, ratios of 1:1e14 are achievable
+    double farPlane = 1.0e12;
+};
+
+/// Marker component for entities that participate in floating origin rebasing
+struct FloatingOriginParticipant {
+    std::uint32_t lastShiftEpoch = 0;  // Tracks which shift this entity was last updated for
+};
+
+//==========================================================================
 // Level Types
 //==========================================================================
 
@@ -824,6 +969,14 @@ struct FileChangeEventData {
     std::string fileType;  // "shader", "config", "texture", etc.
 };
 
+// Floating origin shift event data (large-world rendering)
+struct OriginShiftEventData {
+    Vec3d oldOrigin;           // Previous floating origin position
+    Vec3d newOrigin;           // New floating origin position
+    Vec3d shiftDelta;          // newOrigin - oldOrigin
+    std::uint32_t newEpoch;    // Incremented shift counter
+};
+
 using EventData = std::variant<
     EntityEventData,
     DamageEventData,
@@ -837,6 +990,7 @@ using EventData = std::variant<
     ShaderReloadEventData,
     StateChangeEventData,
     FileChangeEventData,
+    OriginShiftEventData,
     std::any
 >;
 

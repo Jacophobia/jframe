@@ -657,6 +657,47 @@ public:
     //======================================================================
 
     virtual PhysicsStats3D getStats() const = 0;
+
+    //======================================================================
+    // Large-World Rendering (Floating Origin)
+    //======================================================================
+    // Enables precision at astronomical distances by keeping coordinates
+    // relative to a floating origin that shifts as the camera moves.
+    // This is optional - implementations can return default values for
+    // games that don't need large-world support.
+
+    /// Set the camera's absolute world position (double precision)
+    virtual void setCameraWorldPosition(const Vec3d& worldPosition) = 0;
+
+    /// Get the current floating origin in world coordinates
+    [[nodiscard]] virtual Vec3d getFloatingOrigin() const = 0;
+
+    /// Get the camera position relative to the current origin (for rendering)
+    [[nodiscard]] virtual Vec3 getCameraRenderPosition() const = 0;
+
+    /// Get the camera's absolute world position
+    [[nodiscard]] virtual Vec3d getCameraWorldPosition() const = 0;
+
+    /// Convert an absolute world position to camera-relative render position
+    [[nodiscard]] virtual Vec3 toRenderPosition(const Vec3d& worldPosition) const = 0;
+
+    /// Convert a camera-relative render position back to world coordinates
+    [[nodiscard]] virtual Vec3d toWorldPosition(const Vec3& renderPosition) const = 0;
+
+    /// Get the current shift epoch (increments each time origin shifts)
+    [[nodiscard]] virtual std::uint32_t getOriginShiftEpoch() const = 0;
+
+    /// Check if coordinates need rebasing based on last known epoch
+    [[nodiscard]] virtual bool needsRebase(std::uint32_t lastEpoch) const = 0;
+
+    /// Force an origin shift to a specific position
+    virtual void forceOriginShift(const Vec3d& newOrigin) = 0;
+
+    /// Set the floating origin configuration
+    virtual void setFloatingOriginConfig(const FloatingOriginConfig& config) = 0;
+
+    /// Get the current floating origin configuration
+    [[nodiscard]] virtual FloatingOriginConfig getFloatingOriginConfig() const = 0;
 };
 
 }  // namespace bestow
