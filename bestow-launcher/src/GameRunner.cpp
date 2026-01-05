@@ -35,8 +35,9 @@ public:
         verbose_ = verbose;
         debugMode_ = debugMode;
 
-        mainScript_ = mainScript;
-        gameRoot_ = mainScript.parent_path();
+        // Make path absolute to properly resolve parent directory
+        mainScript_ = std::filesystem::absolute(mainScript);
+        gameRoot_ = mainScript_.parent_path();
 
         if (verbose_) {
             spdlog::set_level(spdlog::level::debug);
