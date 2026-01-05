@@ -9,6 +9,7 @@ set(AUDIO_SOURCES
 
 # Check for miniaudio (always available as it's a header-only library in external/)
 set(MINIAUDIO_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/miniaudio")
+set(STB_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/external/stb")
 if(EXISTS "${MINIAUDIO_INCLUDE_DIR}/miniaudio.h")
     set(BESTOW_HAS_MINIAUDIO_AVAILABLE TRUE)
     list(APPEND AUDIO_SOURCES src/MiniaudioSystem.cpp)
@@ -24,6 +25,7 @@ target_sources(bestow-audio
     PRIVATE
         src/FMODAudioSystem.cpp
         $<$<BOOL:${BESTOW_HAS_MINIAUDIO_AVAILABLE}>:src/MiniaudioSystem.cpp>
+        $<$<BOOL:${BESTOW_HAS_MINIAUDIO_AVAILABLE}>:src/stb_vorbis_wrapper.c>
 )
 
 target_link_libraries(bestow-audio
@@ -39,7 +41,7 @@ if(TARGET fmod)
     message(STATUS "bestow-audio: Using FMOD as primary audio backend")
 elseif(BESTOW_HAS_MINIAUDIO_AVAILABLE)
     # Use miniaudio as fallback when FMOD is not available
-    target_include_directories(bestow-audio PRIVATE ${MINIAUDIO_INCLUDE_DIR})
+    target_include_directories(bestow-audio PRIVATE ${MINIAUDIO_INCLUDE_DIR} ${STB_INCLUDE_DIR})
     target_compile_definitions(bestow-audio PRIVATE BESTOW_HAS_MINIAUDIO)
     message(STATUS "bestow-audio: Using miniaudio as fallback audio backend")
 else()
@@ -48,7 +50,7 @@ endif()
 
 # Always include miniaudio headers if building MiniaudioSystem
 if(BESTOW_HAS_MINIAUDIO_AVAILABLE)
-    target_include_directories(bestow-audio PRIVATE ${MINIAUDIO_INCLUDE_DIR})
+    target_include_directories(bestow-audio PRIVATE ${MINIAUDIO_INCLUDE_DIR} ${STB_INCLUDE_DIR})
     # If FMOD is also available, still compile miniaudio support for explicit selection
     if(TARGET fmod)
         target_compile_definitions(bestow-audio PRIVATE BESTOW_HAS_MINIAUDIO)

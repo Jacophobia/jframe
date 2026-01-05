@@ -4,6 +4,11 @@
 module;
 
 #ifdef BESTOW_HAS_MINIAUDIO
+// Include stb_vorbis declarations (implementation in stb_vorbis_wrapper.c)
+#define STB_VORBIS_HEADER_ONLY
+#include "stb_vorbis.c"
+#undef STB_VORBIS_HEADER_ONLY
+
 #define MINIAUDIO_IMPLEMENTATION
 #include "miniaudio.h"
 #endif
