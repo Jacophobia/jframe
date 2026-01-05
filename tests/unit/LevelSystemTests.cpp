@@ -99,6 +99,12 @@ public:
     }
     const LuaMaterialData* getLuaMaterialData(AssetHandle /*handle*/) const override { return nullptr; }
 
+    // Library discovery methods
+    std::optional<AssetLibrary> getAssetLibrary() const override { return std::nullopt; }
+    std::vector<LibraryAssetInfo> listLibraryAssets(std::string_view /*relativeDir*/) const override { return {}; }
+    std::vector<LibraryAssetInfo> listLibraryAssetsRecursive(std::string_view /*relativeDir*/) const override { return {}; }
+    std::vector<std::string> listLibraryCategories() const override { return {}; }
+
 private:
     UUID nextId_ = 1;
     std::unordered_map<AssetHandle, bool, AssetHandleHash> loaded_;
