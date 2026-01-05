@@ -7,7 +7,9 @@ on:
     branches: [mainline, develop]
 
 env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+  # Use files-based binary caching for vcpkg packages
+  # The vcpkg_installed directory is cached by actions/cache in each job
+  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-cache,readwrite"
 
 jobs:
   # =============================================================================
@@ -174,14 +176,15 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
-      # Restore vcpkg installed packages from cache (separate restore/save for early caching)
+      # Restore vcpkg installed packages and binary cache from cache
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
         with:
           path: |
             build/${{ matrix.preset }}/vcpkg_installed
-          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+            vcpkg-cache
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
           restore-keys: |
             vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
 
@@ -213,7 +216,8 @@ jobs:
         with:
           path: |
             build/${{ matrix.preset }}/vcpkg_installed
-          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+            vcpkg-cache
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
@@ -415,7 +419,8 @@ jobs:
         with:
           path: |
             build/${{ matrix.preset }}/vcpkg_installed
-          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+            vcpkg-cache
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
           restore-keys: |
             vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
 
@@ -444,7 +449,8 @@ jobs:
         with:
           path: |
             build/${{ matrix.preset }}/vcpkg_installed
-          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake') }}
+            vcpkg-cache
+          key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
 
       - name: Build (Unix)
         if: runner.os != 'Windows'
