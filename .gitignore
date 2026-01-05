@@ -19,6 +19,7 @@ Makefile
 *.cmake
 !cmake/*.cmake
 !triplets/*.cmake
+!custom-ports/**/*.cmake
 
 # Compiled files
 *.o
