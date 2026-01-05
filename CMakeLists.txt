@@ -199,3 +199,10 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/bestow-config-version.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/bestow
 )
+
+# =============================================================================
+# Distribution Packaging
+# =============================================================================
+
+include(Package)
+create_package_target()
