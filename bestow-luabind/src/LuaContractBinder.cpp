@@ -51,6 +51,11 @@ void LuaContractBinder::bindAll() {
         bindInputSystem(*lua_, engine_->get<IInputSystem>());
         boundSystems_.push_back("input");
         spdlog::debug("[LuaContractBinder] Bound IInputSystem -> bestow.input");
+
+        // Bind ActionBuilder and event-driven input API (extends bestow.input)
+        bindActionBuilder(*lua_, engine_->get<IInputSystem>());
+        boundSystems_.push_back("action");
+        spdlog::debug("[LuaContractBinder] Bound ActionBuilder -> bestow.action, bestow.phase");
     }
 
     if (engine_->has<IAudioSystem>()) {

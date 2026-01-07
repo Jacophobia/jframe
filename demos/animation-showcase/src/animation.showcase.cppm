@@ -647,12 +647,12 @@ private:
         if (!input_) return;
 
         // ESC to quit
-        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Escape)) {
             running_ = false;
         }
 
         // P to toggle auto-play
-        if (input_->wasKeyJustPressed(GLFW_KEY_P)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::P)) {
             autoPlayEnabled_ = !autoPlayEnabled_;
             std::cout << "Auto-play " << (autoPlayEnabled_ ? "enabled" : "disabled") << "\n";
             if (autoPlayEnabled_ && stateMachine_) {
@@ -662,63 +662,63 @@ private:
         }
 
         // Camera rotation with A/E (Dvorak) or Left/Right
-        if (input_->isKeyDown(GLFW_KEY_A) || input_->isKeyDown(GLFW_KEY_LEFT)) {
+        if (input_->isKeyDown(bestow::KeyCode::A) || input_->isKeyDown(bestow::KeyCode::Left)) {
             cameraAngle_ += 2.0f;
         }
-        if (input_->isKeyDown(GLFW_KEY_E) || input_->isKeyDown(GLFW_KEY_RIGHT)) {
+        if (input_->isKeyDown(bestow::KeyCode::E) || input_->isKeyDown(bestow::KeyCode::Right)) {
             cameraAngle_ -= 2.0f;
         }
 
         // Camera zoom with ,/O (Dvorak W/S) or +/-
         float zoomRate = cameraDistance_ * 0.02f;
-        if (input_->isKeyDown(GLFW_KEY_COMMA) || input_->isKeyDown(GLFW_KEY_EQUAL)) {
+        if (input_->isKeyDown(bestow::KeyCode::Comma) || input_->isKeyDown(bestow::KeyCode::Equal)) {
             cameraDistance_ = std::max(50.0f, cameraDistance_ - zoomRate);
         }
-        if (input_->isKeyDown(GLFW_KEY_O) || input_->isKeyDown(GLFW_KEY_MINUS)) {
+        if (input_->isKeyDown(bestow::KeyCode::O) || input_->isKeyDown(bestow::KeyCode::Minus)) {
             cameraDistance_ = std::min(1000.0f, cameraDistance_ + zoomRate);
         }
 
         // Camera vertical pan with Up/Down arrows
         constexpr float panRate = 5.0f;
-        if (input_->isKeyDown(GLFW_KEY_UP)) {
+        if (input_->isKeyDown(bestow::KeyCode::Up)) {
             cameraTargetY_ += panRate;
             cameraHeight_ += panRate;  // Move camera up too to keep relative angle
         }
-        if (input_->isKeyDown(GLFW_KEY_DOWN)) {
+        if (input_->isKeyDown(bestow::KeyCode::Down)) {
             cameraTargetY_ -= panRate;
             cameraHeight_ -= panRate;
         }
 
         // Toggle mesh visibility with M
-        if (input_->wasKeyJustPressed(GLFW_KEY_M)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::M)) {
             showMesh_ = !showMesh_;
             std::cout << (showMesh_ ? "Showing" : "Hiding") << " mesh\n";
         }
 
         // Manual state control with number keys (when auto-play disabled)
         if (!autoPlayEnabled_ && stateMachine_) {
-            if (input_->wasKeyJustPressed(GLFW_KEY_1)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Num1)) {
                 stateMachine_->setFloat("Speed", 0.0f);
                 std::cout << "Speed: 0.0 (idle)\n";
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_2)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Num2)) {
                 stateMachine_->setFloat("Speed", 0.3f);
                 std::cout << "Speed: 0.3 (walk)\n";
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_3)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Num3)) {
                 stateMachine_->setFloat("Speed", 0.6f);
                 std::cout << "Speed: 0.6 (jog)\n";
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_4)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Num4)) {
                 stateMachine_->setFloat("Speed", 1.0f);
                 std::cout << "Speed: 1.0 (run)\n";
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
                 stateMachine_->setTrigger("Jump");
                 stateMachine_->setBool("IsGrounded", false);
                 std::cout << "Jump triggered!\n";
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_G)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::G)) {
                 bool grounded = !stateMachine_->getBool("IsGrounded");
                 stateMachine_->setBool("IsGrounded", grounded);
                 std::cout << "IsGrounded: " << (grounded ? "true" : "false") << "\n";

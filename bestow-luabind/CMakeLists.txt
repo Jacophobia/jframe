@@ -11,6 +11,7 @@ target_sources(bestow-luabind
         src/LuaContractBinder.cpp
         src/bindings/types_binding.cpp
         src/bindings/input_binding.cpp
+        src/bindings/action_binding.cpp
         src/bindings/audio_binding.cpp
         src/bindings/physics_binding.cpp
         src/bindings/physics3d_binding.cpp

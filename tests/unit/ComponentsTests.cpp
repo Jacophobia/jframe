@@ -645,10 +645,41 @@ TEST(ComponentsTests, Score_Overflow) {
 class MockInputSystem : public IInputSystem {
 public:
     std::vector<InputMapping> registeredMappings;
+    std::vector<ActionRegistration> registeredActions;
+    std::string currentPhase_;
+    std::vector<std::string> phaseStack_;
+    bool phaseSet_ = false;
 
     bool initialize(void* nativeWindow) override { return true; }
     void shutdown() override {}
 
+    // Phase management
+    std::string getCurrentPhase() const override { return currentPhase_; }
+    std::vector<std::string> getPhaseStack() const override { return phaseStack_; }
+    void pushPhase(const std::string& phase) override { phaseStack_.push_back(phase); currentPhase_ = phase; phaseSet_ = true; }
+    void popPhase() override { if (!phaseStack_.empty()) { phaseStack_.pop_back(); currentPhase_ = phaseStack_.empty() ? "" : phaseStack_.back(); } }
+    void changePhase(const std::string& phase) override { phaseStack_.clear(); phaseStack_.push_back(phase); currentPhase_ = phase; phaseSet_ = true; }
+    bool isPhaseActive(const std::string& phase) const override { return currentPhase_.find(phase) == 0; }
+    bool hasPhaseBeenSet() const override { return phaseSet_; }
+
+    // Action registration (new API)
+    void registerAction(const ActionRegistration& registration) override { registeredActions.push_back(registration); }
+    void unregisterAction(const std::string& actionName) override {}
+    void unregisterPhaseActions(const std::string& phase) override {}
+    void clearActions() override { registeredActions.clear(); }
+    std::vector<ActionRegistration> getActions() const override { return registeredActions; }
+
+    // Input state queries
+    InputState getInputState(const InputBinding& binding) const override { return InputState::NotPressed; }
+    float getInputHoldDuration(const InputBinding& binding) const override { return 0.0f; }
+    void setDefaultHoldThreshold(float seconds) override {}
+    float getDefaultHoldThreshold() const override { return 0.5f; }
+
+    // Config loading
+    bool loadInputConfig(const std::string& path) override { return true; }
+    bool reloadInputConfig() override { return true; }
+
+    // Legacy mapping API (deprecated)
     void registerMapping(const InputMapping& mapping) override {
         registeredMappings.push_back(mapping);
     }
@@ -657,6 +688,7 @@ public:
     void clearMappings() override {}
     std::vector<InputMapping> getMappings() const override { return registeredMappings; }
 
+    // Legacy action state queries (deprecated)
     ActionState getActionState(const Action& action) const override { return {}; }
     std::vector<ActionState> getAllActionStates() const override { return {}; }
     bool isActionActive(const Action& action) const override { return false; }
@@ -671,9 +703,9 @@ public:
 
     Vec2 getMousePosition() const override { return {0, 0}; }
     Vec2 getMouseDelta() const override { return {0, 0}; }
-    bool isMouseButtonDown(int button) const override { return false; }
-    bool wasMouseButtonJustPressed(int button) const override { return false; }
-    bool wasMouseButtonJustReleased(int button) const override { return false; }
+    bool isMouseButtonDown(MouseButton button) const override { return false; }
+    bool wasMouseButtonJustPressed(MouseButton button) const override { return false; }
+    bool wasMouseButtonJustReleased(MouseButton button) const override { return false; }
 
     Vec2 getScrollDelta() const override { return Vec2{0.0f, 0.0f}; }
 
@@ -685,10 +717,18 @@ public:
     bool isAltPressed() const override { return false; }
     bool isSuperPressed() const override { return false; }
 
-    // Direct keyboard state queries
-    bool isKeyDown(int keyCode) const override { return false; }
-    bool wasKeyJustPressed(int keyCode) const override { return false; }
-    bool wasKeyJustReleased(int keyCode) const override { return false; }
+    // Direct keyboard state queries (using KeyCode)
+    bool isKeyDown(KeyCode key) const override { return false; }
+    bool wasKeyJustPressed(KeyCode key) const override { return false; }
+    bool wasKeyJustReleased(KeyCode key) const override { return false; }
+
+    // Gamepad queries
+    bool isGamepadButtonDown(GamepadButton button, int gamepadIndex = 0) const override { return false; }
+    bool wasGamepadButtonJustPressed(GamepadButton button, int gamepadIndex = 0) const override { return false; }
+    bool wasGamepadButtonJustReleased(GamepadButton button, int gamepadIndex = 0) const override { return false; }
+    float getGamepadAxisValue(GamepadAxis axis, int gamepadIndex = 0) const override { return 0.0f; }
+    Vec2 getLeftStick(int gamepadIndex = 0) const override { return {0, 0}; }
+    Vec2 getRightStick(int gamepadIndex = 0) const override { return {0, 0}; }
 
     void enableTextInput() override {}
     void disableTextInput() override {}
@@ -786,18 +826,22 @@ public:
 // InputMappingBuilder Tests
 //==========================================================================
 
+// NOTE: These tests use deprecated InputMappingBuilder. New code should use ActionBuilder.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
 TEST(ComponentsTests, InputMappingBuilder_SingleKeyAction) {
     MockInputSystem input;
     InputMappingBuilder builder(input);
 
     builder.action("jump")
-        .key(32)  // Space
+        .key(KeyCode::Space)
         .apply();
 
     ASSERT_EQ(input.registeredMappings.size(), 1);
     EXPECT_EQ(input.registeredMappings[0].action, "jump");
-    EXPECT_EQ(input.registeredMappings[0].binding.deviceType, InputDeviceType::Keyboard);
-    EXPECT_EQ(input.registeredMappings[0].binding.keyCode, 32);
+    EXPECT_EQ(input.registeredMappings[0].binding.source, InputSource::Keyboard);
+    EXPECT_EQ(std::get<KeyCode>(input.registeredMappings[0].binding.input), KeyCode::Space);
     EXPECT_FLOAT_EQ(input.registeredMappings[0].binding.scale, 1.0f);
 }
 
@@ -822,12 +866,12 @@ TEST(ComponentsTests, InputMappingBuilder_ControllerButton) {
     InputMappingBuilder builder(input);
 
     builder.action("jump")
-        .button(0, 0, 1.0f)  // A button, controller 0
+        .button(GamepadButton::A, 0, 1.0f)  // A button, controller 0
         .apply();
 
     ASSERT_EQ(input.registeredMappings.size(), 1);
-    EXPECT_EQ(input.registeredMappings[0].binding.deviceType, InputDeviceType::Controller);
-    EXPECT_EQ(input.registeredMappings[0].binding.keyCode, 0);
+    EXPECT_EQ(input.registeredMappings[0].binding.source, InputSource::Gamepad);
+    EXPECT_EQ(std::get<GamepadButton>(input.registeredMappings[0].binding.input), GamepadButton::A);
     EXPECT_EQ(input.registeredMappings[0].binding.deviceIndex, 0);
     EXPECT_FLOAT_EQ(input.registeredMappings[0].binding.deadzone, 0.1f);
 }
@@ -837,12 +881,12 @@ TEST(ComponentsTests, InputMappingBuilder_ControllerAxis) {
     InputMappingBuilder builder(input);
 
     builder.action("move_horizontal")
-        .axis(0, 0, 0.2f)  // Left stick X, controller 0, 0.2 deadzone
+        .axis(GamepadAxis::LeftX, 0, 0.2f)  // Left stick X, controller 0, 0.2 deadzone
         .apply();
 
     ASSERT_EQ(input.registeredMappings.size(), 1);
-    EXPECT_EQ(input.registeredMappings[0].binding.deviceType, InputDeviceType::Controller);
-    EXPECT_EQ(input.registeredMappings[0].binding.keyCode, 0x8000);  // Axis flag
+    EXPECT_EQ(input.registeredMappings[0].binding.source, InputSource::Gamepad);
+    EXPECT_EQ(std::get<GamepadAxis>(input.registeredMappings[0].binding.input), GamepadAxis::LeftX);
     EXPECT_FLOAT_EQ(input.registeredMappings[0].binding.deadzone, 0.2f);
 }
 
@@ -851,12 +895,12 @@ TEST(ComponentsTests, InputMappingBuilder_MouseButton) {
     InputMappingBuilder builder(input);
 
     builder.action("shoot")
-        .mouseButton(0, 1.0f)  // Left mouse button
+        .mouseButton(MouseButton::Left, 1.0f)  // Left mouse button
         .apply();
 
     ASSERT_EQ(input.registeredMappings.size(), 1);
-    EXPECT_EQ(input.registeredMappings[0].binding.deviceType, InputDeviceType::Mouse);
-    EXPECT_EQ(input.registeredMappings[0].binding.keyCode, 0);
+    EXPECT_EQ(input.registeredMappings[0].binding.source, InputSource::Mouse);
+    EXPECT_EQ(std::get<MouseButton>(input.registeredMappings[0].binding.input), MouseButton::Left);
 }
 
 TEST(ComponentsTests, InputMappingBuilder_ChainedActions) {
@@ -1228,8 +1272,8 @@ TEST(ComponentsTests, LuaInputLoader_SimpleAction) {
 
     ASSERT_EQ(mappings.size(), 1);
     EXPECT_EQ(mappings[0].action, "jump");
-    EXPECT_EQ(mappings[0].binding.deviceType, InputDeviceType::Keyboard);
-    EXPECT_EQ(mappings[0].binding.keyCode, 32);
+    EXPECT_EQ(mappings[0].binding.source, InputSource::Keyboard);
+    EXPECT_EQ(std::get<KeyCode>(mappings[0].binding.input), static_cast<KeyCode>(32));
 }
 
 TEST(ComponentsTests, LuaInputLoader_MultipleBindings) {
@@ -1252,8 +1296,8 @@ TEST(ComponentsTests, LuaInputLoader_MultipleBindings) {
     EXPECT_FLOAT_EQ(mappings[0].binding.scale, 1.0f);
     EXPECT_EQ(mappings[1].action, "move_horizontal");
     EXPECT_FLOAT_EQ(mappings[1].binding.scale, -1.0f);
-    EXPECT_EQ(mappings[2].binding.deviceType, InputDeviceType::Controller);
-    EXPECT_EQ(mappings[2].binding.keyCode, 0x8000);  // Axis flag
+    EXPECT_EQ(mappings[2].binding.source, InputSource::Gamepad);
+    EXPECT_EQ(std::get<GamepadAxis>(mappings[2].binding.input), static_cast<GamepadAxis>(0));
 }
 
 TEST(ComponentsTests, LuaInputLoader_ControllerButton) {
@@ -1270,8 +1314,8 @@ TEST(ComponentsTests, LuaInputLoader_ControllerButton) {
     auto mappings = LuaInputLoader::parse(luaCode);
 
     ASSERT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deviceType, InputDeviceType::Controller);
-    EXPECT_EQ(mappings[0].binding.keyCode, 0);
+    EXPECT_EQ(mappings[0].binding.source, InputSource::Gamepad);
+    EXPECT_EQ(std::get<GamepadButton>(mappings[0].binding.input), static_cast<GamepadButton>(0));
     EXPECT_EQ(mappings[0].binding.deviceIndex, 1);
 }
 
@@ -1306,7 +1350,8 @@ TEST(ComponentsTests, LuaInputLoader_MouseButton) {
     auto mappings = LuaInputLoader::parse(luaCode);
 
     ASSERT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deviceType, InputDeviceType::Mouse);
+    EXPECT_EQ(mappings[0].binding.source, InputSource::Mouse);
+    EXPECT_EQ(std::get<MouseButton>(mappings[0].binding.input), static_cast<MouseButton>(0));
 }
 
 TEST(ComponentsTests, LuaInputLoader_InvalidLua) {
@@ -1355,7 +1400,7 @@ TEST(ComponentsTests, LuaInputLoader_MissingCode) {
     auto mappings = LuaInputLoader::parse(luaCode);
 
     ASSERT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.keyCode, 0);  // Default value
+    EXPECT_EQ(std::get<KeyCode>(mappings[0].binding.input), KeyCode::Unknown);  // Default value
 }
 
 //==========================================================================

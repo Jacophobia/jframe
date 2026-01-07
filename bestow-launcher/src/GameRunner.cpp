@@ -65,6 +65,12 @@ public:
             return false;
         }
 
+        // Load inputs.lua for input action configuration (REQUIRED)
+        if (!loadInputsConfig()) {
+            spdlog::error("[GameRunner] Failed to load inputs.lua");
+            return false;
+        }
+
         // Initialize script manager for app.* namespace
         if (!initializeScriptManager()) {
             spdlog::error("[GameRunner] Failed to initialize script manager");
@@ -130,6 +136,11 @@ public:
                     spdlog::error("[GameRunner] Error in app.main.init(): {}", err.what());
                     return 1;
                 }
+            }
+
+            // Validate that a phase has been set (REQUIRED for event-driven input)
+            if (!validatePhaseSet()) {
+                return 1;
             }
 
             // Run the game loop
@@ -261,6 +272,83 @@ private:
         }
 
         spdlog::debug("[GameRunner] Main script loaded");
+        return true;
+    }
+
+    bool loadInputsConfig() {
+        auto inputsPath = gameRoot_ / "inputs.lua";
+
+        // Check if inputs.lua exists (REQUIRED)
+        if (!std::filesystem::exists(inputsPath)) {
+            spdlog::error("[GameRunner] Required file 'inputs.lua' not found in game directory: {}",
+                         gameRoot_.string());
+            spdlog::error("[GameRunner] Create an inputs.lua file to define input actions. Example:");
+            spdlog::error(R"(
+-- inputs.lua - Input action definitions
+-- Use bestow.action.builder() to register input actions
+
+-- Example: Jump action
+bestow.action.builder()
+    :duringPhase("game")
+    :whenPressed(bestow.input.keys.Space)
+    :emitAction("Jump")
+    :discretely()
+
+-- Example: Movement action (continuous)
+bestow.action.builder()
+    :duringPhase("game")
+    :whenActive(bestow.input.keys.D)
+    :emitAction("MoveRight")
+    :continuously()
+)");
+            return false;
+        }
+
+        spdlog::debug("[GameRunner] Loading inputs.lua: {}", inputsPath.string());
+
+        // Execute inputs.lua to register actions
+        auto result = lua_.safe_script_file(inputsPath.string(), sol::script_pass_on_error);
+        if (!result.valid()) {
+            sol::error err = result;
+            spdlog::error("[GameRunner] Failed to load inputs.lua: {}", err.what());
+            return false;
+        }
+
+        spdlog::info("[GameRunner] Loaded input configuration from inputs.lua");
+        return true;
+    }
+
+    bool validatePhaseSet() {
+        // Get the input system and check if a phase has been set
+        if (!engine_.has<IInputSystem>()) {
+            spdlog::warn("[GameRunner] No input system registered, skipping phase validation");
+            return true;
+        }
+
+        auto& input = engine_.get<IInputSystem>();
+        if (!input.hasPhaseBeenSet()) {
+            spdlog::error("[GameRunner] No initial phase set!");
+            spdlog::error("[GameRunner] You must call bestow.phase.change('your_phase') in main.lua's init() function.");
+            spdlog::error("[GameRunner] Example:");
+            spdlog::error(R"(
+-- main.lua
+local main = {}
+
+function main.init()
+    -- Set the initial phase (REQUIRED)
+    bestow.phase.change("game")
+end
+
+function main.update(dt)
+    -- Your game logic
+end
+
+return { main = main }
+)");
+            return false;
+        }
+
+        spdlog::debug("[GameRunner] Input phase validated: {}", input.getCurrentPhase());
         return true;
     }
 

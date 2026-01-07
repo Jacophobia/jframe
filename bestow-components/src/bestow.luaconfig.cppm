@@ -1,6 +1,15 @@
 // bestow-components/src/bestow.luaconfig.cppm
 // Lua-based configuration loading for input and physics
 // Returns data structures that can be applied to systems
+//
+// NOTE: The LuaInputLoader in this file is DEPRECATED.
+// New code should use the event-driven ActionBuilder API in inputs.lua:
+//
+//   bestow.action.builder()
+//       :duringPhase("game")
+//       :whenPressed(bestow.input.keys.Space)
+//       :emitAction("Jump")
+//       :discretely()
 
 module;
 
@@ -50,9 +59,12 @@ struct PhysicsBodyConfig {
 };
 
 //==========================================================================
-// LuaInputLoader - Load input mappings from Lua
+// LuaInputLoader - DEPRECATED: Load input mappings from Lua
 //==========================================================================
-// Example Lua file:
+// This loader uses the legacy polling-based input API.
+// New code should use inputs.lua with the ActionBuilder API instead.
+//
+// Legacy Example Lua file (deprecated):
 //
 // local keys = {
 //     SPACE = 32, W = 87, A = 65, S = 83, D = 68,
@@ -67,16 +79,12 @@ struct PhysicsBodyConfig {
 //             { type = "key", code = keys.SPACE },
 //             { type = "button", code = buttons.A },
 //         },
-//         move_horizontal = {
-//             { type = "key", code = keys.D, scale = 1.0 },
-//             { type = "key", code = keys.A, scale = -1.0 },
-//             { type = "axis", code = axes.LEFT_X },
-//         },
 //     },
 // }
 //==========================================================================
 
-class LuaInputLoader {
+class [[deprecated("Use ActionBuilder via inputs.lua and bestow.action.builder() instead")]]
+LuaInputLoader {
 public:
     // Parse Lua code and return input mappings
     static std::vector<InputMapping> parse(const std::string& luaCode) {
@@ -116,19 +124,30 @@ public:
                         sol::optional<std::string> type = binding["type"];
                         if (!type) continue;
 
+                        // Determine input source and parse code
                         if (*type == "key") {
-                            mapping.binding.deviceType = InputDeviceType::Keyboard;
+                            mapping.binding.source = InputSource::Keyboard;
+                            sol::optional<int> code = binding["code"];
+                            if (code) {
+                                mapping.binding.input = static_cast<KeyCode>(*code);
+                            }
                         } else if (*type == "mouse") {
-                            mapping.binding.deviceType = InputDeviceType::Mouse;
-                        } else if (*type == "button" || *type == "axis") {
-                            mapping.binding.deviceType = InputDeviceType::Controller;
-                        }
-
-                        sol::optional<int> code = binding["code"];
-                        if (code) {
-                            mapping.binding.keyCode = *code;
-                            if (*type == "axis") {
-                                mapping.binding.keyCode |= 0x8000;  // Flag for axis
+                            mapping.binding.source = InputSource::Mouse;
+                            sol::optional<int> code = binding["code"];
+                            if (code) {
+                                mapping.binding.input = static_cast<MouseButton>(*code);
+                            }
+                        } else if (*type == "button") {
+                            mapping.binding.source = InputSource::Gamepad;
+                            sol::optional<int> code = binding["code"];
+                            if (code) {
+                                mapping.binding.input = static_cast<GamepadButton>(*code);
+                            }
+                        } else if (*type == "axis") {
+                            mapping.binding.source = InputSource::Gamepad;
+                            sol::optional<int> code = binding["code"];
+                            if (code) {
+                                mapping.binding.input = static_cast<GamepadAxis>(*code);
                             }
                         }
 
@@ -314,11 +333,12 @@ public:
 };
 
 //==========================================================================
-// Convenience namespace for preset key/button codes
+// DEPRECATED: Legacy key/button code constants
+// Use bestow.input.keys.*, bestow.input.buttons.*, etc. in Lua instead
 //==========================================================================
 
 namespace Keys {
-    // Common GLFW key codes
+    // DEPRECATED: Use KeyCode enum and bestow.input.keys.* in Lua
     inline constexpr int Space = 32;
     inline constexpr int Apostrophe = 39;
     inline constexpr int Comma = 44;
@@ -386,7 +406,7 @@ namespace Keys {
 }
 
 namespace ControllerButtons {
-    // SDL controller buttons
+    // DEPRECATED: Use GamepadButton enum and bestow.input.buttons.* in Lua
     inline constexpr int A = 0;
     inline constexpr int B = 1;
     inline constexpr int X = 2;
@@ -405,7 +425,7 @@ namespace ControllerButtons {
 }
 
 namespace ControllerAxes {
-    // SDL controller axes
+    // DEPRECATED: Use GamepadAxis enum and bestow.input.axes.* in Lua
     inline constexpr int LeftX = 0;
     inline constexpr int LeftY = 1;
     inline constexpr int RightX = 2;
