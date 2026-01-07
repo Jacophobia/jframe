@@ -67,6 +67,9 @@ void bindEventSystem(sol::state& lua, IEventSystem& events);
 // UI System binding
 void bindUISystem(sol::state& lua, IUISystem& ui);
 
+// Action Builder and event-driven input API binding
+void bindActionBuilder(sol::state& lua, IInputSystem& input);
+
 // Metrics/Profiling System binding (always available, Tracy optional)
 void bindMetricsSystem(sol::state& lua);
 
