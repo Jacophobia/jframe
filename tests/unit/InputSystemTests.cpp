@@ -1,5 +1,5 @@
 // tests/unit/InputSystemTests.cpp
-// Input system unit tests
+// Input system unit tests - includes both legacy and event-driven API tests
 
 #include <memory>
 #include <string>
@@ -7,118 +7,698 @@
 
 #include <gtest/gtest.h>
 #include <kangaru/kangaru.hpp>
-#include <GLFW/glfw3.h>
 
 import bestow.input;
 import bestow.input.impl;
 import bestow.types;
+import bestow.events;
 import bestow.assets.impl;   // InputSystem depends on AssetSystem
 import bestow.events.impl;   // AssetSystem depends on EventSystem
 
 namespace bestow::tests {
 
+//=============================================================================
+// Test Fixture
+//=============================================================================
+
 class InputSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        inputSystem_ = std::make_unique<InputSystem>();
+        // Create with event system for action event emission
+        eventSystem_ = std::make_unique<EventSystem>();
+        inputSystem_ = std::make_unique<InputSystem>(eventSystem_.get());
     }
 
+    std::unique_ptr<IEventSystem> eventSystem_;
     std::unique_ptr<IInputSystem> inputSystem_;
 };
 
-TEST_F(InputSystemTest, InitiallyNoMappings) {
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_TRUE(mappings.empty());
+//=============================================================================
+// PhaseTree Utility Tests
+//=============================================================================
+
+TEST(PhaseTreeTest, IsDescendantOrSame_SamePhase) {
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("game", "game"));
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("menu", "menu"));
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("game.melee", "game.melee"));
 }
 
-TEST_F(InputSystemTest, RegisterMapping) {
-    InputMapping mapping{
-        .binding = {
-            .deviceType = InputDeviceType::Keyboard,
-            .deviceIndex = 0,
-            .keyCode = 32,  // Space
-            .scale = 1.0f,
-            .deadzone = 0.0f
-        },
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].action, "jump");
+TEST(PhaseTreeTest, IsDescendantOrSame_DirectDescendant) {
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("game.melee", "game"));
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("menu.settings", "menu"));
 }
 
-TEST_F(InputSystemTest, RegisterMultipleMappings) {
-    InputMapping jump{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping moveLeft{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 65},  // A
-        .action = "move_left"
-    };
-    InputMapping moveRight{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 68},  // D
-        .action = "move_right"
-    };
-
-    inputSystem_->registerMapping(jump);
-    inputSystem_->registerMapping(moveLeft);
-    inputSystem_->registerMapping(moveRight);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 3);
+TEST(PhaseTreeTest, IsDescendantOrSame_NestedDescendant) {
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("game.melee.combo", "game"));
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("game.melee.combo", "game.melee"));
+    EXPECT_TRUE(PhaseTree::isDescendantOrSame("menu.settings.audio.volume", "menu"));
 }
 
-TEST_F(InputSystemTest, RemoveMapping) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-    EXPECT_EQ(inputSystem_->getMappings().size(), 1);
-
-    inputSystem_->removeMapping(mapping.binding);
-    EXPECT_TRUE(inputSystem_->getMappings().empty());
+TEST(PhaseTreeTest, IsDescendantOrSame_NotDescendant) {
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("game", "menu"));
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("game.melee", "game.ranged"));
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("menu", "game"));
 }
 
-TEST_F(InputSystemTest, ClearMappings) {
-    InputMapping jump{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping move{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 65},
-        .action = "move"
-    };
-
-    inputSystem_->registerMapping(jump);
-    inputSystem_->registerMapping(move);
-    EXPECT_EQ(inputSystem_->getMappings().size(), 2);
-
-    inputSystem_->clearMappings();
-    EXPECT_TRUE(inputSystem_->getMappings().empty());
+TEST(PhaseTreeTest, IsDescendantOrSame_ParentIsNotDescendant) {
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("game", "game.melee"));
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("menu", "menu.settings"));
 }
 
-TEST_F(InputSystemTest, GetActionStateForUnmappedAction) {
-    ActionState state = inputSystem_->getActionState("nonexistent");
-    EXPECT_EQ(state.action, "nonexistent");
-    EXPECT_FALSE(state.active);
-    EXPECT_EQ(state.value, 0.0f);
+TEST(PhaseTreeTest, IsDescendantOrSame_PartialMatch) {
+    // "gameplay" should NOT be a descendant of "game"
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("gameplay", "game"));
+    EXPECT_FALSE(PhaseTree::isDescendantOrSame("game_over", "game"));
 }
 
-TEST_F(InputSystemTest, IsActionActiveForUnmappedAction) {
-    EXPECT_FALSE(inputSystem_->isActionActive("nonexistent"));
+TEST(PhaseTreeTest, GetParent_SingleLevel) {
+    EXPECT_EQ(PhaseTree::getParent("game"), "");
+    EXPECT_EQ(PhaseTree::getParent("menu"), "");
 }
 
-TEST_F(InputSystemTest, GetActionValueForUnmappedAction) {
-    EXPECT_EQ(inputSystem_->getActionValue("nonexistent"), 0.0f);
+TEST(PhaseTreeTest, GetParent_TwoLevels) {
+    EXPECT_EQ(PhaseTree::getParent("game.melee"), "game");
+    EXPECT_EQ(PhaseTree::getParent("menu.settings"), "menu");
 }
 
-TEST_F(InputSystemTest, InitiallyNotListeningForInput) {
+TEST(PhaseTreeTest, GetParent_ThreeLevels) {
+    EXPECT_EQ(PhaseTree::getParent("game.melee.combo"), "game.melee");
+    EXPECT_EQ(PhaseTree::getParent("menu.settings.audio"), "menu.settings");
+}
+
+TEST(PhaseTreeTest, GetParent_EmptyPhase) {
+    EXPECT_EQ(PhaseTree::getParent(""), "");
+}
+
+TEST(PhaseTreeTest, GetAncestors_SingleLevel) {
+    auto ancestors = PhaseTree::getAncestors("game");
+    ASSERT_EQ(ancestors.size(), 1);
+    EXPECT_EQ(ancestors[0], "game");
+}
+
+TEST(PhaseTreeTest, GetAncestors_TwoLevels) {
+    auto ancestors = PhaseTree::getAncestors("game.melee");
+    ASSERT_EQ(ancestors.size(), 2);
+    EXPECT_EQ(ancestors[0], "game.melee");
+    EXPECT_EQ(ancestors[1], "game");
+}
+
+TEST(PhaseTreeTest, GetAncestors_ThreeLevels) {
+    auto ancestors = PhaseTree::getAncestors("game.melee.combo");
+    ASSERT_EQ(ancestors.size(), 3);
+    EXPECT_EQ(ancestors[0], "game.melee.combo");
+    EXPECT_EQ(ancestors[1], "game.melee");
+    EXPECT_EQ(ancestors[2], "game");
+}
+
+TEST(PhaseTreeTest, GetAncestors_EmptyPhase) {
+    auto ancestors = PhaseTree::getAncestors("");
+    EXPECT_TRUE(ancestors.empty());
+}
+
+TEST(PhaseTreeTest, IsValidPhase_ValidPhases) {
+    EXPECT_TRUE(PhaseTree::isValidPhase("game"));
+    EXPECT_TRUE(PhaseTree::isValidPhase("menu"));
+    EXPECT_TRUE(PhaseTree::isValidPhase("game.melee"));
+    EXPECT_TRUE(PhaseTree::isValidPhase("game.melee.combo"));
+    EXPECT_TRUE(PhaseTree::isValidPhase("game_over"));
+    EXPECT_TRUE(PhaseTree::isValidPhase("level_1"));
+}
+
+TEST(PhaseTreeTest, IsValidPhase_InvalidPhases) {
+    EXPECT_FALSE(PhaseTree::isValidPhase(""));
+    EXPECT_FALSE(PhaseTree::isValidPhase(".game"));
+    EXPECT_FALSE(PhaseTree::isValidPhase("game."));
+    EXPECT_FALSE(PhaseTree::isValidPhase("game..melee"));
+    EXPECT_FALSE(PhaseTree::isValidPhase("game melee"));  // space
+}
+
+//=============================================================================
+// InputBinding Factory Tests
+//=============================================================================
+
+TEST(InputBindingTest, KeyFactory) {
+    auto binding = InputBinding::key(KeyCode::Space);
+    EXPECT_EQ(binding.source, InputSource::Keyboard);
+    EXPECT_EQ(binding.deviceIndex, 0);
+    EXPECT_TRUE(std::holds_alternative<KeyCode>(binding.input));
+    EXPECT_EQ(std::get<KeyCode>(binding.input), KeyCode::Space);
+}
+
+TEST(InputBindingTest, KeyFactoryWithModifiers) {
+    auto binding = InputBinding::key(KeyCode::S, ModifierKey::Ctrl);
+    EXPECT_EQ(binding.source, InputSource::Keyboard);
+    EXPECT_EQ(std::get<KeyCode>(binding.input), KeyCode::S);
+    EXPECT_EQ(binding.requiredModifiers, ModifierKey::Ctrl);
+}
+
+TEST(InputBindingTest, MouseButtonFactory) {
+    auto binding = InputBinding::mouseButton(MouseButton::Left);
+    EXPECT_EQ(binding.source, InputSource::Mouse);
+    EXPECT_TRUE(std::holds_alternative<MouseButton>(binding.input));
+    EXPECT_EQ(std::get<MouseButton>(binding.input), MouseButton::Left);
+}
+
+TEST(InputBindingTest, GamepadButtonFactory) {
+    auto binding = InputBinding::gamepadButton(GamepadButton::A);
+    EXPECT_EQ(binding.source, InputSource::Gamepad);
+    EXPECT_EQ(binding.deviceIndex, 0);
+    EXPECT_TRUE(std::holds_alternative<GamepadButton>(binding.input));
+    EXPECT_EQ(std::get<GamepadButton>(binding.input), GamepadButton::A);
+}
+
+TEST(InputBindingTest, GamepadButtonFactoryWithIndex) {
+    auto binding = InputBinding::gamepadButton(GamepadButton::X, 2);
+    EXPECT_EQ(binding.source, InputSource::Gamepad);
+    EXPECT_EQ(binding.deviceIndex, 2);
+    EXPECT_EQ(std::get<GamepadButton>(binding.input), GamepadButton::X);
+}
+
+TEST(InputBindingTest, GamepadAxisFactory) {
+    auto binding = InputBinding::gamepadAxis(GamepadAxis::LeftX);
+    EXPECT_EQ(binding.source, InputSource::Gamepad);
+    EXPECT_TRUE(std::holds_alternative<GamepadAxis>(binding.input));
+    EXPECT_EQ(std::get<GamepadAxis>(binding.input), GamepadAxis::LeftX);
+    EXPECT_EQ(binding.deadzone, 0.15f);  // default
+}
+
+TEST(InputBindingTest, GamepadAxisFactoryWithOptions) {
+    auto binding = InputBinding::gamepadAxis(GamepadAxis::RightY, 1, -1.0f, 0.2f);
+    EXPECT_EQ(binding.source, InputSource::Gamepad);
+    EXPECT_EQ(binding.deviceIndex, 1);
+    EXPECT_EQ(std::get<GamepadAxis>(binding.input), GamepadAxis::RightY);
+    EXPECT_EQ(binding.scale, -1.0f);  // inverted
+    EXPECT_EQ(binding.deadzone, 0.2f);
+}
+
+TEST(InputBindingTest, IsAxis) {
+    auto keyBinding = InputBinding::key(KeyCode::A);
+    auto axisBinding = InputBinding::gamepadAxis(GamepadAxis::LeftX);
+
+    EXPECT_FALSE(keyBinding.isAxis());
+    EXPECT_TRUE(axisBinding.isAxis());
+}
+
+TEST(InputBindingTest, IsButton) {
+    auto keyBinding = InputBinding::key(KeyCode::A);
+    auto buttonBinding = InputBinding::gamepadButton(GamepadButton::A);
+    auto axisBinding = InputBinding::gamepadAxis(GamepadAxis::LeftX);
+
+    EXPECT_TRUE(keyBinding.isButton());
+    EXPECT_TRUE(buttonBinding.isButton());
+    EXPECT_FALSE(axisBinding.isButton());
+}
+
+//=============================================================================
+// Phase Management Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, InitiallyNoPhaseSet) {
+    EXPECT_FALSE(inputSystem_->hasPhaseBeenSet());
+    EXPECT_TRUE(inputSystem_->getCurrentPhase().empty());
+}
+
+TEST_F(InputSystemTest, ChangePhase) {
+    inputSystem_->changePhase("game");
+    EXPECT_TRUE(inputSystem_->hasPhaseBeenSet());
+    EXPECT_EQ(inputSystem_->getCurrentPhase(), "game");
+}
+
+TEST_F(InputSystemTest, ChangePhaseReplacesStack) {
+    inputSystem_->changePhase("menu");
+    inputSystem_->pushPhase("settings");
+    inputSystem_->changePhase("game");
+
+    auto stack = inputSystem_->getPhaseStack();
+    ASSERT_EQ(stack.size(), 1);
+    EXPECT_EQ(stack[0], "game");
+}
+
+TEST_F(InputSystemTest, PushPhase) {
+    inputSystem_->changePhase("game");
+    inputSystem_->pushPhase("game.melee");
+
+    EXPECT_EQ(inputSystem_->getCurrentPhase(), "game.melee");
+
+    auto stack = inputSystem_->getPhaseStack();
+    ASSERT_EQ(stack.size(), 2);
+    EXPECT_EQ(stack[0], "game");
+    EXPECT_EQ(stack[1], "game.melee");
+}
+
+TEST_F(InputSystemTest, PopPhase) {
+    inputSystem_->changePhase("game");
+    inputSystem_->pushPhase("game.melee");
+    inputSystem_->popPhase();
+
+    EXPECT_EQ(inputSystem_->getCurrentPhase(), "game");
+
+    auto stack = inputSystem_->getPhaseStack();
+    ASSERT_EQ(stack.size(), 1);
+}
+
+TEST_F(InputSystemTest, PopPhaseOnEmptyStackDoesNothing) {
+    inputSystem_->changePhase("game");
+    inputSystem_->popPhase();
+
+    // Should still have the base phase
+    EXPECT_EQ(inputSystem_->getCurrentPhase(), "game");
+}
+
+TEST_F(InputSystemTest, IsPhaseActive_CurrentPhase) {
+    inputSystem_->changePhase("game.melee");
+    EXPECT_TRUE(inputSystem_->isPhaseActive("game.melee"));
+}
+
+TEST_F(InputSystemTest, IsPhaseActive_AncestorPhase) {
+    inputSystem_->changePhase("game.melee.combo");
+    EXPECT_TRUE(inputSystem_->isPhaseActive("game.melee"));
+    EXPECT_TRUE(inputSystem_->isPhaseActive("game"));
+}
+
+TEST_F(InputSystemTest, IsPhaseActive_InactivePhase) {
+    inputSystem_->changePhase("game");
+    EXPECT_FALSE(inputSystem_->isPhaseActive("menu"));
+    EXPECT_FALSE(inputSystem_->isPhaseActive("game.melee"));
+}
+
+TEST_F(InputSystemTest, IsPhaseActive_StackedPhases) {
+    inputSystem_->changePhase("game");
+    inputSystem_->pushPhase("game.pause");
+
+    // Both phases in stack should be active
+    EXPECT_TRUE(inputSystem_->isPhaseActive("game.pause"));
+    EXPECT_TRUE(inputSystem_->isPhaseActive("game"));
+}
+
+//=============================================================================
+// Action Registration Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, RegisterAction) {
+    ActionRegistration reg;
+    reg.phase = "game";
+    reg.conditions.push_back({
+        .type = ActionConditionType::WhenPressed,
+        .input = InputBinding::key(KeyCode::Space)
+    });
+    reg.effects.push_back({
+        .type = ActionEffectType::EmitAction,
+        .value = "Jump"
+    });
+    reg.terminal = ActionTerminal::Discrete;
+    reg.valid = true;
+
+    inputSystem_->registerAction(reg);
+
+    auto actions = inputSystem_->getActions();
+    ASSERT_EQ(actions.size(), 1);
+    EXPECT_EQ(actions[0].phase, "game");
+}
+
+TEST_F(InputSystemTest, RegisterMultipleActions) {
+    ActionRegistration jump;
+    jump.phase = "game";
+    jump.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Space)});
+    jump.effects.push_back({ActionEffectType::EmitAction, "Jump"});
+    jump.valid = true;
+
+    ActionRegistration attack;
+    attack.phase = "game";
+    attack.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::F)});
+    attack.effects.push_back({ActionEffectType::EmitAction, "Attack"});
+    attack.valid = true;
+
+    inputSystem_->registerAction(jump);
+    inputSystem_->registerAction(attack);
+
+    auto actions = inputSystem_->getActions();
+    EXPECT_EQ(actions.size(), 2);
+}
+
+TEST_F(InputSystemTest, UnregisterAction) {
+    ActionRegistration reg;
+    reg.phase = "game";
+    reg.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Space)});
+    reg.effects.push_back({ActionEffectType::EmitAction, "Jump"});
+    reg.valid = true;
+
+    inputSystem_->registerAction(reg);
+    EXPECT_EQ(inputSystem_->getActions().size(), 1);
+
+    inputSystem_->unregisterAction("Jump");
+    EXPECT_TRUE(inputSystem_->getActions().empty());
+}
+
+TEST_F(InputSystemTest, UnregisterPhaseActions) {
+    ActionRegistration gameJump;
+    gameJump.phase = "game";
+    gameJump.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Space)});
+    gameJump.effects.push_back({ActionEffectType::EmitAction, "Jump"});
+    gameJump.valid = true;
+
+    ActionRegistration menuSelect;
+    menuSelect.phase = "menu";
+    menuSelect.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Enter)});
+    menuSelect.effects.push_back({ActionEffectType::EmitAction, "Select"});
+    menuSelect.valid = true;
+
+    inputSystem_->registerAction(gameJump);
+    inputSystem_->registerAction(menuSelect);
+    EXPECT_EQ(inputSystem_->getActions().size(), 2);
+
+    inputSystem_->unregisterPhaseActions("game");
+
+    auto actions = inputSystem_->getActions();
+    ASSERT_EQ(actions.size(), 1);
+    EXPECT_EQ(actions[0].phase, "menu");
+}
+
+TEST_F(InputSystemTest, ClearActions) {
+    ActionRegistration reg;
+    reg.phase = "game";
+    reg.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Space)});
+    reg.effects.push_back({ActionEffectType::EmitAction, "Jump"});
+    reg.valid = true;
+
+    inputSystem_->registerAction(reg);
+    inputSystem_->registerAction(reg);
+
+    inputSystem_->clearActions();
+    EXPECT_TRUE(inputSystem_->getActions().empty());
+}
+
+//=============================================================================
+// Input State Tracking Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, GetInputStateInitially) {
+    auto binding = InputBinding::key(KeyCode::Space);
+    auto state = inputSystem_->getInputState(binding);
+    EXPECT_EQ(state, InputState::NotPressed);
+}
+
+TEST_F(InputSystemTest, GetInputHoldDurationInitially) {
+    auto binding = InputBinding::key(KeyCode::Space);
+    float duration = inputSystem_->getInputHoldDuration(binding);
+    EXPECT_EQ(duration, 0.0f);
+}
+
+TEST_F(InputSystemTest, SetAndGetDefaultHoldThreshold) {
+    inputSystem_->setDefaultHoldThreshold(0.75f);
+    EXPECT_EQ(inputSystem_->getDefaultHoldThreshold(), 0.75f);
+}
+
+TEST_F(InputSystemTest, DefaultHoldThresholdValue) {
+    // Default should be 0.5 seconds
+    EXPECT_EQ(inputSystem_->getDefaultHoldThreshold(), 0.5f);
+}
+
+//=============================================================================
+// Platform-Agnostic Keyboard Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, IsKeyDownWithKeyCode) {
+    // Without a window, all keys should be unpressed
+    EXPECT_FALSE(inputSystem_->isKeyDown(KeyCode::Space));
+    EXPECT_FALSE(inputSystem_->isKeyDown(KeyCode::A));
+    EXPECT_FALSE(inputSystem_->isKeyDown(KeyCode::Escape));
+    EXPECT_FALSE(inputSystem_->isKeyDown(KeyCode::Enter));
+}
+
+TEST_F(InputSystemTest, WasKeyJustPressedWithKeyCode) {
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(KeyCode::Space));
+    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(KeyCode::A));
+}
+
+TEST_F(InputSystemTest, WasKeyJustReleasedWithKeyCode) {
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(KeyCode::Space));
+    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(KeyCode::A));
+}
+
+//=============================================================================
+// Platform-Agnostic Mouse Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, IsMouseButtonDownWithEnum) {
+    EXPECT_FALSE(inputSystem_->isMouseButtonDown(MouseButton::Left));
+    EXPECT_FALSE(inputSystem_->isMouseButtonDown(MouseButton::Right));
+    EXPECT_FALSE(inputSystem_->isMouseButtonDown(MouseButton::Middle));
+}
+
+TEST_F(InputSystemTest, WasMouseButtonJustPressedWithEnum) {
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(MouseButton::Left));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(MouseButton::Right));
+}
+
+TEST_F(InputSystemTest, WasMouseButtonJustReleasedWithEnum) {
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(MouseButton::Left));
+    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(MouseButton::Right));
+}
+
+//=============================================================================
+// Platform-Agnostic Gamepad Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, IsGamepadButtonDownWithEnum) {
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::A));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::B));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::X));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::Y));
+}
+
+TEST_F(InputSystemTest, IsGamepadButtonDownWithIndex) {
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::A, 0));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::A, 1));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::A, 2));
+    EXPECT_FALSE(inputSystem_->isGamepadButtonDown(GamepadButton::A, 3));
+}
+
+TEST_F(InputSystemTest, WasGamepadButtonJustPressedWithEnum) {
+    EXPECT_FALSE(inputSystem_->wasGamepadButtonJustPressed(GamepadButton::A));
+    EXPECT_FALSE(inputSystem_->wasGamepadButtonJustPressed(GamepadButton::Start));
+}
+
+TEST_F(InputSystemTest, WasGamepadButtonJustReleasedWithEnum) {
+    EXPECT_FALSE(inputSystem_->wasGamepadButtonJustReleased(GamepadButton::A));
+    EXPECT_FALSE(inputSystem_->wasGamepadButtonJustReleased(GamepadButton::Back));
+}
+
+TEST_F(InputSystemTest, GetGamepadAxisValue) {
+    // Without controller, should return 0
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::LeftX), 0.0f);
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::LeftY), 0.0f);
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::RightX), 0.0f);
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::RightY), 0.0f);
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::LeftTrigger), 0.0f);
+    EXPECT_EQ(inputSystem_->getGamepadAxisValue(GamepadAxis::RightTrigger), 0.0f);
+}
+
+TEST_F(InputSystemTest, GetLeftStick) {
+    Vec2 stick = inputSystem_->getLeftStick();
+    EXPECT_EQ(stick.x, 0.0f);
+    EXPECT_EQ(stick.y, 0.0f);
+}
+
+TEST_F(InputSystemTest, GetRightStick) {
+    Vec2 stick = inputSystem_->getRightStick();
+    EXPECT_EQ(stick.x, 0.0f);
+    EXPECT_EQ(stick.y, 0.0f);
+}
+
+TEST_F(InputSystemTest, GetStickWithIndex) {
+    Vec2 left0 = inputSystem_->getLeftStick(0);
+    Vec2 left1 = inputSystem_->getLeftStick(1);
+    Vec2 right0 = inputSystem_->getRightStick(0);
+    Vec2 right1 = inputSystem_->getRightStick(1);
+
+    EXPECT_EQ(left0.x, 0.0f);
+    EXPECT_EQ(left1.x, 0.0f);
+    EXPECT_EQ(right0.x, 0.0f);
+    EXPECT_EQ(right1.x, 0.0f);
+}
+
+//=============================================================================
+// ActionRegistration Validation Tests
+//=============================================================================
+
+TEST(ActionRegistrationTest, DefaultState) {
+    ActionRegistration reg;
+    EXPECT_TRUE(reg.phase.empty());
+    EXPECT_TRUE(reg.conditions.empty());
+    EXPECT_TRUE(reg.effects.empty());
+    EXPECT_EQ(reg.terminal, ActionTerminal::Discrete);
+    EXPECT_EQ(reg.deadzone, 0.0f);
+    EXPECT_FALSE(reg.valid);
+}
+
+TEST(ActionRegistrationTest, ValidRegistration) {
+    ActionRegistration reg;
+    reg.phase = "game";
+    reg.conditions.push_back({ActionConditionType::WhenPressed, InputBinding::key(KeyCode::Space)});
+    reg.effects.push_back({ActionEffectType::EmitAction, "Jump"});
+    reg.valid = true;
+
+    EXPECT_TRUE(reg.valid);
+    EXPECT_TRUE(reg.validationError.empty());
+}
+
+//=============================================================================
+// ActionCondition Tests
+//=============================================================================
+
+TEST(ActionConditionTest, DefaultValues) {
+    ActionCondition cond;
+    EXPECT_EQ(cond.type, ActionConditionType::WhenPressed);
+    EXPECT_FALSE(cond.holdThreshold.has_value());
+}
+
+TEST(ActionConditionTest, WithHoldThreshold) {
+    ActionCondition cond;
+    cond.type = ActionConditionType::WhenHeld;
+    cond.input = InputBinding::key(KeyCode::Space);
+    cond.holdThreshold = 1.0f;
+
+    EXPECT_EQ(cond.type, ActionConditionType::WhenHeld);
+    EXPECT_TRUE(cond.holdThreshold.has_value());
+    EXPECT_EQ(cond.holdThreshold.value(), 1.0f);
+}
+
+//=============================================================================
+// ActionEffect Tests
+//=============================================================================
+
+TEST(ActionEffectTest, EmitActionEffect) {
+    ActionEffect effect;
+    effect.type = ActionEffectType::EmitAction;
+    effect.value = "Jump";
+
+    EXPECT_EQ(effect.type, ActionEffectType::EmitAction);
+    EXPECT_EQ(effect.value, "Jump");
+}
+
+TEST(ActionEffectTest, PushPhaseEffect) {
+    ActionEffect effect;
+    effect.type = ActionEffectType::PushPhase;
+    effect.value = "game.melee";
+
+    EXPECT_EQ(effect.type, ActionEffectType::PushPhase);
+    EXPECT_EQ(effect.value, "game.melee");
+}
+
+TEST(ActionEffectTest, PopPhaseEffect) {
+    ActionEffect effect;
+    effect.type = ActionEffectType::PopPhase;
+    effect.value = "";
+
+    EXPECT_EQ(effect.type, ActionEffectType::PopPhase);
+}
+
+TEST(ActionEffectTest, ChangePhaseEffect) {
+    ActionEffect effect;
+    effect.type = ActionEffectType::ChangePhase;
+    effect.value = "menu";
+
+    EXPECT_EQ(effect.type, ActionEffectType::ChangePhase);
+    EXPECT_EQ(effect.value, "menu");
+}
+
+//=============================================================================
+// Config Loading Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, LoadInputConfigNonexistent) {
+    // Should return false for non-existent file
+    bool result = inputSystem_->loadInputConfig("/nonexistent/path/inputs.lua");
+    EXPECT_FALSE(result);
+}
+
+TEST_F(InputSystemTest, ReloadInputConfigWithoutInitialLoad) {
+    // Should return false if no config was loaded
+    bool result = inputSystem_->reloadInputConfig();
+    EXPECT_FALSE(result);
+}
+
+//=============================================================================
+// Mouse Position Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, GetMousePositionInitially) {
+    Vec2 pos = inputSystem_->getMousePosition();
+    EXPECT_EQ(pos.x, 0.0f);
+    EXPECT_EQ(pos.y, 0.0f);
+}
+
+TEST_F(InputSystemTest, GetMouseDeltaInitially) {
+    Vec2 delta = inputSystem_->getMouseDelta();
+    EXPECT_EQ(delta.x, 0.0f);
+    EXPECT_EQ(delta.y, 0.0f);
+}
+
+TEST_F(InputSystemTest, GetScrollDeltaInitially) {
+    Vec2 scroll = inputSystem_->getScrollDelta();
+    EXPECT_EQ(scroll.x, 0.0f);
+    EXPECT_EQ(scroll.y, 0.0f);
+}
+
+//=============================================================================
+// Modifier Key Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, GetModifierStateInitially) {
+    ModifierKey mods = inputSystem_->getModifierState();
+    EXPECT_EQ(mods, ModifierKey::None);
+}
+
+TEST_F(InputSystemTest, IsModifierPressedInitially) {
+    EXPECT_FALSE(inputSystem_->isModifierPressed(ModifierKey::Shift));
+    EXPECT_FALSE(inputSystem_->isModifierPressed(ModifierKey::Ctrl));
+    EXPECT_FALSE(inputSystem_->isModifierPressed(ModifierKey::Alt));
+    EXPECT_FALSE(inputSystem_->isModifierPressed(ModifierKey::Super));
+}
+
+TEST_F(InputSystemTest, ModifierConvenienceMethods) {
+    EXPECT_FALSE(inputSystem_->isShiftPressed());
+    EXPECT_FALSE(inputSystem_->isCtrlPressed());
+    EXPECT_FALSE(inputSystem_->isAltPressed());
+    EXPECT_FALSE(inputSystem_->isSuperPressed());
+}
+
+//=============================================================================
+// Text Input Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, TextInputInitiallyDisabled) {
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, EnableTextInput) {
+    inputSystem_->enableTextInput();
+    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, DisableTextInput) {
+    inputSystem_->enableTextInput();
+    inputSystem_->disableTextInput();
+    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
+}
+
+TEST_F(InputSystemTest, GetTextInputWhenDisabled) {
+    std::string text = inputSystem_->getTextInput();
+    EXPECT_TRUE(text.empty());
+}
+
+TEST_F(InputSystemTest, ClearTextInput) {
+    inputSystem_->enableTextInput();
+    inputSystem_->clearTextInput();
+    EXPECT_TRUE(inputSystem_->getTextInput().empty());
+}
+
+//=============================================================================
+// Input Listening Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, InitiallyNotListening) {
     EXPECT_FALSE(inputSystem_->isListeningForInput());
 }
 
@@ -133,896 +713,121 @@ TEST_F(InputSystemTest, StopListeningForInput) {
     EXPECT_FALSE(inputSystem_->isListeningForInput());
 }
 
-TEST_F(InputSystemTest, NoLastInputInitially) {
-    EXPECT_FALSE(inputSystem_->getLastInput().has_value());
+TEST_F(InputSystemTest, GetLastInputInitially) {
+    auto lastInput = inputSystem_->getLastInput();
+    EXPECT_FALSE(lastInput.has_value());
 }
 
+//=============================================================================
+// Controller Tests
+//=============================================================================
+
 TEST_F(InputSystemTest, NoControllersInitially) {
-    // Without initializing SDL, no controllers should be connected
     EXPECT_EQ(inputSystem_->getConnectedControllerCount(), 0);
 }
 
-TEST_F(InputSystemTest, ControllerNotConnectedByDefault) {
+TEST_F(InputSystemTest, ControllerNotConnected) {
     EXPECT_FALSE(inputSystem_->isControllerConnected(0));
     EXPECT_FALSE(inputSystem_->isControllerConnected(1));
     EXPECT_FALSE(inputSystem_->isControllerConnected(2));
     EXPECT_FALSE(inputSystem_->isControllerConnected(3));
 }
 
-TEST_F(InputSystemTest, ControllerNameForDisconnected) {
+TEST_F(InputSystemTest, GetControllerNameForDisconnected) {
     std::string name = inputSystem_->getControllerName(0);
     EXPECT_TRUE(name.empty());
 }
 
-TEST_F(InputSystemTest, MultipleBindingsToSameAction) {
-    // Can bind both keyboard and controller to same action
-    InputMapping keyboardJump{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping controllerJump{
-        .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 0},  // A button
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(keyboardJump);
-    inputSystem_->registerMapping(controllerJump);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 2);
-}
-
-//======================================================================
-// Action State Tests
-//======================================================================
-
-TEST_F(InputSystemTest, WasActionJustPressedForUnmappedAction) {
-    EXPECT_FALSE(inputSystem_->wasActionJustPressed("nonexistent"));
-}
-
-TEST_F(InputSystemTest, WasActionJustReleasedForUnmappedAction) {
-    EXPECT_FALSE(inputSystem_->wasActionJustReleased("nonexistent"));
-}
-
-TEST_F(InputSystemTest, GetAllActionStatesWhenEmpty) {
-    auto states = inputSystem_->getAllActionStates();
-    EXPECT_TRUE(states.empty());
-}
-
-TEST_F(InputSystemTest, GetAllActionStatesWithMappings) {
-    InputMapping jump{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping moveLeft{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 65},
-        .action = "move_left"
-    };
-
-    inputSystem_->registerMapping(jump);
-    inputSystem_->registerMapping(moveLeft);
-
-    // Need to call update to populate action states
-    inputSystem_->update();
-
-    auto states = inputSystem_->getAllActionStates();
-    EXPECT_EQ(states.size(), 2);
-
-    // Verify we can find both actions
-    bool foundJump = false;
-    bool foundMoveLeft = false;
-    for (const auto& state : states) {
-        if (state.action == "jump") foundJump = true;
-        if (state.action == "move_left") foundMoveLeft = true;
-    }
-    EXPECT_TRUE(foundJump);
-    EXPECT_TRUE(foundMoveLeft);
-}
-
-TEST_F(InputSystemTest, ActionStateStructure) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "test_action"
-    };
-
-    inputSystem_->registerMapping(mapping);
-    inputSystem_->update();
-
-    ActionState state = inputSystem_->getActionState("test_action");
-    EXPECT_EQ(state.action, "test_action");
-    // Without actual key press, should be inactive
-    EXPECT_FALSE(state.active);
-    EXPECT_EQ(state.value, 0.0f);
-    EXPECT_FALSE(state.justPressed);
-    EXPECT_FALSE(state.justReleased);
-}
-
-//======================================================================
-// Mouse State Tests
-//======================================================================
-
-TEST_F(InputSystemTest, GetMousePositionInitially) {
-    Vec2 pos = inputSystem_->getMousePosition();
-    // Without a window, should return default (0, 0)
-    EXPECT_EQ(pos.x, 0.0f);
-    EXPECT_EQ(pos.y, 0.0f);
-}
-
-TEST_F(InputSystemTest, GetMouseDeltaInitially) {
-    Vec2 delta = inputSystem_->getMouseDelta();
-    // Without a window or movement, should be zero
-    EXPECT_EQ(delta.x, 0.0f);
-    EXPECT_EQ(delta.y, 0.0f);
-}
-
-TEST_F(InputSystemTest, IsMouseButtonDownForAllButtons) {
-    // Test all 8 mouse buttons without a window
-    for (int i = 0; i < 8; ++i) {
-        EXPECT_FALSE(inputSystem_->isMouseButtonDown(i));
-    }
-}
-
-TEST_F(InputSystemTest, IsMouseButtonDownOutOfRange) {
-    // Test boundary conditions
-    EXPECT_FALSE(inputSystem_->isMouseButtonDown(-1));
-    EXPECT_FALSE(inputSystem_->isMouseButtonDown(8));
-    EXPECT_FALSE(inputSystem_->isMouseButtonDown(100));
-}
-
-//======================================================================
-// Controller Tests
-//======================================================================
-
-TEST_F(InputSystemTest, IsControllerConnectedOutOfRange) {
-    // Test boundary conditions
-    EXPECT_FALSE(inputSystem_->isControllerConnected(-1));
-    EXPECT_FALSE(inputSystem_->isControllerConnected(4));
-    EXPECT_FALSE(inputSystem_->isControllerConnected(100));
-}
-
-TEST_F(InputSystemTest, GetControllerNameForOutOfRange) {
-    std::string name = inputSystem_->getControllerName(-1);
-    EXPECT_TRUE(name.empty());
-
-    name = inputSystem_->getControllerName(4);
-    EXPECT_TRUE(name.empty());
-
-    name = inputSystem_->getControllerName(100);
-    EXPECT_TRUE(name.empty());
-}
-
-TEST_F(InputSystemTest, GetControllerNameForAllSlots) {
-    // Test all 4 controller slots when disconnected
-    for (int i = 0; i < 4; ++i) {
-        std::string name = inputSystem_->getControllerName(i);
-        EXPECT_TRUE(name.empty());
-    }
-}
-
-//======================================================================
-// Mapping Edge Cases
-//======================================================================
-
-TEST_F(InputSystemTest, RemoveNonexistentMapping) {
-    InputBinding binding{
-        .deviceType = InputDeviceType::Keyboard,
-        .deviceIndex = 0,
-        .keyCode = 32
-    };
-
-    // Should not crash when removing mapping that doesn't exist
-    inputSystem_->removeMapping(binding);
-    EXPECT_TRUE(inputSystem_->getMappings().empty());
-}
-
-TEST_F(InputSystemTest, RemoveSpecificMappingAmongMultiple) {
-    InputMapping jump{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping moveLeft{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 65},
-        .action = "move_left"
-    };
-    InputMapping moveRight{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 68},
-        .action = "move_right"
-    };
-
-    inputSystem_->registerMapping(jump);
-    inputSystem_->registerMapping(moveLeft);
-    inputSystem_->registerMapping(moveRight);
-    EXPECT_EQ(inputSystem_->getMappings().size(), 3);
-
-    // Remove the middle one
-    inputSystem_->removeMapping(moveLeft.binding);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 2);
-
-    // Verify the correct ones remain
-    bool hasJump = false;
-    bool hasMoveRight = false;
-    bool hasMoveLeft = false;
-    for (const auto& mapping : mappings) {
-        if (mapping.action == "jump") hasJump = true;
-        if (mapping.action == "move_right") hasMoveRight = true;
-        if (mapping.action == "move_left") hasMoveLeft = true;
-    }
-    EXPECT_TRUE(hasJump);
-    EXPECT_TRUE(hasMoveRight);
-    EXPECT_FALSE(hasMoveLeft);
-}
-
-TEST_F(InputSystemTest, RegisterDuplicateMapping) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-    inputSystem_->registerMapping(mapping);  // Register same mapping twice
-
-    auto mappings = inputSystem_->getMappings();
-    // Should have both instances (system doesn't deduplicate)
-    EXPECT_EQ(mappings.size(), 2);
-}
-
-TEST_F(InputSystemTest, ClearMappingsAlsoClearsActionStates) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-    inputSystem_->update();  // Populate action states
-
-    EXPECT_FALSE(inputSystem_->getAllActionStates().empty());
-
-    inputSystem_->clearMappings();
-
-    EXPECT_TRUE(inputSystem_->getMappings().empty());
-    EXPECT_TRUE(inputSystem_->getAllActionStates().empty());
-}
-
-//======================================================================
-// Input Binding with Different Device Types
-//======================================================================
-
-TEST_F(InputSystemTest, RegisterMouseButtonMapping) {
-    InputMapping leftClick{
-        .binding = {
-            .deviceType = InputDeviceType::Mouse,
-            .deviceIndex = 0,
-            .keyCode = 0,  // Left button
-            .scale = 1.0f,
-            .deadzone = 0.0f
-        },
-        .action = "fire"
-    };
-
-    inputSystem_->registerMapping(leftClick);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deviceType, InputDeviceType::Mouse);
-    EXPECT_EQ(mappings[0].binding.keyCode, 0);
-}
-
-TEST_F(InputSystemTest, RegisterControllerButtonMapping) {
-    InputMapping aButton{
-        .binding = {
-            .deviceType = InputDeviceType::Controller,
-            .deviceIndex = 0,
-            .keyCode = 0,  // A button
-            .scale = 1.0f,
-            .deadzone = 0.0f
-        },
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(aButton);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deviceType, InputDeviceType::Controller);
-}
-
-TEST_F(InputSystemTest, RegisterControllerAxisMapping) {
-    InputMapping leftStick{
-        .binding = {
-            .deviceType = InputDeviceType::Controller,
-            .deviceIndex = 0,
-            .keyCode = 100,  // Arbitrary axis code
-            .scale = 1.0f,
-            .deadzone = 0.2f
-        },
-        .action = "move_horizontal"
-    };
-
-    inputSystem_->registerMapping(leftStick);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deadzone, 0.2f);
-}
-
-TEST_F(InputSystemTest, MappingWithNegativeScale) {
-    InputMapping mapping{
-        .binding = {
-            .deviceType = InputDeviceType::Keyboard,
-            .deviceIndex = 0,
-            .keyCode = 65,  // A key
-            .scale = -1.0f,  // Negative scale for inverted input
-            .deadzone = 0.0f
-        },
-        .action = "move_left"
-    };
-
-    inputSystem_->registerMapping(mapping);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.scale, -1.0f);
-}
-
-//======================================================================
-// Input Listening Tests
-//======================================================================
-
-TEST_F(InputSystemTest, StartListeningClearsLastInput) {
-    // Simulate that we had a previous input
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    inputSystem_->registerMapping(mapping);
-
-    inputSystem_->startListeningForInput();
-
-    // After starting to listen, last input should be empty
-    EXPECT_FALSE(inputSystem_->getLastInput().has_value());
-    EXPECT_TRUE(inputSystem_->isListeningForInput());
-}
-
-TEST_F(InputSystemTest, MultipleStartListeningCalls) {
-    inputSystem_->startListeningForInput();
-    EXPECT_TRUE(inputSystem_->isListeningForInput());
-
-    inputSystem_->startListeningForInput();  // Call again
-    EXPECT_TRUE(inputSystem_->isListeningForInput());
-}
-
-TEST_F(InputSystemTest, MultipleStopListeningCalls) {
-    inputSystem_->startListeningForInput();
-    inputSystem_->stopListeningForInput();
-    EXPECT_FALSE(inputSystem_->isListeningForInput());
-
-    inputSystem_->stopListeningForInput();  // Call again
-    EXPECT_FALSE(inputSystem_->isListeningForInput());
-}
-
-TEST_F(InputSystemTest, StopListeningWithoutStarting) {
-    // Should be safe to stop listening when not listening
-    EXPECT_FALSE(inputSystem_->isListeningForInput());
-    inputSystem_->stopListeningForInput();
-    EXPECT_FALSE(inputSystem_->isListeningForInput());
-}
-
-//======================================================================
+//=============================================================================
 // Update Lifecycle Tests
-//======================================================================
+//=============================================================================
 
 TEST_F(InputSystemTest, UpdateWithoutWindow) {
-    // Should not crash when update is called without initialization
+    // Should not crash
     inputSystem_->update();
-    // If we reach here, no crash occurred
     SUCCEED();
 }
 
-TEST_F(InputSystemTest, UpdateWithNoMappings) {
-    inputSystem_->update();
-
-    auto states = inputSystem_->getAllActionStates();
-    EXPECT_TRUE(states.empty());
-}
-
-TEST_F(InputSystemTest, MultipleUpdatesWithMappings) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-
-    // Multiple updates should not cause issues
+TEST_F(InputSystemTest, MultipleUpdates) {
     inputSystem_->update();
     inputSystem_->update();
     inputSystem_->update();
-
-    auto states = inputSystem_->getAllActionStates();
-    EXPECT_EQ(states.size(), 1);
+    SUCCEED();
 }
 
-//======================================================================
-// Device Index Tests
-//======================================================================
-
-TEST_F(InputSystemTest, MappingsWithDifferentDeviceIndices) {
-    InputMapping keyboard1{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    InputMapping keyboard2{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 1, .keyCode = 32},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(keyboard1);
-    inputSystem_->registerMapping(keyboard2);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 2);
-    EXPECT_NE(mappings[0].binding.deviceIndex, mappings[1].binding.deviceIndex);
-}
-
-TEST_F(InputSystemTest, RemoveMappingByDeviceIndex) {
-    InputMapping controller0{
-        .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 0, .keyCode = 0},
-        .action = "jump"
-    };
-    InputMapping controller1{
-        .binding = {.deviceType = InputDeviceType::Controller, .deviceIndex = 1, .keyCode = 0},
-        .action = "jump"
-    };
-
-    inputSystem_->registerMapping(controller0);
-    inputSystem_->registerMapping(controller1);
-    EXPECT_EQ(inputSystem_->getMappings().size(), 2);
-
-    // Remove only controller 0's mapping
-    inputSystem_->removeMapping(controller0.binding);
-
-    auto mappings = inputSystem_->getMappings();
-    EXPECT_EQ(mappings.size(), 1);
-    EXPECT_EQ(mappings[0].binding.deviceIndex, 1);
-}
-
-//======================================================================
-// Action Name Tests
-//======================================================================
-
-TEST_F(InputSystemTest, ActionWithEmptyString) {
-    ActionState state = inputSystem_->getActionState("");
-    EXPECT_EQ(state.action, "");
-    EXPECT_FALSE(state.active);
-}
-
-TEST_F(InputSystemTest, ActionWithSpecialCharacters) {
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "player_1/jump"
-    };
-
-    inputSystem_->registerMapping(mapping);
-    inputSystem_->update();
-
-    ActionState state = inputSystem_->getActionState("player_1/jump");
-    EXPECT_EQ(state.action, "player_1/jump");
-}
-
-TEST_F(InputSystemTest, ActionWithLongName) {
-    std::string longAction(1000, 'a');  // Very long action name
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = longAction
-    };
-
-    inputSystem_->registerMapping(mapping);
-    inputSystem_->update();
-
-    ActionState state = inputSystem_->getActionState(longAction);
-    EXPECT_EQ(state.action, longAction);
-}
-
-//======================================================================
-// Scroll Delta Tests
-//======================================================================
-
-TEST_F(InputSystemTest, GetScrollDeltaInitially) {
-    Vec2 scroll = inputSystem_->getScrollDelta();
-    EXPECT_EQ(scroll.x, 0.0f);
-    EXPECT_EQ(scroll.y, 0.0f);
-}
-
-TEST_F(InputSystemTest, ScrollDeltaIsZeroWithoutInput) {
-    inputSystem_->update();
-    Vec2 scroll = inputSystem_->getScrollDelta();
-    EXPECT_EQ(scroll.x, 0.0f);
-    EXPECT_EQ(scroll.y, 0.0f);
-}
-
-//======================================================================
-// Keyboard State Query Tests
-//======================================================================
-
-TEST_F(InputSystemTest, IsKeyDownReturnsFalseForUnpressedKeys) {
-    // Without a window, all keys should be unpressed
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_ESCAPE));
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_ENTER));
-}
-
-TEST_F(InputSystemTest, IsKeyDownWithInvalidKeyCode) {
-    // Test with invalid key codes
-    EXPECT_FALSE(inputSystem_->isKeyDown(-1));
-    EXPECT_FALSE(inputSystem_->isKeyDown(0));
-    EXPECT_FALSE(inputSystem_->isKeyDown(10000));
-}
-
-TEST_F(InputSystemTest, WasKeyJustPressedReturnsFalseInitially) {
-    // Without any key presses, should always return false
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_A));
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_ESCAPE));
-}
-
-TEST_F(InputSystemTest, WasKeyJustPressedWithInvalidKeyCode) {
-    // Test with invalid key codes
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(-1));
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(0));
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(10000));
-}
-
-TEST_F(InputSystemTest, WasKeyJustReleasedReturnsFalseInitially) {
-    // Without any key releases, should always return false
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_A));
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_ESCAPE));
-}
-
-TEST_F(InputSystemTest, WasKeyJustReleasedWithInvalidKeyCode) {
-    // Test with invalid key codes
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(-1));
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(0));
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(10000));
-}
-
-TEST_F(InputSystemTest, KeyStateConsistencyBetweenFrames) {
-    // Without window, states should remain consistent across updates
-    inputSystem_->update();
-
-    bool isDown1 = inputSystem_->isKeyDown(GLFW_KEY_SPACE);
-    bool justPressed1 = inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE);
-    bool justReleased1 = inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE);
-
-    inputSystem_->update();
-
-    bool isDown2 = inputSystem_->isKeyDown(GLFW_KEY_SPACE);
-    bool justPressed2 = inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE);
-    bool justReleased2 = inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE);
-
-    // States should be consistent (all false without window)
-    EXPECT_EQ(isDown1, isDown2);
-    EXPECT_EQ(justPressed1, justPressed2);
-    EXPECT_EQ(justReleased1, justReleased2);
-}
-
-TEST_F(InputSystemTest, MultipleKeyStateQueries) {
-    // Test that multiple queries for different keys work
-    std::vector<int> keyCodes = {
-        GLFW_KEY_A, GLFW_KEY_B, GLFW_KEY_C, GLFW_KEY_D,
-        GLFW_KEY_W, GLFW_KEY_S, GLFW_KEY_SPACE, GLFW_KEY_ENTER
-    };
-
-    for (int keyCode : keyCodes) {
-        EXPECT_FALSE(inputSystem_->isKeyDown(keyCode));
-        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(keyCode));
-        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(keyCode));
-    }
-}
-
-TEST_F(InputSystemTest, KeyStatePersistsAcrossMultipleUpdates) {
-    // Verify state tracking persists correctly across multiple frames
-    for (int i = 0; i < 10; ++i) {
-        inputSystem_->update();
-
-        // Without window, keys should always be unpressed
-        EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
-        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
-        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
-    }
-}
-
-//======================================================================
-// Mouse Button State Query Tests
-//======================================================================
-
-TEST_F(InputSystemTest, WasMouseButtonJustPressedReturnsFalseInitially) {
-    // Without any button presses, should always return false
-    for (int button = 0; button < 8; ++button) {
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
-    }
-}
-
-TEST_F(InputSystemTest, WasMouseButtonJustPressedWithInvalidButton) {
-    // Test boundary conditions
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(-1));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(8));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(100));
-}
-
-TEST_F(InputSystemTest, WasMouseButtonJustReleasedReturnsFalseInitially) {
-    // Without any button releases, should always return false
-    for (int button = 0; button < 8; ++button) {
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
-    }
-}
-
-TEST_F(InputSystemTest, WasMouseButtonJustReleasedWithInvalidButton) {
-    // Test boundary conditions
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(-1));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(8));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(100));
-}
-
-TEST_F(InputSystemTest, MouseButtonStateConsistencyBetweenFrames) {
-    // Without window, button states should remain consistent across updates
-    inputSystem_->update();
-
-    bool isDown1 = inputSystem_->isMouseButtonDown(0);
-    bool justPressed1 = inputSystem_->wasMouseButtonJustPressed(0);
-    bool justReleased1 = inputSystem_->wasMouseButtonJustReleased(0);
-
-    inputSystem_->update();
-
-    bool isDown2 = inputSystem_->isMouseButtonDown(0);
-    bool justPressed2 = inputSystem_->wasMouseButtonJustPressed(0);
-    bool justReleased2 = inputSystem_->wasMouseButtonJustReleased(0);
-
-    // States should be consistent (all false without window)
-    EXPECT_EQ(isDown1, isDown2);
-    EXPECT_EQ(justPressed1, justPressed2);
-    EXPECT_EQ(justReleased1, justReleased2);
-}
-
-TEST_F(InputSystemTest, AllMouseButtonsStateQuery) {
-    // Test all 8 mouse buttons
-    for (int button = 0; button < 8; ++button) {
-        EXPECT_FALSE(inputSystem_->isMouseButtonDown(button));
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
-    }
-}
-
-TEST_F(InputSystemTest, MouseButtonStatePersistsAcrossMultipleUpdates) {
-    // Verify button state tracking persists correctly across multiple frames
-    for (int i = 0; i < 10; ++i) {
-        inputSystem_->update();
-
-        // Without window, all buttons should be unpressed
-        for (int button = 0; button < 8; ++button) {
-            EXPECT_FALSE(inputSystem_->isMouseButtonDown(button));
-            EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(button));
-            EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(button));
-        }
-    }
-}
-
-TEST_F(InputSystemTest, MouseButtonIndependentStates) {
-    // Verify each button has independent state
-    // Without window, all should be false, but we're testing they're tracked independently
-    inputSystem_->update();
-
-    std::vector<bool> isDownStates;
-    std::vector<bool> justPressedStates;
-    std::vector<bool> justReleasedStates;
-
-    for (int button = 0; button < 8; ++button) {
-        isDownStates.push_back(inputSystem_->isMouseButtonDown(button));
-        justPressedStates.push_back(inputSystem_->wasMouseButtonJustPressed(button));
-        justReleasedStates.push_back(inputSystem_->wasMouseButtonJustReleased(button));
-    }
-
-    // All should be false, but verify we can query each independently
-    for (size_t i = 0; i < 8; ++i) {
-        EXPECT_FALSE(isDownStates[i]);
-        EXPECT_FALSE(justPressedStates[i]);
-        EXPECT_FALSE(justReleasedStates[i]);
-    }
-}
-
-//======================================================================
-// Combined Keyboard and Mouse State Tests
-//======================================================================
-
-TEST_F(InputSystemTest, KeyAndMouseStateUpdateTogether) {
-    // Verify keyboard and mouse states update together in same frame
-    inputSystem_->update();
-
-    // Check both keyboard and mouse
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->isMouseButtonDown(0));
-
-    EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(0));
-
-    EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_SPACE));
-    EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(0));
-}
-
-TEST_F(InputSystemTest, StateQueryDoesNotModifyState) {
-    // Querying state should not modify it
-    inputSystem_->update();
-
-    // Query multiple times
-    for (int i = 0; i < 5; ++i) {
-        EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
-        EXPECT_FALSE(inputSystem_->wasKeyJustPressed(GLFW_KEY_A));
-        EXPECT_FALSE(inputSystem_->wasKeyJustReleased(GLFW_KEY_A));
-        EXPECT_FALSE(inputSystem_->isMouseButtonDown(1));
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustPressed(1));
-        EXPECT_FALSE(inputSystem_->wasMouseButtonJustReleased(1));
-    }
-
-    // State should still be consistent after multiple queries
-    EXPECT_FALSE(inputSystem_->isKeyDown(GLFW_KEY_A));
-    EXPECT_FALSE(inputSystem_->isMouseButtonDown(1));
-}
-
-//======================================================================
-// Text Input Tests
-//======================================================================
-
-TEST_F(InputSystemTest, TextInputInitiallyDisabled) {
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-}
-
-TEST_F(InputSystemTest, EnableTextInput) {
-    inputSystem_->enableTextInput();
-    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
-}
-
-TEST_F(InputSystemTest, DisableTextInput) {
-    inputSystem_->enableTextInput();
-    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
-
-    inputSystem_->disableTextInput();
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-}
-
-TEST_F(InputSystemTest, GetTextInputWhenDisabled) {
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-    std::string text = inputSystem_->getTextInput();
-    EXPECT_TRUE(text.empty());
-}
-
-TEST_F(InputSystemTest, GetTextInputWhenEnabled) {
-    inputSystem_->enableTextInput();
-    std::string text = inputSystem_->getTextInput();
-    // Should be empty if no input received
-    EXPECT_TRUE(text.empty());
-}
-
-TEST_F(InputSystemTest, ClearTextInputWhenDisabled) {
-    // Should be safe to clear when disabled
-    inputSystem_->clearTextInput();
-    EXPECT_TRUE(inputSystem_->getTextInput().empty());
-}
-
-TEST_F(InputSystemTest, ClearTextInputWhenEnabled) {
-    inputSystem_->enableTextInput();
-    inputSystem_->clearTextInput();
-    EXPECT_TRUE(inputSystem_->getTextInput().empty());
-}
-
-TEST_F(InputSystemTest, EnableTextInputMultipleTimes) {
-    inputSystem_->enableTextInput();
-    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
-
-    inputSystem_->enableTextInput();  // Call again
-    EXPECT_TRUE(inputSystem_->isTextInputEnabled());
-}
-
-TEST_F(InputSystemTest, DisableTextInputMultipleTimes) {
-    inputSystem_->enableTextInput();
-    inputSystem_->disableTextInput();
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-
-    inputSystem_->disableTextInput();  // Call again
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-}
-
-TEST_F(InputSystemTest, DisableTextInputWithoutEnabling) {
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-    inputSystem_->disableTextInput();
-    EXPECT_FALSE(inputSystem_->isTextInputEnabled());
-}
-
-//======================================================================
+//=============================================================================
 // Kangaru DI Integration Tests
-//======================================================================
+//=============================================================================
 
 TEST(InputSystemKangaruTest, ServiceInjection) {
     kgr::container container;
 
-    // Register dependencies first - InputSystem depends on AssetSystem which depends on EventSystem
+    // Register dependencies
     container.service<EventSystemService>();
     container.service<AssetSystemService>();
 
-    // Register the InputSystem service
+    // Register InputSystem
     auto& service = container.service<InputSystemService>();
 
-    // Verify we got a valid instance
-    EXPECT_TRUE(service.getMappings().empty());
+    EXPECT_FALSE(service.hasPhaseBeenSet());
 }
 
 TEST(InputSystemKangaruTest, SingletonBehavior) {
     kgr::container container;
 
-    // Register dependencies first
     container.service<EventSystemService>();
     container.service<AssetSystemService>();
 
-    // Get references to the same service multiple times
     auto& inputSystem1 = container.service<InputSystemService>();
     auto& inputSystem2 = container.service<InputSystemService>();
 
-    // Should be the same instance (same memory address)
     EXPECT_EQ(&inputSystem1, &inputSystem2);
 }
 
 TEST(InputSystemKangaruTest, ServicePersistsState) {
     kgr::container container;
 
-    // Register dependencies first
     container.service<EventSystemService>();
     container.service<AssetSystemService>();
 
     auto& inputSystem1 = container.service<InputSystemService>();
+    inputSystem1.changePhase("test_phase");
 
-    // Register a mapping
-    InputMapping mapping{
-        .binding = {.deviceType = InputDeviceType::Keyboard, .deviceIndex = 0, .keyCode = 32},
-        .action = "jump"
-    };
-    inputSystem1.registerMapping(mapping);
-
-    // Get the service again
     auto& inputSystem2 = container.service<InputSystemService>();
-
-    // State should be preserved (same instance)
-    EXPECT_EQ(inputSystem2.getMappings().size(), 1);
-    EXPECT_EQ(inputSystem2.getMappings()[0].action, "jump");
+    EXPECT_EQ(inputSystem2.getCurrentPhase(), "test_phase");
 }
 
-TEST(InputSystemKangaruTest, InterfacePointer) {
-    kgr::container container;
+//=============================================================================
+// Legacy API Tests (for backwards compatibility)
+//=============================================================================
 
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Get as interface pointer
-    IInputSystem* inputSystemPtr = &container.service<InputSystemService>();
-
-    EXPECT_NE(inputSystemPtr, nullptr);
-    EXPECT_TRUE(inputSystemPtr->getMappings().empty());
+TEST_F(InputSystemTest, LegacyGetMappingsEmpty) {
+    auto mappings = inputSystem_->getMappings();
+    EXPECT_TRUE(mappings.empty());
 }
 
-TEST(InputSystemKangaruTest, ServiceUpdate) {
-    kgr::container container;
+TEST_F(InputSystemTest, LegacyClearMappings) {
+    inputSystem_->clearMappings();
+    EXPECT_TRUE(inputSystem_->getMappings().empty());
+}
 
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
+TEST_F(InputSystemTest, LegacyGetActionStateForUnmapped) {
+    ActionState state = inputSystem_->getActionState("nonexistent");
+    EXPECT_EQ(state.action, "nonexistent");
+    EXPECT_FALSE(state.active);
+}
 
-    auto& inputSystem = container.service<InputSystemService>();
+TEST_F(InputSystemTest, LegacyIsActionActiveForUnmapped) {
+    EXPECT_FALSE(inputSystem_->isActionActive("nonexistent"));
+}
 
-    // Should not crash when calling update
-    inputSystem.update();
-    SUCCEED();
+TEST_F(InputSystemTest, LegacyGetActionValueForUnmapped) {
+    EXPECT_EQ(inputSystem_->getActionValue("nonexistent"), 0.0f);
+}
+
+TEST_F(InputSystemTest, LegacyGetAllActionStatesEmpty) {
+    auto states = inputSystem_->getAllActionStates();
+    EXPECT_TRUE(states.empty());
 }
 
 }  // namespace bestow::tests

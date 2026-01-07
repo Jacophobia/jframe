@@ -196,30 +196,33 @@ private:
     InputBinding parseInputBindingTable(sol::table t) {
         InputBinding binding;
 
-        // Check for key
-        if (auto key = t["key"]; key.valid() && key.is<KeyCode>()) {
-            binding = InputBinding::key(key.as<KeyCode>());
+        // Check for key - use sol::optional to avoid template issues
+        sol::optional<KeyCode> keyOpt = t["key"];
+        sol::optional<MouseButton> mouseOpt = t["mouseButton"];
+        sol::optional<GamepadButton> gamepadBtnOpt = t["gamepadButton"];
+        sol::optional<GamepadAxis> gamepadAxisOpt = t["gamepadAxis"];
+        sol::optional<ModifierKey> modsOpt = t["modifiers"];
+
+        if (keyOpt) {
+            binding = InputBinding::key(*keyOpt);
         }
-        // Check for mouse button
-        else if (auto btn = t["mouseButton"]; btn.valid() && btn.is<MouseButton>()) {
-            binding = InputBinding::mouseButton(btn.as<MouseButton>());
+        else if (mouseOpt) {
+            binding = InputBinding::mouseButton(*mouseOpt);
         }
-        // Check for gamepad button
-        else if (auto gbtn = t["gamepadButton"]; gbtn.valid() && gbtn.is<GamepadButton>()) {
+        else if (gamepadBtnOpt) {
             int index = t.get_or("gamepadIndex", 0);
-            binding = InputBinding::gamepadButton(gbtn.as<GamepadButton>(), index);
+            binding = InputBinding::gamepadButton(*gamepadBtnOpt, index);
         }
-        // Check for gamepad axis
-        else if (auto axis = t["gamepadAxis"]; axis.valid() && axis.is<GamepadAxis>()) {
+        else if (gamepadAxisOpt) {
             int index = t.get_or("gamepadIndex", 0);
             float scale = t.get_or("scale", 1.0f);
             float deadzone = t.get_or("deadzone", 0.15f);
-            binding = InputBinding::gamepadAxis(axis.as<GamepadAxis>(), index, scale, deadzone);
+            binding = InputBinding::gamepadAxis(*gamepadAxisOpt, index, scale, deadzone);
         }
 
         // Override modifiers if specified
-        if (auto mods = t["modifiers"]; mods.valid() && mods.is<ModifierKey>()) {
-            binding.requiredModifiers = mods.as<ModifierKey>();
+        if (modsOpt) {
+            binding.requiredModifiers = *modsOpt;
         }
 
         return binding;

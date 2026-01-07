@@ -558,7 +558,9 @@ void InputSystem::pushPhase(const std::string& phase) {
 }
 
 void InputSystem::popPhase() {
-    if (phaseStack_.empty()) {
+    // Don't pop if empty or if only the base phase remains
+    // (base phase is the one set by changePhase, should not be poppable)
+    if (phaseStack_.size() <= 1) {
         return;
     }
 
@@ -689,6 +691,11 @@ float InputSystem::getDefaultHoldThreshold() const {
 //==========================================================================
 
 bool InputSystem::loadInputConfig(const std::string& path) {
+    // Check if the file exists before storing the path
+    if (!std::filesystem::exists(path)) {
+        return false;
+    }
+
     inputConfigPath_ = path;
     // Note: Actual Lua loading happens in the Lua bindings layer
     // This method just stores the path for potential reload

@@ -13,21 +13,27 @@ import bestow.physics;
 export namespace bestow {
 
 //==========================================================================
-// InputMappingBuilder - Chainable API for input configuration
+// InputMappingBuilder - DEPRECATED: Use ActionBuilder from action_binding.cpp
 //==========================================================================
-// Usage:
+// This builder uses the legacy polling-based input API.
+// New code should use the event-driven ActionBuilder API:
+//
+//   bestow.action.builder()
+//       :duringPhase("game")
+//       :whenPressed(bestow.input.keys.Space)
+//       :emitAction("Jump")
+//       :discretely()
+//
+// Legacy Usage (deprecated):
 //   InputMappingBuilder(input)
 //       .action("jump")
 //           .key(Key::Space)
 //           .button(ControllerButton::A)
-//       .action("move_horizontal")
-//           .key(Key::D, 1.0f)
-//           .key(Key::A, -1.0f)
-//           .axis(ControllerAxis::LeftX)
 //       .apply();
 //==========================================================================
 
-class InputMappingBuilder {
+class [[deprecated("Use ActionBuilder via bestow.action.builder() in Lua instead")]]
+InputMappingBuilder {
 public:
     explicit InputMappingBuilder(IInputSystem& input)
         : input_(input) {}
@@ -38,14 +44,15 @@ public:
         return *this;
     }
 
-    // Bind a keyboard key to the current action
-    InputMappingBuilder& key(int keyCode, float scale = 1.0f) {
+    // Bind a keyboard key to the current action (using KeyCode)
+    InputMappingBuilder& key(KeyCode keyCode, float scale = 1.0f) {
         if (!currentAction_.empty()) {
             InputMapping mapping{
                 .binding = {
-                    .deviceType = InputDeviceType::Keyboard,
+                    .source = InputSource::Keyboard,
                     .deviceIndex = 0,
-                    .keyCode = keyCode,
+                    .input = keyCode,
+                    .requiredModifiers = ModifierKey::None,
                     .scale = scale,
                     .deadzone = 0.0f
                 },
@@ -54,16 +61,23 @@ public:
             pendingMappings_.push_back(mapping);
         }
         return *this;
+    }
+
+    // Legacy int-based key binding (deprecated)
+    [[deprecated("Use key(KeyCode) instead")]]
+    InputMappingBuilder& key(int keyCode, float scale = 1.0f) {
+        return key(static_cast<KeyCode>(keyCode), scale);
     }
 
     // Bind a mouse button to the current action
-    InputMappingBuilder& mouseButton(int button, float scale = 1.0f) {
+    InputMappingBuilder& mouseButton(MouseButton button, float scale = 1.0f) {
         if (!currentAction_.empty()) {
             InputMapping mapping{
                 .binding = {
-                    .deviceType = InputDeviceType::Mouse,
+                    .source = InputSource::Mouse,
                     .deviceIndex = 0,
-                    .keyCode = button,
+                    .input = button,
+                    .requiredModifiers = ModifierKey::None,
                     .scale = scale,
                     .deadzone = 0.0f
                 },
@@ -74,14 +88,21 @@ public:
         return *this;
     }
 
+    // Legacy int-based mouse button binding (deprecated)
+    [[deprecated("Use mouseButton(MouseButton) instead")]]
+    InputMappingBuilder& mouseButton(int button, float scale = 1.0f) {
+        return mouseButton(static_cast<MouseButton>(button), scale);
+    }
+
     // Bind a controller button to the current action
-    InputMappingBuilder& button(int buttonCode, int controllerIndex = 0, float scale = 1.0f) {
+    InputMappingBuilder& button(GamepadButton buttonCode, int controllerIndex = 0, float scale = 1.0f) {
         if (!currentAction_.empty()) {
             InputMapping mapping{
                 .binding = {
-                    .deviceType = InputDeviceType::Controller,
+                    .source = InputSource::Gamepad,
                     .deviceIndex = controllerIndex,
-                    .keyCode = buttonCode,
+                    .input = buttonCode,
+                    .requiredModifiers = ModifierKey::None,
                     .scale = scale,
                     .deadzone = 0.1f
                 },
@@ -92,14 +113,21 @@ public:
         return *this;
     }
 
+    // Legacy int-based button binding (deprecated)
+    [[deprecated("Use button(GamepadButton) instead")]]
+    InputMappingBuilder& button(int buttonCode, int controllerIndex = 0, float scale = 1.0f) {
+        return button(static_cast<GamepadButton>(buttonCode), controllerIndex, scale);
+    }
+
     // Bind a controller axis to the current action
-    InputMappingBuilder& axis(int axisCode, int controllerIndex = 0, float deadzone = 0.1f) {
+    InputMappingBuilder& axis(GamepadAxis axisCode, int controllerIndex = 0, float deadzone = 0.1f) {
         if (!currentAction_.empty()) {
             InputMapping mapping{
                 .binding = {
-                    .deviceType = InputDeviceType::Controller,
+                    .source = InputSource::Gamepad,
                     .deviceIndex = controllerIndex,
-                    .keyCode = axisCode | 0x8000,  // Flag to indicate axis
+                    .input = axisCode,
+                    .requiredModifiers = ModifierKey::None,
                     .scale = 1.0f,
                     .deadzone = deadzone
                 },
@@ -108,6 +136,12 @@ public:
             pendingMappings_.push_back(mapping);
         }
         return *this;
+    }
+
+    // Legacy int-based axis binding (deprecated)
+    [[deprecated("Use axis(GamepadAxis) instead")]]
+    InputMappingBuilder& axis(int axisCode, int controllerIndex = 0, float deadzone = 0.1f) {
+        return axis(static_cast<GamepadAxis>(axisCode), controllerIndex, deadzone);
     }
 
     // Set deadzone for the last added binding
@@ -121,7 +155,10 @@ public:
     // Apply all pending mappings to the input system
     void apply() {
         for (const auto& mapping : pendingMappings_) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             input_.registerMapping(mapping);
+#pragma clang diagnostic pop
         }
         pendingMappings_.clear();
         currentAction_.clear();
@@ -353,71 +390,82 @@ inline PhysicsBodyBuilder platform(IPhysicsSystem& physics, Entity entity,
 }  // namespace physics
 
 //==========================================================================
-// Convenience factory functions for common input patterns
+// DEPRECATED: Legacy input helper functions
+// Use ActionBuilder via bestow.action.builder() in Lua instead
 //==========================================================================
 
 namespace input {
 
-// Create a standard platformer input configuration
+// DEPRECATED: Create a standard platformer input configuration
+// Use bestow.action.builder() in inputs.lua instead
+[[deprecated("Use ActionBuilder via bestow.action.builder() in Lua instead")]]
 inline void setupPlatformerControls(IInputSystem& input,
-                                   int keyLeft, int keyRight, int keyJump,
-                                   int keyDown = -1, int keyAttack = -1) {
+                                   KeyCode keyLeft, KeyCode keyRight, KeyCode keyJump,
+                                   KeyCode keyDown = KeyCode::Unknown, KeyCode keyAttack = KeyCode::Unknown) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     InputMappingBuilder builder(input);
 
     builder.action("move_horizontal")
         .key(keyRight, 1.0f)
         .key(keyLeft, -1.0f)
-        .axis(0);  // Left stick X
+        .axis(GamepadAxis::LeftX);
 
     builder.action("jump")
         .key(keyJump)
-        .button(0);  // A button (SDL_CONTROLLER_BUTTON_A)
+        .button(GamepadButton::A);
 
-    if (keyDown >= 0) {
+    if (keyDown != KeyCode::Unknown) {
         builder.action("crouch")
             .key(keyDown)
-            .axis(1);  // Left stick Y (down = positive)
+            .axis(GamepadAxis::LeftY);
     }
 
-    if (keyAttack >= 0) {
+    if (keyAttack != KeyCode::Unknown) {
         builder.action("attack")
             .key(keyAttack)
-            .button(2);  // X button (SDL_CONTROLLER_BUTTON_X)
+            .button(GamepadButton::X);
     }
 
     builder.apply();
+#pragma clang diagnostic pop
 }
 
-// Create WASD + Arrow key configuration
-inline void setupWASDControls(IInputSystem& input, int jumpKey, int attackKey = -1) {
+// DEPRECATED: Create WASD + Arrow key configuration
+// Use bestow.action.builder() in inputs.lua instead
+[[deprecated("Use ActionBuilder via bestow.action.builder() in Lua instead")]]
+inline void setupWASDControls(IInputSystem& input, KeyCode jumpKey, KeyCode attackKey = KeyCode::Unknown) {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     InputMappingBuilder builder(input);
 
     // WASD movement
     builder.action("move_horizontal")
-        .key(68, 1.0f)   // D
-        .key(65, -1.0f)  // A
-        .key(262, 1.0f)  // Right arrow
-        .key(263, -1.0f) // Left arrow
-        .axis(0);
+        .key(KeyCode::D, 1.0f)
+        .key(KeyCode::A, -1.0f)
+        .key(KeyCode::Right, 1.0f)
+        .key(KeyCode::Left, -1.0f)
+        .axis(GamepadAxis::LeftX);
 
     builder.action("move_vertical")
-        .key(83, 1.0f)   // S (down is positive)
-        .key(87, -1.0f)  // W
-        .key(264, 1.0f)  // Down arrow
-        .key(265, -1.0f) // Up arrow
-        .axis(1);
+        .key(KeyCode::S, 1.0f)   // S (down is positive)
+        .key(KeyCode::W, -1.0f)  // W
+        .key(KeyCode::Down, 1.0f)
+        .key(KeyCode::Up, -1.0f)
+        .axis(GamepadAxis::LeftY);
 
     builder.action("jump")
         .key(jumpKey)
-        .button(0);  // A button
+        .button(GamepadButton::A);
 
-    if (attackKey >= 0) {
+    if (attackKey != KeyCode::Unknown) {
         builder.action("attack")
             .key(attackKey)
-            .button(2);  // X button
+            .button(GamepadButton::X);
     }
 
     builder.apply();
+#pragma clang diagnostic pop
 }
 
 }  // namespace input

@@ -1885,13 +1885,13 @@ private:
 
         // Handle level complete phase
         if (currentPhase_ == GamePhase::LevelComplete) {
-            if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
-                input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Enter) ||
+                input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
                 // Accumulate segments for boss fight
                 totalSegmentsInWorld_ += segmentsEarnedThisLevel_;
                 proceedToNextLevel();
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Escape)) {
                 returnToWorldMap();
             }
             return;
@@ -1899,20 +1899,20 @@ private:
 
         if (gameOver_) {
             // Navigate game over menu
-            if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-                input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Comma) ||
+                input_->wasKeyJustPressed(bestow::KeyCode::Up)) {
                 gameOverMenuSelection_ = (gameOverMenuSelection_ - 1 + GAME_OVER_COUNT) % GAME_OVER_COUNT;
                 playSound(soundMenuMove_);
             }
-            if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
-                input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::O) ||
+                input_->wasKeyJustPressed(bestow::KeyCode::Down)) {
                 gameOverMenuSelection_ = (gameOverMenuSelection_ + 1) % GAME_OVER_COUNT;
                 playSound(soundMenuMove_);
             }
 
             // Select option
-            if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
-                input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+            if (input_->wasKeyJustPressed(bestow::KeyCode::Enter) ||
+                input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
                 playSound(soundMenuSelect_);
                 if (gameOverMenuSelection_ == GAME_OVER_RETRY) {
                     restartGame();
@@ -1925,32 +1925,32 @@ private:
 
         // Buffer direction changes - only accept valid turns
         // Up: Comma (Dvorak W) or Up Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Comma) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Up)) {
             if (direction_ != Direction::Down) {
                 inputDirection_ = Direction::Up;
                 hasBufferedInput_ = true;
             }
         }
         // Down: O (Dvorak S) or Down Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
-            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::O) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Down)) {
             if (direction_ != Direction::Up) {
                 inputDirection_ = Direction::Down;
                 hasBufferedInput_ = true;
             }
         }
         // Left: A or Left Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_A) ||
-            input_->wasKeyJustPressed(GLFW_KEY_LEFT)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::A) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Left)) {
             if (direction_ != Direction::Right) {
                 inputDirection_ = Direction::Left;
                 hasBufferedInput_ = true;
             }
         }
         // Right: E (Dvorak D) or Right Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_E) ||
-            input_->wasKeyJustPressed(GLFW_KEY_RIGHT)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::E) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Right)) {
             if (direction_ != Direction::Left) {
                 inputDirection_ = Direction::Right;
                 hasBufferedInput_ = true;
@@ -1958,7 +1958,7 @@ private:
         }
 
         // ESC to pause
-        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Escape)) {
             pauseMenuSelection_ = 0;
             playSound(soundPause_);
             transitionTo(GamePhase::Paused);
@@ -2393,26 +2393,26 @@ private:
         int prevSelection = selectedNodeIndex_;
 
         // Up: Comma (Dvorak W) or Up Arrow - decrease Z (forward in isometric view)
-        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Comma) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Up)) {
             int node = findNodeInDirection(0, -1);
             if (node >= 0) selectedNodeIndex_ = node;
         }
         // Down: O (Dvorak S) or Down Arrow - increase Z
-        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
-            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::O) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Down)) {
             int node = findNodeInDirection(0, 1);
             if (node >= 0) selectedNodeIndex_ = node;
         }
         // Left: A or Left Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_A) ||
-            input_->wasKeyJustPressed(GLFW_KEY_LEFT)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::A) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Left)) {
             int node = findNodeInDirection(-1, 0);
             if (node >= 0) selectedNodeIndex_ = node;
         }
         // Right: E (Dvorak D) or Right Arrow
-        if (input_->wasKeyJustPressed(GLFW_KEY_E) ||
-            input_->wasKeyJustPressed(GLFW_KEY_RIGHT)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::E) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Right)) {
             int node = findNodeInDirection(1, 0);
             if (node >= 0) selectedNodeIndex_ = node;
         }
@@ -2423,8 +2423,8 @@ private:
         }
 
         // Select level with Enter/Space
-        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
-            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Enter) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
             const auto& node = currentWorld_.nodes[selectedNodeIndex_];
             if (node.levelIndex >= 0 && isLevelUnlocked(node.levelIndex)) {
                 playSound(soundMenuSelect_);
@@ -2438,27 +2438,27 @@ private:
         }
 
         // Exit to main menu with Escape
-        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Escape)) {
             transitionTo(GamePhase::MainMenu);
         }
     }
 
     void handleMainMenuInput() {
         // Navigate with Up/Down (Dvorak: Comma/O)
-        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Comma) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Up)) {
             mainMenuSelection_ = (mainMenuSelection_ - 1 + MAIN_MENU_COUNT) % MAIN_MENU_COUNT;
             playSound(soundMenuMove_);
         }
-        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
-            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::O) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Down)) {
             mainMenuSelection_ = (mainMenuSelection_ + 1) % MAIN_MENU_COUNT;
             playSound(soundMenuMove_);
         }
 
         // Select with Enter/Space
-        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
-            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Enter) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
             playSound(soundMenuSelect_);
             if (mainMenuSelection_ == MAIN_MENU_PLAY) {
                 transitionTo(GamePhase::WorldMap);
@@ -2470,20 +2470,20 @@ private:
 
     void handlePauseMenuInput() {
         // Navigate with Up/Down (Dvorak: Comma/O)
-        if (input_->wasKeyJustPressed(GLFW_KEY_COMMA) ||
-            input_->wasKeyJustPressed(GLFW_KEY_UP)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Comma) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Up)) {
             pauseMenuSelection_ = (pauseMenuSelection_ - 1 + PAUSE_MENU_COUNT) % PAUSE_MENU_COUNT;
             playSound(soundMenuMove_);
         }
-        if (input_->wasKeyJustPressed(GLFW_KEY_O) ||
-            input_->wasKeyJustPressed(GLFW_KEY_DOWN)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::O) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Down)) {
             pauseMenuSelection_ = (pauseMenuSelection_ + 1) % PAUSE_MENU_COUNT;
             playSound(soundMenuMove_);
         }
 
         // Select with Enter/Space
-        if (input_->wasKeyJustPressed(GLFW_KEY_ENTER) ||
-            input_->wasKeyJustPressed(GLFW_KEY_SPACE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Enter) ||
+            input_->wasKeyJustPressed(bestow::KeyCode::Space)) {
             playSound(soundMenuSelect_);
             if (pauseMenuSelection_ == PAUSE_MENU_RESUME) {
                 transitionTo(GamePhase::Playing);
@@ -2496,7 +2496,7 @@ private:
         }
 
         // ESC to resume
-        if (input_->wasKeyJustPressed(GLFW_KEY_ESCAPE)) {
+        if (input_->wasKeyJustPressed(bestow::KeyCode::Escape)) {
             playSound(soundMenuSelect_);
             transitionTo(GamePhase::Playing);
         }
