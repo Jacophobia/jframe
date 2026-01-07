@@ -321,7 +321,7 @@ function main.cleanup()
 
     -- Stop all audio and shutdown systems
     if bestow.audio then
-        bestow.audio.stopAllSounds()
+        bestow.audio.stopAll()
         bestow.audio.shutdown()
     end
 
