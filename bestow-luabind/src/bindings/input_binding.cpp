@@ -1,5 +1,9 @@
 // bestow-luabind/src/bindings/input_binding.cpp
 // Input system Lua bindings
+//
+// NOTE: This file contains the legacy polling-based input API.
+// The new event-driven input API (ActionBuilder, phase management) is in action_binding.cpp.
+// The legacy API is maintained for backwards compatibility but is deprecated.
 
 module;
 
@@ -12,12 +16,27 @@ import std;
 
 namespace bestow {
 
+namespace {
+    // Track if deprecation warning has been logged (to avoid spam)
+    bool g_deprecationWarningLogged = false;
+
+    void logDeprecationWarning(const char* functionName) {
+        if (!g_deprecationWarningLogged) {
+            spdlog::warn("[Input] Legacy polling API is deprecated. "
+                        "Use event-driven input with ActionBuilder and bestow.events instead. "
+                        "See docs/input-migration.md for migration guide.");
+            g_deprecationWarningLogged = true;
+        }
+        spdlog::debug("[Input] Deprecated function called: {}", functionName);
+    }
+}
+
 void bindInputSystem(sol::state& lua, IInputSystem& input) {
     //=========================================================================
-    // Input-related types
+    // Input-related types (Legacy - for backwards compatibility)
     //=========================================================================
 
-    // InputDeviceType enum
+    // InputDeviceType enum (deprecated - use InputSource from action_binding.cpp)
     lua.new_enum<InputDeviceType>("InputDeviceType",
         {
             {"Keyboard", InputDeviceType::Keyboard},
@@ -26,7 +45,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
         }
     );
 
-    // ModifierKey enum (bitmask)
+    // ModifierKey enum (bitmask) - still valid in new API
     lua.new_enum<ModifierKey>("ModifierKey",
         {
             {"None", ModifierKey::None},
@@ -39,18 +58,9 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
         }
     );
 
-    // InputBinding struct
-    lua.new_usertype<InputBinding>("InputBinding",
-        sol::constructors<InputBinding()>(),
-        "deviceType", &InputBinding::deviceType,
-        "deviceIndex", &InputBinding::deviceIndex,
-        "keyCode", &InputBinding::keyCode,
-        "requiredModifiers", &InputBinding::requiredModifiers,
-        "scale", &InputBinding::scale,
-        "deadzone", &InputBinding::deadzone
-    );
+    // Note: InputBinding usertype is now defined in action_binding.cpp with the new structure
 
-    // ActionState struct
+    // ActionState struct (legacy)
     lua.new_usertype<ActionState>("ActionState",
         sol::constructors<ActionState()>(),
         "action", &ActionState::action,
@@ -60,7 +70,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
         "justReleased", &ActionState::justReleased
     );
 
-    // InputMapping struct
+    // InputMapping struct (legacy)
     lua.new_usertype<InputMapping>("InputMapping",
         sol::constructors<InputMapping()>(),
         "binding", &InputMapping::binding,
@@ -75,35 +85,41 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     sol::table inputTable = lua.create_table();
 
     //-------------------------------------------------------------------------
-    // Action State Queries (most commonly used)
+    // Action State Queries (DEPRECATED - use event subscriptions)
     //-------------------------------------------------------------------------
 
     inputTable["isActionActive"] = [&input](const std::string& action) {
+        logDeprecationWarning("isActionActive");
         return input.isActionActive(action);
     };
 
     inputTable["wasActionJustPressed"] = [&input](const std::string& action) {
+        logDeprecationWarning("wasActionJustPressed");
         return input.wasActionJustPressed(action);
     };
 
     inputTable["wasActionJustReleased"] = [&input](const std::string& action) {
+        logDeprecationWarning("wasActionJustReleased");
         return input.wasActionJustReleased(action);
     };
 
     inputTable["getActionValue"] = [&input](const std::string& action) {
+        logDeprecationWarning("getActionValue");
         return input.getActionValue(action);
     };
 
     inputTable["getActionState"] = [&input](const std::string& action) {
+        logDeprecationWarning("getActionState");
         return input.getActionState(action);
     };
 
     inputTable["getAllActionStates"] = [&input]() {
+        logDeprecationWarning("getAllActionStates");
         return input.getAllActionStates();
     };
 
     //-------------------------------------------------------------------------
-    // Mouse State
+    // Mouse State (still valid - use bestow.input.mouse for button constants)
     //-------------------------------------------------------------------------
 
     inputTable["getMousePosition"] = [&input]() {
@@ -114,16 +130,31 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
         return input.getMouseDelta();
     };
 
-    inputTable["isMouseButtonDown"] = [&input](int button) {
-        return input.isMouseButtonDown(button);
+    // Legacy int-based overloads for backwards compatibility
+    // New code should use MouseButton enum from action_binding.cpp
+    inputTable["isMouseButtonDownLegacy"] = [&input](int button) {
+        logDeprecationWarning("isMouseButtonDown(int)");
+        // Convert int to MouseButton
+        if (button >= 0 && button < static_cast<int>(MouseButton::Count)) {
+            return input.isMouseButtonDown(static_cast<MouseButton>(button));
+        }
+        return false;
     };
 
-    inputTable["wasMouseButtonJustPressed"] = [&input](int button) {
-        return input.wasMouseButtonJustPressed(button);
+    inputTable["wasMouseButtonJustPressedLegacy"] = [&input](int button) {
+        logDeprecationWarning("wasMouseButtonJustPressed(int)");
+        if (button >= 0 && button < static_cast<int>(MouseButton::Count)) {
+            return input.wasMouseButtonJustPressed(static_cast<MouseButton>(button));
+        }
+        return false;
     };
 
-    inputTable["wasMouseButtonJustReleased"] = [&input](int button) {
-        return input.wasMouseButtonJustReleased(button);
+    inputTable["wasMouseButtonJustReleasedLegacy"] = [&input](int button) {
+        logDeprecationWarning("wasMouseButtonJustReleased(int)");
+        if (button >= 0 && button < static_cast<int>(MouseButton::Count)) {
+            return input.wasMouseButtonJustReleased(static_cast<MouseButton>(button));
+        }
+        return false;
     };
 
     inputTable["getScrollDelta"] = [&input]() {
@@ -131,7 +162,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Modifier Keys
+    // Modifier Keys (still valid)
     //-------------------------------------------------------------------------
 
     inputTable["getModifierState"] = [&input]() {
@@ -159,43 +190,53 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Direct Keyboard State
+    // Direct Keyboard State (Legacy int-based - use KeyCode from action_binding.cpp)
     //-------------------------------------------------------------------------
 
-    inputTable["isKeyDown"] = [&input](int keyCode) {
-        return input.isKeyDown(keyCode);
+    // Legacy int-based overloads for backwards compatibility
+    inputTable["isKeyDownLegacy"] = [&input](int keyCode) {
+        logDeprecationWarning("isKeyDown(int)");
+        // Convert GLFW key code to KeyCode
+        // This is a simple cast since KeyCode values match GLFW values for common keys
+        return input.isKeyDown(static_cast<KeyCode>(keyCode));
     };
 
-    inputTable["wasKeyJustPressed"] = [&input](int keyCode) {
-        return input.wasKeyJustPressed(keyCode);
+    inputTable["wasKeyJustPressedLegacy"] = [&input](int keyCode) {
+        logDeprecationWarning("wasKeyJustPressed(int)");
+        return input.wasKeyJustPressed(static_cast<KeyCode>(keyCode));
     };
 
-    inputTable["wasKeyJustReleased"] = [&input](int keyCode) {
-        return input.wasKeyJustReleased(keyCode);
+    inputTable["wasKeyJustReleasedLegacy"] = [&input](int keyCode) {
+        logDeprecationWarning("wasKeyJustReleased(int)");
+        return input.wasKeyJustReleased(static_cast<KeyCode>(keyCode));
     };
 
     //-------------------------------------------------------------------------
-    // Mapping Management
+    // Mapping Management (DEPRECATED - use ActionBuilder)
     //-------------------------------------------------------------------------
 
     inputTable["registerMapping"] = [&input](const InputMapping& mapping) {
+        logDeprecationWarning("registerMapping");
         input.registerMapping(mapping);
     };
 
     inputTable["removeMapping"] = [&input](const InputBinding& binding) {
+        logDeprecationWarning("removeMapping");
         input.removeMapping(binding);
     };
 
     inputTable["clearMappings"] = [&input]() {
+        logDeprecationWarning("clearMappings");
         input.clearMappings();
     };
 
     inputTable["getMappings"] = [&input]() {
+        logDeprecationWarning("getMappings");
         return input.getMappings();
     };
 
     //-------------------------------------------------------------------------
-    // Raw Input (for Rebinding UI)
+    // Raw Input (for Rebinding UI) - still valid
     //-------------------------------------------------------------------------
 
     inputTable["getLastInput"] = [&input, &lua]() -> sol::object {
@@ -219,7 +260,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Text Input
+    // Text Input - still valid
     //-------------------------------------------------------------------------
 
     inputTable["enableTextInput"] = [&input]() {
@@ -243,7 +284,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Controller
+    // Controller - still valid
     //-------------------------------------------------------------------------
 
     inputTable["getConnectedControllerCount"] = [&input]() {
@@ -259,7 +300,7 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Lifecycle Management
+    // Lifecycle Management (internal use)
     //-------------------------------------------------------------------------
 
     inputTable["initialize"] = [&input](void* windowHandle) {
@@ -275,11 +316,15 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     };
 
     //-------------------------------------------------------------------------
-    // Common key code constants (subset of GLFW key codes)
-    // Users can also use raw integer key codes
+    // Legacy key code constants (DEPRECATED - use bestow.input.keys instead)
+    // These are GLFW key codes exposed as integers.
+    // New code should use bestow.input.keys.* which provides KeyCode enums.
     //-------------------------------------------------------------------------
 
     sol::table keys = lua.create_table();
+
+    // Note: These integer values match GLFW key codes for backwards compatibility
+    // New code should use bestow.input.keys.Space, etc. from action_binding.cpp
     keys["SPACE"] = 32;
     keys["APOSTROPHE"] = 39;
     keys["COMMA"] = 44;
@@ -368,9 +413,11 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     keys["RIGHT_ALT"] = 346;
     keys["RIGHT_SUPER"] = 347;
 
+    // DEPRECATED: Use bestow.input.keys instead
     inputTable["Key"] = keys;
 
-    // Mouse button constants
+    // Legacy mouse button constants (integers)
+    // DEPRECATED: Use bestow.input.mouse instead
     sol::table mouse = lua.create_table();
     mouse["LEFT"] = 0;
     mouse["RIGHT"] = 1;
@@ -386,8 +433,9 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     bestow["input"] = inputTable;
 
     //=========================================================================
-    // Global aliases for convenience (so users can write Keys.Escape instead
-    // of bestow.input.Key.ESCAPE)
+    // Global aliases for convenience (DEPRECATED)
+    // These are kept for backwards compatibility but new code should use
+    // bestow.input.keys.* and bestow.input.buttons.* instead.
     //=========================================================================
 
     // Create a Keys global with both UPPER_CASE (canonical) and PascalCase (convenience)
@@ -463,7 +511,10 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
     globalKeys["LeftAlt"] = 342;
     globalKeys["RightAlt"] = 346;
 
+    // DEPRECATED: Use bestow.input.keys instead
     inputTable["Keys"] = globalKeys;
+
+    spdlog::debug("[LuaContractBinder] Bound legacy input API (use bestow.input.keys/buttons/axes for new code)");
 }
 
 }  // namespace bestow
