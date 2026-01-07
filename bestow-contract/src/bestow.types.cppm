@@ -409,13 +409,197 @@ constexpr bool hasModifier(ModifierKey mods, ModifierKey test) {
     return (mods & test) == test;
 }
 
+//--------------------------------------------------------------------------
+// Platform-Agnostic Input Constants
+//--------------------------------------------------------------------------
+
+/// Platform-agnostic keyboard key codes
+/// These abstract away GLFW/SDL/platform-specific key codes
+enum class KeyCode : std::uint16_t {
+    Unknown = 0,
+
+    // Letters (match ASCII for convenience)
+    A = 65, B, C, D, E, F, G, H, I, J, K, L, M,
+    N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
+
+    // Numbers
+    Num0 = 48, Num1, Num2, Num3, Num4, Num5, Num6, Num7, Num8, Num9,
+
+    // Function keys
+    F1 = 290, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    F13, F14, F15, F16, F17, F18, F19, F20, F21, F22, F23, F24, F25,
+
+    // Special keys
+    Space = 32,
+    Apostrophe = 39,   // '
+    Comma = 44,        // ,
+    Minus = 45,        // -
+    Period = 46,       // .
+    Slash = 47,        // /
+    Semicolon = 59,    // ;
+    Equal = 61,        // =
+    LeftBracket = 91,  // [
+    Backslash = 92,    // '\'
+    RightBracket = 93, // ]
+    GraveAccent = 96,  // `
+
+    // Navigation
+    Escape = 256,
+    Enter = 257,
+    Tab = 258,
+    Backspace = 259,
+    Insert = 260,
+    Delete = 261,
+    Right = 262,
+    Left = 263,
+    Down = 264,
+    Up = 265,
+    PageUp = 266,
+    PageDown = 267,
+    Home = 268,
+    End = 269,
+
+    // Lock keys
+    CapsLock = 280,
+    ScrollLock = 281,
+    NumLock = 282,
+    PrintScreen = 283,
+    Pause = 284,
+
+    // Numpad
+    KP0 = 320, KP1, KP2, KP3, KP4, KP5, KP6, KP7, KP8, KP9,
+    KPDecimal = 330,
+    KPDivide = 331,
+    KPMultiply = 332,
+    KPSubtract = 333,
+    KPAdd = 334,
+    KPEnter = 335,
+    KPEqual = 336,
+
+    // Modifier keys
+    LeftShift = 340,
+    LeftCtrl = 341,
+    LeftAlt = 342,
+    LeftSuper = 343,
+    RightShift = 344,
+    RightCtrl = 345,
+    RightAlt = 346,
+    RightSuper = 347,
+    Menu = 348,
+
+    Count = 349
+};
+
+/// Platform-agnostic gamepad buttons
+/// Based on standard Xbox/PlayStation controller layout
+enum class GamepadButton : std::uint8_t {
+    A = 0,      // Cross (PlayStation)
+    B,          // Circle (PlayStation)
+    X,          // Square (PlayStation)
+    Y,          // Triangle (PlayStation)
+    LeftBumper, // L1
+    RightBumper,// R1
+    Back,       // Select/Share
+    Start,      // Options
+    Guide,      // Home/PS button
+    LeftThumb,  // L3 (left stick click)
+    RightThumb, // R3 (right stick click)
+    DPadUp,
+    DPadRight,
+    DPadDown,
+    DPadLeft,
+    // Triggers as digital (for whenPressed/Released)
+    LeftTrigger,  // L2 as button
+    RightTrigger, // R2 as button
+
+    Count
+};
+
+/// Platform-agnostic gamepad axes
+enum class GamepadAxis : std::uint8_t {
+    LeftX = 0,    // Left stick horizontal (-1 to 1)
+    LeftY,        // Left stick vertical (-1 to 1)
+    RightX,       // Right stick horizontal (-1 to 1)
+    RightY,       // Right stick vertical (-1 to 1)
+    LeftTrigger,  // L2 as analog (0 to 1)
+    RightTrigger, // R2 as analog (0 to 1)
+
+    Count
+};
+
+/// Platform-agnostic mouse buttons
+enum class MouseButton : std::uint8_t {
+    Left = 0,
+    Right,
+    Middle,
+    Button4,
+    Button5,
+    Button6,
+    Button7,
+    Button8,
+
+    Count
+};
+
+/// Input state machine states for tracking button/key state transitions
+enum class InputState : std::uint8_t {
+    NotPressed,   // Input is up, has been for multiple frames
+    JustPressed,  // Input went down this frame
+    Pressed,      // Input is down, under hold threshold
+    Held,         // Input is down, exceeded hold threshold
+    JustReleased  // Input went up this frame
+};
+
+/// Source of an input (for identifying which device triggered an action)
+enum class InputSource : std::uint8_t {
+    Keyboard,
+    Mouse,
+    Gamepad
+};
+
+//--------------------------------------------------------------------------
+// Input Binding (Updated to use platform-agnostic types)
+//--------------------------------------------------------------------------
+
+/// Represents a specific input that can be bound to an action
+/// Uses std::variant to support different input types
 struct InputBinding {
-    InputDeviceType deviceType = InputDeviceType::Keyboard;
-    int deviceIndex = 0;
-    int keyCode = 0;
-    ModifierKey requiredModifiers = ModifierKey::None;  ///< Modifiers that must be held for this binding
-    float scale = 1.0f;
-    float deadzone = 0.1f;
+    InputSource source = InputSource::Keyboard;
+    int deviceIndex = 0;  // Gamepad index 0-3, or 0 for keyboard/mouse
+
+    /// The actual input - one of KeyCode, MouseButton, GamepadButton, or GamepadAxis
+    std::variant<KeyCode, MouseButton, GamepadButton, GamepadAxis> input = KeyCode::Unknown;
+
+    ModifierKey requiredModifiers = ModifierKey::None;
+    float scale = 1.0f;      // Value multiplier (for axis inversion, etc.)
+    float deadzone = 0.1f;   // Threshold for axis inputs
+
+    // Convenience factory methods
+    static InputBinding key(KeyCode k, ModifierKey mods = ModifierKey::None) {
+        return {InputSource::Keyboard, 0, k, mods, 1.0f, 0.0f};
+    }
+
+    static InputBinding mouseButton(MouseButton btn) {
+        return {InputSource::Mouse, 0, btn, ModifierKey::None, 1.0f, 0.0f};
+    }
+
+    static InputBinding gamepadButton(GamepadButton btn, int gamepadIndex = 0) {
+        return {InputSource::Gamepad, gamepadIndex, btn, ModifierKey::None, 1.0f, 0.0f};
+    }
+
+    static InputBinding gamepadAxis(GamepadAxis axis, int gamepadIndex = 0, float scale = 1.0f, float deadzone = 0.15f) {
+        return {InputSource::Gamepad, gamepadIndex, axis, ModifierKey::None, scale, deadzone};
+    }
+
+    /// Check if this binding is for an axis (analog) input
+    bool isAxis() const {
+        return std::holds_alternative<GamepadAxis>(input);
+    }
+
+    /// Check if this binding is for a button/key (digital) input
+    bool isButton() const {
+        return !isAxis();
+    }
 };
 
 using Action = std::string;
@@ -431,6 +615,76 @@ struct ActionState {
 struct InputMapping {
     InputBinding binding;
     Action action;
+};
+
+//==========================================================================
+// Action Registration & Phase System Types
+//==========================================================================
+
+/// Condition types for the action builder API
+enum class ActionConditionType : std::uint8_t {
+    WhenPressed,    // True on single frame input enters JustPressed
+    WhenReleased,   // True on single frame input enters JustReleased
+    WhenActive,     // True while JustPressed, Pressed, or Held
+    WhenInactive,   // True while NotPressed or JustReleased
+    WhenHeld        // True on single frame input transitions to Held state
+};
+
+/// Effect types that can be triggered by action conditions
+enum class ActionEffectType : std::uint8_t {
+    EmitAction,     // Emit an action event through EventSystem
+    PushPhase,      // Push a phase onto the phase stack
+    PopPhase,       // Pop the top phase from the stack
+    ChangePhase     // Replace entire phase stack with new phase
+};
+
+/// Terminal mode for action emission
+enum class ActionTerminal : std::uint8_t {
+    Discrete,       // Emit once when conditions transition from false to true
+    Continuous      // Emit every frame while conditions remain true
+};
+
+/// A single condition in an action registration
+struct ActionCondition {
+    ActionConditionType type = ActionConditionType::WhenPressed;
+    InputBinding input;
+    std::optional<float> holdThreshold;  // For WhenHeld condition (nullopt = use default)
+};
+
+/// A single effect in an action registration
+struct ActionEffect {
+    ActionEffectType type = ActionEffectType::EmitAction;
+    std::string value;  // Action name for EmitAction, phase name for phase effects
+};
+
+/// Complete action registration from the builder API
+struct ActionRegistration {
+    std::string phase;                       // Phase this registration is active during
+    std::vector<ActionCondition> conditions; // All conditions must be true (AND logic)
+    std::vector<ActionEffect> effects;       // Effects to execute when conditions met
+    ActionTerminal terminal = ActionTerminal::Discrete;
+    float deadzone = 0.0f;                   // From :withDeadzone() for axis inputs
+
+    // Validation state (set by builder)
+    bool valid = false;
+    std::string validationError;
+};
+
+/// Event payload for action events emitted through EventSystem
+struct ActionEventData {
+    std::string action;        // Action name (e.g., "Jump", "Attack")
+    std::string phase;         // Active phase when triggered
+    InputSource source;        // What device triggered this
+    int playerIndex = 0;       // For local multiplayer (0-3)
+    float duration = 0.0f;     // How long input was held (for held/released)
+    Vec2 axis{0.0f, 0.0f};     // For axis inputs, contains (x, y) or (value, 0)
+};
+
+/// Event payload for phase change events
+struct PhaseEventData {
+    std::string oldPhase;
+    std::string newPhase;
+    std::vector<std::string> phaseStack;  // Full stack after change
 };
 
 //==========================================================================
@@ -837,6 +1091,8 @@ using EventData = std::variant<
     ShaderReloadEventData,
     StateChangeEventData,
     FileChangeEventData,
+    ActionEventData,   // Input action events
+    PhaseEventData,    // Phase change events
     std::any
 >;
 

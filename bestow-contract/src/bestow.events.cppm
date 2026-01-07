@@ -83,6 +83,14 @@ namespace Events {
 
     // Dev tools events
     inline constexpr const char* FileChanged = "file_changed";
+
+    // Input Action events (event-driven input system)
+    inline constexpr const char* ActionTriggered = "action_triggered";
+
+    // Phase events (input phase system)
+    inline constexpr const char* PhaseChanged = "phase_changed";
+    inline constexpr const char* PhasePushed = "phase_pushed";
+    inline constexpr const char* PhasePopped = "phase_popped";
 }
 
 }  // namespace bestow
