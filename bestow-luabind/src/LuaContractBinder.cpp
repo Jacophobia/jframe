@@ -164,6 +164,11 @@ void LuaContractBinder::bindAll() {
     boundSystems_.push_back("metrics");
     spdlog::debug("[LuaContractBinder] Bound MetricsCollector -> bestow.metrics");
 
+    // Timer System (hot-reload-safe timers, always available)
+    bindTimerSystem(*lua_);
+    boundSystems_.push_back("timer");
+    spdlog::debug("[LuaContractBinder] Bound TimerSystem -> bestow.timer");
+
     // Future bindings will be added here as they're implemented:
     // - IAISystem -> bestow.ai
     // - ICameraSystem -> bestow.camera

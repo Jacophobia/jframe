@@ -23,18 +23,26 @@ return {
         self.transient.invulnerable = false
         self.transient.timeSinceDamage = 0
         self.transient.lastDamageSource = nil
+        self.transient.entityId = scope.entity.id  -- Store for event handler
 
-        -- Event subscription WITH PATTERN MATCHING
+        -- Event subscription WITH PATTERN MATCHING (hot-reload-safe)
+        -- Uses table + method name instead of closure
         -- Only invoked when event.target matches this entity's id
         self.transient.hitSub = bestow.events.subscribe("Hit", {
             target = scope.entity.id
-        }, function(event)
-            self:takeDamage(event.damage, event.source, scope)
-        end)
+        }, self, "onHit")
+    end,
+
+    -- Hot-reload-safe event handler (looked up by name at dispatch time)
+    onHit = function(self, event, scope)
+        self:takeDamage(event.damage, event.source, scope)
     end,
 
     destroy = function(self, scope)
-        bestow.events.unsubscribe(self.transient.hitSub)
+        -- Clean up all subscriptions and timers owned by this component
+        -- This is simpler and safer than tracking individual IDs
+        bestow.events.unsubscribeAll(self)
+        bestow.timer.cancelFor(self)
     end,
 
     update = function(self, dt, scope)
@@ -92,10 +100,14 @@ return {
     setInvulnerable = function(self, value, duration)
         self.transient.invulnerable = value
         if value and duration then
-            bestow.timer.after(duration, function()
-                self.transient.invulnerable = false
-            end)
+            -- Hot-reload-safe timer callback (uses table + method name)
+            bestow.timer.after(duration, self, "clearInvulnerability")
         end
+    end,
+
+    -- Hot-reload-safe timer callback
+    clearInvulnerability = function(self)
+        self.transient.invulnerable = false
     end,
 
     getPercent = function(self)

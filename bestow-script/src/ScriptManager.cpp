@@ -544,6 +544,35 @@ void ScriptManager::processReloadQueue() {
     }
 }
 
+void ScriptManager::mergeTablesForHotReload(sol::table existing, sol::table newTable) {
+    // Recursively merge tables: replace functions, preserve data
+    for (auto& pair : newTable) {
+        sol::object key = pair.first;
+        sol::object newValue = pair.second;
+
+        if (newValue.get_type() == sol::type::function) {
+            // Always replace functions with new implementation
+            existing[key] = newValue;
+        } else if (newValue.get_type() == sol::type::table) {
+            // Recursively merge nested tables
+            sol::object existingNested = existing[key];
+            if (existingNested.valid() && existingNested.get_type() == sol::type::table) {
+                mergeTablesForHotReload(existingNested.as<sol::table>(), newValue.as<sol::table>());
+            } else {
+                // No existing nested table, set it
+                existing[key] = newValue;
+            }
+        } else {
+            // Data field: only set if doesn't exist (new field in updated code)
+            sol::object existingValue = existing[key];
+            if (!existingValue.valid() || existingValue.get_type() == sol::type::nil) {
+                existing[key] = newValue;
+            }
+            // If exists, keep the existing value (preserve state)
+        }
+    }
+}
+
 bool ScriptManager::executeScript(const std::filesystem::path& path, const std::string& source) {
     std::string tableKey = pathToTableKey(path);
     std::string pathStr = path.string();
@@ -577,16 +606,86 @@ bool ScriptManager::executeScript(const std::filesystem::path& path, const std::
 
     // Ensure parent tables exist and get the parent
     sol::table parent = ensureTablePath(tableKey);
-
-    // Set the value at the final key
     const std::string& finalKey = segments.back();
-    parent[finalKey] = returnValue;
+
+    // Check if this is a reload (existing table at this path)
+    sol::object existingObj = parent[finalKey];
+    bool isReload = existingObj.valid() && existingObj.get_type() == sol::type::table;
+
+    if (isReload && returnValue.is<sol::table>()) {
+        // HOT RELOAD: Preserve table identity and state
+        // Keep existing table reference, only replace functions
+        sol::table existingTable = existingObj.as<sol::table>();
+        sol::table newTable = returnValue.as<sol::table>();
+
+        int functionsReplaced = 0;
+        int dataPreserved = 0;
+
+        // Iterate through new table and selectively update existing table
+        for (auto& pair : newTable) {
+            sol::object key = pair.first;
+            sol::object newValue = pair.second;
+
+            if (newValue.get_type() == sol::type::function) {
+                // REPLACE: Function values get updated to new implementation
+                existingTable[key] = newValue;
+                functionsReplaced++;
+            } else if (key.is<std::string>() && key.as<std::string>() == "transient") {
+                // SPECIAL: 'transient' table - preserve existing, ensure it exists
+                if (!existingTable["transient"].valid() ||
+                    existingTable["transient"].get_type() != sol::type::table) {
+                    existingTable["transient"] = lua_->create_table();
+                }
+                // Keep existing transient data, don't replace with new defaults
+                dataPreserved++;
+            } else if (newValue.get_type() == sol::type::table) {
+                // NESTED TABLE: Recursively merge (could be methods table, etc.)
+                sol::object existingNested = existingTable[key];
+                if (existingNested.valid() && existingNested.get_type() == sol::type::table) {
+                    // Merge: update functions, keep data
+                    mergeTablesForHotReload(existingNested.as<sol::table>(),
+                                            newValue.as<sol::table>());
+                } else {
+                    // No existing nested table, just set it
+                    existingTable[key] = newValue;
+                }
+            } else {
+                // DATA: Check if field already exists in existing table
+                sol::object existingValue = existingTable[key];
+                if (!existingValue.valid() || existingValue.get_type() == sol::type::nil) {
+                    // New field added in code update - initialize with new default
+                    existingTable[key] = newValue;
+                    spdlog::debug("[ScriptManager] Hot reload: new field '{}' initialized",
+                                  key.is<std::string>() ? key.as<std::string>() : "?");
+                } else {
+                    // Existing field - preserve current value (don't reset state)
+                    dataPreserved++;
+                }
+            }
+        }
+
+        spdlog::info("[ScriptManager] Hot reloaded: app.{} ({} functions updated, {} data fields preserved)",
+                     tableKey, functionsReplaced, dataPreserved);
+    } else {
+        // FIRST LOAD: Set the value directly
+        parent[finalKey] = returnValue;
+
+        // Pre-create transient table if this is a table
+        if (returnValue.is<sol::table>()) {
+            sol::table newTable = returnValue.as<sol::table>();
+            if (!newTable["transient"].valid() ||
+                newTable["transient"].get_type() != sol::type::table) {
+                newTable["transient"] = lua_->create_table();
+            }
+        }
+
+        spdlog::info("[ScriptManager] Loaded: app.{}", tableKey);
+    }
 
     // Track the loaded script
     loadedScripts_[tableKey] = path;
     pathToKey_[pathStr] = tableKey;
 
-    spdlog::info("[ScriptManager] Loaded: app.{}", tableKey);
     return true;
 }
 

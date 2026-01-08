@@ -86,24 +86,28 @@ return {
             })
         end
 
-        -- Event subscriptions with pattern matching
-        self.transient.combatHitSub = bestow.events.subscribe("CombatHit", {}, function(event)
-            self:onCombatHit(event, scope)
-        end)
+        -- Event subscriptions (hot-reload-safe: table + method name)
+        self.transient.combatHitSub = bestow.events.subscribe("CombatHit", {}, self, "onCombatHit")
+        self.transient.entityDiedSub = bestow.events.subscribe("EntityDied", {}, self, "onEntityDied")
 
-        self.transient.entityDiedSub = bestow.events.subscribe("EntityDied", {}, function(event)
-            self:onEntityDied(event, scope)
-        end)
+        -- Start first wave after delay (hot-reload-safe timer)
+        -- Store initial wave number for the callback
+        self.transient.nextWaveToStart = 1
+        bestow.timer.after(2.0, self, "startNextWave")
+    end,
 
-        -- Start first wave after delay
-        bestow.timer.after(2.0, function()
-            self:startWave(1, scope)
-        end)
+    -- Hot-reload-safe timer callback for starting waves
+    startNextWave = function(self, scope)
+        local wave = self.transient.nextWaveToStart or 1
+        self:startWave(wave, scope)
     end,
 
     destroy = function(self, scope)
-        bestow.events.unsubscribe(self.transient.combatHitSub)
-        bestow.events.unsubscribe(self.transient.entityDiedSub)
+        -- Clean up all subscriptions and timers owned by this level
+        -- This is simpler and safer than tracking individual IDs
+        bestow.events.unsubscribeAll(self)
+        bestow.timer.cancelFor(self)
+
         bestow.audio.stopMusic()
         bestow.audio.stopAmbient()
     end,
@@ -218,9 +222,9 @@ return {
 
         bestow.events.emit("WaveComplete", { wave = self.transient.currentWave })
 
-        bestow.timer.after(3.0, function()
-            self:startWave(self.transient.currentWave + 1, scope)
-        end)
+        -- Schedule next wave start (hot-reload-safe timer)
+        self.transient.nextWaveToStart = self.transient.currentWave + 1
+        bestow.timer.after(3.0, self, "startNextWave")
     end,
 
     -- Death handling

@@ -9,6 +9,7 @@ target_sources(bestow-luabind
             src/bestow.luabind.cppm
     PRIVATE
         src/LuaContractBinder.cpp
+        src/LuaErrorUtils.cpp
         src/bindings/types_binding.cpp
         src/bindings/input_binding.cpp
         src/bindings/action_binding.cpp
@@ -28,6 +29,7 @@ target_sources(bestow-luabind
         src/bindings/events_binding.cpp
         src/bindings/ui_binding.cpp
         src/bindings/metrics_binding.cpp
+        src/bindings/timer_binding.cpp
         src/stubs/StubGenerator.cpp
 )
 

@@ -367,6 +367,9 @@ return { main = main }
                 scriptManager_->update();
             }
 
+            // Update timers (hot-reload-safe timer callbacks)
+            updateTimers(dt);
+
             // Call update
             auto updateResult = updateFunc(dt);
             if (!updateResult.valid()) {

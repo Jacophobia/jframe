@@ -73,9 +73,97 @@ void bindActionBuilder(sol::state& lua, IInputSystem& input);
 // Metrics/Profiling System binding (always available, Tracy optional)
 void bindMetricsSystem(sol::state& lua);
 
+// Timer System binding (hot-reload-safe timers, no contract needed)
+void bindTimerSystem(sol::state& lua);
+
+// Update function for timers - call this every frame from game loop
+void updateTimers(float dt);
+
 // Future bindings
 // void bindAISystem(sol::state& lua, IAISystem& ai);
 // void bindCameraSystem(sol::state& lua, ICameraSystem& camera);
+
+//=============================================================================
+// LuaErrorContext - Captures Lua call context for better error messages
+//=============================================================================
+
+/// Captures the Lua call stack context for generating helpful error messages.
+/// Use this to provide file:line information and stack traces in errors.
+struct LuaErrorContext {
+    std::string file;                      // Source file
+    int line = 0;                          // Line number
+    std::string functionName;              // Function name (if available)
+    std::vector<std::string> stackTrace;   // Full stack trace
+
+    /// Capture context from current Lua state
+    /// @param L Lua state
+    /// @param startLevel Stack level to start from (default 2 skips capture call)
+    static LuaErrorContext capture(lua_State* L, int startLevel = 2);
+
+    /// Get formatted location string "file:line"
+    std::string location() const;
+
+    /// Get formatted stack trace
+    std::string formatStackTrace() const;
+};
+
+//=============================================================================
+// Error Throwing Utilities - Use these instead of raw std::runtime_error
+//=============================================================================
+
+/// Throw a Lua error with source location and stack trace
+/// @param L Lua state
+/// @param message Error message
+void luaError(lua_State* L, const std::string& message);
+
+/// Throw a Lua error with API name prefix
+/// @param L Lua state
+/// @param apiName Name of the API (e.g., "bestow.timer.after")
+/// @param message Error message
+void luaError(lua_State* L, const std::string& apiName, const std::string& message);
+
+/// Throw a type error for wrong argument type
+/// @param L Lua state
+/// @param apiName Name of the API
+/// @param argNum Argument number (1-indexed)
+/// @param expected Expected type name
+/// @param actual Actual type name or sol::type
+void luaTypeError(lua_State* L, const std::string& apiName, int argNum,
+                  const std::string& expected, const std::string& actual);
+void luaTypeError(lua_State* L, const std::string& apiName, int argNum,
+                  const std::string& expected, sol::type actual);
+
+/// Throw an argument validation error
+/// @param L Lua state
+/// @param apiName Name of the API
+/// @param argNum Argument number (1-indexed)
+/// @param requirement Description of the requirement that wasn't met
+void luaArgError(lua_State* L, const std::string& apiName, int argNum,
+                 const std::string& requirement);
+
+/// Throw a range error for out-of-bounds values
+/// @param L Lua state
+/// @param apiName Name of the API
+/// @param paramName Name of the parameter
+/// @param value The invalid value
+/// @param minVal Minimum valid value
+/// @param maxVal Maximum valid value
+void luaRangeError(lua_State* L, const std::string& apiName,
+                   const std::string& paramName, double value,
+                   double minVal, double maxVal);
+
+/// Throw a not-found error for missing resources
+/// @param L Lua state
+/// @param apiName Name of the API
+/// @param resourceType Type of resource (e.g., "Entity", "Sound", "Blueprint")
+/// @param name Name/identifier of the missing resource
+void luaNotFoundError(lua_State* L, const std::string& apiName,
+                      const std::string& resourceType, const std::string& name);
+
+/// Get simple location string for logging (returns "file:line")
+/// @param L Lua state
+/// @param level Stack level (default 2)
+std::string getLuaLocation(lua_State* L, int level = 2);
 
 //=============================================================================
 // LuaContractBinder - Main class for binding contracts to Lua

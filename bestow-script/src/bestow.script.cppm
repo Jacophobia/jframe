@@ -179,6 +179,7 @@ private:
     // Hot reload
     void onFileChanged(const std::filesystem::path& path);
     void processReloadQueue();
+    void mergeTablesForHotReload(sol::table existing, sol::table newTable);
 
     // Script execution
     bool executeScript(const std::filesystem::path& path, const std::string& source);
