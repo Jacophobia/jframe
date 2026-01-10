@@ -62,24 +62,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-pthread)
     add_link_options(-pthread)
 
-    # Link against libc++experimental for std::expected symbols on macOS/Clang
-    # std::bad_expected_access<void> symbols are in libc++experimental
-    if(APPLE)
-        # Determine LLVM library path from compiler location
-        get_filename_component(COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-        get_filename_component(LLVM_ROOT "${COMPILER_DIR}" DIRECTORY)
-        set(LLVM_LIB_DIR "${LLVM_ROOT}/lib")
-
-        message(STATUS "  LLVM library directory: ${LLVM_LIB_DIR}")
-
-        # Add LLVM library directory to link paths
-        if(EXISTS "${LLVM_LIB_DIR}")
-            link_directories("${LLVM_LIB_DIR}")
-        endif()
-
-        # Link c++experimental library
-        link_libraries(c++experimental)
-    endif()
+    # Note: On macOS, we use the system libc++ which has full std::expected support.
+    # DO NOT link libc++experimental - it either doesn't exist or is incomplete in LLVM 20.
+    # The system libc++ (from /usr/lib) provides all necessary symbols.
 
     # On Linux, we may need to add the libc++ library path
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

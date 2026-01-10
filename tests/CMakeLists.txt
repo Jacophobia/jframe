@@ -63,35 +63,35 @@ target_compile_features(bestow-tests PRIVATE cxx_std_23)
 # MSVC workaround: force include entt_compat.hpp to fix ADL issues with C++23 modules
 if(MSVC)
     target_compile_options(bestow-tests PRIVATE /FI"bestow/entt_compat.hpp")
+    # Enable vcpkg DLL deployment
+    set_target_properties(bestow-tests PROPERTIES
+        VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
+    )
 endif()
 
 include(GoogleTest)
 
-# Windows: Copy vcpkg DLLs to test output directory
-# This allows the test executable to find its dependencies without PATH manipulation
-if(WIN32)
-    set(VCPKG_DEBUG_BIN_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin")
-    add_custom_command(TARGET bestow-tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${VCPKG_DEBUG_BIN_DIR}"
-            "$<TARGET_FILE_DIR:bestow-tests>"
-        COMMENT "Copying vcpkg debug DLLs to test directory"
+# On Windows in CI, skip test discovery (DLL issues) and run tests directly in CI script
+# On other platforms, use normal test discovery
+if(WIN32 AND DEFINED ENV{CI})
+    # Add a single test that runs the executable directly
+    add_test(NAME bestow-tests-all COMMAND bestow-tests)
+    # Apply flaky test label script
+    set_tests_properties(bestow-tests-all PROPERTIES
+        LABELS "AllTests"
+    )
+else()
+    # Discover tests and apply flaky test labels
+    # The TEST_INCLUDE_FILES option includes our script after test discovery
+    # to label timing-dependent tests as "Flaky"
+    #
+    # Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
+    # Run all tests (local):                ctest --preset <preset>
+    # Run only flaky tests:                 ctest --preset <preset> -L Flaky
+    gtest_discover_tests(bestow-tests
+        TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
     )
 endif()
-
-# Discover tests and apply flaky test labels
-# The TEST_INCLUDE_FILES option includes our script after test discovery
-# to label timing-dependent tests as "Flaky"
-#
-# DISCOVERY_MODE PRE_TEST: Delays test discovery until test time instead of build time.
-#
-# Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
-# Run all tests (local):                ctest --preset <preset>
-# Run only flaky tests:                 ctest --preset <preset> -L Flaky
-gtest_discover_tests(bestow-tests
-    DISCOVERY_MODE PRE_TEST
-    TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
-)
 
 # Kangaru DI compatibility test (basic)
 add_executable(test-kangaru-basic
