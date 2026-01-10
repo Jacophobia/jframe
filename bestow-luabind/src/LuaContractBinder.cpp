@@ -84,9 +84,18 @@ void LuaContractBinder::bindAll() {
     }
 
     if (engine_->has<IAnimationSystem>()) {
-        bindAnimationSystem(*lua_, engine_->get<IAnimationSystem>());
+        IAssetSystem* assets = engine_->has<IAssetSystem>() ? &engine_->get<IAssetSystem>() : nullptr;
+        IGraphics3DSystem* graphics = engine_->has<IGraphics3DSystem>() ? &engine_->get<IGraphics3DSystem>() : nullptr;
+        bindAnimationSystem(*lua_, engine_->get<IAnimationSystem>(), assets, graphics);
         boundSystems_.push_back("animation");
         spdlog::debug("[LuaContractBinder] Bound IAnimationSystem -> bestow.animation");
+
+        // High-level Character API (requires both assets and graphics)
+        if (assets && graphics) {
+            bindCharacterSystem(*lua_, engine_->get<IAnimationSystem>(), assets, graphics);
+            boundSystems_.push_back("character");
+            spdlog::debug("[LuaContractBinder] Bound Character API -> bestow.animation.loadCharacter");
+        }
     }
 
     // Entity System (with reflection-based component access)

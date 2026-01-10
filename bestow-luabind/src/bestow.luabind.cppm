@@ -37,7 +37,12 @@ void bindPhysicsSystem(sol::state& lua, IPhysicsSystem& physics);
 // Contract bindings - 3D systems
 void bindPhysics3DSystem(sol::state& lua, IPhysics3DSystem& physics3d);
 void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics3d);
-void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation);
+void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation,
+                         IAssetSystem* assets = nullptr, IGraphics3DSystem* graphics = nullptr);
+
+// Character system binding (high-level animated character API)
+void bindCharacterSystem(sol::state& lua, IAnimationSystem& animation,
+                         IAssetSystem* assets, IGraphics3DSystem* graphics);
 
 // Entity system binding (reflection-based component access)
 void bindEntitySystem(sol::state& lua, IEntitySystem& entity);

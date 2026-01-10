@@ -29,7 +29,8 @@ sol::object animVoidResultToLua(sol::state& lua, const Result<void, AnimationErr
     return sol::make_object(lua, false);
 }
 
-void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation) {
+void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation,
+                         IAssetSystem* assets, IGraphics3DSystem* graphics) {
     //=========================================================================
     // Animation-related types
     //=========================================================================
@@ -329,6 +330,200 @@ void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation) {
 
     sol::table bestow = lua["bestow"];
     sol::table animTable = lua.create_table();
+
+    //-------------------------------------------------------------------------
+    // Skeleton Creation (from model data)
+    //-------------------------------------------------------------------------
+
+    // Create a skeleton from a loaded model
+    // Usage: local skeleton = bestow.animation.createSkeletonFromModel(modelHandle)
+    if (assets) {
+        animTable["createSkeletonFromModel"] = [&animation, assets, &lua](const AssetHandle& modelHandle) -> sol::object {
+            const ModelData* modelData = assets->getModelData(modelHandle);
+            if (!modelData) {
+                spdlog::warn("[Animation] createSkeletonFromModel: No model data for handle");
+                return sol::nil;
+            }
+
+            auto result = animation.createSkeleton(*modelData);
+            return animResultToLua(lua, result);
+        };
+
+        // Load animation clips from a model file into an existing skeleton
+        // Usage: local clips = bestow.animation.loadClipsFromModel(skeleton, modelHandle)
+        // Returns a table mapping clip names to handles: { idle = handle1, walk = handle2, ... }
+        animTable["loadClipsFromModel"] = [&animation, assets, &lua](
+            SkeletonHandle skeleton, const AssetHandle& modelHandle) -> sol::object
+        {
+            const ModelData* modelData = assets->getModelData(modelHandle);
+            if (!modelData) {
+                spdlog::warn("[Animation] loadClipsFromModel: No model data for handle");
+                return sol::nil;
+            }
+
+            auto clips = animation.createAnimationClips(skeleton, *modelData);
+            if (clips.empty()) {
+                return sol::nil;
+            }
+
+            // Create a table mapping clip names to handles
+            sol::table clipTable = lua.create_table();
+            for (std::size_t i = 0; i < clips.size() && i < modelData->animations.size(); ++i) {
+                const std::string& name = modelData->animations[i].name;
+                clipTable[name] = clips[i];
+            }
+            return clipTable;
+        };
+
+        // Load a single animation clip by name from a model file
+        // Usage: local clip = bestow.animation.loadClip(skeleton, ":library:/animations/idle.fbx", "idle")
+        // If clipName is nil, uses the first animation in the file
+        animTable["loadClip"] = [&animation, assets, &lua](
+            SkeletonHandle skeleton, const std::string& path, sol::optional<std::string> clipName) -> sol::object
+        {
+            AssetHandle modelHandle = assets->loadModel(std::filesystem::path(path));
+            if (!assets->isLoaded(modelHandle)) {
+                spdlog::warn("[Animation] loadClip: Failed to load '{}'", path);
+                return sol::nil;
+            }
+
+            const ModelData* modelData = assets->getModelData(modelHandle);
+            if (!modelData || modelData->animations.empty()) {
+                spdlog::warn("[Animation] loadClip: No animations in '{}'", path);
+                return sol::nil;
+            }
+
+            auto clips = animation.createAnimationClips(skeleton, *modelData);
+            if (clips.empty()) {
+                return sol::nil;
+            }
+
+            // If a specific clip name was requested, find it
+            if (clipName) {
+                for (std::size_t i = 0; i < clips.size() && i < modelData->animations.size(); ++i) {
+                    if (modelData->animations[i].name == *clipName) {
+                        return sol::make_object(lua, clips[i]);
+                    }
+                }
+                spdlog::warn("[Animation] loadClip: Clip '{}' not found in '{}'", *clipName, path);
+                return sol::nil;
+            }
+
+            // Return the first clip
+            return sol::make_object(lua, clips[0]);
+        };
+
+        // High-level: Load a character with skeleton, animator, and mesh ready to use
+        // Usage: local char = bestow.animation.loadCharacter(":library:/characters/hero.fbx")
+        // Returns: { skeleton = handle, animator = handle, clips = { ... }, mesh = handle } or nil
+        animTable["loadCharacter"] = [&animation, assets, graphics, &lua](const std::string& path) -> sol::object {
+            AssetHandle modelHandle = assets->loadModel(std::filesystem::path(path));
+            if (!assets->isLoaded(modelHandle)) {
+                spdlog::warn("[Animation] loadCharacter: Failed to load '{}'", path);
+                return sol::nil;
+            }
+
+            const ModelData* modelData = assets->getModelData(modelHandle);
+            if (!modelData) {
+                spdlog::warn("[Animation] loadCharacter: No model data for '{}'", path);
+                return sol::nil;
+            }
+
+            // Create skeleton
+            auto skeletonResult = animation.createSkeleton(*modelData);
+            if (!skeletonResult) {
+                spdlog::warn("[Animation] loadCharacter: Failed to create skeleton from '{}'", path);
+                return sol::nil;
+            }
+            SkeletonHandle skeleton = *skeletonResult;
+
+            // Create animator
+            auto animatorResult = animation.createAnimator(skeleton);
+            if (!animatorResult) {
+                spdlog::warn("[Animation] loadCharacter: Failed to create animator for '{}'", path);
+                animation.destroySkeleton(skeleton);
+                return sol::nil;
+            }
+            AnimatorHandle animator = *animatorResult;
+
+            // Load any embedded clips
+            sol::table clipTable = lua.create_table();
+            if (!modelData->animations.empty()) {
+                auto clips = animation.createAnimationClips(skeleton, *modelData);
+                for (std::size_t i = 0; i < clips.size() && i < modelData->animations.size(); ++i) {
+                    clipTable[modelData->animations[i].name] = clips[i];
+                }
+            }
+
+            // Create mesh from model data (if graphics system available)
+            MeshHandle mesh = 0;
+            MaterialHandle material = 0;
+            if (graphics && !modelData->meshes.empty()) {
+                auto meshResult = graphics->createMeshFromData(modelData->meshes[0]);
+                if (meshResult) {
+                    mesh = *meshResult;
+                }
+
+                // Create material from model data or use default
+                if (!modelData->materials.empty()) {
+                    auto matResult = graphics->createMaterialsFromModel(*modelData);
+                    if (matResult && !matResult->empty()) {
+                        material = (*matResult)[0];
+                    }
+                }
+                if (material == 0) {
+                    material = graphics->getDefaultPBRMaterial();
+                }
+            }
+
+            // Return the character structure
+            sol::table result = lua.create_table();
+            result["skeleton"] = skeleton;
+            result["animator"] = animator;
+            result["clips"] = clipTable;
+            result["modelHandle"] = modelHandle;
+            result["mesh"] = mesh;
+            result["material"] = material;
+
+            spdlog::info("[Animation] Loaded character '{}' with {} embedded clips, mesh={}",
+                        path, clipTable.size(), mesh);
+            return result;
+        };
+    }
+
+    //-------------------------------------------------------------------------
+    // Character Rendering (requires graphics system)
+    //-------------------------------------------------------------------------
+
+    if (graphics) {
+        // Draw an animated character
+        // Usage: bestow.animation.drawCharacter(char.animator, char.mesh, char.material, worldMatrix)
+        animTable["drawCharacter"] = [&animation, graphics](
+            AnimatorHandle animator, MeshHandle mesh, MaterialHandle material, const Mat4& worldMatrix)
+        {
+            if (!animation.isValidAnimator(animator)) {
+                spdlog::warn("[Animation] drawCharacter: Invalid animator");
+                return;
+            }
+
+            auto boneTransforms = animation.getBoneTransforms(animator);
+            graphics->drawSkinnedMesh(mesh, material, worldMatrix, boneTransforms);
+        };
+
+        // Alternative: Draw with Transform3D instead of Mat4
+        animTable["drawCharacterTransform"] = [&animation, graphics](
+            AnimatorHandle animator, MeshHandle mesh, MaterialHandle material, const Transform3D& transform)
+        {
+            if (!animation.isValidAnimator(animator)) {
+                spdlog::warn("[Animation] drawCharacterTransform: Invalid animator");
+                return;
+            }
+
+            Mat4 worldMatrix = transform.toMatrix();
+            auto boneTransforms = animation.getBoneTransforms(animator);
+            graphics->drawSkinnedMesh(mesh, material, worldMatrix, boneTransforms);
+        };
+    }
 
     //-------------------------------------------------------------------------
     // Skeleton Management

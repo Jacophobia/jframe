@@ -139,6 +139,46 @@ void bindAssetSystem(sol::state& lua, IAssetSystem& assets) {
     };
 
     //-------------------------------------------------------------------------
+    // Model Loading (convenience functions for animated characters)
+    //-------------------------------------------------------------------------
+
+    // Load a model file (FBX, glTF, etc.) and return its handle
+    // Usage: local handle = bestow.assets.loadModel(":library:/characters/hero.fbx")
+    assetsTable["loadModel"] = [&assets](const std::string& path) {
+        return assets.loadModel(std::filesystem::path(path));
+    };
+
+    // Check if a model has animation data
+    assetsTable["hasAnimations"] = [&assets](const AssetHandle& handle) {
+        const ModelData* data = assets.getModelData(handle);
+        return data && !data->animations.empty();
+    };
+
+    // Check if a model has skeleton/bone data
+    assetsTable["hasSkeleton"] = [&assets](const AssetHandle& handle) {
+        const ModelData* data = assets.getModelData(handle);
+        return data && !data->bones.empty();
+    };
+
+    // Get the number of animations in a model
+    assetsTable["getAnimationCount"] = [&assets](const AssetHandle& handle) -> std::size_t {
+        const ModelData* data = assets.getModelData(handle);
+        return data ? data->animations.size() : 0;
+    };
+
+    // Get animation names from a model
+    assetsTable["getAnimationNames"] = [&assets, &lua](const AssetHandle& handle) -> sol::object {
+        const ModelData* data = assets.getModelData(handle);
+        if (!data) return sol::nil;
+
+        sol::table names = lua.create_table();
+        for (std::size_t i = 0; i < data->animations.size(); ++i) {
+            names[i + 1] = data->animations[i].name;
+        }
+        return names;
+    };
+
+    //-------------------------------------------------------------------------
     // Library Discovery (for IDE autocomplete and exploration)
     //-------------------------------------------------------------------------
 
