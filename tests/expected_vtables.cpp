@@ -20,6 +20,9 @@ namespace std {
 // Explicitly instantiate bad_expected_access for the types we use in tests
 // This provides the vtable and typeinfo symbols that libc++experimental is missing
 
+// The base class bad_expected_access<void> is required by all derived instantiations
+template class bad_expected_access<void>;
+
 template class bad_expected_access<bestow::AnimationError>;
 template class bad_expected_access<error_code>;
 
