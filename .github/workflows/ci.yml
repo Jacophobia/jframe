@@ -47,6 +47,14 @@ jobs:
       # =========================================================================
       # macOS Setup
       # =========================================================================
+      - name: Select Xcode 16.2 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app
+          xcodebuild -version
+          echo "SDK_PATH=$(xcrun --show-sdk-path)"
+          xcrun --show-sdk-version
+
       - name: Cache Homebrew packages (macOS)
         if: runner.os == 'macOS'
         uses: actions/cache@v4
@@ -82,31 +90,16 @@ jobs:
             exit 1
           fi
 
-          echo "Using LLVM at: $LLVM_PATH"
+          echo "Using LLVM Clang 20 at: $LLVM_PATH"
           echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
           echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
 
-          # List available SDKs
-          echo "Available macOS SDKs:"
-          xcrun --show-sdk-path
-          ls -la /Library/Developer/CommandLineTools/SDKs/ 2>/dev/null || true
-          ls -la /Applications/Xcode*.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/ 2>/dev/null || true
+          # Xcode 16.2's SDK has std::expected support - no special flags needed
+          echo "Using Xcode 16.2 SDK with native std::expected support"
 
-          # Get the macOS SDK path - but use LLVM's libc++ headers
-          SDK_PATH=$(xcrun --show-sdk-path)
-          echo "Using macOS SDK at: $SDK_PATH"
-          echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
-
-          # Force use of LLVM's libc++ headers AND library (which have std::expected) instead of SDK's
-          # Headers: -nostdinc++ forces use of LLVM's C++ headers
-          # Library: -L adds LLVM's library path, -Wl,-rpath ensures runtime loading
-          echo "CPPFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isystem ${SDK_PATH}/usr/include" >> $GITHUB_ENV
-          echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CXXFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "LDFLAGS=-L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++ -isysroot ${SDK_PATH}" >> $GITHUB_ENV
-
-          # Verify version
+          # Verify compiler and SDK
           ${LLVM_PATH}/bin/clang++ --version
+          xcrun --show-sdk-path
 
       # =========================================================================
       # Linux Setup

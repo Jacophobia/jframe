@@ -29,7 +29,6 @@ add_executable(bestow-tests
     unit/GASSystemTests.cpp
     unit/BlueprintFactoryTests.cpp
     unit/UISystemTests.cpp
-    expected_vtables.cpp  # macOS: Provide missing std::expected exception vtables
 )
 target_use_std_module(bestow-tests)
 
@@ -58,8 +57,7 @@ target_link_libraries(bestow-tests
         GTest::gtest_main
 )
 
-# Note: No special linking needed for macOS - LLVM's libc++ has full std::expected support
-# when using LLVM's own headers (CI uses -nostdinc++ to avoid old SDK headers)
+# Note: No special linking needed for macOS - Xcode 16.2's SDK has native std::expected support
 
 target_compile_features(bestow-tests PRIVATE cxx_std_23)
 
