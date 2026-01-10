@@ -4,6 +4,7 @@
 module;
 
 #include <bestow/sol2_compat.hpp>
+#include <bestow/entt_compat.hpp>
 #include <spdlog/spdlog.h>
 
 module bestow.luabind;

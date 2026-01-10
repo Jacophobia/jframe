@@ -479,7 +479,14 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
 
     std::string extractCmd;
 #if defined(_WIN32)
-    extractCmd = "powershell -Command \"Expand-Archive -Path '" + tempArchive.string() + "' -DestinationPath '" + extractDir.string() + "' -Force\"";
+    // Use PowerShell with proper escaping for paths with spaces
+    // Convert backslashes to forward slashes for PowerShell
+    std::string psArchivePath = tempArchive.string();
+    std::string psExtractPath = extractDir.string();
+    std::replace(psArchivePath.begin(), psArchivePath.end(), '\\', '/');
+    std::replace(psExtractPath.begin(), psExtractPath.end(), '\\', '/');
+    extractCmd = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '" +
+                 psArchivePath + "' -DestinationPath '" + psExtractPath + "' -Force\"";
 #else
     if (extension == ".tar.gz") {
         extractCmd = "tar -xzf \"" + tempArchive.string() + "\" -C \"" + extractDir.string() + "\"";
@@ -530,6 +537,80 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
     // Replace installation
     spdlog::info("Installing update...");
 
+#if defined(_WIN32)
+    // Windows-specific: Can't replace running .exe, so create a batch script to do it after exit
+    auto updaterScript = tempDir / "bestow-updater.bat";
+    std::ofstream scriptFile(updaterScript);
+    if (!scriptFile) {
+        spdlog::error("Failed to create updater script");
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    // Create batch script that waits for this process to exit, then replaces files
+    scriptFile << "@echo off\n";
+    scriptFile << "echo Waiting for Bestow to exit...\n";
+    scriptFile << "timeout /t 2 /nobreak >nul\n";
+    scriptFile << "echo Installing update...\n";
+    scriptFile << "\n";
+
+    // Remove old files
+    scriptFile << "cd /d \"" << installRoot.string() << "\"\n";
+    scriptFile << "for /d %%d in (*) do rd /s /q \"%%d\"\n";
+    scriptFile << "for %%f in (*) do del /q \"%%f\"\n";
+    scriptFile << "\n";
+
+    // Copy new files
+    scriptFile << "xcopy /s /e /h /y \"" << extractDir.string() << "\\*\" \"" << installRoot.string() << "\\\"\n";
+    scriptFile << "if errorlevel 1 (\n";
+    scriptFile << "    echo Update failed! Restoring backup...\n";
+    scriptFile << "    for /d %%d in (*) do rd /s /q \"%%d\"\n";
+    scriptFile << "    for %%f in (*) do del /q \"%%f\"\n";
+    scriptFile << "    xcopy /s /e /h /y \"" << backupDir.string() << "\\*\" \"" << installRoot.string() << "\\\"\n";
+    scriptFile << "    echo Backup restored.\n";
+    scriptFile << "    pause\n";
+    scriptFile << "    exit /b 1\n";
+    scriptFile << ")\n";
+    scriptFile << "\n";
+
+    // Cleanup
+    scriptFile << "rd /s /q \"" << tempDir.string() << "\"\n";
+    scriptFile << "echo.\n";
+    scriptFile << "echo Update complete!\n";
+    scriptFile << "echo Backup saved to: " << backupDir.string() << "\n";
+    scriptFile << "echo.\n";
+    scriptFile << "pause\n";
+    scriptFile << "del \"%~f0\"\n";  // Delete the batch script itself
+    scriptFile.close();
+
+    spdlog::info("");
+    spdlog::info("Update prepared. Launching updater...");
+    spdlog::info("");
+    spdlog::warn("IMPORTANT: Do not close the update window that appears.");
+    spdlog::warn("The update will complete after Bestow exits.");
+
+    // Launch the batch script in a new window and exit immediately
+    // Note: Do NOT use /wait - we want Bestow to exit so the .exe can be replaced
+    std::string launchCmd = "start \"Bestow Update\" \"" + updaterScript.string() + "\"";
+    int launchResult = std::system(launchCmd.c_str());
+
+    if (launchResult != 0) {
+        spdlog::error("Failed to launch updater script");
+        spdlog::error("You can manually run: {}", updaterScript.string());
+        return 1;
+    }
+
+    spdlog::info("Updater started. Exiting Bestow...");
+    spdlog::info("");
+    spdlog::warn("NOTE: If running from Program Files, you may need administrator privileges.");
+
+    // Give the script a moment to start before we exit
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    return 0;
+
+#else
+    // Unix: We can replace files while running (executable is loaded into memory)
     try {
         // Remove old files (except backup)
         for (const auto& entry : std::filesystem::directory_iterator(installRoot)) {
@@ -544,14 +625,13 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
                 std::filesystem::create_directories(destPath.parent_path());
                 std::filesystem::copy_file(entry.path(), destPath,
                     std::filesystem::copy_options::overwrite_existing);
-#if !defined(_WIN32)
+
                 // Preserve execute permissions on Unix
                 if (relativePath.parent_path().filename() == "bin") {
                     std::filesystem::permissions(destPath,
                         std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
                         std::filesystem::perm_options::add);
                 }
-#endif
             }
         }
     } catch (const std::exception& e) {
@@ -588,6 +668,7 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
     spdlog::info("Run 'bestow version' to verify the new version");
 
     return 0;
+#endif
 }
 
 }  // namespace bestow::launcher
