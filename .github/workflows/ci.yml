@@ -86,19 +86,22 @@ jobs:
           echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
           echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
 
-          # Get the macOS SDK path - LLVM Clang needs this to find system headers
+          # List available SDKs
+          echo "Available macOS SDKs:"
+          xcrun --show-sdk-path
+          ls -la /Library/Developer/CommandLineTools/SDKs/ 2>/dev/null || true
+          ls -la /Applications/Xcode*.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/ 2>/dev/null || true
+
+          # Get the macOS SDK path - but use LLVM's libc++ headers
           SDK_PATH=$(xcrun --show-sdk-path)
           echo "Using macOS SDK at: $SDK_PATH"
           echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
 
-          # Note: We don't set LDFLAGS to use LLVM's lib paths because
-          # when cross-compiling for x86_64 on ARM64 runners, LLVM's libraries
-          # are ARM64 and can't be linked. The triplet handles the architecture flags.
-          # We also don't set -arch x86_64 here because vcpkg needs to build
-          # some host tools natively (arm64). The triplet sets the correct flags.
-          echo "CPPFLAGS=-I${LLVM_PATH}/include -isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          # Force use of LLVM's libc++ headers (which have std::expected) instead of SDK's
+          # by putting them first in the include path
+          echo "CPPFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isystem ${SDK_PATH}/usr/include" >> $GITHUB_ENV
           echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
-          echo "CXXFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "CXXFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isysroot ${SDK_PATH}" >> $GITHUB_ENV
 
           # Verify version
           ${LLVM_PATH}/bin/clang++ --version

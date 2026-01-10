@@ -58,22 +58,8 @@ target_link_libraries(bestow-tests
         GTest::gtest_main
 )
 
-# On macOS with Clang, explicitly link libc++ and c++abi for std::expected vtables
-if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    # Get the LLVM library directory from compiler location
-    get_filename_component(COMPILER_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-    get_filename_component(LLVM_ROOT "${COMPILER_DIR}" DIRECTORY)
-    set(LLVM_LIB_DIR "${LLVM_ROOT}/lib")
-
-    # Link against LLVM's c++abi if it exists, otherwise use system
-    if(EXISTS "${LLVM_LIB_DIR}/libc++abi.a")
-        target_link_libraries(bestow-tests PRIVATE "${LLVM_LIB_DIR}/libc++abi.a")
-        message(STATUS "Linking tests against LLVM c++abi: ${LLVM_LIB_DIR}/libc++abi.a")
-    else()
-        target_link_libraries(bestow-tests PRIVATE c++abi)
-        message(STATUS "Linking tests against system c++abi")
-    endif()
-endif()
+# Note: No special linking needed for macOS - LLVM's libc++ has full std::expected support
+# when using LLVM's own headers (CI uses -nostdinc++ to avoid old SDK headers)
 
 target_compile_features(bestow-tests PRIVATE cxx_std_23)
 
