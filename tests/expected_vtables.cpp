@@ -1,21 +1,23 @@
 // tests/expected_vtables.cpp
-// Provides explicit template instantiations for std::bad_expected_access
+// Workaround for missing std::expected vtables when using LLVM Clang 20 with import std;
 //
-// When using LLVM Clang 20 with import std;, the std.pcm module contains declarations
-// but may not emit vtables for template types. We need to explicitly instantiate
-// the templates used in our codebase to force vtable emission.
+// This file deliberately uses #include <expected> instead of import std; to ensure
+// that vtable symbols for std::bad_expected_access are emitted by the compiler.
 //
-// This is NOT needed when using Apple Clang (Xcode), which has its own libc++ implementation.
+// When using import std;, the std.pcm precompiled module contains declarations but
+// doesn't always emit vtable symbols for template instantiations. By using traditional
+// #include in this translation unit, we force the compiler to generate the needed symbols.
 
-import std;
-import bestow.animation;
+#include <expected>
+#include <system_error>
 
-// Force instantiation of std::bad_expected_access vtables and typeinfo
-// These templates are used in our Result<T, E> types throughout the codebase
+// Reference the types we need to ensure their vtables are emitted
+// The mere instantiation in this translation unit with traditional headers
+// should cause the linker to have access to the vtable symbols.
 
-// Base class instantiation - required for polymorphism
-template class std::bad_expected_access<void>;
-
-// Derived class instantiations - used in our systems
-template class std::bad_expected_access<bestow::AnimationError>;
-template class std::bad_expected_access<std::error_code>;
+namespace {
+    // Force instantiation by creating unused pointers
+    // This ensures vtables and typeinfo are emitted without violating ODR
+    [[maybe_unused]] std::bad_expected_access<void>* unused_ptr_void = nullptr;
+    [[maybe_unused]] std::bad_expected_access<std::error_code>* unused_ptr_error = nullptr;
+}

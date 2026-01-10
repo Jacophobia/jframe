@@ -67,6 +67,18 @@ if(MSVC)
     set_target_properties(bestow-tests PROPERTIES
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
+
+    # On Windows, copy vcpkg DLLs to test executable directory
+    # This ensures DLLs can be found when running tests
+    if(DEFINED ENV{CI})
+        add_custom_command(TARGET bestow-tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/$<IF:$<CONFIG:Debug>,debug,>/bin"
+                "$<TARGET_FILE_DIR:bestow-tests>"
+            COMMENT "Copying vcpkg DLLs for Windows CI tests"
+        )
+    endif()
 endif()
 
 include(GoogleTest)
@@ -75,12 +87,8 @@ include(GoogleTest)
 # On other platforms, use normal test discovery
 if(WIN32 AND DEFINED ENV{CI})
     # Add a single test that runs the executable directly
-    # Use full path to executable and set PATH to include vcpkg DLLs
-    add_test(NAME bestow-tests-all
-        COMMAND ${CMAKE_COMMAND} -E env
-            "PATH=$<TARGET_FILE_DIR:bestow-tests>;${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin;${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin;$ENV{PATH}"
-            $<TARGET_FILE:bestow-tests>
-    )
+    # DLLs are copied to the executable directory via POST_BUILD command above
+    add_test(NAME bestow-tests-all COMMAND bestow-tests)
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
     )
