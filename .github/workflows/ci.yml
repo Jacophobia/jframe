@@ -228,7 +228,13 @@ jobs:
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: cmake --build --preset ${{ matrix.preset }} --config Debug --parallel
+        run: |
+          # Add vcpkg DLLs to PATH before building (needed for gtest_discover_tests)
+          $vcpkgBinPath = "${{ github.workspace }}\build\${{ matrix.preset }}\vcpkg_installed\x64-windows\bin"
+          $env:PATH = "$vcpkgBinPath;$env:PATH"
+          Write-Host "Added vcpkg bin to PATH: $vcpkgBinPath"
+
+          cmake --build --preset ${{ matrix.preset }} --config Debug --parallel
 
       - name: Test (Unix)
         if: runner.os != 'Windows'

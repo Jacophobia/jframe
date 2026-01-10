@@ -29,6 +29,7 @@ add_executable(bestow-tests
     unit/GASSystemTests.cpp
     unit/BlueprintFactoryTests.cpp
     unit/UISystemTests.cpp
+    expected_vtables.cpp  # macOS: Provide missing std::expected exception vtables
 )
 target_use_std_module(bestow-tests)
 
