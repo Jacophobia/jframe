@@ -97,11 +97,13 @@ jobs:
           echo "Using macOS SDK at: $SDK_PATH"
           echo "SDKROOT=${SDK_PATH}" >> $GITHUB_ENV
 
-          # Force use of LLVM's libc++ headers (which have std::expected) instead of SDK's
-          # by putting them first in the include path
+          # Force use of LLVM's libc++ headers AND library (which have std::expected) instead of SDK's
+          # Headers: -nostdinc++ forces use of LLVM's C++ headers
+          # Library: -L adds LLVM's library path, -Wl,-rpath ensures runtime loading
           echo "CPPFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isystem ${SDK_PATH}/usr/include" >> $GITHUB_ENV
           echo "CFLAGS=-isysroot ${SDK_PATH}" >> $GITHUB_ENV
           echo "CXXFLAGS=-nostdinc++ -isystem ${LLVM_PATH}/include/c++/v1 -isysroot ${SDK_PATH}" >> $GITHUB_ENV
+          echo "LDFLAGS=-L${LLVM_PATH}/lib/c++ -Wl,-rpath,${LLVM_PATH}/lib/c++ -isysroot ${SDK_PATH}" >> $GITHUB_ENV
 
           # Verify version
           ${LLVM_PATH}/bin/clang++ --version
