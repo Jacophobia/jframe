@@ -71,15 +71,18 @@ endif()
 
 include(GoogleTest)
 
-# On Windows in CI, skip test discovery (DLL issues) and run tests directly in CI script
+# On Windows in CI, skip test discovery (DLL issues) and run tests directly
 # On other platforms, use normal test discovery
 if(WIN32 AND DEFINED ENV{CI})
     # Add a single test that runs the executable directly
-    # Set working directory to executable location so DLLs can be found
-    add_test(NAME bestow-tests-all COMMAND bestow-tests)
+    # Use full path to executable and set PATH to include vcpkg DLLs
+    add_test(NAME bestow-tests-all
+        COMMAND ${CMAKE_COMMAND} -E env
+            "PATH=$<TARGET_FILE_DIR:bestow-tests>;${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin;${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin;$ENV{PATH}"
+            $<TARGET_FILE:bestow-tests>
+    )
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
-        WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 else()
     # Discover tests and apply flaky test labels
