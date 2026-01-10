@@ -71,10 +71,14 @@ include(GoogleTest)
 # The TEST_INCLUDE_FILES option includes our script after test discovery
 # to label timing-dependent tests as "Flaky"
 #
+# DISCOVERY_MODE PRE_TEST: Delays test discovery until test time instead of build time.
+# This ensures DLLs are available via PATH on Windows when discovery runs.
+#
 # Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
 # Run all tests (local):                ctest --preset <preset>
 # Run only flaky tests:                 ctest --preset <preset> -L Flaky
 gtest_discover_tests(bestow-tests
+    DISCOVERY_MODE PRE_TEST
     TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
 )
 

@@ -228,14 +228,7 @@ jobs:
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
-        run: |
-          # Add vcpkg DEBUG DLLs to PATH (persists for all subprocesses via GITHUB_PATH)
-          $vcpkgBinPath = "${{ github.workspace }}\build\${{ matrix.preset }}\vcpkg_installed\x64-windows\debug\bin"
-          echo "$vcpkgBinPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          $env:PATH = "$vcpkgBinPath;$env:PATH"
-          Write-Host "Added vcpkg debug bin to GITHUB_PATH and current PATH: $vcpkgBinPath"
-
-          cmake --build --preset ${{ matrix.preset }} --config Debug --parallel
+        run: cmake --build --preset ${{ matrix.preset }} --config Debug --parallel
 
       - name: Test (Unix)
         if: runner.os != 'Windows'
@@ -257,8 +250,11 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         run: |
-          # vcpkg debug bin path already in PATH from Build step via GITHUB_PATH
-          Write-Host "PATH includes vcpkg debug DLLs from Build step"
+          # Add vcpkg DEBUG DLLs to PATH for test execution and discovery
+          # With DISCOVERY_MODE PRE_TEST, test discovery happens here, not at build time
+          $vcpkgBinPath = "${{ github.workspace }}\build\${{ matrix.preset }}\vcpkg_installed\x64-windows\debug\bin"
+          $env:PATH = "$vcpkgBinPath;$env:PATH"
+          Write-Host "Added vcpkg debug bin to PATH: $vcpkgBinPath"
 
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
