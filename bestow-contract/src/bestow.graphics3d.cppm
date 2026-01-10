@@ -16,6 +16,7 @@ import bestow.types;
 import bestow.assets;
 import bestow.entity;
 import bestow.config;
+import bestow.animation;  // For IAnimationSystem (lock-on socket resolution)
 import bestow.graphics.context;  // Base interface for all graphics systems
 
 export namespace bestow {
@@ -840,6 +841,56 @@ public:
 
     /// Set current LOD bias (< 1.0 = lower detail, > 1.0 = higher detail)
     virtual void setLODBias(float bias) = 0;
+
+    //======================================================================
+    // Lock-On Targeting System
+    //======================================================================
+
+    /// Configure lock-on behavior
+    virtual void setLockOnConfig(const LockOnConfig& config) = 0;
+
+    /// Get current lock-on configuration
+    virtual LockOnConfig getLockOnConfig() const = 0;
+
+    /// Lock onto the best available target
+    /// Searches for entities with LockableTarget component within range and FOV
+    /// @param entities EntitySystem to query for targets
+    /// @param animation AnimationSystem for socket resolution (can be null)
+    /// @return Lock result with best target, or invalid result if none found
+    virtual LockOnResult lockOn(
+        IEntitySystem& entities,
+        IAnimationSystem* animation = nullptr) = 0;
+
+    /// Get current lock target info (updated position each call)
+    virtual std::optional<LockOnResult> getLockTarget() const = 0;
+
+    /// Poll the current locked target's world position
+    /// This is the primary method for getting updated target position each frame
+    virtual std::optional<Vec3> pollLockPosition(
+        IEntitySystem& entities,
+        IAnimationSystem* animation = nullptr) = 0;
+
+    /// Shift lock target in screen-space direction
+    /// Used for cycling between nearby targets (e.g., D-pad or right stick)
+    /// @param screenDirection Normalized direction in screen space to shift
+    /// @param entities EntitySystem to query for targets
+    /// @param animation AnimationSystem for socket resolution
+    /// @return New lock result, or previous if no valid target in that direction
+    virtual LockOnResult shiftLockTarget(
+        const Vec2& screenDirection,
+        IEntitySystem& entities,
+        IAnimationSystem* animation = nullptr) = 0;
+
+    /// Unlock current target
+    virtual void unlock() = 0;
+
+    /// Check if currently locked onto a target
+    virtual bool isLocked() const = 0;
+
+    /// Get all potential targets (for UI visualization)
+    virtual std::vector<LockOnResult> getPotentialTargets(
+        IEntitySystem& entities,
+        IAnimationSystem* animation = nullptr) const = 0;
 };
 
 }  // namespace bestow

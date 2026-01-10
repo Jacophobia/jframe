@@ -18,6 +18,7 @@ target_sources(bestow-luabind
         src/bindings/physics3d_binding.cpp
         src/bindings/graphics3d_binding.cpp
         src/bindings/animation_binding.cpp
+        src/bindings/character_binding.cpp
         src/bindings/entity_binding.cpp
         src/bindings/config_binding.cpp
         src/bindings/assets_binding.cpp

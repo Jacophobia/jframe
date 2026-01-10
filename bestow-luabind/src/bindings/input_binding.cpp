@@ -58,6 +58,15 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
         }
     );
 
+    // CursorMode enum - for cursor visibility control
+    lua.new_enum<CursorMode>("CursorMode",
+        {
+            {"Normal", CursorMode::Normal},
+            {"Hidden", CursorMode::Hidden},
+            {"Disabled", CursorMode::Disabled}
+        }
+    );
+
     // Note: InputBinding usertype is now defined in action_binding.cpp with the new structure
 
     // ActionState struct (legacy)
@@ -159,6 +168,30 @@ void bindInputSystem(sol::state& lua, IInputSystem& input) {
 
     inputTable["getScrollDelta"] = [&input]() {
         return input.getScrollDelta();
+    };
+
+    //-------------------------------------------------------------------------
+    // Cursor Control
+    //-------------------------------------------------------------------------
+
+    inputTable["showMouseCursor"] = [&input]() {
+        input.showMouseCursor();
+    };
+
+    inputTable["hideMouseCursor"] = [&input]() {
+        input.hideMouseCursor();
+    };
+
+    inputTable["isMouseCursorVisible"] = [&input]() {
+        return input.isMouseCursorVisible();
+    };
+
+    inputTable["setCursorMode"] = [&input](CursorMode mode) {
+        input.setCursorMode(mode);
+    };
+
+    inputTable["getCursorMode"] = [&input]() {
+        return input.getCursorMode();
     };
 
     //-------------------------------------------------------------------------

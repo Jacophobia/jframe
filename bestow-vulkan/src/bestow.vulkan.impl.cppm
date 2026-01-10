@@ -850,6 +850,20 @@ public:
     void setLODBias(float bias) override;
 
     //======================================================================
+    // Lock-On Targeting System
+    //======================================================================
+
+    void setLockOnConfig(const LockOnConfig& config) override;
+    LockOnConfig getLockOnConfig() const override;
+    LockOnResult lockOn(IEntitySystem& entities, IAnimationSystem* animation = nullptr) override;
+    std::optional<LockOnResult> getLockTarget() const override;
+    std::optional<Vec3> pollLockPosition(IEntitySystem& entities, IAnimationSystem* animation = nullptr) override;
+    LockOnResult shiftLockTarget(const Vec2& screenDirection, IEntitySystem& entities, IAnimationSystem* animation = nullptr) override;
+    void unlock() override;
+    bool isLocked() const override;
+    std::vector<LockOnResult> getPotentialTargets(IEntitySystem& entities, IAnimationSystem* animation = nullptr) const override;
+
+    //======================================================================
     // Vulkan-specific
     //======================================================================
 
@@ -945,6 +959,11 @@ private:
     std::vector<float> lodDistances_;
     std::map<MeshHandle, std::vector<MeshHandle>> lodMeshRegistry_;
     float lodBias_ = 1.0f;
+
+    // Lock-on system
+    LockOnConfig lockOnConfig_;
+    LockOnResult currentLock_;
+    bool isLocked_ = false;
 
     // Mesh storage
     struct VulkanMesh {

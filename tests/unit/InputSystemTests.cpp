@@ -830,4 +830,104 @@ TEST_F(InputSystemTest, LegacyGetAllActionStatesEmpty) {
     EXPECT_TRUE(states.empty());
 }
 
+//=============================================================================
+// Cursor Control Tests
+//=============================================================================
+
+TEST_F(InputSystemTest, CursorModeDefaultsToNormal) {
+    // Without initialization, cursor mode should default to Normal
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+}
+
+TEST_F(InputSystemTest, CursorIsVisibleByDefault) {
+    EXPECT_TRUE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, ShowMouseCursorSetsNormalMode) {
+    inputSystem_->setCursorMode(CursorMode::Hidden);
+    inputSystem_->showMouseCursor();
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+    EXPECT_TRUE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, HideMouseCursorSetsHiddenMode) {
+    inputSystem_->hideMouseCursor();
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Hidden);
+    EXPECT_FALSE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, SetCursorModeNormal) {
+    inputSystem_->setCursorMode(CursorMode::Normal);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+    EXPECT_TRUE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, SetCursorModeHidden) {
+    inputSystem_->setCursorMode(CursorMode::Hidden);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Hidden);
+    EXPECT_FALSE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, SetCursorModeDisabled) {
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Disabled);
+    EXPECT_FALSE(inputSystem_->isMouseCursorVisible());
+}
+
+TEST_F(InputSystemTest, CursorModePersistsAcrossCalls) {
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Disabled);
+
+    // Call again with same mode
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Disabled);
+}
+
+TEST_F(InputSystemTest, CursorModeTransitions) {
+    // Normal -> Hidden -> Disabled -> Normal
+    inputSystem_->setCursorMode(CursorMode::Normal);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+
+    inputSystem_->setCursorMode(CursorMode::Hidden);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Hidden);
+
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Disabled);
+
+    inputSystem_->setCursorMode(CursorMode::Normal);
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+}
+
+TEST_F(InputSystemTest, ShowCursorAfterDisabled) {
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    EXPECT_FALSE(inputSystem_->isMouseCursorVisible());
+
+    inputSystem_->showMouseCursor();
+    EXPECT_TRUE(inputSystem_->isMouseCursorVisible());
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Normal);
+}
+
+TEST_F(InputSystemTest, HideCursorAfterDisabled) {
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    inputSystem_->hideMouseCursor();
+    EXPECT_FALSE(inputSystem_->isMouseCursorVisible());
+    EXPECT_EQ(inputSystem_->getCursorMode(), CursorMode::Hidden);
+}
+
+TEST_F(InputSystemTest, CursorModeDoesNotAffectMousePosition) {
+    // Mouse position should still be queryable regardless of cursor mode
+    Vec2 pos1 = inputSystem_->getMousePosition();
+
+    inputSystem_->setCursorMode(CursorMode::Hidden);
+    Vec2 pos2 = inputSystem_->getMousePosition();
+
+    inputSystem_->setCursorMode(CursorMode::Disabled);
+    Vec2 pos3 = inputSystem_->getMousePosition();
+
+    // All should return valid positions (in headless mode, likely 0,0)
+    EXPECT_GE(pos1.x, 0.0f);
+    EXPECT_GE(pos2.x, 0.0f);
+    EXPECT_GE(pos3.x, 0.0f);
+}
+
 }  // namespace bestow::tests

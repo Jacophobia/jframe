@@ -11,6 +11,7 @@ module;
 #include <glm/mat3x3.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 export module bestow.types;
 
@@ -58,6 +59,15 @@ struct Transform3D {
     Vec3 scale{1.0f, 1.0f, 1.0f};
 
     static Transform3D identity() { return {}; }
+
+    /// Compute the 4x4 world transformation matrix (Translation * Rotation * Scale)
+    Mat4 toMatrix() const {
+        Mat4 matrix{1.0f};  // Identity
+        matrix = glm::translate(matrix, position);
+        matrix = matrix * glm::mat4_cast(rotation);
+        matrix = glm::scale(matrix, scale);
+        return matrix;
+    }
 };
 
 struct AABB3D {
@@ -1129,6 +1139,77 @@ enum class BehaviorStatus {
     Success,
     Failure,
     Running
+};
+
+//==========================================================================
+// Input Types
+//==========================================================================
+
+/// Mouse cursor visibility modes
+enum class CursorMode : std::uint8_t {
+    Normal,    // Cursor visible and free to move
+    Hidden,    // Cursor hidden but position still tracked
+    Disabled   // Cursor hidden and captured (raw input mode, for FPS games)
+};
+
+//==========================================================================
+// Lock-On Targeting Types
+//==========================================================================
+
+/// Source of a lock-on point (socket-based or offset-based)
+enum class LockPointSource : std::uint8_t {
+    Socket,  // Uses animation socket (requires AnimatorHandle)
+    Offset   // Uses fixed offset from entity transform
+};
+
+/// Definition of a single lock-on point
+struct LockPointDef {
+    std::string name;                     // e.g., "head", "chest", "weakPoint"
+    LockPointSource source = LockPointSource::Offset;
+    std::string socketName;               // For Socket source: name of animation socket
+    Vec3 localOffset{0.0f, 0.0f, 0.0f};   // For Offset source: position relative to entity
+    float priority = 1.0f;                // Higher = more likely to be selected
+};
+
+/// Component that makes an entity lockable
+/// Entities with this component can be targeted by the lock-on system
+struct LockableTarget {
+    std::vector<LockPointDef> lockPoints;
+    bool enabled = true;  // Can this target be locked onto?
+};
+
+/// Configuration for lock-on behavior
+struct LockOnConfig {
+    float maxRange = 50.0f;           // Maximum distance to consider targets
+    float fovMargin = 0.9f;           // Targets must be within this fraction of FOV (0.9 = 90%)
+    float centerBias = 0.7f;          // How much to prefer targets closer to screen center (0-1)
+    float priorityWeight = 0.3f;      // How much lock point priority affects selection
+    bool preferCurrentTarget = true;  // Slightly prefer current target to prevent flickering
+    float hysteresis = 1.2f;          // Current target score multiplier for preferCurrentTarget
+};
+
+/// Result of a lock-on operation
+struct LockOnResult {
+    Entity entity = entt::null;       // The locked entity (or null if none)
+    int lockPointIndex = -1;          // Which lock point on the entity (-1 = none)
+    Vec3 worldPosition{0.0f};         // World-space position of the lock point
+    Vec2 screenPosition{0.0f};        // Screen-space position of the lock point
+    float distance = 0.0f;            // Distance from camera to lock point
+    float score = 0.0f;               // Selection score (for debugging)
+
+    bool isValid() const { return entity != entt::null && lockPointIndex >= 0; }
+};
+
+/// Handle to an animator instance (opaque, from animation system)
+using AnimatorHandle = std::uint64_t;
+inline constexpr AnimatorHandle InvalidAnimator = 0;
+
+/// Component that associates an entity with its animator instance
+/// Required for socket-based lock points and other animation-dependent features
+struct AnimatorRef {
+    AnimatorHandle animator = InvalidAnimator;
+
+    bool isValid() const { return animator != InvalidAnimator; }
 };
 
 //==========================================================================

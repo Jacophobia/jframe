@@ -317,12 +317,17 @@ private:
                 result["target"] = static_cast<std::uint32_t>(arg.target);
                 result["source"] = static_cast<std::uint32_t>(arg.source);
                 result["amount"] = arg.amount;
-                result["damageType"] = arg.damageType;
+                result["knockbackX"] = arg.knockback.x;
+                result["knockbackY"] = arg.knockback.y;
             }
             else if constexpr (std::is_same_v<T, ActionEventData>) {
                 result["action"] = arg.action;
                 result["phase"] = arg.phase;
-                result["value"] = arg.value;
+                result["source"] = static_cast<int>(arg.source);
+                result["playerIndex"] = arg.playerIndex;
+                result["duration"] = arg.duration;
+                result["axisX"] = arg.axis.x;
+                result["axisY"] = arg.axis.y;
             }
             else if constexpr (std::is_same_v<T, PhaseEventData>) {
                 result["oldPhase"] = arg.oldPhase;
@@ -334,7 +339,54 @@ private:
                 // This is used for custom event data
                 result["_isAny"] = true;
             }
-            // Add more conversions as needed
+            else if constexpr (std::is_same_v<T, LevelEventData>) {
+                result["levelId"] = arg.levelId;
+                result["event"] = static_cast<int>(arg.event);
+            }
+            else if constexpr (std::is_same_v<T, CollisionEvent>) {
+                result["entityA"] = static_cast<std::uint32_t>(arg.entityA);
+                result["entityB"] = static_cast<std::uint32_t>(arg.entityB);
+            }
+            else if constexpr (std::is_same_v<T, TriggerEvent>) {
+                result["entityA"] = static_cast<std::uint32_t>(arg.entityA);
+                result["entityB"] = static_cast<std::uint32_t>(arg.entityB);
+            }
+            else if constexpr (std::is_same_v<T, CollisionEvent3D>) {
+                result["entityA"] = static_cast<std::uint32_t>(arg.entityA);
+                result["entityB"] = static_cast<std::uint32_t>(arg.entityB);
+            }
+            else if constexpr (std::is_same_v<T, TriggerEvent3D>) {
+                result["entityA"] = static_cast<std::uint32_t>(arg.entityA);
+                result["entityB"] = static_cast<std::uint32_t>(arg.entityB);
+            }
+            else if constexpr (std::is_same_v<T, AssetEventData>) {
+                result["handle"] = arg.handle;
+                result["type"] = static_cast<int>(arg.type);
+                result["state"] = static_cast<int>(arg.state);
+                if (!arg.error.empty()) {
+                    result["error"] = arg.error;
+                }
+            }
+            else if constexpr (std::is_same_v<T, ConfigEventData>) {
+                result["key"] = arg.key;
+                result["section"] = arg.section;
+            }
+            else if constexpr (std::is_same_v<T, ShaderReloadEventData>) {
+                result["handle"] = arg.handle;
+                result["success"] = arg.success;
+                if (!arg.error.empty()) {
+                    result["error"] = arg.error;
+                }
+            }
+            else if constexpr (std::is_same_v<T, StateChangeEventData>) {
+                result["oldState"] = arg.oldStateName;
+                result["newState"] = arg.newStateName;
+            }
+            else if constexpr (std::is_same_v<T, FileChangeEventData>) {
+                result["path"] = arg.path;
+                result["fileType"] = arg.fileType;
+            }
+            // Any unhandled type gets an empty table
         }, data);
 
         return result;

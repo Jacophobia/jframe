@@ -232,6 +232,25 @@ public:
     virtual int getConnectedControllerCount() const = 0;
     virtual bool isControllerConnected(int index) const = 0;
     virtual std::string getControllerName(int index) const = 0;
+
+    //======================================================================
+    // Cursor Control
+    //======================================================================
+
+    /// Show the mouse cursor (normal mode)
+    virtual void showMouseCursor() = 0;
+
+    /// Hide the mouse cursor (position still tracked)
+    virtual void hideMouseCursor() = 0;
+
+    /// Check if mouse cursor is currently visible
+    virtual bool isMouseCursorVisible() const = 0;
+
+    /// Set the cursor mode (Normal, Hidden, or Disabled/captured)
+    virtual void setCursorMode(CursorMode mode) = 0;
+
+    /// Get the current cursor mode
+    virtual CursorMode getCursorMode() const = 0;
 };
 
 }  // namespace bestow

@@ -3346,4 +3346,351 @@ IUIRenderBackend* VulkanGraphics3DSystem::getUIRenderBackend() {
     return uiRenderBackend_.get();
 }
 
+//==========================================================================
+// Lock-On Targeting System Implementation
+//==========================================================================
+
+void VulkanGraphics3DSystem::setLockOnConfig(const LockOnConfig& config) {
+    lockOnConfig_ = config;
+}
+
+LockOnConfig VulkanGraphics3DSystem::getLockOnConfig() const {
+    return lockOnConfig_;
+}
+
+namespace {
+    /// Build a glm::mat4 from Transform3D
+    glm::mat4 transform3DToMatrix(const Transform3D& transform) {
+        glm::mat4 matrix = glm::mat4(1.0f);
+        glm::vec3 pos{transform.position.x, transform.position.y, transform.position.z};
+        glm::quat rot{transform.rotation.w, transform.rotation.x,
+                      transform.rotation.y, transform.rotation.z};
+        glm::vec3 scl{transform.scale.x, transform.scale.y, transform.scale.z};
+
+        matrix = glm::translate(matrix, pos);
+        matrix = matrix * glm::mat4_cast(rot);
+        matrix = glm::scale(matrix, scl);
+        return matrix;
+    }
+
+    /// Convert glm::mat4 to Mat4
+    Mat4 glmToMat4(const glm::mat4& m) {
+        Mat4 result;
+        std::memcpy(&result, &m, sizeof(Mat4));
+        return result;
+    }
+
+    /// Helper to resolve a lock point's world position
+    /// @param lockPoint The lock point definition
+    /// @param entityTransform The entity's Transform3D component
+    /// @param animatorRef Optional AnimatorRef component (required for socket-based lock points)
+    /// @param animation Animation system for socket queries (can be null)
+    std::optional<Vec3> resolveLockPointPosition(
+        const LockPointDef& lockPoint,
+        const Transform3D& entityTransform,
+        const AnimatorRef* animatorRef,
+        IAnimationSystem* animation)
+    {
+        // Build entity world matrix (needed for both offset and socket)
+        glm::mat4 entityMatrix = transform3DToMatrix(entityTransform);
+
+        if (lockPoint.source == LockPointSource::Socket) {
+            // Socket-based lock points require animation system and animator
+            if (!animation) {
+                // No animation system - fall back to offset
+                glm::vec4 localPos{lockPoint.localOffset.x, lockPoint.localOffset.y, lockPoint.localOffset.z, 1.0f};
+                glm::vec4 worldPos = entityMatrix * localPos;
+                return Vec3{worldPos.x, worldPos.y, worldPos.z};
+            }
+
+            if (!animatorRef || !animatorRef->isValid()) {
+                // No animator on entity - fall back to offset
+                glm::vec4 localPos{lockPoint.localOffset.x, lockPoint.localOffset.y, lockPoint.localOffset.z, 1.0f};
+                glm::vec4 worldPos = entityMatrix * localPos;
+                return Vec3{worldPos.x, worldPos.y, worldPos.z};
+            }
+
+            // Query socket transform from animation system
+            Mat4 entityWorldMat = glmToMat4(entityMatrix);
+            auto socketResult = animation->getSocketTransform(
+                animatorRef->animator,
+                lockPoint.socketName,
+                entityWorldMat
+            );
+
+            if (socketResult) {
+                // Return the socket's world position
+                return socketResult->position;
+            } else {
+                // Socket not found - fall back to offset
+                glm::vec4 localPos{lockPoint.localOffset.x, lockPoint.localOffset.y, lockPoint.localOffset.z, 1.0f};
+                glm::vec4 worldPos = entityMatrix * localPos;
+                return Vec3{worldPos.x, worldPos.y, worldPos.z};
+            }
+        } else {
+            // Offset-based: transform local offset by entity's world matrix
+            glm::vec4 localPos{lockPoint.localOffset.x, lockPoint.localOffset.y, lockPoint.localOffset.z, 1.0f};
+            glm::vec4 worldPos = entityMatrix * localPos;
+            return Vec3{worldPos.x, worldPos.y, worldPos.z};
+        }
+    }
+}  // anonymous namespace
+
+LockOnResult VulkanGraphics3DSystem::lockOn(IEntitySystem& entities, IAnimationSystem* animation) {
+    // Get all potential targets first
+    std::vector<LockOnResult> candidates = getPotentialTargets(entities, animation);
+
+    if (candidates.empty()) {
+        // No valid targets, unlock
+        unlock();
+        return LockOnResult{};
+    }
+
+    // Find the target with the highest score
+    LockOnResult bestResult;
+    float bestScore = -1.0f;
+
+    for (const auto& candidate : candidates) {
+        float score = candidate.score;
+
+        // Apply hysteresis if preferring current target
+        if (lockOnConfig_.preferCurrentTarget && isLocked_ &&
+            candidate.entity == currentLock_.entity &&
+            candidate.lockPointIndex == currentLock_.lockPointIndex) {
+            score *= lockOnConfig_.hysteresis;
+        }
+
+        if (score > bestScore) {
+            bestScore = score;
+            bestResult = candidate;
+        }
+    }
+
+    // Update current lock
+    if (bestResult.isValid()) {
+        currentLock_ = bestResult;
+        isLocked_ = true;
+    } else {
+        unlock();
+    }
+
+    return currentLock_;
+}
+
+std::optional<LockOnResult> VulkanGraphics3DSystem::getLockTarget() const {
+    if (isLocked_ && currentLock_.isValid()) {
+        return currentLock_;
+    }
+    return std::nullopt;
+}
+
+std::optional<Vec3> VulkanGraphics3DSystem::pollLockPosition(IEntitySystem& entities, IAnimationSystem* animation) {
+    if (!isLocked_ || !currentLock_.isValid()) {
+        return std::nullopt;
+    }
+
+    // Query the entity's current Transform3D component
+    auto* transform = entities.tryGet<Transform3D>(currentLock_.entity);
+    if (!transform) {
+        // Entity no longer has transform - unlock
+        unlock();
+        return std::nullopt;
+    }
+
+    // Query the entity's LockableTarget component
+    auto* lockable = entities.tryGet<LockableTarget>(currentLock_.entity);
+    if (!lockable || !lockable->enabled) {
+        unlock();
+        return std::nullopt;
+    }
+
+    // Validate lock point index
+    if (currentLock_.lockPointIndex < 0 ||
+        static_cast<std::size_t>(currentLock_.lockPointIndex) >= lockable->lockPoints.size()) {
+        unlock();
+        return std::nullopt;
+    }
+
+    // Resolve the lock point position
+    const auto& lockPoint = lockable->lockPoints[static_cast<std::size_t>(currentLock_.lockPointIndex)];
+    const AnimatorRef* animatorRef = entities.tryGet<AnimatorRef>(currentLock_.entity);
+    auto worldPos = resolveLockPointPosition(lockPoint, *transform, animatorRef, animation);
+
+    if (worldPos) {
+        // Update cached world position
+        currentLock_.worldPosition = *worldPos;
+
+        // Update screen position
+        auto screenPos = worldToScreen(*worldPos);
+        if (screenPos) {
+            currentLock_.screenPosition = *screenPos;
+        }
+
+        // Update distance
+        Vec3 camPos = camera_.transform.position;
+        float dx = worldPos->x - camPos.x;
+        float dy = worldPos->y - camPos.y;
+        float dz = worldPos->z - camPos.z;
+        currentLock_.distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+    }
+
+    return worldPos;
+}
+
+LockOnResult VulkanGraphics3DSystem::shiftLockTarget(const Vec2& screenDirection, IEntitySystem& entities, IAnimationSystem* animation) {
+    if (!isLocked_ || !currentLock_.isValid()) {
+        // Not locked, just do a normal lock-on
+        return lockOn(entities, animation);
+    }
+
+    // Normalize the input direction
+    float dirLen = std::sqrt(screenDirection.x * screenDirection.x + screenDirection.y * screenDirection.y);
+    if (dirLen < 0.001f) {
+        return currentLock_;  // No meaningful direction, keep current
+    }
+    Vec2 dir{screenDirection.x / dirLen, screenDirection.y / dirLen};
+
+    // Get all potential targets
+    std::vector<LockOnResult> candidates = getPotentialTargets(entities, animation);
+
+    // Filter out current target and find best candidate in the specified direction
+    LockOnResult bestCandidate;
+    float bestAlignment = -1.0f;  // Higher is better (dot product with direction)
+
+    for (const auto& candidate : candidates) {
+        // Skip current target
+        if (candidate.entity == currentLock_.entity && candidate.lockPointIndex == currentLock_.lockPointIndex) {
+            continue;
+        }
+
+        // Calculate screen direction from current to candidate
+        Vec2 toCandidate{
+            candidate.screenPosition.x - currentLock_.screenPosition.x,
+            candidate.screenPosition.y - currentLock_.screenPosition.y
+        };
+
+        float toCandLen = std::sqrt(toCandidate.x * toCandidate.x + toCandidate.y * toCandidate.y);
+        if (toCandLen < 1.0f) continue;  // Too close in screen space
+
+        // Normalize
+        toCandidate.x /= toCandLen;
+        toCandidate.y /= toCandLen;
+
+        // Calculate alignment (dot product)
+        float alignment = toCandidate.x * dir.x + toCandidate.y * dir.y;
+
+        // Only consider candidates roughly in the right direction (>= 0.5 = within ~60 degrees)
+        if (alignment < 0.5f) continue;
+
+        // Score by alignment and proximity (prefer closer targets when alignment is similar)
+        float score = alignment - (toCandLen / 1000.0f);  // Small penalty for distance
+
+        if (score > bestAlignment) {
+            bestAlignment = score;
+            bestCandidate = candidate;
+        }
+    }
+
+    if (bestCandidate.isValid()) {
+        currentLock_ = bestCandidate;
+        return currentLock_;
+    }
+
+    // No valid candidate in that direction, keep current
+    return currentLock_;
+}
+
+void VulkanGraphics3DSystem::unlock() {
+    isLocked_ = false;
+    currentLock_ = LockOnResult{};
+}
+
+bool VulkanGraphics3DSystem::isLocked() const {
+    return isLocked_ && currentLock_.isValid();
+}
+
+std::vector<LockOnResult> VulkanGraphics3DSystem::getPotentialTargets(IEntitySystem& entities, IAnimationSystem* animation) const {
+    std::vector<LockOnResult> results;
+
+    // Get window size for screen space calculations
+    Size windowSize = context_.getWindowSize();
+    Vec2 screenCenter{static_cast<float>(windowSize.width) / 2.0f, static_cast<float>(windowSize.height) / 2.0f};
+    float maxScreenDistance = std::sqrt(screenCenter.x * screenCenter.x + screenCenter.y * screenCenter.y);
+
+    // Camera position for distance calculations
+    Vec3 camPos = camera_.transform.position;
+
+    // Iterate over all entities with LockableTarget and Transform3D
+    auto view = entities.view<const LockableTarget, const Transform3D>();
+
+    for (auto entity : view) {
+        const auto& lockable = view.template get<const LockableTarget>(entity);
+        const auto& transform = view.template get<const Transform3D>(entity);
+
+        if (!lockable.enabled) continue;
+
+        // Get AnimatorRef if present (for socket-based lock points)
+        const AnimatorRef* animatorRef = entities.tryGet<AnimatorRef>(entity);
+
+        // Process each lock point on this entity
+        for (std::size_t i = 0; i < lockable.lockPoints.size(); ++i) {
+            const auto& lockPoint = lockable.lockPoints[i];
+
+            // Resolve world position
+            auto worldPos = resolveLockPointPosition(lockPoint, transform, animatorRef, animation);
+            if (!worldPos) continue;
+
+            // Calculate distance from camera
+            float dx = worldPos->x - camPos.x;
+            float dy = worldPos->y - camPos.y;
+            float dz = worldPos->z - camPos.z;
+            float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+
+            // Check max range
+            if (distance > lockOnConfig_.maxRange) continue;
+
+            // Project to screen space
+            auto screenPos = worldToScreen(*worldPos);
+            if (!screenPos) continue;  // Behind camera or outside frustum
+
+            // Check FOV margin (must be within configured fraction of screen)
+            float screenDistFromCenter = std::sqrt(
+                (screenPos->x - screenCenter.x) * (screenPos->x - screenCenter.x) +
+                (screenPos->y - screenCenter.y) * (screenPos->y - screenCenter.y)
+            );
+            float screenFraction = screenDistFromCenter / maxScreenDistance;
+            if (screenFraction > lockOnConfig_.fovMargin) continue;
+
+            // Calculate score
+            // Center score: 1.0 at center, 0.0 at edge
+            float centerScore = 1.0f - (screenFraction / lockOnConfig_.fovMargin);
+
+            // Distance score: 1.0 at near, 0.0 at maxRange
+            float distanceScore = 1.0f - (distance / lockOnConfig_.maxRange);
+
+            // Combined score with weighting
+            float score = centerScore * lockOnConfig_.centerBias +
+                          distanceScore * (1.0f - lockOnConfig_.centerBias) +
+                          lockPoint.priority * lockOnConfig_.priorityWeight;
+
+            LockOnResult result;
+            result.entity = entity;
+            result.lockPointIndex = static_cast<int>(i);
+            result.worldPosition = *worldPos;
+            result.screenPosition = *screenPos;
+            result.distance = distance;
+            result.score = score;
+
+            results.push_back(result);
+        }
+    }
+
+    // Sort by score descending
+    std::sort(results.begin(), results.end(), [](const LockOnResult& a, const LockOnResult& b) {
+        return a.score > b.score;
+    });
+
+    return results;
+}
+
 }  // namespace bestow::vulkan

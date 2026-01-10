@@ -29,7 +29,8 @@ sol::object gfxVoidResultToLua(sol::state& lua, const Result<void, Graphics3DErr
     return sol::make_object(lua, false);
 }
 
-void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
+void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
+                          IEntitySystem* entities, IAnimationSystem* animation) {
     //=========================================================================
     // Graphics3D-related types
     //=========================================================================
@@ -101,6 +102,113 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
             {"Perspective", ProjectionType::Perspective},
             {"Orthographic", ProjectionType::Orthographic}
         }
+    );
+
+    // LockPointSource enum
+    lua.new_enum<LockPointSource>("LockPointSource",
+        {
+            {"Socket", LockPointSource::Socket},
+            {"Offset", LockPointSource::Offset}
+        }
+    );
+
+    // LockPointDef struct
+    lua.new_usertype<LockPointDef>("LockPointDef",
+        sol::constructors<LockPointDef()>(),
+        "name", &LockPointDef::name,
+        "source", &LockPointDef::source,
+        "socketName", &LockPointDef::socketName,
+        "localOffset", &LockPointDef::localOffset,
+        "priority", &LockPointDef::priority
+    );
+    lua["LockPointDef"]["new"] = [](sol::optional<sol::table> tbl) {
+        LockPointDef def;
+        if (tbl) {
+            if (auto name = (*tbl)["name"]; name.valid()) def.name = name.get<std::string>();
+            if (auto source = (*tbl)["source"]; source.valid()) {
+                if (source.get_type() == sol::type::string) {
+                    std::string s = source.get<std::string>();
+                    def.source = (s == "socket") ? LockPointSource::Socket : LockPointSource::Offset;
+                } else {
+                    def.source = source.get<LockPointSource>();
+                }
+            }
+            if (auto socketName = (*tbl)["socketName"]; socketName.valid()) def.socketName = socketName.get<std::string>();
+            if (auto offset = (*tbl)["localOffset"]; offset.valid()) def.localOffset = offset.get<Vec3>();
+            if (auto priority = (*tbl)["priority"]; priority.valid()) def.priority = priority.get<float>();
+        }
+        return def;
+    };
+
+    // LockableTarget struct
+    lua.new_usertype<LockableTarget>("LockableTarget",
+        sol::constructors<LockableTarget()>(),
+        "lockPoints", &LockableTarget::lockPoints,
+        "enabled", &LockableTarget::enabled
+    );
+    lua["LockableTarget"]["new"] = [](sol::optional<sol::table> tbl) {
+        LockableTarget target;
+        if (tbl) {
+            if (auto enabled = (*tbl)["enabled"]; enabled.valid()) target.enabled = enabled.get<bool>();
+            if (auto lockPoints = (*tbl)["lockPoints"]; lockPoints.valid() && lockPoints.get_type() == sol::type::table) {
+                sol::table points = lockPoints.get<sol::table>();
+                for (auto& pair : points) {
+                    if (pair.second.is<LockPointDef>()) {
+                        target.lockPoints.push_back(pair.second.as<LockPointDef>());
+                    } else if (pair.second.is<sol::table>()) {
+                        sol::table pt = pair.second.as<sol::table>();
+                        LockPointDef def;
+                        if (auto name = pt["name"]; name.valid()) def.name = name.get<std::string>();
+                        if (auto source = pt["source"]; source.valid()) {
+                            if (source.get_type() == sol::type::string) {
+                                std::string s = source.get<std::string>();
+                                def.source = (s == "socket") ? LockPointSource::Socket : LockPointSource::Offset;
+                            }
+                        }
+                        if (auto socketName = pt["socketName"]; socketName.valid()) def.socketName = socketName.get<std::string>();
+                        if (auto offset = pt["localOffset"]; offset.valid()) def.localOffset = offset.get<Vec3>();
+                        if (auto priority = pt["priority"]; priority.valid()) def.priority = priority.get<float>();
+                        target.lockPoints.push_back(def);
+                    }
+                }
+            }
+        }
+        return target;
+    };
+
+    // LockOnConfig struct
+    lua.new_usertype<LockOnConfig>("LockOnConfig",
+        sol::constructors<LockOnConfig()>(),
+        "maxRange", &LockOnConfig::maxRange,
+        "fovMargin", &LockOnConfig::fovMargin,
+        "centerBias", &LockOnConfig::centerBias,
+        "priorityWeight", &LockOnConfig::priorityWeight,
+        "preferCurrentTarget", &LockOnConfig::preferCurrentTarget,
+        "hysteresis", &LockOnConfig::hysteresis
+    );
+    lua["LockOnConfig"]["new"] = [](sol::optional<sol::table> tbl) {
+        LockOnConfig cfg;
+        if (tbl) {
+            if (auto v = (*tbl)["maxRange"]; v.valid()) cfg.maxRange = v.get<float>();
+            if (auto v = (*tbl)["fovMargin"]; v.valid()) cfg.fovMargin = v.get<float>();
+            if (auto v = (*tbl)["centerBias"]; v.valid()) cfg.centerBias = v.get<float>();
+            if (auto v = (*tbl)["priorityWeight"]; v.valid()) cfg.priorityWeight = v.get<float>();
+            if (auto v = (*tbl)["preferCurrentTarget"]; v.valid()) cfg.preferCurrentTarget = v.get<bool>();
+            if (auto v = (*tbl)["hysteresis"]; v.valid()) cfg.hysteresis = v.get<float>();
+        }
+        return cfg;
+    };
+
+    // LockOnResult struct
+    lua.new_usertype<LockOnResult>("LockOnResult",
+        sol::constructors<LockOnResult()>(),
+        "entity", &LockOnResult::entity,
+        "lockPointIndex", &LockOnResult::lockPointIndex,
+        "worldPosition", &LockOnResult::worldPosition,
+        "screenPosition", &LockOnResult::screenPosition,
+        "distance", &LockOnResult::distance,
+        "score", &LockOnResult::score,
+        "isValid", &LockOnResult::isValid
     );
 
     // PBRMaterial struct
@@ -280,6 +388,24 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
         "enableValidation", &Graphics3DConfig::enableValidation,
         "nativeWindowHandle", &Graphics3DConfig::nativeWindowHandle
     );
+
+    //=========================================================================
+    // Register LockableTarget component factory (for Lua entity access)
+    //=========================================================================
+
+    if (entities) {
+        // Register component type info for documentation/inspection
+        ComponentTypeInfo lockableInfo;
+        lockableInfo.name = "LockableTarget";
+        lockableInfo.fields = {
+            {"enabled", ComponentFieldType::Bool},
+            {"lockPoints", ComponentFieldType::Array}
+        };
+        lockableInfo.canConstruct = true;
+        entities->registerComponentType("LockableTarget", lockableInfo);
+
+        spdlog::debug("[graphics3d] Registered LockableTarget component type info");
+    }
 
     //=========================================================================
     // bestow.graphics3d table
@@ -802,6 +928,162 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics) {
 
     gfxTable["setLODBias"] = [&graphics](float bias) {
         graphics.setLODBias(bias);
+    };
+
+    //-------------------------------------------------------------------------
+    // Lock-On Targeting System
+    //-------------------------------------------------------------------------
+
+    gfxTable["setLockOnConfig"] = [&graphics](sol::object configObj) {
+        LockOnConfig cfg;
+        if (configObj.is<LockOnConfig>()) {
+            cfg = configObj.as<LockOnConfig>();
+        } else if (configObj.is<sol::table>()) {
+            sol::table tbl = configObj.as<sol::table>();
+            if (auto v = tbl["maxRange"]; v.valid()) cfg.maxRange = v.get<float>();
+            if (auto v = tbl["fovMargin"]; v.valid()) cfg.fovMargin = v.get<float>();
+            if (auto v = tbl["centerBias"]; v.valid()) cfg.centerBias = v.get<float>();
+            if (auto v = tbl["priorityWeight"]; v.valid()) cfg.priorityWeight = v.get<float>();
+            if (auto v = tbl["preferCurrentTarget"]; v.valid()) cfg.preferCurrentTarget = v.get<bool>();
+            if (auto v = tbl["hysteresis"]; v.valid()) cfg.hysteresis = v.get<float>();
+        }
+        graphics.setLockOnConfig(cfg);
+    };
+
+    gfxTable["getLockOnConfig"] = [&graphics]() {
+        return graphics.getLockOnConfig();
+    };
+
+    gfxTable["lockOn"] = [&graphics, entities, animation](sol::this_state s) -> sol::object {
+        if (!entities) {
+            spdlog::warn("[graphics3d.lockOn] Entity system not available");
+            return sol::nil;
+        }
+        LockOnResult result = graphics.lockOn(*entities, animation);
+        if (result.isValid()) {
+            return sol::make_object(s, result);
+        }
+        return sol::nil;
+    };
+
+    gfxTable["getLockTarget"] = [&graphics](sol::this_state s) -> sol::object {
+        auto result = graphics.getLockTarget();
+        if (result && result->isValid()) {
+            return sol::make_object(s, *result);
+        }
+        return sol::nil;
+    };
+
+    gfxTable["pollLockPosition"] = [&graphics, entities, animation](sol::this_state s) -> sol::object {
+        if (!entities) {
+            spdlog::warn("[graphics3d.pollLockPosition] Entity system not available");
+            return sol::nil;
+        }
+        auto pos = graphics.pollLockPosition(*entities, animation);
+        if (pos) {
+            return sol::make_object(s, *pos);
+        }
+        return sol::nil;
+    };
+
+    gfxTable["shiftLockTarget"] = [&graphics, entities, animation](const Vec2& direction, sol::this_state s) -> sol::object {
+        if (!entities) {
+            spdlog::warn("[graphics3d.shiftLockTarget] Entity system not available");
+            return sol::nil;
+        }
+        LockOnResult result = graphics.shiftLockTarget(direction, *entities, animation);
+        if (result.isValid()) {
+            return sol::make_object(s, result);
+        }
+        return sol::nil;
+    };
+
+    gfxTable["unlock"] = [&graphics]() {
+        graphics.unlock();
+    };
+
+    gfxTable["isLocked"] = [&graphics]() {
+        return graphics.isLocked();
+    };
+
+    gfxTable["getPotentialTargets"] = [&graphics, entities, animation]() -> std::vector<LockOnResult> {
+        if (!entities) {
+            spdlog::warn("[graphics3d.getPotentialTargets] Entity system not available");
+            return {};
+        }
+        return graphics.getPotentialTargets(*entities, animation);
+    };
+
+    //-------------------------------------------------------------------------
+    // LockableTarget Component Helpers
+    //-------------------------------------------------------------------------
+
+    gfxTable["addLockableTarget"] = [entities](Entity entity, sol::optional<sol::object> targetObj) {
+        if (!entities) {
+            spdlog::warn("[graphics3d.addLockableTarget] Entity system not available");
+            return false;
+        }
+        if (!entities->isValid(entity)) {
+            spdlog::warn("[graphics3d.addLockableTarget] Invalid entity");
+            return false;
+        }
+
+        LockableTarget target;
+        if (targetObj && targetObj->is<LockableTarget>()) {
+            target = targetObj->as<LockableTarget>();
+        } else if (targetObj && targetObj->is<sol::table>()) {
+            sol::table tbl = targetObj->as<sol::table>();
+            if (auto v = tbl["enabled"]; v.valid()) target.enabled = v.get<bool>();
+            if (auto pts = tbl["lockPoints"]; pts.valid() && pts.get_type() == sol::type::table) {
+                sol::table points = pts.get<sol::table>();
+                for (auto& pair : points) {
+                    if (pair.second.is<LockPointDef>()) {
+                        target.lockPoints.push_back(pair.second.as<LockPointDef>());
+                    } else if (pair.second.is<sol::table>()) {
+                        sol::table pt = pair.second.as<sol::table>();
+                        LockPointDef def;
+                        if (auto n = pt["name"]; n.valid()) def.name = n.get<std::string>();
+                        if (auto s = pt["source"]; s.valid()) {
+                            if (s.get_type() == sol::type::string) {
+                                std::string src = s.get<std::string>();
+                                def.source = (src == "socket") ? LockPointSource::Socket : LockPointSource::Offset;
+                            } else if (s.is<LockPointSource>()) {
+                                def.source = s.get<LockPointSource>();
+                            }
+                        }
+                        if (auto sn = pt["socketName"]; sn.valid()) def.socketName = sn.get<std::string>();
+                        if (auto lo = pt["localOffset"]; lo.valid()) def.localOffset = lo.get<Vec3>();
+                        if (auto p = pt["priority"]; p.valid()) def.priority = p.get<float>();
+                        target.lockPoints.push_back(def);
+                    }
+                }
+            }
+        }
+
+        entities->emplace<LockableTarget>(entity, target);
+        return true;
+    };
+
+    gfxTable["getLockableTarget"] = [entities](Entity entity, sol::this_state s) -> sol::object {
+        if (!entities) {
+            spdlog::warn("[graphics3d.getLockableTarget] Entity system not available");
+            return sol::nil;
+        }
+        auto* target = entities->tryGet<LockableTarget>(entity);
+        if (target) {
+            return sol::make_object(s, *target);
+        }
+        return sol::nil;
+    };
+
+    gfxTable["hasLockableTarget"] = [entities](Entity entity) -> bool {
+        if (!entities) return false;
+        return entities->tryGet<LockableTarget>(entity) != nullptr;
+    };
+
+    gfxTable["removeLockableTarget"] = [entities](Entity entity) {
+        if (!entities) return;
+        entities->remove<LockableTarget>(entity);
     };
 
     bestow["graphics3d"] = gfxTable;

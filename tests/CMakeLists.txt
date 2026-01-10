@@ -21,6 +21,7 @@ add_executable(bestow-tests
     unit/AudioSystemTests.cpp
     unit/AnimationSystemTests.cpp
     unit/GraphicsSystemTests.cpp
+    unit/Graphics3DSystemTests.cpp
     unit/PhysicsSystemTests.cpp
     unit/LevelSystemTests.cpp
     unit/AISystemTests.cpp

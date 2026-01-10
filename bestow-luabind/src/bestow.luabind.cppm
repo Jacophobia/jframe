@@ -36,7 +36,8 @@ void bindPhysicsSystem(sol::state& lua, IPhysicsSystem& physics);
 
 // Contract bindings - 3D systems
 void bindPhysics3DSystem(sol::state& lua, IPhysics3DSystem& physics3d);
-void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics3d);
+void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics3d,
+                          IEntitySystem* entities = nullptr, IAnimationSystem* animation = nullptr);
 void bindAnimationSystem(sol::state& lua, IAnimationSystem& animation,
                          IAssetSystem* assets = nullptr, IGraphics3DSystem* graphics = nullptr);
 

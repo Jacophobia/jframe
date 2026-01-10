@@ -213,6 +213,16 @@ public:
     std::string getControllerName(int index) const override;
 
     //======================================================================
+    // Cursor Control
+    //======================================================================
+
+    void showMouseCursor() override;
+    void hideMouseCursor() override;
+    bool isMouseCursorVisible() const override;
+    void setCursorMode(CursorMode mode) override;
+    CursorMode getCursorMode() const override;
+
+    //======================================================================
     // GLFW Callbacks
     //======================================================================
 
@@ -331,6 +341,12 @@ private:
 
     bool isListening_ = false;
     std::optional<InputBinding> lastInput_;
+
+    //======================================================================
+    // Cursor State
+    //======================================================================
+
+    CursorMode cursorMode_ = CursorMode::Normal;
 
     //======================================================================
     // Injected Dependencies

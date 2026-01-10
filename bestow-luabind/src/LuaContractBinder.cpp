@@ -78,7 +78,9 @@ void LuaContractBinder::bindAll() {
     }
 
     if (engine_->has<IGraphics3DSystem>()) {
-        bindGraphics3DSystem(*lua_, engine_->get<IGraphics3DSystem>());
+        IEntitySystem* entitySys = engine_->has<IEntitySystem>() ? &engine_->get<IEntitySystem>() : nullptr;
+        IAnimationSystem* animSys = engine_->has<IAnimationSystem>() ? &engine_->get<IAnimationSystem>() : nullptr;
+        bindGraphics3DSystem(*lua_, engine_->get<IGraphics3DSystem>(), entitySys, animSys);
         boundSystems_.push_back("graphics3d");
         spdlog::debug("[LuaContractBinder] Bound IGraphics3DSystem -> bestow.graphics3d");
     }

@@ -740,6 +740,13 @@ public:
     bool isControllerConnected(int index) const override { return false; }
     std::string getControllerName(int index) const override { return ""; }
 
+    // Cursor control
+    void showMouseCursor() override {}
+    void hideMouseCursor() override {}
+    bool isMouseCursorVisible() const override { return true; }
+    void setCursorMode(CursorMode mode) override {}
+    CursorMode getCursorMode() const override { return CursorMode::Normal; }
+
     void update() override {}
 };
 

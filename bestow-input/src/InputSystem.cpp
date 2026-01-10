@@ -1550,4 +1550,46 @@ std::string InputSystem::getControllerName(int index) const {
     return "";
 }
 
+//==========================================================================
+// Cursor Control
+//==========================================================================
+
+void InputSystem::showMouseCursor() {
+    setCursorMode(CursorMode::Normal);
+}
+
+void InputSystem::hideMouseCursor() {
+    setCursorMode(CursorMode::Hidden);
+}
+
+bool InputSystem::isMouseCursorVisible() const {
+    return cursorMode_ == CursorMode::Normal;
+}
+
+void InputSystem::setCursorMode(CursorMode mode) {
+    cursorMode_ = mode;
+
+    // No window means we can't apply to GLFW, but still store the mode
+    if (!window_) return;
+
+    int glfwMode = GLFW_CURSOR_NORMAL;
+    switch (mode) {
+        case CursorMode::Normal:
+            glfwMode = GLFW_CURSOR_NORMAL;
+            break;
+        case CursorMode::Hidden:
+            glfwMode = GLFW_CURSOR_HIDDEN;
+            break;
+        case CursorMode::Disabled:
+            glfwMode = GLFW_CURSOR_DISABLED;
+            break;
+    }
+
+    glfwSetInputMode(window_, GLFW_CURSOR, glfwMode);
+}
+
+CursorMode InputSystem::getCursorMode() const {
+    return cursorMode_;
+}
+
 }  // namespace bestow

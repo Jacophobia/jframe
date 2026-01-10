@@ -5,6 +5,7 @@ module;
 
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 module bestow.luabind;
 
@@ -515,10 +516,10 @@ private:
     }
 
     Mat4 buildWorldMatrix() const {
-        Mat4 world = Mat4::identity();
-        world = world * Mat4::translation(position_);
-        world = world * Mat4::rotationY(rotation_);
-        world = world * Mat4::scale(Vec3{scale_, scale_, scale_});
+        Mat4 world = Mat4(1.0f);  // Identity
+        world = glm::translate(world, position_);
+        world = glm::rotate(world, rotation_, Vec3{0.0f, 1.0f, 0.0f});
+        world = glm::scale(world, Vec3{scale_, scale_, scale_});
         return world;
     }
 
@@ -553,7 +554,7 @@ private:
                 play(callback.nextAnimation, std::nullopt);
             } else if (callback.callbackTable.valid()) {
                 // Call method on table
-                invokeCallback(callback.callbackTable, callback.callbackMethod, animName);
+                invokeCallback(callback.callbackTable, callback.callbackMethod, sol::make_object(*lua_, animName));
             }
 
             oneShotCallbacks_.erase(callbackIt);

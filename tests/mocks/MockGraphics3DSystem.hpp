@@ -10,6 +10,7 @@ import bestow.graphics3d;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
+import bestow.animation;
 
 namespace bestow::tests {
 
@@ -51,6 +52,32 @@ public:
     int getFrameCount() const { return frameCount_; }
     bool wasBeginFrameCalled() const { return beginFrameCalled_; }
     bool wasEndFrameCalled() const { return endFrameCalled_; }
+
+    //==========================================================================
+    // Initialization
+    //==========================================================================
+
+    bool initialize(const Graphics3DConfig& config) override {
+        initialized_ = true;
+        return true;
+    }
+
+    void shutdown() override {
+        initialized_ = false;
+    }
+
+    bool isInitialized() const override {
+        return initialized_;
+    }
+
+    //==========================================================================
+    // IGraphicsContext Interface
+    //==========================================================================
+
+    IUIRenderBackend* getUIRenderBackend() override { return nullptr; }
+    bool isInFrame() const override { return beginFrameCalled_ && !endFrameCalled_; }
+    void* getRenderContext() const override { return nullptr; }
+    void* getCurrentCommandBuffer() const override { return nullptr; }
 
     //==========================================================================
     // Frame Lifecycle
@@ -274,9 +301,13 @@ public:
         return camera_;
     }
 
+    void setCameraTarget(const Vec3& target) override {
+        cameraTarget_ = target;
+    }
+
     Ray3D screenToWorldRay(Vec2 screenPos) const override {
         // Simple mock ray pointing forward
-        return Ray3D{camera_.position, Vec3{0, 0, -1}};
+        return Ray3D{camera_.transform.position, Vec3{0, 0, -1}};
     }
 
     std::optional<Vec2> worldToScreen(const Vec3& worldPos) const override {
@@ -789,6 +820,132 @@ public:
     }
 
     //==========================================================================
+    // Runtime Config
+    //==========================================================================
+
+    void applyRuntimeConfig(const Graphics3DRuntimeConfig& config) override {
+        runtimeConfig_ = config;
+    }
+
+    const Graphics3DRuntimeConfig& getRuntimeConfig() const override {
+        return runtimeConfig_;
+    }
+
+    bool reloadRuntimeConfig() override {
+        return true;
+    }
+
+    bool loadRuntimeConfig(const std::filesystem::path& configPath) override {
+        return true;  // Mock: always succeeds
+    }
+
+    //==========================================================================
+    // Lock-On Targeting System
+    //==========================================================================
+
+    void setLockOnConfig(const LockOnConfig& config) override {
+        lockOnConfig_ = config;
+    }
+
+    LockOnConfig getLockOnConfig() const override {
+        return lockOnConfig_;
+    }
+
+    LockOnResult lockOn(IEntitySystem& entities, IAnimationSystem* animation) override {
+        lockOnCalled_ = true;
+        auto targets = getPotentialTargets(entities, animation);
+        if (!targets.empty()) {
+            // Select the best target (highest score)
+            currentLockTarget_ = targets.front();
+            isLocked_ = true;
+            return currentLockTarget_;
+        }
+        return LockOnResult{};
+    }
+
+    std::optional<LockOnResult> getLockTarget() const override {
+        if (isLocked_) {
+            return currentLockTarget_;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<Vec3> pollLockPosition(IEntitySystem& entities, IAnimationSystem* animation) override {
+        pollLockPositionCalled_ = true;
+        if (isLocked_) {
+            // In mock, just return the stored position (real impl would query entity)
+            return currentLockTarget_.worldPosition;
+        }
+        return std::nullopt;
+    }
+
+    LockOnResult shiftLockTarget(const Vec2& screenDirection, IEntitySystem& entities, IAnimationSystem* animation) override {
+        shiftLockTargetCalled_ = true;
+        lastShiftDirection_ = screenDirection;
+
+        auto targets = getPotentialTargets(entities, animation);
+        if (targets.size() > 1 && isLocked_) {
+            // Simple mock: just cycle to next target
+            for (std::size_t i = 0; i < targets.size(); ++i) {
+                if (targets[i].entity == currentLockTarget_.entity) {
+                    std::size_t nextIdx = (i + 1) % targets.size();
+                    currentLockTarget_ = targets[nextIdx];
+                    return currentLockTarget_;
+                }
+            }
+        }
+        return currentLockTarget_;
+    }
+
+    void unlock() override {
+        unlockCalled_ = true;
+        isLocked_ = false;
+        currentLockTarget_ = LockOnResult{};
+    }
+
+    bool isLocked() const override {
+        return isLocked_;
+    }
+
+    std::vector<LockOnResult> getPotentialTargets(IEntitySystem& entities, IAnimationSystem* animation) const override {
+        getPotentialTargetsCalled_ = true;
+
+        std::vector<LockOnResult> results;
+
+        // Use the mock potential targets if set
+        for (const auto& target : mockPotentialTargets_) {
+            results.push_back(target);
+        }
+
+        return results;
+    }
+
+    // Test helpers for lock-on
+    void setMockPotentialTargets(std::vector<LockOnResult> targets) {
+        mockPotentialTargets_ = std::move(targets);
+    }
+
+    bool wasLockOnCalled() const { return lockOnCalled_; }
+    bool wasPollLockPositionCalled() const { return pollLockPositionCalled_; }
+    bool wasShiftLockTargetCalled() const { return shiftLockTargetCalled_; }
+    bool wasUnlockCalled() const { return unlockCalled_; }
+    mutable bool getPotentialTargetsCalled_ = false;
+    bool wasGetPotentialTargetsCalled() const { return getPotentialTargetsCalled_; }
+    Vec2 getLastShiftDirection() const { return lastShiftDirection_; }
+
+    void resetLockOnTestState() {
+        lockOnCalled_ = false;
+        pollLockPositionCalled_ = false;
+        shiftLockTargetCalled_ = false;
+        unlockCalled_ = false;
+        getPotentialTargetsCalled_ = false;
+        isLocked_ = false;
+        currentLockTarget_ = LockOnResult{};
+        mockPotentialTargets_.clear();
+        lastShiftDirection_ = Vec2{0, 0};
+    }
+
+    //==========================================================================
     // Additional Test Accessors
     //==========================================================================
 
@@ -829,6 +986,7 @@ private:
 
     // Camera and window state
     Camera3D camera_;
+    Vec3 cameraTarget_{0.0f, 0.0f, 0.0f};
     Size windowSize_{800, 600};
     bool isFullscreen_ = false;
     bool shouldClose_ = false;
@@ -877,8 +1035,25 @@ private:
     std::map<MeshHandle, std::vector<MeshHandle>> lodMeshRegistry_;
     float lodBias_ = 1.0f;
 
+    // Runtime Config
+    Graphics3DRuntimeConfig runtimeConfig_;
+
+    // Lock-On System
+    LockOnConfig lockOnConfig_;
+    LockOnResult currentLockTarget_;
+    bool isLocked_ = false;
+    std::vector<LockOnResult> mockPotentialTargets_;
+    bool lockOnCalled_ = false;
+    bool pollLockPositionCalled_ = false;
+    bool shiftLockTargetCalled_ = false;
+    bool unlockCalled_ = false;
+    Vec2 lastShiftDirection_{0, 0};
+
     // Systems
     IAssetSystem* assetSystem_ = nullptr;
+
+    // Initialization state
+    bool initialized_ = false;
 
     // Frame tracking
     int frameCount_ = 0;
