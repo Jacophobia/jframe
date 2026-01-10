@@ -1,11 +1,6 @@
 // tests/expected_vtables.cpp
-// Minimal placeholder to ensure std::expected types are available
+// Empty file - kept to ensure consistent build configuration
 //
-// This compilation unit uses traditional #include to access std::expected
-// types. While it doesn't directly provide vtables, linking with c++abi
-// should provide the necessary symbols.
-
-#include <expected>
-#include <system_error>
-
-// Empty translation unit - the mere inclusion with c++abi linking should suffice
+// Note: macOS CI with Xcode 15.4 SDK doesn't have std::expected support in system libc++.
+// We link c++abi as a workaround but the symbols still may not be available.
+// This is a known limitation of using std::expected with older macOS SDKs.
