@@ -58,6 +58,11 @@ target_link_libraries(bestow-tests
         GTest::gtest_main
 )
 
+# On macOS with Clang, explicitly link c++abi for exception vtables
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_link_libraries(bestow-tests PRIVATE c++abi)
+endif()
+
 target_compile_features(bestow-tests PRIVATE cxx_std_23)
 
 # MSVC workaround: force include entt_compat.hpp to fix ADL issues with C++23 modules
