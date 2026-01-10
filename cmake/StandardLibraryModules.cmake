@@ -62,6 +62,12 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-pthread)
     add_link_options(-pthread)
 
+    # Link against libc++experimental for std::expected symbols on macOS/Clang
+    # std::bad_expected_access<void> symbols are in libc++experimental
+    if(APPLE)
+        add_link_options(-lc++experimental)
+    endif()
+
     # On Linux, we may need to add the libc++ library path
     if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
         # Find libc++ library path

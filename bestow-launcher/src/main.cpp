@@ -30,7 +30,8 @@ enum class Command {
     New,
     Init,
     Version,
-    Help
+    Help,
+    Update
 };
 
 struct CommandLineArgs {
@@ -328,6 +329,267 @@ int handleHelp(const CommandLineArgs& args, const char* programName) {
     return 0;
 }
 
+//=============================================================================
+// Update/Upgrade Implementation
+//=============================================================================
+
+std::optional<std::filesystem::path> getExecutablePath() {
+#if defined(__APPLE__)
+    char path[PATH_MAX];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        char resolvedPath[PATH_MAX];
+        if (realpath(path, resolvedPath) != nullptr) {
+            return std::filesystem::path(resolvedPath);
+        }
+        return std::filesystem::path(path);
+    }
+#elif defined(__linux__)
+    char path[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
+    if (count != -1) {
+        path[count] = '\0';
+        return std::filesystem::path(path);
+    }
+#elif defined(_WIN32)
+    char path[MAX_PATH];
+    if (GetModuleFileNameA(nullptr, path, MAX_PATH) != 0) {
+        return std::filesystem::path(path);
+    }
+#endif
+    return std::nullopt;
+}
+
+int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
+    spdlog::info("Bestow Engine - Self Update");
+    spdlog::info("");
+
+    // Get current executable path
+    auto exePath = getExecutablePath();
+    if (!exePath) {
+        spdlog::error("Could not determine executable path");
+        return 1;
+    }
+
+    spdlog::info("Current installation: {}", exePath->string());
+
+    // Determine platform-specific archive name
+    std::string platform;
+    std::string extension;
+#if defined(_WIN32)
+    platform = "windows-x64";
+    extension = ".zip";
+#elif defined(__APPLE__)
+    platform = "macos-x64";
+    extension = ".tar.gz";
+#elif defined(__linux__)
+    platform = "linux-x64";
+    extension = ".tar.gz";
+#else
+    spdlog::error("Unsupported platform for auto-update");
+    return 1;
+#endif
+
+    std::string archiveName = "bestow-" + platform + extension;
+    spdlog::info("Looking for latest release: {}", archiveName);
+    spdlog::info("");
+
+    // Use GitHub CLI or curl to fetch latest release info
+    spdlog::info("Fetching latest release information...");
+
+    std::string apiCmd = "curl -sL https://api.github.com/repos/radical-beard/bestow/releases/latest";
+    FILE* pipe = popen(apiCmd.c_str(), "r");
+    if (!pipe) {
+        spdlog::error("Failed to query GitHub API");
+        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases/latest");
+        return 1;
+    }
+
+    std::string apiResponse;
+    char buffer[256];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        apiResponse += buffer;
+    }
+    int apiResult = pclose(pipe);
+
+    if (apiResult != 0 || apiResponse.empty()) {
+        spdlog::error("Failed to fetch release information");
+        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases/latest");
+        return 1;
+    }
+
+    // Parse JSON to find download URL (simple string search since we know the pattern)
+    std::string searchPattern = "\"browser_download_url\": \"";
+    size_t urlStart = apiResponse.find(searchPattern);
+    std::string downloadUrl;
+
+    while (urlStart != std::string::npos) {
+        urlStart += searchPattern.length();
+        size_t urlEnd = apiResponse.find("\"", urlStart);
+        if (urlEnd != std::string::npos) {
+            std::string url = apiResponse.substr(urlStart, urlEnd - urlStart);
+            if (url.find(archiveName) != std::string::npos) {
+                downloadUrl = url;
+                break;
+            }
+        }
+        urlStart = apiResponse.find(searchPattern, urlEnd);
+    }
+
+    if (downloadUrl.empty()) {
+        spdlog::error("Could not find {} in latest release", archiveName);
+        spdlog::info("Available releases: https://github.com/radical-beard/bestow/releases/latest");
+        return 1;
+    }
+
+    spdlog::info("Found latest release");
+    spdlog::info("Download URL: {}", downloadUrl);
+    spdlog::info("");
+
+    // Create temp directory for download
+    auto tempDir = std::filesystem::temp_directory_path() / ("bestow-update-" + std::to_string(std::time(nullptr)));
+    std::filesystem::create_directories(tempDir);
+    auto tempArchive = tempDir / archiveName;
+
+    spdlog::info("Downloading update...");
+    std::string downloadCmd = "curl -L -o \"" + tempArchive.string() + "\" \"" + downloadUrl + "\"";
+
+    int downloadResult = std::system(downloadCmd.c_str());
+    if (downloadResult != 0) {
+        spdlog::error("Failed to download update");
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    if (!std::filesystem::exists(tempArchive)) {
+        spdlog::error("Download succeeded but file not found");
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    spdlog::info("Downloaded: {} ({} MB)",
+        archiveName,
+        std::filesystem::file_size(tempArchive) / (1024 * 1024));
+    spdlog::info("");
+
+    // Extract archive
+    spdlog::info("Extracting update...");
+    auto extractDir = tempDir / "extracted";
+    std::filesystem::create_directories(extractDir);
+
+    std::string extractCmd;
+#if defined(_WIN32)
+    extractCmd = "powershell -Command \"Expand-Archive -Path '" + tempArchive.string() + "' -DestinationPath '" + extractDir.string() + "' -Force\"";
+#else
+    if (extension == ".tar.gz") {
+        extractCmd = "tar -xzf \"" + tempArchive.string() + "\" -C \"" + extractDir.string() + "\"";
+    } else {
+        extractCmd = "unzip -q \"" + tempArchive.string() + "\" -d \"" + extractDir.string() + "\"";
+    }
+#endif
+
+    int extractResult = std::system(extractCmd.c_str());
+    if (extractResult != 0) {
+        spdlog::error("Failed to extract update");
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    spdlog::info("Extraction complete");
+    spdlog::info("");
+
+    // Find the installation root (parent of bin/ directory)
+    auto installRoot = exePath->parent_path().parent_path();
+
+    spdlog::warn("IMPORTANT: Bestow will now replace the current installation");
+    spdlog::warn("Installation directory: {}", installRoot.string());
+    spdlog::info("");
+    spdlog::info("Press Enter to continue or Ctrl+C to cancel...");
+    std::cin.get();
+
+    // Backup current installation
+    auto backupDir = installRoot.parent_path() / ("bestow-backup-" + std::to_string(std::time(nullptr)));
+    spdlog::info("Creating backup at: {}", backupDir.string());
+
+    try {
+        std::filesystem::create_directories(backupDir);
+        for (const auto& entry : std::filesystem::directory_iterator(installRoot)) {
+            auto dest = backupDir / entry.path().filename();
+            if (std::filesystem::is_directory(entry)) {
+                std::filesystem::copy(entry, dest, std::filesystem::copy_options::recursive);
+            } else {
+                std::filesystem::copy_file(entry, dest, std::filesystem::copy_options::overwrite_existing);
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("Failed to create backup: {}", e.what());
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    // Replace installation
+    spdlog::info("Installing update...");
+
+    try {
+        // Remove old files (except backup)
+        for (const auto& entry : std::filesystem::directory_iterator(installRoot)) {
+            std::filesystem::remove_all(entry);
+        }
+
+        // Copy new files from extracted directory
+        for (const auto& entry : std::filesystem::recursive_directory_iterator(extractDir)) {
+            if (entry.is_regular_file()) {
+                auto relativePath = std::filesystem::relative(entry.path(), extractDir);
+                auto destPath = installRoot / relativePath;
+                std::filesystem::create_directories(destPath.parent_path());
+                std::filesystem::copy_file(entry.path(), destPath,
+                    std::filesystem::copy_options::overwrite_existing);
+#if !defined(_WIN32)
+                // Preserve execute permissions on Unix
+                if (relativePath.parent_path().filename() == "bin") {
+                    std::filesystem::permissions(destPath,
+                        std::filesystem::perms::owner_exec | std::filesystem::perms::group_exec | std::filesystem::perms::others_exec,
+                        std::filesystem::perm_options::add);
+                }
+#endif
+            }
+        }
+    } catch (const std::exception& e) {
+        spdlog::error("Failed to install update: {}", e.what());
+        spdlog::error("Attempting to restore from backup...");
+
+        try {
+            std::filesystem::remove_all(installRoot);
+            for (const auto& entry : std::filesystem::directory_iterator(backupDir)) {
+                auto dest = installRoot / entry.path().filename();
+                if (std::filesystem::is_directory(entry)) {
+                    std::filesystem::copy(entry, dest, std::filesystem::copy_options::recursive);
+                } else {
+                    std::filesystem::copy_file(entry, dest, std::filesystem::copy_options::overwrite_existing);
+                }
+            }
+            spdlog::info("Restored from backup");
+        } catch (const std::exception& restoreError) {
+            spdlog::error("Failed to restore backup: {}", restoreError.what());
+            spdlog::error("Manual recovery required from: {}", backupDir.string());
+        }
+
+        std::filesystem::remove_all(tempDir);
+        return 1;
+    }
+
+    // Cleanup
+    std::filesystem::remove_all(tempDir);
+
+    spdlog::info("");
+    spdlog::info("Update complete!");
+    spdlog::info("Backup saved to: {}", backupDir.string());
+    spdlog::info("");
+    spdlog::info("Run 'bestow version' to verify the new version");
+
+    return 0;
+}
+
 }  // namespace bestow::launcher
 
 //=============================================================================
@@ -369,6 +631,9 @@ int main(int argc, char* argv[]) {
 
         case Command::Help:
             return handleHelp(*args, argv[0]);
+
+        case Command::Update:
+            return handleUpdate(*args);
 
         case Command::None:
         default:
