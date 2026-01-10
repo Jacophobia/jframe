@@ -67,12 +67,23 @@ endif()
 
 include(GoogleTest)
 
+# Windows: Copy vcpkg DLLs to test output directory
+# This allows the test executable to find its dependencies without PATH manipulation
+if(WIN32)
+    set(VCPKG_DEBUG_BIN_DIR "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin")
+    add_custom_command(TARGET bestow-tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${VCPKG_DEBUG_BIN_DIR}"
+            "$<TARGET_FILE_DIR:bestow-tests>"
+        COMMENT "Copying vcpkg debug DLLs to test directory"
+    )
+endif()
+
 # Discover tests and apply flaky test labels
 # The TEST_INCLUDE_FILES option includes our script after test discovery
 # to label timing-dependent tests as "Flaky"
 #
 # DISCOVERY_MODE PRE_TEST: Delays test discovery until test time instead of build time.
-# This ensures DLLs are available via PATH on Windows when discovery runs.
 #
 # Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
 # Run all tests (local):                ctest --preset <preset>
