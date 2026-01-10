@@ -73,15 +73,21 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # On Windows, copy vcpkg DLLs to test executable directory
+    # On Windows in CI, copy vcpkg DLLs to test executable directory
     # This ensures DLLs can be found when running tests
     if(DEFINED ENV{CI})
+        # Copy both debug and release DLLs to be safe
         add_custom_command(TARGET bestow-tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg debug DLLs to test directory..."
             COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/$<IF:$<CONFIG:Debug>,debug,>/bin"
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+                "$<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg release DLLs to test directory..."
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
                 "$<TARGET_FILE_DIR:bestow-tests>"
             COMMENT "Copying vcpkg DLLs for Windows CI tests"
+            VERBATIM
         )
     endif()
 endif()
