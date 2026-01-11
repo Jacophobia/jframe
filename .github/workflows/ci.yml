@@ -249,9 +249,12 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           # Using x64-windows triplet with dynamic linking
-          # DLLs deployed via POST_BUILD copy_directory command (see tests/CMakeLists.txt)
+          # Add vcpkg bin directory to PATH so Windows can find all DLLs
           # Test exclusions handled via --gtest_filter in CMakeLists.txt (add_test)
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
+          $vcpkgBin = "${{ github.workspace }}\build\windows-debug\vcpkg_installed\x64-windows\debug\bin"
+          $env:PATH = "$vcpkgBin;$env:PATH"
+          Write-Host "Added to PATH: $vcpkgBin"
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
           Write-Host "Running tests with $jobs parallel jobs"
           ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs

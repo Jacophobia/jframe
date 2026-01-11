@@ -69,19 +69,8 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # Copy all vcpkg DLLs to test executable directory
-    add_custom_command(TARGET bestow-tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "=== Deploying DLLs for Windows tests ==="
-        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
-        # Copy runtime DLLs from debug/bin
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
-            "$<TARGET_FILE_DIR:bestow-tests>"
-        COMMAND powershell -Command "Write-Host 'Deployed' (Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll).Count 'DLLs'; Write-Host 'Checking dependencies...'; try { Add-Type -AssemblyName System.Drawing; [void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); } catch {}; dumpbin /dependents '$<TARGET_FILE:bestow-tests>' 2>&1 | Select-String -Pattern '\\.dll' | Select-Object -First 20"
-        COMMAND ${CMAKE_COMMAND} -E echo "=== DLL Deployment Complete ==="
-        COMMENT "Deploying vcpkg DLLs for Windows"
-        VERBATIM
-    )
+    # Note: DLL deployment is handled via PATH in CI (see .github/workflows/ci.yml)
+    # For local development, Visual Studio automatically deploys DLLs via vcpkg integration
 endif()
 
 include(GoogleTest)
