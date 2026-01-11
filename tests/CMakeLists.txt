@@ -69,14 +69,17 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # Use vcpkg's applocal.ps1 to deploy DLLs (analyzes actual dependencies)
-    # This ensures ALL runtime dependencies are available for dynamic linking (x64-windows triplet)
+    # Copy all vcpkg DLLs to test executable directory
     add_custom_command(TARGET bestow-tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "=== Deploying DLLs with vcpkg applocal.ps1 ==="
-        COMMAND powershell -ExecutionPolicy Bypass -Command
-            "& '$ENV:VCPKG_ROOT/scripts/buildsystems/msbuild/applocal.ps1' -targetBinary '$<TARGET_FILE:bestow-tests>' -installedDir '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug' -Verbose"
+        COMMAND ${CMAKE_COMMAND} -E echo "=== Deploying DLLs for Windows tests ==="
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
+        # Copy runtime DLLs from debug/bin
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+            "$<TARGET_FILE_DIR:bestow-tests>"
+        COMMAND powershell -Command "Write-Host 'Deployed' (Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll).Count 'DLLs'; Write-Host 'Checking dependencies...'; try { Add-Type -AssemblyName System.Drawing; [void][System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms'); } catch {}; dumpbin /dependents '$<TARGET_FILE:bestow-tests>' 2>&1 | Select-String -Pattern '\\.dll' | Select-Object -First 20"
         COMMAND ${CMAKE_COMMAND} -E echo "=== DLL Deployment Complete ==="
-        COMMENT "Deploying vcpkg DLLs for Windows using applocal.ps1"
+        COMMENT "Deploying vcpkg DLLs for Windows"
         VERBATIM
     )
 endif()
