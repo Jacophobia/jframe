@@ -248,29 +248,12 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Using x64-windows triplet with dynamic linking
-          # Add vcpkg bin directory to PATH so Windows can find all DLLs
+          # Using x64-windows-static triplet (static linking - no DLL issues)
           # Test exclusions handled via --gtest_filter in CMakeLists.txt (add_test)
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
-          $vcpkgBin = "${{ github.workspace }}\build\windows-debug\vcpkg_installed\x64-windows\debug\bin"
-          $env:PATH = "$vcpkgBin;$env:PATH"
-          Write-Host "Added to PATH: $vcpkgBin"
-
-          # Run bestow-tests.exe directly instead of using ctest
-          # Running via ctest fails with 0xc0000135, but direct execution works
-          $testExe = "${{ github.workspace }}\build\windows-debug\tests\Debug\bestow-tests.exe"
-          Write-Host "Running bestow-tests.exe directly (ctest has PATH issues on Windows)"
-          Write-Host "Test executable: $testExe"
-
-          # Run with gtest filter to exclude flaky/hardware tests
-          & $testExe --gtest_filter=-FrameTimerTest.DeltaTimeConsistency:CameraSystemTest.ShakeDecaysOverTime:AssetSystemTest.CheckForReloadsDetectsModifiedFile:AssetSystemTest.HotReloadCallbackOnReload:AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded:EventSystemTest.UnsubscribeDuringCallback
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Host "Tests failed with exit code $LASTEXITCODE"
-              exit $LASTEXITCODE
-          }
-
-          Write-Host "All tests passed!"
+          $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
+          Write-Host "Running tests with $jobs parallel jobs"
+          ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs
 
       # =========================================================================
       # Upload artifacts

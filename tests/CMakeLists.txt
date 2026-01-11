@@ -87,8 +87,6 @@ if(WIN32 AND DEFINED ENV{CI})
     )
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
-        # Set PATH to include vcpkg DLLs
-        ENVIRONMENT "PATH=${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin;$ENV{PATH}"
     )
 else()
     # Discover tests and apply flaky test labels
