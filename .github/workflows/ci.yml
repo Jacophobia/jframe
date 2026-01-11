@@ -167,6 +167,10 @@ jobs:
         if: runner.os == 'Windows'
         run: echo "VCPKG_ROOT=${{ github.workspace }}/vcpkg" >> $env:GITHUB_ENV
 
+      - name: Set vcpkg triplet (macOS)
+        if: runner.os == 'macOS'
+        run: echo "VCPKG_DEFAULT_TRIPLET=x64-osx-llvm" >> $GITHUB_ENV
+
       # Restore vcpkg installed packages and binary cache from cache
       - name: Restore vcpkg cache
         id: vcpkg-cache
