@@ -62,12 +62,9 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-pthread)
     add_link_options(-pthread)
 
-    # Note: On macOS, we use the system libc++ which has full std::expected support.
-    # DO NOT link libc++experimental - it either doesn't exist or is incomplete in LLVM 20.
-    # The system libc++ (from /usr/lib) provides all necessary symbols.
-
-    # On Linux, we may need to add the libc++ library path
-    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Add LLVM's libc++ library path for std::expected vtables
+    # (both macOS and Linux need this when using LLVM Clang)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
         # Find libc++ library path
         get_filename_component(COMPILER_BIN_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
         get_filename_component(COMPILER_ROOT "${COMPILER_BIN_DIR}" DIRECTORY)
@@ -75,14 +72,19 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         # Check common libc++ library locations
         if(EXISTS "${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
             link_directories("${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
+            link_libraries("-Wl,-rpath,${COMPILER_ROOT}/lib/x86_64-unknown-linux-gnu")
         elseif(EXISTS "${COMPILER_ROOT}/lib")
             link_directories("${COMPILER_ROOT}/lib")
+            link_libraries("-Wl,-rpath,${COMPILER_ROOT}/lib")
         endif()
 
         # Also try /usr/lib/llvm-20 for apt-installed LLVM
         if(EXISTS "/usr/lib/llvm-20/lib")
             link_directories("/usr/lib/llvm-20/lib")
+            link_libraries("-Wl,-rpath,/usr/lib/llvm-20/lib")
         endif()
+
+        message(STATUS "Using LLVM libc++ from: ${COMPILER_ROOT}/lib")
     endif()
 
     # First, try to derive the libc++ path from the compiler location
