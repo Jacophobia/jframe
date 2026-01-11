@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             preset: macos-ci-debug
             name: macOS (Apple Silicon)
           - os: ubuntu-24.04
