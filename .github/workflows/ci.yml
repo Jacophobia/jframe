@@ -63,6 +63,18 @@ jobs:
       - name: Install LLVM 20 (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Debug: Check runner environment
+          echo "=== macOS Version ==="
+          sw_vers
+          echo ""
+          echo "=== Available SDKs ==="
+          ls -la /Library/Developer/CommandLineTools/SDKs/ || echo "No CommandLineTools SDKs found"
+          ls -la /Applications/Xcode*.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/ 2>/dev/null || echo "No Xcode SDKs found"
+          echo ""
+          echo "=== Default Compiler ==="
+          clang++ --version
+          echo ""
+
           # Install LLVM 20 for import std; support
           if [ ! -d "/opt/homebrew/Cellar/llvm@20" ]; then
             brew update
@@ -76,14 +88,8 @@ jobs:
           echo "BESTOW_CC=/opt/homebrew/opt/llvm@20/bin/clang" >> $GITHUB_ENV
           echo "BESTOW_CXX=/opt/homebrew/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
 
-          # Verify compiler and libraries
+          echo "=== LLVM 20 Compiler ==="
           /opt/homebrew/opt/llvm@20/bin/clang++ --version
-          echo "=== LLVM Installation ==="
-          ls -la /opt/homebrew/opt/llvm@20
-          echo "=== LLVM Libraries ==="
-          ls -la /opt/homebrew/opt/llvm@20/lib/libc++* || echo "No libc++ libraries found"
-          echo "=== Check for std::expected symbols ==="
-          nm /opt/homebrew/opt/llvm@20/lib/libc++.dylib 2>/dev/null | grep -i "bad_expected_access" || echo "No bad_expected_access symbols found"
 
       # =========================================================================
       # Linux Setup

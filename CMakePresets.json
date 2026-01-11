@@ -68,8 +68,8 @@
         {
             "name": "macos-ci-debug",
             "inherits": "base",
-            "displayName": "macOS CI Debug (ARM64 native for GitHub Actions)",
-            "description": "Builds ARM64 binaries natively for CI testing on macos-14 runners",
+            "displayName": "macOS CI Debug (identical to local macos-debug)",
+            "description": "Builds x86_64 binaries for Rosetta 2 with LLVM Clang 20 - matches local development environment exactly",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
                 "CMAKE_C_COMPILER": {
@@ -80,10 +80,10 @@
                     "type": "FILEPATH",
                     "value": "/opt/homebrew/opt/llvm@20/bin/clang++"
                 },
-                "CMAKE_OSX_SYSROOT": "/Applications/Xcode_16.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
-                "CMAKE_OSX_ARCHITECTURES": "arm64",
+                "CMAKE_OSX_SYSROOT": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk",
+                "CMAKE_OSX_ARCHITECTURES": "x86_64",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
-                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm",
+                "VCPKG_TARGET_TRIPLET": "x64-osx-llvm",
                 "VCPKG_MANIFEST_FEATURES": "vulkan",
                 "BESTOW_BUILD_VULKAN": "ON"
             },
