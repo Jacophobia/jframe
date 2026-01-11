@@ -249,13 +249,11 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           # Using x64-windows-static triplet - no DLL deployment needed (static linking)
+          # Test exclusions handled via --gtest_filter in CMakeLists.txt (add_test)
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
           Write-Host "Running tests with $jobs parallel jobs"
-          # Exclude flaky tests in CI (-E = exclude by regex)
-          # See cmake/FlakyTests.cmake for why these tests are flaky
-          ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs `
-            -E "FrameTimerTest.DeltaTimeConsistency|CameraSystemTest.ShakeDecaysOverTime|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded|EventSystemTest.UnsubscribeDuringCallback"
+          ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs
 
       # =========================================================================
       # Upload artifacts

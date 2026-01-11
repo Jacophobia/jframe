@@ -79,8 +79,12 @@ include(GoogleTest)
 # (Static linking means no DLL deployment issues)
 # On other platforms, use normal test discovery
 if(WIN32 AND DEFINED ENV{CI})
-    # Add a single test that runs the executable directly
-    add_test(NAME bestow-tests-all COMMAND bestow-tests)
+    # Add a single test that runs the executable directly with gtest filter
+    # Exclude flaky/hardware-dependent tests (same as macOS/Linux)
+    add_test(NAME bestow-tests-all
+        COMMAND bestow-tests
+            --gtest_filter=-FrameTimerTest.DeltaTimeConsistency:CameraSystemTest.ShakeDecaysOverTime:AssetSystemTest.CheckForReloadsDetectsModifiedFile:AssetSystemTest.HotReloadCallbackOnReload:AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded:EventSystemTest.UnsubscribeDuringCallback
+    )
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
     )
