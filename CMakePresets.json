@@ -80,7 +80,7 @@
                     "type": "FILEPATH",
                     "value": "/opt/homebrew/opt/llvm@20/bin/clang++"
                 },
-                "CMAKE_OSX_SYSROOT": "",
+                "CMAKE_OSX_SYSROOT": "/Applications/Xcode_16.2.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
                 "CMAKE_OSX_ARCHITECTURES": "arm64",
                 "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
                 "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm",
