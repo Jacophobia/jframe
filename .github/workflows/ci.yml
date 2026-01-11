@@ -50,9 +50,10 @@ jobs:
       - name: Select Xcode 16.2 (macOS)
         if: runner.os == 'macOS'
         run: |
+          # Select Xcode 16.2 for modern SDK (has std::expected support)
           sudo xcode-select -s /Applications/Xcode_16.2.app
           xcodebuild -version
-          echo "SDK_PATH=$(xcrun --show-sdk-path)"
+          xcrun --show-sdk-path
           xcrun --show-sdk-version
 
       - name: Cache Homebrew packages (macOS)
@@ -68,38 +69,17 @@ jobs:
           restore-keys: |
             homebrew-macos-14-llvm20-
 
-      - name: Install dependencies (macOS)
+      - name: Install LLVM 20 (macOS)
         if: runner.os == 'macOS'
         run: |
-          # Only update if cache miss or llvm@20 not found
+          # Install LLVM 20 for import std; support
           if [ ! -d "/opt/homebrew/opt/llvm@20" ]; then
             brew update
             brew install llvm@20
           fi
-          # ninja and cmake are usually pre-installed on GitHub runners
-          brew list ninja &>/dev/null || brew install ninja
-          brew list cmake &>/dev/null || brew install cmake
 
-          # Determine Homebrew prefix (different on ARM vs Intel)
-          if [ -d "/opt/homebrew/opt/llvm@20" ]; then
-            LLVM_PATH="/opt/homebrew/opt/llvm@20"
-          elif [ -d "/usr/local/opt/llvm@20" ]; then
-            LLVM_PATH="/usr/local/opt/llvm@20"
-          else
-            echo "Error: LLVM@20 not found"
-            exit 1
-          fi
-
-          echo "Using LLVM Clang 20 at: $LLVM_PATH"
-          echo "BESTOW_CC=${LLVM_PATH}/bin/clang" >> $GITHUB_ENV
-          echo "BESTOW_CXX=${LLVM_PATH}/bin/clang++" >> $GITHUB_ENV
-
-          # Xcode 16.2's SDK has std::expected support - no special flags needed
-          echo "Using Xcode 16.2 SDK with native std::expected support"
-
-          # Verify compiler and SDK
-          ${LLVM_PATH}/bin/clang++ --version
-          xcrun --show-sdk-path
+          # Verify
+          /opt/homebrew/opt/llvm@20/bin/clang++ --version
 
       # =========================================================================
       # Linux Setup
