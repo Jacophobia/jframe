@@ -250,12 +250,7 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Add vcpkg DEBUG DLLs to PATH for test execution and discovery
-          # With DISCOVERY_MODE PRE_TEST, test discovery happens here, not at build time
-          $vcpkgBinPath = "${{ github.workspace }}\build\${{ matrix.preset }}\vcpkg_installed\x64-windows\debug\bin"
-          $env:PATH = "$vcpkgBinPath;$env:PATH"
-          Write-Host "Added vcpkg debug bin to PATH: $vcpkgBinPath"
-
+          # Using x64-windows-static triplet - no DLL deployment needed (static linking)
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
           Write-Host "Running tests with $jobs parallel jobs"

@@ -64,47 +64,22 @@ target_compile_features(bestow-tests PRIVATE cxx_std_23)
 # MSVC workaround: force include entt_compat.hpp to fix ADL issues with C++23 modules
 if(MSVC)
     target_compile_options(bestow-tests PRIVATE /FI"bestow/entt_compat.hpp")
-    # Enable vcpkg DLL deployment
+    # Set working directory for Visual Studio debugger
     set_target_properties(bestow-tests PROPERTIES
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # On Windows in CI, copy vcpkg DLLs to test executable directory
-    # This ensures DLLs can be found when running tests
-    if(DEFINED ENV{CI})
-        # Copy both debug and release DLLs to be safe
-        add_custom_command(TARGET bestow-tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "=== Diagnostic: Checking DLL dependencies ==="
-            COMMAND ${CMAKE_COMMAND} -E echo "Target executable: $<TARGET_FILE:bestow-tests>"
-            COMMAND powershell -Command "Write-Host 'Checking for dependency walker...'; if (Get-Command dumpbin -ErrorAction SilentlyContinue) { Write-Host 'Using dumpbin to check dependencies:'; dumpbin /dependents '$<TARGET_FILE:bestow-tests>' } else { Write-Host 'dumpbin not available' }"
-            COMMAND ${CMAKE_COMMAND} -E echo "=== Checking vcpkg DLL directories ==="
-            COMMAND ${CMAKE_COMMAND} -E echo "Debug bin dir: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
-            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin') { Write-Host 'Debug bin exists - DLL count:' (Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll).Count } else { Write-Host 'NOT FOUND' }"
-            COMMAND ${CMAKE_COMMAND} -E echo "Tools bin dir: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools"
-            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools') { Write-Host 'Tools dir exists'; Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools' -Recurse -Filter *.dll | Select-Object -First 20 FullName } else { Write-Host 'NOT FOUND' }"
-            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg debug DLLs to test directory..."
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
-                "$<TARGET_FILE_DIR:bestow-tests>"
-            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg release DLLs to test directory..."
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
-                "$<TARGET_FILE_DIR:bestow-tests>"
-            COMMAND ${CMAKE_COMMAND} -E echo "After copy - DLLs in test directory:"
-            COMMAND powershell -Command "Write-Host 'DLL count:' (Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll).Count"
-            COMMENT "Copying vcpkg DLLs for Windows CI tests"
-            VERBATIM
-        )
-    endif()
+    # Note: Using x64-windows-static triplet, so no DLL deployment needed
+    # All dependencies are statically linked into the executable
 endif()
 
 include(GoogleTest)
 
-# On Windows in CI, skip test discovery (DLL issues) and run tests directly
+# On Windows in CI, skip test discovery and run tests directly
+# (Static linking means no DLL deployment issues)
 # On other platforms, use normal test discovery
 if(WIN32 AND DEFINED ENV{CI})
     # Add a single test that runs the executable directly
-    # DLLs are copied to the executable directory via POST_BUILD command above
     add_test(NAME bestow-tests-all COMMAND bestow-tests)
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
