@@ -234,10 +234,18 @@ jobs:
           JOBS=$(( CPU_COUNT - 1 ))
           [ $JOBS -lt 1 ] && JOBS=1
           echo "Running tests with $JOBS parallel jobs (detected $CPU_COUNT CPUs)"
-          # Exclude flaky tests and CI-incompatible tests
-          # AudioSystemTest.InitializeReturnsTrue - requires ALSA audio device (not available in headless CI)
-          ctest --preset ${{ matrix.preset }} -j $JOBS \
-            -E "FrameTimerTest.DeltaTimeConsistency|CameraSystemTest.ShakeDecaysOverTime|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded|EventSystemTest.UnsubscribeDuringCallback|AudioSystemTest.InitializeReturnsTrue"
+
+          # macOS: Test exclusions handled via gtest_filter in CMakeLists.txt (add_test with --gtest_filter)
+          # Linux: Test exclusions handled via ctest -E (gtest_discover_tests)
+          if [ "$(uname)" = "Darwin" ]; then
+            # macOS - no -E flag needed, gtest_filter handles exclusions
+            ctest --preset ${{ matrix.preset }} -j $JOBS
+          else
+            # Linux - use -E to exclude flaky/hardware-dependent tests
+            # AudioSystemTest.InitializeReturnsTrue - requires ALSA audio device (not available in headless CI)
+            ctest --preset ${{ matrix.preset }} -j $JOBS \
+              -E "FrameTimerTest.DeltaTimeConsistency|CameraSystemTest.ShakeDecaysOverTime|AssetSystemTest.CheckForReloadsDetectsModifiedFile|AssetSystemTest.HotReloadCallbackOnReload|AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded|EventSystemTest.UnsubscribeDuringCallback|AudioSystemTest.InitializeReturnsTrue"
+          fi
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
