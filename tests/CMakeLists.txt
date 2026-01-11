@@ -72,13 +72,18 @@ if(MSVC)
     # Copy vcpkg DLLs to test executable directory
     # This ensures all runtime dependencies are available for dynamic linking (x64-windows triplet)
     add_custom_command(TARGET bestow-tests POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
+        COMMAND ${CMAKE_COMMAND} -E echo "=== DLL Deployment Diagnostics ==="
+        COMMAND ${CMAKE_COMMAND} -E echo "Source: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+        COMMAND ${CMAKE_COMMAND} -E echo "Target: $<TARGET_FILE_DIR:bestow-tests>"
+        COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin') { Write-Host 'Source directory exists'; Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll | Select-Object -First 10 | ForEach-Object { Write-Host $_.Name } } else { Write-Host 'ERROR: Source directory does not exist!' }"
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying DLLs..."
         COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
             "$<TARGET_FILE_DIR:bestow-tests>"
-        COMMAND ${CMAKE_COMMAND} -E echo "DLL deployment complete"
-        COMMENT "Deploying vcpkg DLLs for Windows"
+        COMMAND powershell -Command "Write-Host 'DLLs in test directory:'; Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll | Select-Object -First 10 | ForEach-Object { Write-Host $_.Name }"
+        COMMAND ${CMAKE_COMMAND} -E echo "=== DLL Deployment Complete ==="
+        COMMENT "Deploying vcpkg DLLs for Windows (with diagnostics)"
         VERBATIM
     )
 endif()
