@@ -249,7 +249,7 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           # Using x64-windows triplet with dynamic linking
-          # DLLs deployed via vcpkg applocal.ps1 script (see tests/CMakeLists.txt)
+          # DLLs deployed via POST_BUILD copy_directory command (see tests/CMakeLists.txt)
           # Test exclusions handled via --gtest_filter in CMakeLists.txt (add_test)
           # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)

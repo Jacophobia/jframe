@@ -69,27 +69,24 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # On Windows CI, copy vcpkg DLLs to test executable directory
-    if(DEFINED ENV{CI})
-        # Copy all DLLs from vcpkg debug bin directory to test directory
-        # This ensures all runtime dependencies are available
-        add_custom_command(TARGET bestow-tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
-            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
-            COMMAND ${CMAKE_COMMAND} -E copy_directory
-                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
-                "$<TARGET_FILE_DIR:bestow-tests>"
-            COMMAND ${CMAKE_COMMAND} -E echo "DLL deployment complete"
-            COMMENT "Deploying vcpkg DLLs for Windows CI"
-            VERBATIM
-        )
-    endif()
+    # Copy vcpkg DLLs to test executable directory
+    # This ensures all runtime dependencies are available for dynamic linking (x64-windows triplet)
+    add_custom_command(TARGET bestow-tests POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+            "$<TARGET_FILE_DIR:bestow-tests>"
+        COMMAND ${CMAKE_COMMAND} -E echo "DLL deployment complete"
+        COMMENT "Deploying vcpkg DLLs for Windows"
+        VERBATIM
+    )
 endif()
 
 include(GoogleTest)
 
 # On Windows in CI, skip test discovery and run tests directly
-# (Static linking means no DLL deployment issues)
+# (Avoids test discovery timeout issues in CI environment)
 # On other platforms, use normal test discovery
 if(WIN32 AND DEFINED ENV{CI})
     # Add a single test that runs the executable directly with gtest filter
