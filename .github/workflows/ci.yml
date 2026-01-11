@@ -72,6 +72,10 @@ jobs:
           # Ensure symlinks are correct (cache may have stale symlinks)
           brew link --overwrite llvm@20 || true
 
+          # Set compiler paths (used by configure step)
+          echo "BESTOW_CC=/opt/homebrew/opt/llvm@20/bin/clang" >> $GITHUB_ENV
+          echo "BESTOW_CXX=/opt/homebrew/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
+
           # Verify
           /opt/homebrew/opt/llvm@20/bin/clang++ --version
           ls -la /opt/homebrew/opt/llvm@20
