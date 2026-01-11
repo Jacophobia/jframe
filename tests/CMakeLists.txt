@@ -69,21 +69,20 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # On Windows CI, deploy vcpkg DLLs using applocal.ps1
+    # On Windows CI, copy vcpkg DLLs to test executable directory
     if(DEFINED ENV{CI})
-        # Use vcpkg's applocal.ps1 script to copy DLLs next to executable
+        # Copy all DLLs from vcpkg debug bin directory to test directory
         # This ensures all runtime dependencies are available
-        find_program(POWERSHELL powershell.exe)
-        if(POWERSHELL AND EXISTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/vcpkg/applocal.ps1")
-            add_custom_command(TARGET bestow-tests POST_BUILD
-                COMMAND ${POWERSHELL} -ExecutionPolicy Bypass -File "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/vcpkg/applocal.ps1"
-                    -targetBinary "$<TARGET_FILE:bestow-tests>"
-                    -installedDir "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin"
-                    -tlogFile "$<TARGET_FILE_DIR:bestow-tests>/bestow-tests.tlog"
-                COMMENT "Deploying DLLs for bestow-tests"
-                VERBATIM
-            )
-        endif()
+        add_custom_command(TARGET bestow-tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg DLLs to test directory..."
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+                "$<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND ${CMAKE_COMMAND} -E echo "DLL deployment complete"
+            COMMENT "Deploying vcpkg DLLs for Windows CI"
+            VERBATIM
+        )
     endif()
 endif()
 
