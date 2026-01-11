@@ -74,10 +74,14 @@ if(MSVC)
     if(DEFINED ENV{CI})
         # Copy both debug and release DLLs to be safe
         add_custom_command(TARGET bestow-tests POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E echo "=== Diagnostic: Checking vcpkg DLL directories ==="
-            COMMAND ${CMAKE_COMMAND} -E echo "Target file dir: $<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND ${CMAKE_COMMAND} -E echo "=== Diagnostic: Checking DLL dependencies ==="
+            COMMAND ${CMAKE_COMMAND} -E echo "Target executable: $<TARGET_FILE:bestow-tests>"
+            COMMAND powershell -Command "Write-Host 'Checking for dependency walker...'; if (Get-Command dumpbin -ErrorAction SilentlyContinue) { Write-Host 'Using dumpbin to check dependencies:'; dumpbin /dependents '$<TARGET_FILE:bestow-tests>' } else { Write-Host 'dumpbin not available' }"
+            COMMAND ${CMAKE_COMMAND} -E echo "=== Checking vcpkg DLL directories ==="
             COMMAND ${CMAKE_COMMAND} -E echo "Debug bin dir: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
-            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin') { Write-Host 'Debug bin dir exists'; Write-Host 'DLL count:' (Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll).Count; Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll | Select-Object Name } else { Write-Host 'Debug bin dir NOT FOUND' }"
+            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin') { Write-Host 'Debug bin exists - DLL count:' (Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll).Count } else { Write-Host 'NOT FOUND' }"
+            COMMAND ${CMAKE_COMMAND} -E echo "Tools bin dir: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools"
+            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools') { Write-Host 'Tools dir exists'; Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/tools' -Recurse -Filter *.dll | Select-Object -First 20 FullName } else { Write-Host 'NOT FOUND' }"
             COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg debug DLLs to test directory..."
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
@@ -86,7 +90,8 @@ if(MSVC)
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
                 "$<TARGET_FILE_DIR:bestow-tests>"
-            COMMAND powershell -Command "Write-Host 'DLLs in test directory:'; Write-Host 'DLL count:' (Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll).Count; Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll | Select-Object Name"
+            COMMAND ${CMAKE_COMMAND} -E echo "After copy - DLLs in test directory:"
+            COMMAND powershell -Command "Write-Host 'DLL count:' (Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll).Count"
             COMMENT "Copying vcpkg DLLs for Windows CI tests"
             VERBATIM
         )
