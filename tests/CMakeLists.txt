@@ -111,7 +111,12 @@ else()
     # On macOS CI, use a simple add_test instead of gtest_discover_tests
     # to avoid test discovery timeout issues in headless environment
     if(APPLE AND DEFINED ENV{CI})
-        add_test(NAME bestow-tests-ci COMMAND bestow-tests)
+        # Pass gtest filter to exclude hardware-dependent tests
+        # Same exclusions as Linux CI (see ci.yml)
+        add_test(NAME bestow-tests-ci
+            COMMAND bestow-tests
+                --gtest_filter=-FrameTimerTest.DeltaTimeConsistency:CameraSystemTest.ShakeDecaysOverTime:AssetSystemTest.CheckForReloadsDetectsModifiedFile:AssetSystemTest.HotReloadCallbackOnReload:AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded:EventSystemTest.UnsubscribeDuringCallback:AudioSystemTest.InitializeReturnsTrue
+        )
     else()
         gtest_discover_tests(bestow-tests
             TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
