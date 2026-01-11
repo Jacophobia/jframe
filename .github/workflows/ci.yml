@@ -255,6 +255,19 @@ jobs:
           $vcpkgBin = "${{ github.workspace }}\build\windows-debug\vcpkg_installed\x64-windows\debug\bin"
           $env:PATH = "$vcpkgBin;$env:PATH"
           Write-Host "Added to PATH: $vcpkgBin"
+
+          # Diagnostic: Check if critical DLLs can be found
+          Write-Host "`n=== DLL Diagnostic ==="
+          $testExe = "${{ github.workspace }}\build\windows-debug\tests\Debug\bestow-tests.exe"
+          Write-Host "Test executable: $testExe"
+          Write-Host "Checking PATH for critical DLLs..."
+          @("gtest.dll", "gtest_main.dll", "SDL2d.dll", "lua51.dll") | ForEach-Object {
+              $found = where.exe $_ 2>$null
+              if ($found) { Write-Host "  [OK] $_`:  $found" }
+              else { Write-Host "  [MISSING] $_" }
+          }
+          Write-Host "`n=== End Diagnostic ===`n"
+
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
           Write-Host "Running tests with $jobs parallel jobs"
           ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs
