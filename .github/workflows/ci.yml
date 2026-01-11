@@ -256,17 +256,23 @@ jobs:
           $env:PATH = "$vcpkgBin;$env:PATH"
           Write-Host "Added to PATH: $vcpkgBin"
 
-          # Diagnostic: Check if critical DLLs can be found
-          Write-Host "`n=== DLL Diagnostic ==="
+          # Diagnostic: Try to run bestow-tests.exe directly to see detailed error
+          Write-Host "`n=== Attempting to run bestow-tests.exe directly ==="
           $testExe = "${{ github.workspace }}\build\windows-debug\tests\Debug\bestow-tests.exe"
           Write-Host "Test executable: $testExe"
-          Write-Host "Checking PATH for critical DLLs..."
-          @("gtest.dll", "gtest_main.dll", "SDL2d.dll", "lua51.dll") | ForEach-Object {
-              $found = where.exe $_ 2>$null
-              if ($found) { Write-Host "  [OK] $_`:  $found" }
-              else { Write-Host "  [MISSING] $_" }
+          Write-Host "Attempting execution..."
+          try {
+              & $testExe --gtest_list_tests 2>&1 | Tee-Object -Variable output
+              Write-Host "SUCCESS: Test executable ran successfully"
+          } catch {
+              Write-Host "ERROR: Test executable failed to run"
+              Write-Host "Exception: $_"
+              Write-Host "Output: $output"
+              # Use dumpbin to show dependencies
+              Write-Host "`nShowing DLL dependencies with dumpbin..."
+              dumpbin /dependents $testExe | Select-String -Pattern "\.dll" | Select-Object -First 30
           }
-          Write-Host "`n=== End Diagnostic ===`n"
+          Write-Host "=== End Diagnostic ===`n"
 
           $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
           Write-Host "Running tests with $jobs parallel jobs"
