@@ -76,9 +76,14 @@ jobs:
           echo "BESTOW_CC=/opt/homebrew/opt/llvm@20/bin/clang" >> $GITHUB_ENV
           echo "BESTOW_CXX=/opt/homebrew/opt/llvm@20/bin/clang++" >> $GITHUB_ENV
 
-          # Verify
+          # Verify compiler and libraries
           /opt/homebrew/opt/llvm@20/bin/clang++ --version
+          echo "=== LLVM Installation ==="
           ls -la /opt/homebrew/opt/llvm@20
+          echo "=== LLVM Libraries ==="
+          ls -la /opt/homebrew/opt/llvm@20/lib/libc++* || echo "No libc++ libraries found"
+          echo "=== Check for std::expected symbols ==="
+          nm /opt/homebrew/opt/llvm@20/lib/libc++.dylib 2>/dev/null | grep -i "bad_expected_access" || echo "No bad_expected_access symbols found"
 
       # =========================================================================
       # Linux Setup
