@@ -74,6 +74,10 @@ if(MSVC)
     if(DEFINED ENV{CI})
         # Copy both debug and release DLLs to be safe
         add_custom_command(TARGET bestow-tests POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E echo "=== Diagnostic: Checking vcpkg DLL directories ==="
+            COMMAND ${CMAKE_COMMAND} -E echo "Target file dir: $<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND ${CMAKE_COMMAND} -E echo "Debug bin dir: ${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
+            COMMAND powershell -Command "if (Test-Path '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin') { Write-Host 'Debug bin dir exists'; Get-ChildItem '${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin' -Filter *.dll | Select-Object -First 10 Name } else { Write-Host 'Debug bin dir NOT FOUND' }"
             COMMAND ${CMAKE_COMMAND} -E echo "Copying vcpkg debug DLLs to test directory..."
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/debug/bin"
@@ -82,6 +86,7 @@ if(MSVC)
             COMMAND ${CMAKE_COMMAND} -E copy_directory
                 "${CMAKE_BINARY_DIR}/vcpkg_installed/x64-windows/bin"
                 "$<TARGET_FILE_DIR:bestow-tests>"
+            COMMAND powershell -Command "Write-Host 'DLLs in test directory:'; Get-ChildItem '$<TARGET_FILE_DIR:bestow-tests>' -Filter *.dll | Select-Object -First 10 Name"
             COMMENT "Copying vcpkg DLLs for Windows CI tests"
             VERBATIM
         )
