@@ -7,9 +7,9 @@ on:
     branches: [mainline, develop]
 
 env:
-  # Use files-based binary caching for vcpkg packages
-  # The vcpkg_installed directory is cached by actions/cache in each job
-  VCPKG_BINARY_SOURCES: "clear;files,${{ github.workspace }}/vcpkg-cache,readwrite"
+  # Use GitHub Actions cache backend for vcpkg binary caching (faster, more reliable)
+  # x-gha backend caches to GitHub Actions cache automatically
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
   # =============================================================================
@@ -171,14 +171,13 @@ jobs:
         if: runner.os == 'macOS'
         run: echo "VCPKG_DEFAULT_TRIPLET=x64-osx-llvm" >> $GITHUB_ENV
 
-      # Restore vcpkg installed packages and binary cache from cache
+      # Restore vcpkg installed packages from cache
+      # Note: Binary caching is handled by x-gha backend (VCPKG_BINARY_SOURCES)
       - name: Restore vcpkg cache
         id: vcpkg-cache
         uses: actions/cache/restore@v4
         with:
-          path: |
-            build/${{ matrix.preset }}/vcpkg_installed
-            vcpkg-cache
+          path: build/${{ matrix.preset }}/vcpkg_installed
           key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
           restore-keys: |
             vcpkg-${{ matrix.os }}-${{ matrix.preset }}-
@@ -205,13 +204,12 @@ jobs:
 
       # Save vcpkg cache immediately after configure (before build might fail)
       # This ensures expensive vcpkg installs are cached even if compilation fails
+      # Note: Binary caching is handled automatically by x-gha backend
       - name: Save vcpkg cache
         if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: |
-            build/${{ matrix.preset }}/vcpkg_installed
-            vcpkg-cache
+          path: build/${{ matrix.preset }}/vcpkg_installed
           key: vcpkg-${{ matrix.os }}-${{ matrix.preset }}-${{ hashFiles('vcpkg.json', 'triplets/*.cmake', 'custom-ports/**') }}
 
       - name: Build (Unix)
