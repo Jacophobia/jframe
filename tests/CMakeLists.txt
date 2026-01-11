@@ -69,8 +69,22 @@ if(MSVC)
         VS_DEBUGGER_WORKING_DIRECTORY "$<TARGET_FILE_DIR:bestow-tests>"
     )
 
-    # Note: Using x64-windows-static triplet, so no DLL deployment needed
-    # All dependencies are statically linked into the executable
+    # On Windows CI, deploy vcpkg DLLs using applocal.ps1
+    if(DEFINED ENV{CI})
+        # Use vcpkg's applocal.ps1 script to copy DLLs next to executable
+        # This ensures all runtime dependencies are available
+        find_program(POWERSHELL powershell.exe)
+        if(POWERSHELL AND EXISTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/vcpkg/applocal.ps1")
+            add_custom_command(TARGET bestow-tests POST_BUILD
+                COMMAND ${POWERSHELL} -ExecutionPolicy Bypass -File "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/tools/vcpkg/applocal.ps1"
+                    -targetBinary "$<TARGET_FILE:bestow-tests>"
+                    -installedDir "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}$<$<CONFIG:Debug>:/debug>/bin"
+                    -tlogFile "$<TARGET_FILE_DIR:bestow-tests>/bestow-tests.tlog"
+                COMMENT "Deploying DLLs for bestow-tests"
+                VERBATIM
+            )
+        endif()
+    endif()
 endif()
 
 include(GoogleTest)

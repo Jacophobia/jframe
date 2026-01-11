@@ -105,8 +105,7 @@
             },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Debug",
-                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDebug",
-                "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "VCPKG_MANIFEST_FEATURES": "vulkan",
                 "BESTOW_BUILD_VULKAN": "ON"
             },
@@ -128,8 +127,7 @@
             },
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
-                "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreaded",
-                "VCPKG_TARGET_TRIPLET": "x64-windows-static",
+                "VCPKG_TARGET_TRIPLET": "x64-windows",
                 "BESTOW_DEV_TOOLS": "OFF",
                 "BESTOW_BUILD_TESTS": "OFF",
                 "BESTOW_BUILD_EXAMPLES": "OFF",
