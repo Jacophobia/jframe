@@ -66,6 +66,33 @@
             }
         },
         {
+            "name": "macos-ci-debug",
+            "inherits": "base",
+            "displayName": "macOS CI Debug (ARM64 native for GitHub Actions)",
+            "description": "Builds ARM64 binaries natively for CI testing on macos-14 runners",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_C_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "/opt/homebrew/opt/llvm@20/bin/clang"
+                },
+                "CMAKE_CXX_COMPILER": {
+                    "type": "FILEPATH",
+                    "value": "/opt/homebrew/opt/llvm@20/bin/clang++"
+                },
+                "CMAKE_OSX_ARCHITECTURES": "arm64",
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/triplets",
+                "VCPKG_TARGET_TRIPLET": "arm64-osx-llvm",
+                "VCPKG_MANIFEST_FEATURES": "vulkan",
+                "BESTOW_BUILD_VULKAN": "ON"
+            },
+            "condition": {
+                "type": "equals",
+                "lhs": "${hostSystemName}",
+                "rhs": "Darwin"
+            }
+        },
+        {
             "name": "windows-debug",
             "inherits": "base",
             "displayName": "Windows Debug (MSVC)",
@@ -160,6 +187,10 @@
             "configurePreset": "macos-release"
         },
         {
+            "name": "macos-ci-debug",
+            "configurePreset": "macos-ci-debug"
+        },
+        {
             "name": "windows-debug",
             "configurePreset": "windows-debug"
         },
@@ -190,6 +221,11 @@
             "name": "macos-debug",
             "inherits": "base-test",
             "configurePreset": "macos-debug"
+        },
+        {
+            "name": "macos-ci-debug",
+            "inherits": "base-test",
+            "configurePreset": "macos-ci-debug"
         },
         {
             "name": "windows-debug",
