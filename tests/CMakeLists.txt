@@ -107,9 +107,16 @@ else()
     # Run tests excluding flaky ones (CI):  ctest --preset <preset> -LE Flaky
     # Run all tests (local):                ctest --preset <preset>
     # Run only flaky tests:                 ctest --preset <preset> -L Flaky
-    gtest_discover_tests(bestow-tests
-        TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
-    )
+
+    # On macOS CI, use a simple add_test instead of gtest_discover_tests
+    # to avoid test discovery timeout issues in headless environment
+    if(APPLE AND DEFINED ENV{CI})
+        add_test(NAME bestow-tests-ci COMMAND bestow-tests)
+    else()
+        gtest_discover_tests(bestow-tests
+            TEST_INCLUDE_FILES ${CMAKE_CURRENT_BINARY_DIR}/LabelFlakyTests.cmake
+        )
+    endif()
 endif()
 
 # Kangaru DI compatibility test (basic)
