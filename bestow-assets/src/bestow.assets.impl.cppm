@@ -200,7 +200,7 @@ private:
     mutable std::mutex fileChangesMutex_;
     std::unordered_map<std::string, AssetHandle> pathToHandle_;  // Canonical path -> handle
     mutable std::mutex pathMapMutex_;
-    std::unordered_set<std::string> watchedDirectories_;
+    std::unordered_map<std::string, efsw::WatchID> watchedDirectories_;  // dir -> WatchID
 
     // Subscription storage
     struct Subscription {

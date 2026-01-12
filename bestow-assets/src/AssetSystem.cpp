@@ -162,9 +162,13 @@ AssetHandle AssetSystem::registerAsset(AssetType type, const std::filesystem::pa
                 fileWatcher_ = std::make_unique<efsw::FileWatcher>();
                 fileWatchListener_ = std::make_unique<FileWatchListener>(this);
             }
-            fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
-            watchedDirectories_.insert(dirStr);
-            spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+            efsw::WatchID watchId = fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
+            if (watchId > 0) {  // addWatch returns -1 on failure
+                watchedDirectories_[dirStr] = watchId;
+                spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+            } else {
+                spdlog::warn("[AssetSystem] Failed to watch directory: {}", dirStr);
+            }
         }
     }
 
@@ -654,9 +658,13 @@ void AssetSystem::enableHotReload(bool enable) {
                 std::string dirStr = parentDir.string();
 
                 if (watchedDirectories_.find(dirStr) == watchedDirectories_.end()) {
-                    fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
-                    watchedDirectories_.insert(dirStr);
-                    spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+                    efsw::WatchID watchId = fileWatcher_->addWatch(dirStr, fileWatchListener_.get(), false);
+                    if (watchId > 0) {  // addWatch returns -1 on failure
+                        watchedDirectories_[dirStr] = watchId;
+                        spdlog::info("[AssetSystem] Now watching directory: {}", dirStr);
+                    } else {
+                        spdlog::warn("[AssetSystem] Failed to watch directory: {}", dirStr);
+                    }
                 }
             }
         }
@@ -665,10 +673,19 @@ void AssetSystem::enableHotReload(bool enable) {
         fileWatcher_->watch();
         spdlog::info("[AssetSystem] Hot reload enabled with efsw file watcher");
     } else if (!enable && hotReloadEnabled_) {
-        // Stop file watching
-        fileWatcher_.reset();
-        fileWatchListener_.reset();
-        watchedDirectories_.clear();
+        // Stop file watching - must remove all watches before destroying FileWatcher
+        // to ensure efsw background thread is properly stopped
+        if (fileWatcher_) {
+            // Remove all directory watches using their WatchIDs
+            for (const auto& [dir, watchId] : watchedDirectories_) {
+                fileWatcher_->removeWatch(watchId);
+            }
+            watchedDirectories_.clear();
+
+            // Reset the FileWatcher (destructor waits for background thread)
+            fileWatcher_.reset();
+            fileWatchListener_.reset();
+        }
         spdlog::info("[AssetSystem] Hot reload disabled");
     }
 
