@@ -85,6 +85,30 @@ function(create_package_target)
 
     # Platform-specific: Copy dylibs on macOS
     if(APPLE)
+        # Find Vulkan library to bundle
+        find_package(Vulkan QUIET CONFIG)
+        if(NOT Vulkan_FOUND)
+            find_package(Vulkan QUIET)
+        endif()
+
+        if(Vulkan_FOUND AND Vulkan_LIBRARY)
+            # Get the directory containing the vulkan library
+            get_filename_component(VULKAN_LIB_DIR "${Vulkan_LIBRARY}" DIRECTORY)
+            # The actual versioned library (e.g., libvulkan.1.4.309.dylib)
+            get_filename_component(VULKAN_REAL "${Vulkan_LIBRARY}" REALPATH)
+            get_filename_component(VULKAN_REAL_NAME "${VULKAN_REAL}" NAME)
+            # The symlink name (e.g., libvulkan.1.dylib)
+            set(VULKAN_SYMLINK "libvulkan.1.dylib")
+
+            # Copy Vulkan library with symlink
+            add_custom_command(TARGET package POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy "${VULKAN_REAL}" "${DIST_BIN_DIR}/${VULKAN_REAL_NAME}"
+                COMMAND ${CMAKE_COMMAND} -E create_symlink "${VULKAN_REAL_NAME}" "${DIST_BIN_DIR}/${VULKAN_SYMLINK}"
+                COMMENT "Bundling Vulkan library for distribution..."
+            )
+        endif()
+
+        # Copy any other dylibs from build directory
         add_custom_command(TARGET package POST_BUILD
             COMMAND ${CMAKE_COMMAND}
                 -DSRC_DIR="$<TARGET_FILE_DIR:bestow>"
