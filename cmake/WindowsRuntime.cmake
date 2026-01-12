@@ -8,19 +8,25 @@ function(copy_runtime_dlls TARGET_NAME)
         return()
     endif()
 
-    # Use CMake 3.21+ TARGET_RUNTIME_DLLS for automatic DLL discovery
-    # This handles vcpkg dependencies that properly set IMPORTED_LOCATION
-    add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_RUNTIME_DLLS:${TARGET_NAME}>
-            $<TARGET_FILE_DIR:${TARGET_NAME}>
-        COMMAND_EXPAND_LISTS
-        COMMENT "Copying runtime DLLs for ${TARGET_NAME}"
-    )
+    # Only copy DLLs if NOT using static linking (e.g., x64-windows-static)
+    # With static linking, there are no DLLs and the generator expression
+    # expands to empty, causing cmake -E copy_if_different to fail
+    if(NOT VCPKG_TARGET_TRIPLET MATCHES "static")
+        # Use CMake 3.21+ TARGET_RUNTIME_DLLS for automatic DLL discovery
+        # This handles vcpkg dependencies that properly set IMPORTED_LOCATION
+        add_custom_command(TARGET ${TARGET_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_RUNTIME_DLLS:${TARGET_NAME}>
+                $<TARGET_FILE_DIR:${TARGET_NAME}>
+            COMMAND_EXPAND_LISTS
+            COMMENT "Copying runtime DLLs for ${TARGET_NAME}"
+        )
+    endif()
 
     # Additionally copy DLLs from vcpkg that may not be discovered automatically
     # Some packages (like ozz-animation) put DLLs in lib/ instead of bin/
-    if(DEFINED _VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+    # Skip this for static linking triplets
+    if(DEFINED _VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET AND NOT VCPKG_TARGET_TRIPLET MATCHES "static")
         set(VCPKG_DEBUG_BIN "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/bin")
         set(VCPKG_DEBUG_LIB "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/debug/lib")
         set(VCPKG_RELEASE_BIN "${_VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
