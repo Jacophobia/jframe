@@ -116,6 +116,13 @@ function(create_package_target)
                 -P "${CMAKE_SOURCE_DIR}/cmake/CopyDylibs.cmake"
             COMMENT "Copying dylibs to distribution..."
         )
+
+        # Fix rpaths in the distribution executable to use @executable_path
+        # This allows the executable to find libraries in the same directory
+        add_custom_command(TARGET package POST_BUILD
+            COMMAND install_name_tool -add_rpath "@executable_path" "${DIST_BIN_DIR}/bestow"
+            COMMENT "Fixing rpaths for distribution..."
+        )
     endif()
 
     # Create archive target
