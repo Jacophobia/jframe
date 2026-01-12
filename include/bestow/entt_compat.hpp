@@ -41,9 +41,22 @@ using bestow::entt_compat::operator>;
 using bestow::entt_compat::operator<=;
 using bestow::entt_compat::operator>=;
 
-// EnTT 3.14.0+ has improved C++20 iterator support and properly implements
-// comparison operators natively. The explicit template instantiations are
-// no longer needed and would cause errors due to API changes.
+// Define comparison operators explicitly for sparse_set_iterator to fix MSVC ADL issues
+// When using 'import std;', MSVC's ADL fails to find operators in entt::internal namespace
+namespace entt::internal {
+    // sparse_set_iterator comparison operators for MSVC
+    template<typename Container>
+    inline bool operator==(const sparse_set_iterator<Container>& lhs,
+                          const sparse_set_iterator<Container>& rhs) noexcept {
+        return lhs.index() == rhs.index();
+    }
+
+    template<typename Container>
+    inline bool operator!=(const sparse_set_iterator<Container>& lhs,
+                          const sparse_set_iterator<Container>& rhs) noexcept {
+        return !(lhs == rhs);
+    }
+} // namespace entt::internal
 
 #endif // _MSC_VER
 
