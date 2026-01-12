@@ -83,7 +83,7 @@ if(WIN32 AND DEFINED ENV{CI})
     # Exclude flaky/hardware-dependent tests (same as macOS/Linux)
     add_test(NAME bestow-tests-all
         COMMAND bestow-tests
-            --gtest_filter=-FrameTimerTest.DeltaTimeConsistency:CameraSystemTest.ShakeDecaysOverTime:AssetSystemTest.CheckForReloadsDetectsModifiedFile:AssetSystemTest.HotReloadCallbackOnReload:AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded:EventSystemTest.UnsubscribeDuringCallback
+            --gtest_filter=-FrameTimerTest.DeltaTimeConsistency:CameraSystemTest.ShakeDecaysOverTime:AssetSystemTest.CheckForReloadsDetectsModifiedFile:AssetSystemTest.HotReloadCallbackOnReload:AssetSystemTest.CheckForReloadsIgnoresAssetsBeingLoaded:EventSystemTest.UnsubscribeDuringCallback:AudioSystemTest.InitializeReturnsTrue
     )
     set_tests_properties(bestow-tests-all PROPERTIES
         LABELS "AllTests"
