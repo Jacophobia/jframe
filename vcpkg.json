@@ -50,6 +50,8 @@
         "vulkan": {
             "description": "Vulkan rendering backend with in-process GLSL to SPIR-V compilation",
             "dependencies": [
+                "vulkan-headers",
+                "vulkan-loader",
                 "vulkan-memory-allocator",
                 "vk-bootstrap"
             ]
