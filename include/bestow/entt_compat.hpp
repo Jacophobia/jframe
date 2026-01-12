@@ -68,8 +68,8 @@ namespace entt::internal {
     using BestowEntityIter = sparse_set_iterator<std::vector<::entt::entity, std::allocator<::entt::entity>>>;
 
     inline bool operator==(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
-        // Call the template operator, letting it deduce the Container type from the iterators
-        return lhs.index == rhs.index;
+        // Call index() member function to compare iterator positions
+        return lhs.index() == rhs.index();
     }
 
     inline bool operator!=(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
@@ -77,7 +77,7 @@ namespace entt::internal {
     }
 
     inline bool operator<(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
-        return lhs.index > rhs.index; // sparse_set is reverse iteration
+        return lhs.index() > rhs.index(); // sparse_set is reverse iteration
     }
 
     inline bool operator>(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
