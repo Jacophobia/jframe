@@ -9,6 +9,10 @@
         {
             "name": "sdl2",
             "version": "2.32.10"
+        },
+        {
+            "name": "entt",
+            "version": "3.14.0"
         }
     ],
     "dependencies": [
