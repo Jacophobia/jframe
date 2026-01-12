@@ -23,14 +23,14 @@ if(MSVC)
 
     # Function to configure MSVC targets for std module support
     function(target_use_std_module TARGET_NAME)
-        # Use /std:c++20 instead of /std:c++latest to avoid C++23 ADL issues with EnTT
-        # MSVC C++23 modules have stricter ADL rules that break EnTT iterator comparisons
-        # C++20 standard still supports 'import std;' and has better ADL compatibility
+        # Use /std:c++latest for full module support (includes import std;)
         # /Zc:preprocessor enables the conforming C++20 preprocessor (required for __VA_OPT__)
+        # /permissive enables less strict conformance mode which may help with EnTT ADL
         target_compile_options(${TARGET_NAME} PRIVATE
-            /std:c++20
+            /std:c++latest
             /experimental:module
             /Zc:preprocessor
+            /permissive
         )
 
         # Enable standard library modules
