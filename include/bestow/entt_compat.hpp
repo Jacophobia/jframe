@@ -41,22 +41,10 @@ using bestow::entt_compat::operator>;
 using bestow::entt_compat::operator<=;
 using bestow::entt_compat::operator>=;
 
-// Define comparison operators explicitly for sparse_set_iterator to fix MSVC ADL issues
-// When using 'import std;', MSVC's ADL fails to find operators in entt::internal namespace
-namespace entt::internal {
-    // sparse_set_iterator comparison operators for MSVC
-    template<typename Container>
-    inline bool operator==(const sparse_set_iterator<Container>& lhs,
-                          const sparse_set_iterator<Container>& rhs) noexcept {
-        return lhs.index() == rhs.index();
-    }
-
-    template<typename Container>
-    inline bool operator!=(const sparse_set_iterator<Container>& lhs,
-                          const sparse_set_iterator<Container>& rhs) noexcept {
-        return !(lhs == rhs);
-    }
-} // namespace entt::internal
+// The `using` declarations above should be sufficient for EnTT 3.14.0+
+// which has proper C++20 iterator support. If issues persist, the problem
+// is fundamental to MSVC's ADL with 'import std;' and may require disabling
+// modules or using a different approach.
 
 #endif // _MSC_VER
 
