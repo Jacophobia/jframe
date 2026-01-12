@@ -4,6 +4,10 @@
 #include <sol/sol.hpp>
 #include <spdlog/spdlog.h>
 
+// CRITICAL for Windows: Include EnTT compatibility header before importing modules
+// This defines comparison operators for EnTT iterators that MSVC's ADL can find
+#include <bestow/entt_compat.hpp>
+
 import std;
 import bestow.core;
 import bestow.services;
