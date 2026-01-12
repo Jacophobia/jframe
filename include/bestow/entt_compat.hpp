@@ -15,44 +15,30 @@
 // The operators are template functions in entt::internal namespace, but when
 // using 'import std;', ADL doesn't find them across module boundaries.
 //
-// Solution: Explicitly instantiate the comparison operators for the types we use.
-// This forces MSVC to generate the template instantiations so ADL can find them.
+// Note: This is a known MSVC bug with C++23 modules and ADL. Workaround is to
+// use /std:c++20 instead of /std:c++latest to avoid the stricter C++23 ADL rules.
 #if defined(_MSC_VER)
 
-#include <vector>
-#include <cstdint>
+// Bring EnTT internal iterator operators into scope for ADL
+// This should work with /std:c++20 flag
+namespace bestow::entt_compat {
 
-// Forward declare the Entity type that EnTT uses
-namespace bestow {
-    using Entity = std::uint32_t;
-}
+using entt::internal::operator==;
+using entt::internal::operator!=;
+using entt::internal::operator<;
+using entt::internal::operator>;
+using entt::internal::operator<=;
+using entt::internal::operator>=;
 
-// Explicitly instantiate EnTT's iterator comparison operators for our Entity type
-// This ensures MSVC generates these template instantiations, making them visible to ADL
-namespace entt::internal {
+} // namespace bestow::entt_compat
 
-    // Forward declare the iterator template
-    template<typename Container>
-    class sparse_set_iterator;
-
-    // Explicitly instantiate comparison operators for Entity container
-    template class sparse_set_iterator<std::vector<bestow::Entity>>;
-
-    // Explicitly force instantiation of comparison operators
-    template bool operator==(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
-    template bool operator!=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
-    template bool operator<(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                           const sparse_set_iterator<std::vector<bestow::Entity>>&);
-    template bool operator>(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                           const sparse_set_iterator<std::vector<bestow::Entity>>&);
-    template bool operator<=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
-    template bool operator>=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
-                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
-
-} // namespace entt::internal
+// Bring operators to global scope
+using bestow::entt_compat::operator==;
+using bestow::entt_compat::operator!=;
+using bestow::entt_compat::operator<;
+using bestow::entt_compat::operator>;
+using bestow::entt_compat::operator<=;
+using bestow::entt_compat::operator>=;
 
 #endif // _MSC_VER
 
