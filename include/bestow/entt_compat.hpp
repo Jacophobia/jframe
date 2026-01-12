@@ -15,36 +15,44 @@
 // The operators are template functions in entt::internal namespace, but when
 // using 'import std;', ADL doesn't find them across module boundaries.
 //
-// Additionally, template operators may not be instantiated properly across
-// module boundaries, causing LNK2019 unresolved external symbol errors.
+// Solution: Explicitly instantiate the comparison operators for the types we use.
+// This forces MSVC to generate the template instantiations so ADL can find them.
 #if defined(_MSC_VER)
 
-// Bring EnTT internal iterator operators into scope for ADL
-// This fixes the "no operator != matches" error with sparse_set_iterator
-namespace bestow::entt_compat {
+#include <vector>
+#include <cstdint>
 
-// Import comparison operators from EnTT's internal namespace
-using entt::internal::operator==;
-using entt::internal::operator!=;
-using entt::internal::operator<;
-using entt::internal::operator>;
-using entt::internal::operator<=;
-using entt::internal::operator>=;
+// Forward declare the Entity type that EnTT uses
+namespace bestow {
+    using Entity = std::uint32_t;
+}
 
-} // namespace bestow::entt_compat
+// Explicitly instantiate EnTT's iterator comparison operators for our Entity type
+// This ensures MSVC generates these template instantiations, making them visible to ADL
+namespace entt::internal {
 
-// Bring operators to global scope for ADL to find them
-using bestow::entt_compat::operator==;
-using bestow::entt_compat::operator!=;
-using bestow::entt_compat::operator<;
-using bestow::entt_compat::operator>;
-using bestow::entt_compat::operator<=;
-using bestow::entt_compat::operator>=;
+    // Forward declare the iterator template
+    template<typename Container>
+    class sparse_set_iterator;
 
-// The `using` declarations above should be sufficient for EnTT 3.14.0+
-// which has proper C++20 iterator support. If issues persist, the problem
-// is fundamental to MSVC's ADL with 'import std;' and may require disabling
-// modules or using a different approach.
+    // Explicitly instantiate comparison operators for Entity container
+    template class sparse_set_iterator<std::vector<bestow::Entity>>;
+
+    // Explicitly force instantiation of comparison operators
+    template bool operator==(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
+    template bool operator!=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
+    template bool operator<(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                           const sparse_set_iterator<std::vector<bestow::Entity>>&);
+    template bool operator>(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                           const sparse_set_iterator<std::vector<bestow::Entity>>&);
+    template bool operator<=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
+    template bool operator>=(const sparse_set_iterator<std::vector<bestow::Entity>>&,
+                            const sparse_set_iterator<std::vector<bestow::Entity>>&);
+
+} // namespace entt::internal
 
 #endif // _MSC_VER
 
