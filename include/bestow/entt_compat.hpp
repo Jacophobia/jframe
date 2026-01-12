@@ -34,7 +34,11 @@ namespace entt::internal {
     // Define explicit comparison operators for Entity iterators
     // These are non-template, concrete function overloads that forward to
     // EnTT's template operators. ADL will find these in the entt::internal namespace.
-    using EntityContainer = std::vector<std::uint32_t>;
+    //
+    // CRITICAL: The container type must match EXACTLY what EnTT uses internally.
+    // EnTT uses std::vector<entt::entity, std::allocator<entt::entity>>
+    // Use ::entt::entity to refer to the entity type from the entt namespace
+    using EntityContainer = std::vector<::entt::entity, std::allocator<::entt::entity>>;
     using EntityIterator = sparse_set_iterator<EntityContainer>;
 
     // Forward declare the template operators (they exist in EnTT)
