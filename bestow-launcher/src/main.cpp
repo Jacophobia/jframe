@@ -13,6 +13,9 @@
 #elif defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
     #include <windows.h>
+    // Windows uses _popen/_pclose instead of popen/pclose
+    #define popen _popen
+    #define pclose _pclose
 #endif
 
 import std;
