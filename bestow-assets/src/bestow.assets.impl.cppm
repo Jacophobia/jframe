@@ -65,7 +65,7 @@ public:
     explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
         : pIEventSystem_(pIEventSystem)
         , assetLibrary_(AssetLibrary::create()) {}
-    ~AssetSystem() override = default;
+    ~AssetSystem() override;
 
     void update() override;
 

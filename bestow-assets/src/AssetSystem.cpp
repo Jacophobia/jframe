@@ -78,6 +78,21 @@ void AssetSystem::FileWatchListener::handleFileAction(
                   filename, static_cast<int>(action));
 }
 
+//==========================================================================
+// AssetSystem Destructor
+//==========================================================================
+
+AssetSystem::~AssetSystem() {
+    // CRITICAL: Disable hot reload BEFORE automatic member destruction begins
+    // This ensures the efsw background thread is stopped and joined before
+    // fileWatcher_, fileWatchListener_, fileChangesMutex_, and pendingFileChanges_
+    // are destroyed. Otherwise, the background thread can crash accessing destroyed members.
+    if (hotReloadEnabled_) {
+        enableHotReload(false);
+    }
+    // After this, members are destroyed automatically in reverse declaration order
+}
+
 UUID AssetSystem::generateUUID() {
     return nextUUID_++;
 }
