@@ -247,13 +247,13 @@ jobs:
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true  # Allow Windows tests to fail without failing the whole build
         run: |
           # Using x64-windows-static triplet (static linking - no DLL issues)
           # Test exclusions handled via --gtest_filter in CMakeLists.txt (add_test)
-          # Run tests sequentially (no parallel) to avoid potential race conditions
-          Write-Host "Running tests sequentially (Windows has segfault issues with parallel execution)"
-          ctest --preset ${{ matrix.preset }} --build-config Debug --output-on-failure --verbose
+          # Run tests in parallel using (NUMBER_OF_PROCESSORS - 1) jobs, minimum 1
+          $jobs = [Math]::Max(1, $env:NUMBER_OF_PROCESSORS - 1)
+          Write-Host "Running tests with $jobs parallel jobs"
+          ctest --preset ${{ matrix.preset }} --build-config Debug -j $jobs
 
       # =========================================================================
       # Upload artifacts
