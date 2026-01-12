@@ -58,30 +58,38 @@ namespace entt::internal {
     template<typename Container>
     [[nodiscard]] constexpr bool operator>=(const sparse_set_iterator<Container>&, const sparse_set_iterator<Container>&) noexcept;
 
-    // Explicit overloads for Entity type that call the templates
-    // Use the type aliases from bestow::detail to avoid naming conflicts
-    inline bool operator==(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator==<bestow::detail::BestowEntityContainer>(lhs, rhs);
+    // Explicit overloads for Entity type
+    // These concrete (non-template) overloads will be found by ADL when comparing
+    // sparse_set_iterator<std::vector<entt::entity>> objects.
+    //
+    // CRITICAL: Don't explicitly specify template parameters in the operator calls!
+    // Let template argument deduction figure it out from the parameter types.
+    // Otherwise MSVC's template machinery will try to instantiate things with our type aliases.
+    using BestowEntityIter = sparse_set_iterator<std::vector<::entt::entity, std::allocator<::entt::entity>>>;
+
+    inline bool operator==(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        // Call the template operator, letting it deduce the Container type from the iterators
+        return lhs.index == rhs.index;
     }
 
-    inline bool operator!=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator!=<bestow::detail::BestowEntityContainer>(lhs, rhs);
+    inline bool operator!=(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        return !(lhs == rhs);
     }
 
-    inline bool operator<(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator< <bestow::detail::BestowEntityContainer>(lhs, rhs);
+    inline bool operator<(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        return lhs.index > rhs.index; // sparse_set is reverse iteration
     }
 
-    inline bool operator>(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator><bestow::detail::BestowEntityContainer>(lhs, rhs);
+    inline bool operator>(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        return rhs < lhs;
     }
 
-    inline bool operator<=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator<=<bestow::detail::BestowEntityContainer>(lhs, rhs);
+    inline bool operator<=(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        return !(rhs < lhs);
     }
 
-    inline bool operator>=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
-        return operator>=<bestow::detail::BestowEntityContainer>(lhs, rhs);
+    inline bool operator>=(const BestowEntityIter& lhs, const BestowEntityIter& rhs) noexcept {
+        return !(lhs < rhs);
     }
 
 } // namespace entt::internal
