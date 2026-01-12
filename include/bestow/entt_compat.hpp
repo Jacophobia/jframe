@@ -23,23 +23,21 @@
 // namespace for our specific Entity type. This makes them visible to ADL.
 #if defined(_MSC_VER)
 
+// Define type aliases outside entt namespace to avoid conflicts
+// CRITICAL: The container type must match EXACTLY what EnTT uses internally.
+// EnTT uses std::vector<entt::entity, std::allocator<entt::entity>>
+namespace bestow::detail {
+    using BestowEntityContainer = std::vector<::entt::entity, std::allocator<::entt::entity>>;
+    using BestowEntityIterator = ::entt::internal::sparse_set_iterator<BestowEntityContainer>;
+}
+
 // Define inline comparison operators in entt::internal namespace
 // These explicitly forward to the template operators for our Entity type
 namespace entt::internal {
 
-    // Forward declare the iterator
+    // Forward declare the iterator template
     template<typename Container>
     class sparse_set_iterator;
-
-    // Define explicit comparison operators for Entity iterators
-    // These are non-template, concrete function overloads that forward to
-    // EnTT's template operators. ADL will find these in the entt::internal namespace.
-    //
-    // CRITICAL: The container type must match EXACTLY what EnTT uses internally.
-    // EnTT uses std::vector<entt::entity, std::allocator<entt::entity>>
-    // Use ::entt::entity to refer to the entity type from the entt namespace
-    using EntityContainer = std::vector<::entt::entity, std::allocator<::entt::entity>>;
-    using EntityIterator = sparse_set_iterator<EntityContainer>;
 
     // Forward declare the template operators (they exist in EnTT)
     template<typename Container>
@@ -61,28 +59,29 @@ namespace entt::internal {
     [[nodiscard]] constexpr bool operator>=(const sparse_set_iterator<Container>&, const sparse_set_iterator<Container>&) noexcept;
 
     // Explicit overloads for Entity type that call the templates
-    inline bool operator==(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator==<EntityContainer>(lhs, rhs);
+    // Use the type aliases from bestow::detail to avoid naming conflicts
+    inline bool operator==(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator==<bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
-    inline bool operator!=(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator!=<EntityContainer>(lhs, rhs);
+    inline bool operator!=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator!=<bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
-    inline bool operator<(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator< <EntityContainer>(lhs, rhs);
+    inline bool operator<(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator< <bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
-    inline bool operator>(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator><EntityContainer>(lhs, rhs);
+    inline bool operator>(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator><bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
-    inline bool operator<=(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator<=<EntityContainer>(lhs, rhs);
+    inline bool operator<=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator<=<bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
-    inline bool operator>=(const EntityIterator& lhs, const EntityIterator& rhs) noexcept {
-        return operator>=<EntityContainer>(lhs, rhs);
+    inline bool operator>=(const bestow::detail::BestowEntityIterator& lhs, const bestow::detail::BestowEntityIterator& rhs) noexcept {
+        return operator>=<bestow::detail::BestowEntityContainer>(lhs, rhs);
     }
 
 } // namespace entt::internal
