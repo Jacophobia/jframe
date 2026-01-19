@@ -95,6 +95,9 @@ function player.loadAssets(appSelf, scope)
 
     p.character = char
 
+    -- Scale character from centimeters to meters (Mixamo exports in cm)
+    char:setScale(0.01)
+
     -- Set default blend time from config
     char:setDefaultBlendTime(config.animation.blendTimes.locomotion)
 
@@ -200,20 +203,20 @@ function player.update(appSelf, dt, scope)
     local inputZ = 0
 
     -- Check for active movement actions
-    if bestow.action.isActive("MoveForward") then
+    if bestow.input.isActionActive("MoveForward") then
         inputZ = inputZ + 1
     end
-    if bestow.action.isActive("MoveBackward") then
+    if bestow.input.isActionActive("MoveBackward") then
         inputZ = inputZ - 1
     end
-    if bestow.action.isActive("MoveLeft") then
+    if bestow.input.isActionActive("MoveLeft") then
         inputX = inputX - 1
     end
-    if bestow.action.isActive("MoveRight") then
+    if bestow.input.isActionActive("MoveRight") then
         inputX = inputX + 1
     end
 
-    p.runModifier = bestow.action.isActive("Run")
+    p.runModifier = bestow.input.isActionActive("Run")
 
     -- Normalize input direction
     local inputMag = math.sqrt(inputX * inputX + inputZ * inputZ)

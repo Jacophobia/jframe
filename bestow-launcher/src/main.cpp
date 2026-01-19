@@ -692,9 +692,13 @@ int main(int argc, char* argv[]) {
     // Set log level based on verbose flag
     if (args->verbose) {
         spdlog::set_level(spdlog::level::debug);
+        // Flush immediately on debug messages to help diagnose issues
+        spdlog::flush_on(spdlog::level::debug);
     } else {
         spdlog::set_level(spdlog::level::info);
     }
+    // Always flush on info and above
+    spdlog::flush_on(spdlog::level::info);
 
     // Dispatch to appropriate command handler
     switch (args->command) {

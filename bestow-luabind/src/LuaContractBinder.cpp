@@ -461,4 +461,24 @@ std::vector<std::string> LuaContractBinder::getBoundSystems() const {
     return boundSystems_;
 }
 
+//=============================================================================
+// Cleanup Functions
+//=============================================================================
+
+// Forward declarations for cleanup functions in binding files
+void cleanupTimerBindings();
+void cleanupEventBindings();
+
+void cleanupLuaBindings() {
+    spdlog::debug("[LuaContractBinder] Cleaning up Lua bindings...");
+
+    // Clear timer bindings (releases sol::table refs in timers)
+    cleanupTimerBindings();
+
+    // Clear event bindings (releases sol::table refs in subscriptions)
+    cleanupEventBindings();
+
+    spdlog::debug("[LuaContractBinder] Lua bindings cleaned up");
+}
+
 }  // namespace bestow

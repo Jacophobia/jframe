@@ -6,6 +6,9 @@ module;
 #include <bestow/sol2_compat.hpp>
 #include <bestow/entt_compat.hpp>
 #include <spdlog/spdlog.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <cmath>
 
 module bestow.luabind;
 
@@ -609,8 +612,75 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
     // Camera
     //-------------------------------------------------------------------------
 
-    gfxTable["setCamera"] = [&graphics](const Camera3D& camera) {
-        graphics.setCamera(camera);
+    // setCamera accepts either Camera3D userdata OR a table with look-at style parameters:
+    // { position = Vec3, target = Vec3, up = Vec3, fov = number, near = number, far = number }
+    gfxTable["setCamera"] = [&graphics](sol::object cameraArg) {
+        if (cameraArg.is<Camera3D>()) {
+            // Direct Camera3D userdata
+            graphics.setCamera(cameraArg.as<Camera3D>());
+        } else if (cameraArg.get_type() == sol::type::table) {
+            // Look-at style table
+            sol::table t = cameraArg.as<sol::table>();
+
+            Camera3D camera;
+
+            // Extract position (required)
+            if (t["position"].valid()) {
+                camera.transform.position = t["position"].get<Vec3>();
+            }
+
+            // Compute rotation from look-at target
+            if (t["target"].valid()) {
+                Vec3 target = t["target"].get<Vec3>();
+                Vec3 up = Vec3{0.0f, 1.0f, 0.0f};
+                if (t["up"].valid()) {
+                    up = t["up"].get<Vec3>();
+                }
+
+                // Calculate look-at quaternion
+                Vec3 forward = glm::normalize(target - camera.transform.position);
+
+                // Handle degenerate case where forward is parallel to up
+                float dot = glm::dot(forward, up);
+                if (std::abs(dot) > 0.999f) {
+                    // Use alternative up vector
+                    up = std::abs(forward.y) < 0.999f ? Vec3{0, 1, 0} : Vec3{1, 0, 0};
+                }
+
+                // Create rotation from look direction
+                // Note: cameras typically look down -Z, so we need to invert
+                camera.transform.rotation = glm::quatLookAt(forward, up);
+            }
+
+            // FOV (default 60 degrees)
+            if (t["fov"].valid()) {
+                camera.fovY = t["fov"].get<float>();
+            } else if (t["fovY"].valid()) {
+                camera.fovY = t["fovY"].get<float>();
+            }
+
+            // Near/far planes
+            if (t["near"].valid()) {
+                camera.nearPlane = t["near"].get<float>();
+            } else if (t["nearPlane"].valid()) {
+                camera.nearPlane = t["nearPlane"].get<float>();
+            }
+
+            if (t["far"].valid()) {
+                camera.farPlane = t["far"].get<float>();
+            } else if (t["farPlane"].valid()) {
+                camera.farPlane = t["farPlane"].get<float>();
+            }
+
+            // Aspect ratio (optional - usually set from window)
+            if (t["aspectRatio"].valid()) {
+                camera.aspectRatio = t["aspectRatio"].get<float>();
+            }
+
+            graphics.setCamera(camera);
+        } else {
+            spdlog::error("[graphics3d.setCamera] Invalid argument: expected Camera3D or table");
+        }
     };
 
     gfxTable["getCamera"] = [&graphics]() {

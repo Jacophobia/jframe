@@ -11,6 +11,7 @@ module;
 #include <vector>
 
 #include <glm/glm.hpp>
+#include <spdlog/spdlog.h>
 
 #include <GLFW/glfw3.h>
 #include <SDL.h>
@@ -412,11 +413,13 @@ bool isValidPhase(std::string_view phase) {
 //==========================================================================
 
 InputSystem::~InputSystem() {
+    spdlog::debug("[InputSystem] Destructor called");
     for (auto* controller : controllers_) {
         if (controller) {
             SDL_GameControllerClose(controller);
         }
     }
+    spdlog::debug("[InputSystem] Destructor complete");
     if (sdlInitialized_) {
         SDL_QuitSubSystem(SDL_INIT_GAMECONTROLLER);
     }
@@ -467,6 +470,7 @@ bool InputSystem::initialize(void* nativeWindow) {
 }
 
 void InputSystem::shutdown() {
+    spdlog::debug("[InputSystem] shutdown() called");
     for (auto& controller : controllers_) {
         if (controller) {
             SDL_GameControllerClose(controller);
@@ -480,6 +484,7 @@ void InputSystem::shutdown() {
     }
 
     window_ = nullptr;
+    spdlog::debug("[InputSystem] shutdown() complete");
 }
 
 void InputSystem::update() {
@@ -1252,6 +1257,7 @@ void InputSystem::updateActionStates() {
         state.active = false;
     }
 
+    // Process legacy mappings
     for (const auto& mapping : mappings_) {
         auto& state = actionStates_[mapping.action];
         state.action = mapping.action;
@@ -1260,6 +1266,48 @@ void InputSystem::updateActionStates() {
 
         if (std::abs(bindingValue) > std::abs(state.value)) {
             state.value = bindingValue;
+        }
+    }
+
+    // Also process new ActionBuilder registrations for isActionActive() compatibility
+    std::string currentPhase = getCurrentPhase();
+    if (!currentPhase.empty()) {
+        for (const auto& reg : actionRegistrations_) {
+            // Only process if phase matches
+            if (!isPhaseActive(reg.phase)) {
+                continue;
+            }
+
+            // Find the emitted action name
+            std::string actionName;
+            for (const auto& effect : reg.effects) {
+                if (effect.type == ActionEffectType::EmitAction) {
+                    actionName = effect.value;
+                    break;
+                }
+            }
+            if (actionName.empty()) continue;
+
+            // Check if conditions are met
+            bool conditionsMet = checkAllConditions(reg);
+
+            auto& state = actionStates_[actionName];
+            state.action = actionName;
+
+            if (conditionsMet) {
+                // Set value to 1.0 for digital inputs, actual value for analog
+                float value = 1.0f;
+                if (!reg.conditions.empty()) {
+                    const auto& binding = reg.conditions[0].input;
+                    if (std::holds_alternative<GamepadAxis>(binding.input)) {
+                        auto axisType = std::get<GamepadAxis>(binding.input);
+                        value = getGamepadAxisValue(axisType, binding.deviceIndex);
+                    }
+                }
+                if (std::abs(value) > std::abs(state.value)) {
+                    state.value = value;
+                }
+            }
         }
     }
 

@@ -460,4 +460,13 @@ void updateTimers(float dt) {
     }
 }
 
+/// Cleanup function - MUST be called before lua_close() to release Lua references
+void cleanupTimerBindings() {
+    if (g_luaTimerManager) {
+        g_luaTimerManager->cancelAll();  // Clear all timers (releases sol::table refs)
+        g_luaTimerManager.reset();       // Destroy the manager
+        spdlog::debug("[Timer] Bindings cleaned up");
+    }
+}
+
 } // namespace bestow
