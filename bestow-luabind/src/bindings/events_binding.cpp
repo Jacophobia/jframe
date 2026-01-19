@@ -259,6 +259,14 @@ Make sure the method exists:
         return subscriptions_.size();
     }
 
+    /// Clear all subscriptions - MUST be called before lua_close()
+    void clearAll() {
+        subscriptions_.clear();
+        subscribedEventTypes_.clear();
+        eventDepth_.clear();
+        spdlog::debug("[Events] Cleared all {} subscriptions", subscriptions_.size());
+    }
+
 private:
     /// Create a scope table for callbacks
     sol::table createScope() const {
@@ -517,6 +525,15 @@ the current version of the code after hot reload.
     bestow["events"] = eventsTable;
 
     spdlog::info("[Events] Lua bindings initialized (hot-reload-safe pattern)");
+}
+
+/// Cleanup function - MUST be called before lua_close() to release Lua references
+void cleanupEventBindings() {
+    if (g_luaEventManager) {
+        g_luaEventManager->clearAll();  // Clear all subscriptions (releases sol::table refs)
+        g_luaEventManager.reset();      // Destroy the manager
+        spdlog::debug("[Events] Bindings cleaned up");
+    }
 }
 
 } // namespace bestow

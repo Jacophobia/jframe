@@ -23,16 +23,21 @@ import bestow.utils;
 namespace bestow::vulkan {
 
 VulkanGraphics3DSystem::~VulkanGraphics3DSystem() {
+    spdlog::debug("[VulkanGraphics3DSystem] Destructor called, initialized_={}", initialized_);
     shutdown();
+    spdlog::debug("[VulkanGraphics3DSystem] Destructor complete");
 }
 
 void VulkanGraphics3DSystem::shutdown() {
+    spdlog::debug("[VulkanGraphics3DSystem] shutdown() called, initialized_={}", initialized_);
     if (!initialized_) return;
 
+    spdlog::debug("[VulkanGraphics3DSystem] Waiting for GPU idle...");
     // Wait for GPU to finish all work before destroying resources
     if (context_.getDevice() != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(context_.getDevice());
     }
+    spdlog::debug("[VulkanGraphics3DSystem] GPU idle");
 
     // Cleanup meshes
     for (auto& [handle, mesh] : meshes_) {
@@ -80,12 +85,19 @@ void VulkanGraphics3DSystem::shutdown() {
         skyboxPipeline_ = 0;
     }
 
+    spdlog::debug("[VulkanGraphics3DSystem] Calling context_.shutdown()...");
     context_.shutdown();
+    spdlog::debug("[VulkanGraphics3DSystem] context_.shutdown() complete");
     initialized_ = false;
+    spdlog::debug("[VulkanGraphics3DSystem] shutdown() complete");
 }
 
 bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
-    if (initialized_) return true;
+    spdlog::debug("[VulkanGraphics3DSystem] initialize() called");
+    if (initialized_) {
+        spdlog::debug("[VulkanGraphics3DSystem] Already initialized, returning true");
+        return true;
+    }
 
     // Convert Graphics3DConfig to VulkanConfig
     VulkanConfig vulkanConfig;
@@ -96,15 +108,23 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
     vulkanConfig.enableValidation = config.enableValidation;
     vulkanConfig.headless = false;
 
+    spdlog::debug("[VulkanGraphics3DSystem] Config: {}x{} '{}' vsync={} validation={}",
+        config.windowWidth, config.windowHeight, config.windowTitle,
+        config.vsync, config.enableValidation);
+
     // If a native window handle is provided, use it
     if (config.nativeWindowHandle) {
         vulkanConfig.window = static_cast<GLFWwindow*>(config.nativeWindowHandle);
+        spdlog::debug("[VulkanGraphics3DSystem] Using provided native window handle");
     }
 
+    spdlog::debug("[VulkanGraphics3DSystem] Initializing VulkanContext...");
     auto result = context_.initialize(vulkanConfig);
     if (!result) {
+        spdlog::error("[VulkanGraphics3DSystem] VulkanContext initialization failed!");
         return false;
     }
+    spdlog::info("[VulkanGraphics3DSystem] VulkanContext initialized successfully");
 
     // Create uniform buffers
     VulkanBufferDef uboDesc{};
@@ -338,6 +358,14 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
 }
 
 void VulkanGraphics3DSystem::beginFrame() {
+    static std::uint64_t frameCount = 0;
+    if (frameCount == 0) {
+        spdlog::info("[VulkanGraphics3DSystem] First beginFrame() called");
+    } else if (frameCount % 60 == 0) {
+        spdlog::debug("[VulkanGraphics3DSystem] beginFrame() - frame {}", frameCount);
+    }
+    frameCount++;
+
     inFrame_ = true;
     renderQueue_.clear();
     context_.beginFrame();
@@ -347,6 +375,12 @@ void VulkanGraphics3DSystem::beginFrame() {
 }
 
 void VulkanGraphics3DSystem::endFrame() {
+    static std::uint64_t endFrameCount = 0;
+    if (endFrameCount == 0) {
+        spdlog::info("[VulkanGraphics3DSystem] First endFrame() called");
+    }
+    endFrameCount++;
+
     flushRenderQueue();
     renderDebugLines();
     inFrame_ = false;

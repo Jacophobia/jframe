@@ -131,6 +131,7 @@ private:
     // Configuration
     VulkanConfig config_;
     bool initialized_ = false;
+    bool shuttingDown_ = false;  // Prevents operations during shutdown
     std::array<float, 4> clearColor_ = {0.0f, 0.0f, 0.0f, 1.0f};
 
     // Window (null for headless)

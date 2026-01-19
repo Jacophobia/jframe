@@ -9,6 +9,7 @@ module;
 #include <vulkan/vulkan.h>
 #include <VkBootstrap.h>
 #include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
 
 module bestow.vulkan.impl;
 
@@ -47,7 +48,9 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 //==========================================================================
 
 VulkanContext::~VulkanContext() {
+    spdlog::debug("[VulkanContext] Destructor called, initialized_={}", initialized_);
     shutdown();
+    spdlog::debug("[VulkanContext] Destructor complete");
 }
 
 VulkanContext::VulkanContext(VulkanContext&& other) noexcept {
@@ -108,14 +111,22 @@ VulkanContext& VulkanContext::operator=(VulkanContext&& other) noexcept {
 Result<void, VulkanError> VulkanContext::initialize(const VulkanConfig& config) {
     config_ = config;
 
+    spdlog::debug("[VulkanContext] initialize() called, headless={}", config_.headless);
+
     // Create window (unless headless)
     if (!config_.headless) {
+        spdlog::debug("[VulkanContext] Initializing GLFW...");
         if (!glfwInit()) {
+            spdlog::error("[VulkanContext] glfwInit() failed!");
             return std::unexpected(VulkanError::InstanceCreationFailed);
         }
+        spdlog::debug("[VulkanContext] GLFW initialized successfully");
 
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
         glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+        spdlog::debug("[VulkanContext] Creating window {}x{} '{}'...",
+            config_.windowWidth, config_.windowHeight, config_.windowTitle);
 
         window_ = glfwCreateWindow(
             config_.windowWidth,
@@ -126,9 +137,17 @@ Result<void, VulkanError> VulkanContext::initialize(const VulkanConfig& config) 
         );
 
         if (!window_) {
+            spdlog::error("[VulkanContext] glfwCreateWindow() failed!");
             glfwTerminate();
             return std::unexpected(VulkanError::SurfaceCreationFailed);
         }
+        spdlog::info("[VulkanContext] Window created successfully");
+
+        // CRITICAL: On macOS, we must poll events immediately after window creation
+        // for the window to become visible. Without this, the window may not appear
+        // until the first frame is rendered (which can be delayed by asset loading).
+        glfwPollEvents();
+        spdlog::debug("[VulkanContext] Initial glfwPollEvents() called");
     }
 
     // Initialize Vulkan
@@ -163,6 +182,10 @@ Result<void, VulkanError> VulkanContext::initialize(const VulkanConfig& config) 
 
 void VulkanContext::shutdown() {
     if (!initialized_) return;
+
+    // Set shutdown flag to prevent operations like recreateSwapchain()
+    shuttingDown_ = true;
+    spdlog::debug("[VulkanContext] Shutdown started");
 
     if (device_ != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(device_);
@@ -281,10 +304,13 @@ void VulkanContext::shutdown() {
     // Destroy window
     if (window_) {
         glfwDestroyWindow(window_);
+        window_ = nullptr;  // Clear pointer to prevent use-after-free
         glfwTerminate();
     }
 
     initialized_ = false;
+    shuttingDown_ = false;
+    spdlog::debug("[VulkanContext] Shutdown complete");
 }
 
 Result<void, VulkanError> VulkanContext::createInstance() {
@@ -703,10 +729,21 @@ void VulkanContext::cleanupSwapchain() {
 }
 
 Result<void, VulkanError> VulkanContext::recreateSwapchain() {
+    // Don't recreate swapchain if we're shutting down
+    if (shuttingDown_) {
+        spdlog::debug("[VulkanContext] Skipping swapchain recreation - shutdown in progress");
+        return {};
+    }
+
     int width = 0, height = 0;
     if (window_) {
         glfwGetFramebufferSize(window_, &width, &height);
         while (width == 0 || height == 0) {
+            // Check if window is closing during minimization
+            if (glfwWindowShouldClose(window_) || shuttingDown_) {
+                spdlog::debug("[VulkanContext] Skipping swapchain recreation - window closing");
+                return {};
+            }
             glfwGetFramebufferSize(window_, &width, &height);
             glfwWaitEvents();
         }
@@ -764,6 +801,11 @@ VkFormat VulkanContext::findSupportedFormat(
 }
 
 Result<void, VulkanError> VulkanContext::beginFrame() {
+    // Skip frame beginning if shutdown is in progress
+    if (shuttingDown_) {
+        return {};
+    }
+
     // Wait for previous frame to finish
     vkWaitForFences(device_, 1, &inFlightFences_[currentFrame_], VK_TRUE, UINT64_MAX);
 
@@ -837,6 +879,11 @@ Result<void, VulkanError> VulkanContext::beginFrame() {
 }
 
 Result<void, VulkanError> VulkanContext::endFrame() {
+    // Skip frame ending if shutdown is in progress
+    if (shuttingDown_) {
+        return {};
+    }
+
     vkCmdEndRenderPass(currentCommandBuffer_);
 
     if (vkEndCommandBuffer(currentCommandBuffer_) != VK_SUCCESS) {
@@ -897,6 +944,11 @@ Result<void, VulkanError> VulkanContext::endFrame() {
 
     // Poll events
     if (window_) {
+        static std::uint64_t pollCount = 0;
+        if (pollCount == 0) {
+            spdlog::info("[VulkanContext] First glfwPollEvents() in endFrame()");
+        }
+        pollCount++;
         glfwPollEvents();
     }
 

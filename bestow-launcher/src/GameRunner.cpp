@@ -31,7 +31,90 @@ namespace bestow::launcher {
 class GameRunner {
 public:
     GameRunner() = default;
-    ~GameRunner() = default;
+    ~GameRunner() {
+        spdlog::info("[GameRunner] Destructor starting...");
+        spdlog::default_logger()->flush();
+
+        // CRITICAL: Call Lua destroy() function FIRST to let Lua clean up its own state
+        // This unsubscribes from events, cancels timers, and releases sol::function refs
+        // while Lua is still fully valid.
+        callLuaDestroy();
+
+        // Clear global binding managers that hold sol:: refs
+        spdlog::info("[GameRunner] Cleaning up Lua bindings...");
+        cleanupLuaBindings();
+
+        // Run GC to collect any orphaned objects
+        spdlog::info("[GameRunner] Running garbage collection...");
+        lua_.collect_garbage();
+
+        // Clear script manager (holds references to Lua tables)
+        spdlog::info("[GameRunner] Clearing script manager...");
+        scriptManager_.reset();
+
+        // Clear Lua binder
+        spdlog::info("[GameRunner] Clearing Lua binder...");
+        binder_.reset();
+
+        // Run GC again after clearing managers
+        lua_.collect_garbage();
+
+        // Clear all Lua globals to release references
+        spdlog::info("[GameRunner] Clearing Lua globals...");
+        lua_["bestow"] = sol::nil;
+        lua_["app"] = sol::nil;
+
+        // Final GC pass
+        lua_.collect_garbage();
+        lua_.collect_garbage();  // Run twice to catch weak refs
+
+        // IMPORTANT: Destroy engine BEFORE lua_ because engine systems may store
+        // callbacks that captured sol::function objects.
+        spdlog::info("[GameRunner] Destroying engine...");
+        engine_ = core::Engine();
+
+        spdlog::info("[GameRunner] Engine destroyed, destructor body complete");
+        spdlog::default_logger()->flush();
+
+        // Let sol::state destructor handle lua_close() naturally
+        // No manual close needed - the member destruction will handle it
+    }
+
+    /// Call the Lua destroy function to let game code clean up
+    void callLuaDestroy() {
+        spdlog::info("[GameRunner] Calling Lua destroy function...");
+
+        try {
+            sol::table app = lua_["app"];
+            if (!app.valid()) {
+                spdlog::debug("[GameRunner] No app table found, skipping destroy");
+                return;
+            }
+
+            sol::table mainTable = app["main"];
+            if (!mainTable.valid()) {
+                spdlog::debug("[GameRunner] No app.main table found, skipping destroy");
+                return;
+            }
+
+            sol::function destroyFunc = mainTable["destroy"];
+            if (!destroyFunc.valid()) {
+                spdlog::debug("[GameRunner] No app.main.destroy function found, skipping");
+                return;
+            }
+
+            // Call destroy with self and nil scope
+            auto result = destroyFunc(mainTable, sol::nil);
+            if (!result.valid()) {
+                sol::error err = result;
+                spdlog::warn("[GameRunner] Error in app.main.destroy(): {}", err.what());
+            } else {
+                spdlog::info("[GameRunner] Lua destroy completed successfully");
+            }
+        } catch (const std::exception& e) {
+            spdlog::warn("[GameRunner] Exception calling Lua destroy: {}", e.what());
+        }
+    }
 
     /// Initialize the engine with all default systems
     bool initialize(const std::filesystem::path& mainScript,
@@ -205,6 +288,11 @@ private:
         // Register animation system
         engine_.use<IAnimationSystem, AnimationSystem>();
 
+        // Initialize animation system (required before use)
+        if (engine_.has<IAnimationSystem>()) {
+            engine_.get<IAnimationSystem>().initialize();
+        }
+
         spdlog::debug("[GameRunner] Default systems registered");
     }
 
@@ -357,14 +445,21 @@ return { main = main }
     }
 
     void runGameLoop(sol::function& updateFunc, sol::function& renderFunc) {
+        spdlog::info("[GameRunner] Entering runGameLoop()");
         bool running = true;
         auto lastTime = std::chrono::high_resolution_clock::now();
+        std::uint64_t frameCount = 0;
 
         while (running) {
             // Calculate delta time
             auto now = std::chrono::high_resolution_clock::now();
             float dt = std::chrono::duration<float>(now - lastTime).count();
             lastTime = now;
+
+            // Log first few frames and then periodically
+            if (frameCount < 3 || frameCount % 60 == 0) {
+                spdlog::debug("[GameRunner] Frame {} - dt={:.4f}s", frameCount, dt);
+            }
 
             // Process hot reload
             if (scriptManager_) {
@@ -374,7 +469,15 @@ return { main = main }
             // Update timers (hot-reload-safe timer callbacks)
             updateTimers(dt);
 
+            // Update animation system (calculates bone transforms)
+            if (engine_.has<IAnimationSystem>()) {
+                engine_.get<IAnimationSystem>().update(dt);
+            }
+
             // Call update
+            if (frameCount == 0) {
+                spdlog::debug("[GameRunner] Calling Lua update() for the first time...");
+            }
             auto updateResult = updateFunc(dt);
             if (!updateResult.valid()) {
                 sol::error err = updateResult;
@@ -385,12 +488,16 @@ return { main = main }
 
             // Check if update returned false to stop the loop
             if (updateResult.get_type() == sol::type::boolean && !updateResult.get<bool>()) {
+                spdlog::info("[GameRunner] update() returned false, stopping game loop");
                 running = false;
                 continue;
             }
 
             // Call render if present
             if (renderFunc.valid()) {
+                if (frameCount == 0) {
+                    spdlog::debug("[GameRunner] Calling Lua render() for the first time...");
+                }
                 auto renderResult = renderFunc();
                 if (!renderResult.valid()) {
                     sol::error err = renderResult;
@@ -400,15 +507,38 @@ return { main = main }
                 }
             }
 
+            frameCount++;
+
             // Small sleep to prevent spinning
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+
+        spdlog::info("[GameRunner] Exited game loop after {} frames", frameCount);
     }
 
-    core::Engine engine_;
-    sol::state lua_;
+    // RAII helper to log destruction phases
+    struct DestructionLogger {
+        const char* name;
+        DestructionLogger(const char* n) : name(n) {}
+        ~DestructionLogger() {
+            spdlog::info("[GameRunner] Auto-destroying: {}", name);
+            spdlog::default_logger()->flush();
+        }
+    };
+
+    // CRITICAL: Member destruction order matters!
+    // Members are destroyed in REVERSE order of declaration.
+    // We need: scriptManager -> binder -> engine -> lua
+    // So declare: lua (first, destroyed LAST) -> engine -> binder -> scriptManager
+    DestructionLogger log0_{"lua_ complete"};
+    sol::state lua_;                                    // Destroyed LAST - must outlive engine
+    DestructionLogger log1_{"engine_ complete"};
+    core::Engine engine_;                               // Destroyed after binder/scriptManager
+    DestructionLogger log2_{"binder_ complete"};
     std::unique_ptr<LuaContractBinder> binder_;
+    DestructionLogger log3_{"scriptManager_ complete"};
     std::unique_ptr<ScriptManager> scriptManager_;
+    DestructionLogger log4_{"start of member destruction"};
 
     std::filesystem::path mainScript_;
     std::filesystem::path gameRoot_;

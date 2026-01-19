@@ -85,6 +85,10 @@ void bindTimerSystem(sol::state& lua);
 // Update function for timers - call this every frame from game loop
 void updateTimers(float dt);
 
+// Cleanup function - MUST be called before lua_close() to release Lua references
+// This clears global managers (timers, events) that hold sol::table/sol::object refs
+void cleanupLuaBindings();
+
 // Future bindings
 // void bindAISystem(sol::state& lua, IAISystem& ai);
 // void bindCameraSystem(sol::state& lua, ICameraSystem& camera);

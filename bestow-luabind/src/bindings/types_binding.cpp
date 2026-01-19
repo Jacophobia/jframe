@@ -9,6 +9,7 @@ module;
 #include <glm/vec4.hpp>
 #include <glm/mat4x4.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 module bestow.luabind;
 
@@ -278,6 +279,78 @@ void bindTypes(sol::state& lua) {
 
     lua["Coordinate"]["new"] = [](int x, int y) {
         return Coordinate{x, y};
+    };
+
+    //=========================================================================
+    // Mat4 (4x4 Matrix)
+    //=========================================================================
+    lua.new_usertype<Mat4>("Mat4",
+        sol::constructors<Mat4(), Mat4(float)>(),
+        sol::meta_function::multiplication, sol::overload(
+            [](const Mat4& a, const Mat4& b) { return a * b; },
+            [](const Mat4& m, const Vec4& v) { return m * v; },
+            [](const Mat4& m, const Vec3& v) { return Vec3(m * Vec4(v, 1.0f)); }
+        ),
+        sol::meta_function::to_string, [](const Mat4& m) {
+            return std::format("Mat4(...)");
+        }
+    );
+
+    // Static factory functions
+    lua["Mat4"]["identity"] = []() { return Mat4(1.0f); };
+    lua["Mat4"]["new"] = [](float diagonal) { return Mat4(diagonal); };
+
+    // Translation matrix from position vector
+    lua["Mat4"]["translation"] = [](float x, float y, float z) {
+        return glm::translate(Mat4(1.0f), Vec3(x, y, z));
+    };
+
+    // Alternative: translation from Vec3
+    lua["Mat4"]["translate"] = sol::overload(
+        [](const Vec3& v) { return glm::translate(Mat4(1.0f), v); },
+        [](float x, float y, float z) { return glm::translate(Mat4(1.0f), Vec3(x, y, z)); }
+    );
+
+    // Rotation matrix from quaternion or axis-angle
+    lua["Mat4"]["rotate"] = sol::overload(
+        [](const Quat& q) { return glm::mat4_cast(q); },
+        [](float angle, const Vec3& axis) { return glm::rotate(Mat4(1.0f), angle, axis); }
+    );
+
+    // Scale matrix
+    lua["Mat4"]["scale"] = sol::overload(
+        [](const Vec3& v) { return glm::scale(Mat4(1.0f), v); },
+        [](float x, float y, float z) { return glm::scale(Mat4(1.0f), Vec3(x, y, z)); },
+        [](float s) { return glm::scale(Mat4(1.0f), Vec3(s, s, s)); }
+    );
+
+    // View matrix (look-at)
+    lua["Mat4"]["lookAt"] = [](const Vec3& eye, const Vec3& target, const Vec3& up) {
+        return glm::lookAt(eye, target, up);
+    };
+
+    // Perspective projection matrix
+    lua["Mat4"]["perspective"] = [](float fovY, float aspect, float nearPlane, float farPlane) {
+        return glm::perspective(glm::radians(fovY), aspect, nearPlane, farPlane);
+    };
+
+    // Orthographic projection matrix
+    lua["Mat4"]["ortho"] = [](float left, float right, float bottom, float top, float nearPlane, float farPlane) {
+        return glm::ortho(left, right, bottom, top, nearPlane, farPlane);
+    };
+
+    // TRS (Translation * Rotation * Scale) composite matrix
+    lua["Mat4"]["trs"] = [](const Vec3& position, const Quat& rotation, const Vec3& scale) {
+        Mat4 m(1.0f);
+        m = glm::translate(m, position);
+        m = m * glm::mat4_cast(rotation);
+        m = glm::scale(m, scale);
+        return m;
+    };
+
+    // From Transform3D
+    lua["Mat4"]["fromTransform"] = [](const Transform3D& transform) {
+        return transform.toMatrix();
     };
 
     //=========================================================================
