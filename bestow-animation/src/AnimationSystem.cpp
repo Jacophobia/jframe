@@ -370,8 +370,9 @@ void AnimationSystem::update(DeltaTime dt) {
                     float outWrappedTime = wrapTime(layer.outgoingTime, outClip.duration, layer.outgoingWrapMode);
                     layer.outgoingTime = outWrappedTime;
 
-                    // Initialize outgoing sampling context if needed
-                    if (!layer.outgoingSamplingContext || layer.outgoingSamplingContext->max_tracks() == 0) {
+                    // Initialize outgoing sampling context if needed (check for size mismatch too)
+                    if (!layer.outgoingSamplingContext ||
+                        layer.outgoingSamplingContext->max_tracks() < outClip.ozzAnimation.num_tracks()) {
                         layer.outgoingSamplingContext = std::make_unique<ozz::animation::SamplingJob::Context>();
                         layer.outgoingSamplingContext->Resize(outClip.ozzAnimation.num_tracks());
                     }
@@ -400,18 +401,23 @@ void AnimationSystem::update(DeltaTime dt) {
                             hasOutgoingRoot = true;
                         }
 
-                        // Outgoing weight decreases as fadeWeight increases (1 - fadeWeight)
-                        float outgoingWeight = layer.weight * (1.0f - layer.fadeWeight);
+                        // Apply smoothstep to fadeWeight for smoother blend curve
+                        // smoothstep(t) = t * t * (3 - 2 * t)
+                        float t = layer.fadeWeight;
+                        float smoothT = t * t * (3.0f - 2.0f * t);
+
+                        // Outgoing weight decreases as fadeWeight increases (1 - smoothT)
+                        float outgoingWeight = layer.weight * (1.0f - smoothT);
                         if (shouldLog) {
-                            spdlog::info("[Crossfade] Outgoing clip {} weight={:.3f} (fadeWeight={:.3f})",
-                                layer.outgoingClip, outgoingWeight, layer.fadeWeight);
+                            spdlog::info("[Crossfade] Outgoing clip {} weight={:.3f} (fadeWeight={:.3f}, smoothT={:.3f})",
+                                layer.outgoingClip, outgoingWeight, layer.fadeWeight, smoothT);
                         }
-                        if (outgoingWeight > 0.001f) {
-                            ozz::animation::BlendingJob::Layer blendLayer;
-                            blendLayer.transform = ozz::make_span(layer.outgoingLocalTransforms);
-                            blendLayer.weight = outgoingWeight;
-                            blendLayers.push_back(blendLayer);
-                        }
+                        // Always add outgoing layer during crossfade (let ozz handle tiny weights)
+                        // Using a minimum weight floor to avoid numerical issues
+                        ozz::animation::BlendingJob::Layer blendLayer;
+                        blendLayer.transform = ozz::make_span(layer.outgoingLocalTransforms);
+                        blendLayer.weight = std::max(outgoingWeight, 0.0001f);
+                        blendLayers.push_back(blendLayer);
                     }
                 }
             }
@@ -420,8 +426,9 @@ void AnimationSystem::update(DeltaTime dt) {
             // Sample INCOMING clip (current)
             //==================================================================
 
-            // Initialize sampling context if needed
-            if (!layer.samplingContext || layer.samplingContext->max_tracks() == 0) {
+            // Initialize sampling context if needed (check for size mismatch too)
+            if (!layer.samplingContext ||
+                layer.samplingContext->max_tracks() < clip.ozzAnimation.num_tracks()) {
                 layer.samplingContext = std::make_unique<ozz::animation::SamplingJob::Context>();
                 layer.samplingContext->Resize(clip.ozzAnimation.num_tracks());
             }
@@ -448,33 +455,21 @@ void AnimationSystem::update(DeltaTime dt) {
             }
 
             if (samplingJob.Run()) {
-                // Calculate root offset on first frame of crossfade
-                if (hasOutgoingRoot && !layer.hasCrossfadeRootOffset && !layer.localTransforms.empty()) {
-                    const auto& incomingRootSoa = layer.localTransforms[0];
-                    Vec3 incomingRootPos;
-                    incomingRootPos.x = ozz::math::GetX(incomingRootSoa.translation.x);
-                    incomingRootPos.y = ozz::math::GetX(incomingRootSoa.translation.y);
-                    incomingRootPos.z = ozz::math::GetX(incomingRootSoa.translation.z);
+                // Apply smoothstep to fadeWeight for smoother blend curve
+                float t = layer.fadeWeight;
+                float smoothT = t * t * (3.0f - 2.0f * t);
 
-                    // Offset = outgoing - incoming (so adding offset to incoming matches outgoing)
-                    layer.crossfadeRootOffset = outgoingRootPos - incomingRootPos;
-                    layer.hasCrossfadeRootOffset = true;
-
-                    spdlog::info("[Crossfade] Root offset calculated: ({:.2f}, {:.2f}, {:.2f})",
-                        layer.crossfadeRootOffset.x, layer.crossfadeRootOffset.y, layer.crossfadeRootOffset.z);
-                }
-
-                float effectiveWeight = layer.weight * layer.fadeWeight;
+                float effectiveWeight = layer.weight * smoothT;
                 if (shouldLog) {
                     spdlog::info("[AnimUpdate] Incoming clip {} weight={:.3f} (weight={:.3f}, fadeWeight={:.3f})",
                         layer.clip, effectiveWeight, layer.weight, layer.fadeWeight);
                 }
-                if (effectiveWeight > 0.001f) {
-                    ozz::animation::BlendingJob::Layer blendLayer;
-                    blendLayer.transform = ozz::make_span(layer.localTransforms);
-                    blendLayer.weight = effectiveWeight;
-                    blendLayers.push_back(blendLayer);
-                }
+                // Always add incoming layer (let ozz handle tiny weights via threshold)
+                // Using a minimum weight floor to avoid numerical issues
+                ozz::animation::BlendingJob::Layer blendLayer;
+                blendLayer.transform = ozz::make_span(layer.localTransforms);
+                blendLayer.weight = std::max(effectiveWeight, 0.0001f);
+                blendLayers.push_back(blendLayer);
             } else {
                 if (shouldLog) {
                     spdlog::warn("[AnimUpdate] Sampling FAILED!");
@@ -491,7 +486,7 @@ void AnimationSystem::update(DeltaTime dt) {
             }
 
             ozz::animation::BlendingJob blendJob;
-            blendJob.threshold = 0.1f;
+            blendJob.threshold = 0.001f;  // Very low - only use rest pose when weights are nearly zero
             blendJob.layers = ozz::make_span(blendLayers);
             blendJob.rest_pose = skeleton.ozzSkeleton.joint_rest_poses();
             blendJob.output = ozz::make_span(animator.blendedLocals);
@@ -524,37 +519,10 @@ void AnimationSystem::update(DeltaTime dt) {
                         animator.boneTransforms[boneIdx] = modelPose * skeleton.bones[boneIdx].inverseBindPose;
                     }
 
-                    // Apply crossfade root offset to prevent position popping during transitions
-                    // The offset = (outgoing_root - incoming_root) scaled by fadeWeight keeps position at outgoing.
-                    // This prevents jarring vertical "falls" when blending between animations with different
-                    // root heights (e.g., jump -> falling -> landing in Mixamo animations).
-                    for (auto& layer : animator.layers) {
-                        if (layer.hasCrossfadeRootOffset && layer.outgoingClip != AnimationHandles::InvalidClip) {
-                            float offsetScale = layer.fadeWeight;
-                            // Apply offset to ALL axes (X, Y, Z) to keep character at outgoing position
-                            Vec3 scaledOffset = layer.crossfadeRootOffset * offsetScale;
-
-                            // Apply offset to root bone (bone 0) model pose and skinning matrix
-                            animator.modelSpacePoses[0][3][0] += scaledOffset.x;
-                            animator.modelSpacePoses[0][3][1] += scaledOffset.y;
-                            animator.modelSpacePoses[0][3][2] += scaledOffset.z;
-
-                            animator.boneTransforms[0][3][0] += scaledOffset.x;
-                            animator.boneTransforms[0][3][1] += scaledOffset.y;
-                            animator.boneTransforms[0][3][2] += scaledOffset.z;
-
-                            // Also propagate offset to all child bones for consistent hierarchy
-                            for (std::size_t i = 1; i < boneCount; ++i) {
-                                animator.modelSpacePoses[i][3][0] += scaledOffset.x;
-                                animator.modelSpacePoses[i][3][1] += scaledOffset.y;
-                                animator.modelSpacePoses[i][3][2] += scaledOffset.z;
-
-                                animator.boneTransforms[i][3][0] += scaledOffset.x;
-                                animator.boneTransforms[i][3][1] += scaledOffset.y;
-                                animator.boneTransforms[i][3][2] += scaledOffset.z;
-                            }
-                        }
-                    }
+                    // Root offset system DISABLED - ozz BlendingJob already handles smooth
+                    // interpolation between animation poses. The manual root offset was causing
+                    // artifacts with large offsets (60+ cm) during rapid state transitions.
+                    // The ozz blending naturally interpolates root positions correctly.
 
                     if (shouldLog && boneCount > 0) {
                         // Log first bone transform position for debugging
@@ -575,8 +543,30 @@ void AnimationSystem::update(DeltaTime dt) {
                 }
             }
         } else {
+            // No blend layers - use rest pose as fallback to avoid stale data
             if (shouldLog) {
-                spdlog::info("[AnimUpdate] No blend layers - animation not running?");
+                spdlog::info("[AnimUpdate] No blend layers - using rest pose");
+            }
+
+            // Copy rest pose to blendedLocals
+            auto restPose = skeleton.ozzSkeleton.joint_rest_poses();
+            if (animator.blendedLocals.size() == restPose.size()) {
+                std::copy(restPose.begin(), restPose.end(), animator.blendedLocals.begin());
+
+                // Convert to model space
+                ozz::animation::LocalToModelJob ltmJob;
+                ltmJob.skeleton = &skeleton.ozzSkeleton;
+                ltmJob.input = ozz::make_span(animator.blendedLocals);
+                ltmJob.output = ozz::make_span(animator.modelMatrices);
+
+                if (ltmJob.Run()) {
+                    for (std::size_t ozzIdx = 0; ozzIdx < boneCount; ++ozzIdx) {
+                        std::int32_t boneIdx = skeleton.ozzToBoneIndex[ozzIdx];
+                        Mat4 modelPose = fromOzz(animator.modelMatrices[ozzIdx]);
+                        animator.modelSpacePoses[boneIdx] = modelPose;
+                        animator.boneTransforms[boneIdx] = modelPose * skeleton.bones[boneIdx].inverseBindPose;
+                    }
+                }
             }
         }
 
@@ -1468,6 +1458,9 @@ void AnimationSystem::play(AnimatorHandle animator, const AnimationPlayConfig& c
 
     if (shouldCrossfade) {
         // Preserve current clip as outgoing for crossfade
+        // Note: If already crossfading, the previous outgoing animation is lost.
+        // This is a deliberate simplification - most animation systems only support
+        // one crossfade at a time. The current animation becomes the new outgoing.
         layer.outgoingClip = layer.clip;
         layer.outgoingTime = layer.time;
         layer.outgoingSpeed = layer.speed;
@@ -1489,7 +1482,6 @@ void AnimationSystem::play(AnimatorHandle animator, const AnimationPlayConfig& c
     // Set up the new incoming animation
     layer.clip = config.clip;
     layer.clipName = config.clipName;
-    layer.time = config.startTime;
     layer.speed = config.speed;
     layer.weight = config.weight;
     layer.wrapMode = config.wrapMode;
@@ -1498,6 +1490,11 @@ void AnimationSystem::play(AnimatorHandle animator, const AnimationPlayConfig& c
     layer.paused = false;
     layer.samplingContext.reset();  // Will be re-created on first sample
     layer.localTransforms.clear();
+
+    // Always start new animation from the configured start time
+    // Animation sync (for foot phase matching) would need to be opt-in per animation
+    // and only between similar locomotion cycles - too complex for now
+    layer.time = config.startTime;
 
     if (config.blendInTime > 0.0f) {
         layer.fadeWeight = 0.0f;

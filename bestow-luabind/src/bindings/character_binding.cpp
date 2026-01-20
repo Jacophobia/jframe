@@ -181,6 +181,40 @@ public:
         currentAnimation_ = animName;
     }
 
+    /// Play animation with phase synchronization - matches normalized time of outgoing animation
+    /// Use this for locomotion transitions (walk->jog->run) to prevent foot sliding
+    void playSynced(const std::string& animName, sol::optional<float> blendTime) {
+        auto it = clips_.find(animName);
+        if (it == clips_.end()) {
+            spdlog::warn("[Character] Animation '{}' not found. Available: {}",
+                        animName, getAvailableAnimationsString());
+            return;
+        }
+
+        // Get current animation's normalized time (0-1 phase)
+        float currentPhase = animation_->getNormalizedTime(animator_, 0);
+
+        // Get target animation's duration
+        auto clipInfo = animation_->getAnimationClipInfo(it->second);
+        float targetDuration = clipInfo.duration > 0.0f ? clipInfo.duration : 1.0f;
+
+        // Calculate start time to match phase
+        float startTime = currentPhase * targetDuration;
+
+        // Create play config with phase-synced start time
+        AnimationPlayConfig config;
+        config.clip = it->second;
+        config.blendInTime = blendTime.value_or(defaultBlendTime_);
+        config.startTime = startTime;
+        config.wrapMode = AnimationWrapMode::Loop;
+
+        spdlog::debug("[Character] playSynced '{}' phase={:.2f} startTime={:.3f}s",
+                     animName, currentPhase, startTime);
+
+        animation_->play(animator_, config);
+        currentAnimation_ = animName;
+    }
+
     void playOnce(const std::string& animName,
                   sol::object thenArg1,
                   sol::optional<sol::object> thenArg2,
@@ -700,6 +734,7 @@ void bindCharacterSystem(sol::state& lua, IAnimationSystem& animation,
 
         // Playback
         "play", &LuaCharacter::play,
+        "playSynced", &LuaCharacter::playSynced,  // Phase-synced for locomotion transitions
         "playOnce", &LuaCharacter::playOnce,
         "stop", &LuaCharacter::stop,
         "pause", &LuaCharacter::pause,

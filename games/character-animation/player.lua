@@ -193,7 +193,19 @@ function player.changeState(appSelf, newState)
     end
 
     bestow.info("State: " .. from .. " -> " .. to .. " (blend: " .. blendTime .. "s)")
-    p.character:play(newState, blendTime)
+
+    -- Use phase-synced playback for locomotion-to-locomotion transitions
+    -- This prevents foot sliding by matching the normalized time (foot phase)
+    local fromIsLocomotion = player.isLocomotionState(from)
+    local toIsLocomotion = player.isLocomotionState(to)
+
+    if fromIsLocomotion and toIsLocomotion then
+        -- Sync foot phase between walk/jog/run animations
+        p.character:playSynced(newState, blendTime)
+    else
+        -- Action transitions (jump, fall, land) start from beginning
+        p.character:play(newState, blendTime)
+    end
 end
 
 -- Get target state based on speed (for grounded locomotion)

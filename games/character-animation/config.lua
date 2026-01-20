@@ -17,8 +17,8 @@ return {
         walkSpeed = 2.5,        -- Units per second when walking
         jogSpeed = 4.5,         -- Units per second when jogging
         runSpeed = 7.0,         -- Units per second when running
-        acceleration = 2.0,     -- How quickly speed builds up (slower = visible animation transitions)
-        deceleration = 2.0,     -- How quickly character stops (matches acceleration for symmetry)
+        acceleration = 1.5,     -- How quickly speed builds up (slower = cleaner animation transitions)
+        deceleration = 1.5,     -- How quickly character stops (matches acceleration for symmetry)
         turnSpeed = 5.0,        -- Rotation speed (radians per second) - smoother turning
     },
 
@@ -38,13 +38,15 @@ return {
         jogThreshold = 0.75,        -- Below this = jog, above = run
 
         -- Blend times for smooth transitions (seconds)
+        -- Note: Blend times should be shorter than the time between state changes
+        -- to prevent overlapping crossfades
         blendTimes = {
-            locomotion = 0.3,       -- idle <-> walk <-> jog <-> run
-            jumpStart = 0.15,       -- Grounded -> jumping
+            locomotion = 0.3,       -- idle <-> walk <-> jog <-> run (longer for smoother overlap)
+            jumpStart = 0.1,        -- Grounded -> jumping
             jumpToFall = 0.1,       -- Jumping -> falling
             land = 0.1,             -- Falling -> landing
             landToRecovery = 0.1,   -- Landing -> recovery
-            recoveryToIdle = 0.3,   -- Recovery -> idle/walk
+            recoveryToIdle = 0.2,   -- Recovery -> idle/walk
         },
     },
 
