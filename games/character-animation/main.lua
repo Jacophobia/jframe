@@ -77,13 +77,38 @@ return {
             intensity = 1.2
         })
 
-        -- Create ground plane and material
-        this.transient.groundMesh = bestow.graphics3d.createPlaneMesh(100.0, 100.0, 1, 1)
-        -- Use default unlit material for now (creates white surface)
-        this.transient.groundMaterial = bestow.graphics3d.getDefaultUnlitMaterial()
-        if not this.transient.groundMaterial then
-            bestow.warn("Failed to get default unlit material!")
-        end
+        -- Create checker pattern ground
+        local tileSize = 2.0  -- Size of each checker tile
+        local gridSize = 25   -- Number of tiles in each direction (50x50 = 100 units total)
+        this.transient.groundMesh = bestow.graphics3d.createPlaneMesh(tileSize, tileSize, 1, 1)
+
+        -- Create two materials for checker pattern (light gray and dark gray)
+        local lightMat = PBRMaterial.new()
+        lightMat.baseColorFactor = Vec4.new(0.7, 0.7, 0.7, 1.0)
+        lightMat.roughnessFactor = 0.9
+        lightMat.metallicFactor = 0.0
+        this.transient.lightMaterial = bestow.graphics3d.createMaterial(lightMat)
+
+        local darkMat = PBRMaterial.new()
+        darkMat.baseColorFactor = Vec4.new(0.3, 0.3, 0.3, 1.0)
+        darkMat.roughnessFactor = 0.9
+        darkMat.metallicFactor = 0.0
+        this.transient.darkMaterial = bestow.graphics3d.createMaterial(darkMat)
+
+        -- Store grid params for rendering
+        this.transient.groundTileSize = tileSize
+        this.transient.groundGridSize = gridSize
+
+        -- Create ground plane physics body for collision
+        this.transient.groundEntity = bestow.entity.create()
+        local groundDef = PhysicsBodyDef3D.new()
+        groundDef.type = BodyType3D.Static
+        groundDef.shapeType = ShapeType3D.Box
+        groundDef.shapeHalfExtents = Vec3.new(50.0, 0.5, 50.0)
+        groundDef.transform = Transform3D.identity()
+        groundDef.transform.position = Vec3.new(0, -0.5, 0)
+        bestow.physics3d.createBody(this.transient.groundEntity, groundDef)
+        bestow.info("Ground physics body created")
 
         -- Create player
         this.transient.player = app.player.create(this, scope)
@@ -122,6 +147,9 @@ return {
         -- Update input system
         bestow.input.update()
 
+        -- Update physics simulation
+        bestow.physics3d.update(dt)
+
         -- Update player (handles input and animation state machine)
         player.update(this, dt, nil)
 
@@ -131,9 +159,23 @@ return {
         -- Render
         bestow.graphics3d.beginFrame()
 
-        -- Draw ground
-        local groundTransform = Transform3D.identity()
-        bestow.graphics3d.drawMesh(this.transient.groundMesh, this.transient.groundMaterial, groundTransform)
+        -- Draw checker pattern ground
+        local tileSize = this.transient.groundTileSize
+        local gridSize = this.transient.groundGridSize
+        local halfGrid = gridSize / 2
+        for x = -halfGrid, halfGrid - 1 do
+            for z = -halfGrid, halfGrid - 1 do
+                local tileTransform = Transform3D.identity()
+                tileTransform.position = Vec3.new(
+                    (x + 0.5) * tileSize,
+                    0,
+                    (z + 0.5) * tileSize
+                )
+                -- Alternate colors based on x+z parity
+                local mat = ((x + z) % 2 == 0) and this.transient.lightMaterial or this.transient.darkMaterial
+                bestow.graphics3d.drawMesh(this.transient.groundMesh, mat, tileTransform)
+            end
+        end
 
         -- Draw player
         player.render(this, nil)
@@ -152,6 +194,11 @@ return {
 
         -- Cleanup player
         app.player.destroy(this, scope)
+
+        -- Cleanup ground physics entity
+        if this.transient and this.transient.groundEntity then
+            bestow.entity.destroy(this.transient.groundEntity)
+        end
 
         -- Cleanup graphics
         bestow.graphics3d.shutdown()

@@ -63,11 +63,23 @@ return {
         },
     },
 
-    -- Camera settings
+    -- Camera settings (Elden Ring style)
     camera = {
-        distance = 8.0,         -- Distance from character
-        height = 4.0,           -- Height above character
-        lookAhead = 2.0,        -- Look ahead in movement direction
-        smoothing = 5.0,        -- Camera follow smoothing factor
+        distance = 2.67,        -- Distance from character (1/3 of original 8.0)
+        height = 1.5,           -- Height above character (proportionally reduced)
+        lookAhead = 0.5,        -- Look ahead in movement direction (closer camera needs less)
+        smoothing = 5.0,        -- Position smoothing factor
+        orbitSmoothing = 1.2,   -- Orbit rotation smoothing (lower = slower/smoother)
+        followDelay = 0.4,      -- Seconds before camera starts rotating to follow
+        moveThreshold = 0.3,    -- Speed threshold to consider player "moving"
+    },
+
+    -- Character physics settings
+    character = {
+        radius = 0.3,           -- Capsule radius
+        height = 1.8,           -- Capsule height
+        stepHeight = 0.35,      -- Max step height to climb
+        maxSlopeAngle = 45.0,   -- Max walkable slope angle
+        mass = 80.0,            -- Character mass in kg
     },
 }

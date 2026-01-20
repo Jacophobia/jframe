@@ -55,15 +55,44 @@ function player.create(appSelf, scope)
 
         -- Character (filled by loadAssets)
         character = nil,
+
+        -- Physics entity (for character controller)
+        entity = nil,
     }
 
     -- Store in app's transient state
     appSelf.transient.player = p
 
+    -- Create physics character controller
+    player.createPhysicsController(appSelf, config)
+
     -- Load character model and animations
     player.loadAssets(appSelf, scope)
 
     return p
+end
+
+-- Create physics character controller for collision
+function player.createPhysicsController(appSelf, config)
+    local p = appSelf.transient.player
+    local charConfig = config.character
+
+    -- Create entity for physics
+    p.entity = bestow.entity.create()
+
+    -- Create character controller definition
+    local charDef = CharacterControllerDef.new()
+    charDef.radius = charConfig.radius
+    charDef.height = charConfig.height
+    charDef.stepHeight = charConfig.stepHeight
+    charDef.maxSlopeAngle = charConfig.maxSlopeAngle
+    charDef.mass = charConfig.mass
+    charDef.layer = bestow.physics3d.Layer.Character
+
+    -- Create the character controller
+    bestow.physics3d.createCharacter(p.entity, charDef)
+
+    bestow.info("Physics character controller created")
 end
 
 -- Load character model and animation clips using simplified Character API
@@ -228,6 +257,21 @@ function player.update(appSelf, dt, scope)
         inputZ = 0
     end
 
+    -- Transform input to world space using camera angle (camera-relative movement)
+    -- Camera orbit angle: 0 = behind player (looking +Z), π/2 = left of player (looking +X)
+    local cam = appSelf.transient.camera
+    local camAngle = cam and cam.currentOrbitAngle or 0
+
+    local worldInputX = 0
+    local worldInputZ = 0
+    if inputMag > 0.001 then
+        local cosA = math.cos(camAngle)
+        local sinA = math.sin(camAngle)
+        -- Forward (inputZ) maps to camera's look direction, Right (inputX) perpendicular
+        worldInputX = inputZ * sinA + inputX * cosA
+        worldInputZ = inputZ * cosA - inputX * sinA
+    end
+
     -- Determine target speed
     local targetSpeed = 0
     if inputMag > 0.001 then
@@ -251,10 +295,10 @@ function player.update(appSelf, dt, scope)
     local maxSpeed = p.runModifier and movement.runSpeed or movement.walkSpeed
     local actualSpeed = p.currentSpeed * maxSpeed
 
-    -- Update horizontal velocity
+    -- Update horizontal velocity using world-space input
     if inputMag > 0.001 then
-        p.velocity.x = inputX * actualSpeed
-        p.velocity.z = inputZ * actualSpeed
+        p.velocity.x = worldInputX * actualSpeed
+        p.velocity.z = worldInputZ * actualSpeed
     else
         -- Decelerate to stop
         local vel = math.sqrt(p.velocity.x * p.velocity.x + p.velocity.z * p.velocity.z)
@@ -271,26 +315,35 @@ function player.update(appSelf, dt, scope)
         end
     end
 
-    -- Apply gravity and update vertical position
+    -- Apply gravity
     if not p.isGrounded then
         p.verticalVelocity = p.verticalVelocity + physics.gravity * dt
-        p.position.y = p.position.y + p.verticalVelocity * dt
+    end
 
-        -- Check ground collision
-        if p.position.y <= physics.groundY then
-            p.position.y = physics.groundY
+    -- Move character using physics controller
+    local velocity3D = Vec3.new(p.velocity.x, p.verticalVelocity, p.velocity.z)
+    bestow.physics3d.moveCharacter(p.entity, velocity3D, dt)
+
+    -- Get position from physics
+    local newPos = bestow.physics3d.getCharacterPosition(p.entity)
+    if newPos then
+        p.position = newPos
+    end
+
+    -- Get ground state from physics
+    local groundInfo = bestow.physics3d.getCharacterGroundInfo(p.entity)
+    if groundInfo then
+        local wasGrounded = p.isGrounded
+        p.isGrounded = (groundInfo.state == CharacterGroundState.OnGround)
+        -- Reset vertical velocity when landing
+        if p.isGrounded and not wasGrounded then
             p.verticalVelocity = 0
-            p.isGrounded = true
         end
     end
 
-    -- Update horizontal position
-    p.position.x = p.position.x + p.velocity.x * dt
-    p.position.z = p.position.z + p.velocity.z * dt
-
-    -- Rotate character to face movement direction
+    -- Rotate character to face movement direction (using world-space input)
     if inputMag > 0.001 then
-        local targetRotation = math.atan2(inputX, inputZ)
+        local targetRotation = math.atan2(worldInputX, worldInputZ)
         local rotDiff = targetRotation - p.rotation
 
         -- Normalize to -pi to pi
@@ -397,6 +450,11 @@ function player.destroy(appSelf, scope)
 
     if p.character then
         p.character:destroy()
+    end
+
+    -- Destroy physics entity
+    if p.entity then
+        bestow.entity.destroy(p.entity)
     end
 
     appSelf.transient.player = nil

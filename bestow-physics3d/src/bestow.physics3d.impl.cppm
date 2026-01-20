@@ -703,6 +703,10 @@ private:
     mutable PhysicsStats3D lastStats_;
 
     bool initialized_ = false;
+
+public:
+    // Forward declaration - defined after class is complete
+    struct Service;
 };
 
 //==========================================================================
@@ -2554,7 +2558,10 @@ JPH::Ref<JPH::Shape> JoltPhysics3DSystem::createShape(const PhysicsBodyDef3D& de
 // Kangaru Service Definitions
 //==========================================================================
 
-// Concrete service that provides JoltPhysics3DSystem as IPhysics3DSystem
-struct Physics3DSystemService : kgr::single_service<JoltPhysics3DSystem>, kgr::overrides<IPhysics3DSystemService> {};
+// Service type for Engine::use<IPhysics3DSystem, JoltPhysics3DSystem>()
+struct JoltPhysics3DSystem::Service : kgr::single_service<JoltPhysics3DSystem>, kgr::overrides<IPhysics3DSystemService> {};
+
+// Backwards compatibility alias
+using Physics3DSystemService = JoltPhysics3DSystem::Service;
 
 }  // namespace bestow

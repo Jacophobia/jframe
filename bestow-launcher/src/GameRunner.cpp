@@ -25,6 +25,7 @@ import bestow.config.impl;    // ConfigSystem
 import bestow.vulkan.impl;    // VulkanGraphics3DSystem
 import bestow.audio.impl;     // FMODAudioSystem
 import bestow.animation.impl; // AnimationSystem
+import bestow.physics3d.impl; // JoltPhysics3DSystem
 
 namespace bestow::launcher {
 
@@ -284,6 +285,9 @@ private:
 
         // Register graphics 3D system (Vulkan)
         engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+
+        // Register 3D physics system (Jolt)
+        engine_.use<IPhysics3DSystem, JoltPhysics3DSystem>();
 
         // Register animation system
         engine_.use<IAnimationSystem, AnimationSystem>();
