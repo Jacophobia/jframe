@@ -139,4 +139,40 @@ bestow.action.builder()
     :emitAction("Quit")
     :discretely()
 
+--------------------------------------------------
+-- Gamepad Analog Sticks
+--------------------------------------------------
+
+local axes = bestow.input.axes
+
+-- Left stick for movement
+bestow.action.builder()
+    :duringPhase("game.playing")
+    :whenActive(axes.LeftX)
+    :withDeadzone(0.15)
+    :emitAction("MoveAxisX")
+    :continuously()
+
+bestow.action.builder()
+    :duringPhase("game.playing")
+    :whenActive(axes.LeftY)
+    :withDeadzone(0.15)
+    :emitAction("MoveAxisY")
+    :continuously()
+
+-- Right stick for camera
+bestow.action.builder()
+    :duringPhase("game.playing")
+    :whenActive(axes.RightX)
+    :withDeadzone(0.15)
+    :emitAction("CameraAxisX")
+    :continuously()
+
+bestow.action.builder()
+    :duringPhase("game.playing")
+    :whenActive(axes.RightY)
+    :withDeadzone(0.15)
+    :emitAction("CameraAxisY")
+    :continuously()
+
 end -- return function()

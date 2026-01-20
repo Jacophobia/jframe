@@ -17,9 +17,9 @@ return {
         walkSpeed = 2.5,        -- Units per second when walking
         jogSpeed = 4.5,         -- Units per second when jogging
         runSpeed = 7.0,         -- Units per second when running
-        acceleration = 12.0,    -- How quickly speed builds up
-        deceleration = 10.0,    -- How quickly character stops
-        turnSpeed = 8.0,        -- Rotation speed (radians per second)
+        acceleration = 2.0,     -- How quickly speed builds up (slower = visible animation transitions)
+        deceleration = 2.0,     -- How quickly character stops (matches acceleration for symmetry)
+        turnSpeed = 5.0,        -- Rotation speed (radians per second) - smoother turning
     },
 
     -- Jump/physics settings
@@ -69,9 +69,13 @@ return {
         height = 1.5,           -- Height above character (proportionally reduced)
         lookAhead = 0.5,        -- Look ahead in movement direction (closer camera needs less)
         smoothing = 5.0,        -- Position smoothing factor
-        orbitSmoothing = 1.2,   -- Orbit rotation smoothing (lower = slower/smoother)
-        followDelay = 0.4,      -- Seconds before camera starts rotating to follow
+        orbitSmoothing = 0.4,   -- Orbit rotation smoothing (lower = slower/smoother)
+        followDelay = 2.0,      -- Seconds before camera starts rotating to follow
         moveThreshold = 0.3,    -- Speed threshold to consider player "moving"
+        -- Manual camera control
+        manualControlCooldown = 2.0,  -- Seconds after manual input before auto-follow resumes
+        mouseSensitivity = 0.003,     -- Mouse look sensitivity
+        stickSensitivity = 2.5,       -- Right stick look sensitivity
     },
 
     -- Character physics settings

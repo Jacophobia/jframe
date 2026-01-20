@@ -147,9 +147,6 @@ return {
         -- Update input system
         bestow.input.update()
 
-        -- Update physics simulation
-        bestow.physics3d.update(dt)
-
         -- Update player (handles input and animation state machine)
         player.update(this, dt, nil)
 

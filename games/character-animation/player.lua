@@ -31,9 +31,10 @@ function player.create(appSelf, scope)
     local config = app.config
 
     -- Create player state table
+    -- Start at height = capsule half-height (0.9) so bottom touches ground
     local p = {
         -- Position and orientation
-        position = Vec3.new(0, 0, 0),
+        position = Vec3.new(0, 0.9, 0),
         rotation = 0,  -- Radians, Y-axis rotation
 
         -- Velocity
@@ -92,7 +93,8 @@ function player.createPhysicsController(appSelf, config)
     -- Create the character controller
     bestow.physics3d.createCharacter(p.entity, charDef)
 
-    bestow.info("Physics character controller created")
+    -- Set initial position (start at height so capsule bottom touches ground)
+    bestow.physics3d.setCharacterPosition(p.entity, p.position)
 end
 
 -- Load character model and animation clips using simplified Character API
@@ -195,15 +197,43 @@ function player.changeState(appSelf, newState)
 end
 
 -- Get target state based on speed (for grounded locomotion)
-function player.getLocomotionState(normalizedSpeed)
+-- Uses hysteresis to prevent rapid state flipping at threshold boundaries
+function player.getLocomotionState(normalizedSpeed, currentState)
     local config = app.config
     local thresholds = config.animation
 
-    if normalizedSpeed < thresholds.idleThreshold then
+    -- Hysteresis buffer - need to go this far past threshold to change state
+    -- Use smaller value to avoid making thresholds negative
+    local hysteresis = 0.04
+
+    -- Get thresholds adjusted for current state (add buffer to prevent oscillation)
+    local idleThresh = thresholds.idleThreshold
+    local walkThresh = thresholds.walkThreshold
+    local jogThresh = thresholds.jogThreshold
+
+    -- If currently in a state, require going further to leave it
+    -- Use math.max to prevent negative thresholds
+    if currentState == AnimState.Idle then
+        -- Need to go higher to leave idle
+        idleThresh = idleThresh + hysteresis
+    elseif currentState == AnimState.Walk then
+        -- Need to go lower to go to idle, higher to go to jog
+        idleThresh = math.max(0, idleThresh - hysteresis)
+        walkThresh = walkThresh + hysteresis
+    elseif currentState == AnimState.Jog then
+        -- Need to go lower to go to walk, higher to go to run
+        walkThresh = math.max(thresholds.idleThreshold + 0.01, walkThresh - hysteresis)
+        jogThresh = jogThresh + hysteresis
+    elseif currentState == AnimState.Run then
+        -- Need to go lower to leave run
+        jogThresh = math.max(thresholds.walkThreshold + 0.01, jogThresh - hysteresis)
+    end
+
+    if normalizedSpeed < idleThresh then
         return AnimState.Idle
-    elseif normalizedSpeed < thresholds.walkThreshold then
+    elseif normalizedSpeed < walkThresh then
         return AnimState.Walk
-    elseif normalizedSpeed < thresholds.jogThreshold then
+    elseif normalizedSpeed < jogThresh then
         return AnimState.Jog
     else
         return AnimState.Run
@@ -227,22 +257,34 @@ function player.update(appSelf, dt, scope)
     local movement = config.movement
     local physics = config.physics
 
+    -- Block movement input during landing animations
+    local isLanding = (p.currentState == AnimState.Landing or p.currentState == AnimState.LandingRecovery)
+
     -- Accumulate input from continuous actions
     local inputX = 0
     local inputZ = 0
 
-    -- Check for active movement actions
-    if bestow.input.isActionActive("MoveForward") then
-        inputZ = inputZ + 1
-    end
-    if bestow.input.isActionActive("MoveBackward") then
-        inputZ = inputZ - 1
-    end
-    if bestow.input.isActionActive("MoveLeft") then
-        inputX = inputX - 1
-    end
-    if bestow.input.isActionActive("MoveRight") then
-        inputX = inputX + 1
+    if not isLanding then
+        -- Digital input (keyboard/dpad)
+        if bestow.input.isActionActive("MoveForward") then
+            inputZ = inputZ + 1
+        end
+        if bestow.input.isActionActive("MoveBackward") then
+            inputZ = inputZ - 1
+        end
+        if bestow.input.isActionActive("MoveLeft") then
+            inputX = inputX - 1
+        end
+        if bestow.input.isActionActive("MoveRight") then
+            inputX = inputX + 1
+        end
+
+        -- Analog input (left stick) - add to digital input
+        local stickX = bestow.input.getActionValue("MoveAxisX") or 0
+        local stickY = bestow.input.getActionValue("MoveAxisY") or 0
+        -- Note: Y axis is inverted on most controllers (up = negative)
+        inputX = inputX + stickX
+        inputZ = inputZ - stickY  -- Invert Y so pushing up moves forward
     end
 
     p.runModifier = bestow.input.isActionActive("Run")
@@ -268,8 +310,9 @@ function player.update(appSelf, dt, scope)
         local cosA = math.cos(camAngle)
         local sinA = math.sin(camAngle)
         -- Forward (inputZ) maps to camera's look direction, Right (inputX) perpendicular
-        worldInputX = inputZ * sinA + inputX * cosA
-        worldInputZ = inputZ * cosA - inputX * sinA
+        -- Note: inputX is negated because screen-space right corresponds to -X in world space
+        worldInputX = inputZ * sinA - inputX * cosA
+        worldInputZ = inputZ * cosA + inputX * sinA
     end
 
     -- Determine target speed
@@ -315,9 +358,13 @@ function player.update(appSelf, dt, scope)
         end
     end
 
-    -- Apply gravity
-    if not p.isGrounded then
-        p.verticalVelocity = p.verticalVelocity + physics.gravity * dt
+    -- Always apply gravity (physics will handle ground contact)
+    p.verticalVelocity = p.verticalVelocity + physics.gravity * dt
+
+    -- Clamp falling speed
+    local maxFallSpeed = -50.0
+    if p.verticalVelocity < maxFallSpeed then
+        p.verticalVelocity = maxFallSpeed
     end
 
     -- Move character using physics controller
@@ -335,8 +382,8 @@ function player.update(appSelf, dt, scope)
     if groundInfo then
         local wasGrounded = p.isGrounded
         p.isGrounded = (groundInfo.state == CharacterGroundState.OnGround)
-        -- Reset vertical velocity when landing
-        if p.isGrounded and not wasGrounded then
+        -- Reset vertical velocity when grounded (physics handles the actual stopping)
+        if p.isGrounded then
             p.verticalVelocity = 0
         end
     end
@@ -389,9 +436,12 @@ function player.updateStateMachine(appSelf, dt)
 
     if p.isGrounded then
         -- Grounded states
-        if player.isLocomotionState(state) then
-            -- Update locomotion based on speed
-            local targetState = player.getLocomotionState(p.currentSpeed)
+        if state == AnimState.Jump or state == AnimState.Falling then
+            -- Just landed - play landing animation
+            player.changeState(appSelf, AnimState.Landing)
+        elseif player.isLocomotionState(state) then
+            -- Update locomotion based on speed (with hysteresis to prevent rapid state changes)
+            local targetState = player.getLocomotionState(p.currentSpeed, state)
             if targetState ~= state then
                 player.changeState(appSelf, targetState)
             end
@@ -405,8 +455,8 @@ function player.updateStateMachine(appSelf, dt)
             -- Wait for recovery animation to finish
             local progress = p.character:getAnimationProgress()
             if progress >= 0.95 then
-                -- Transition to appropriate locomotion state
-                local targetState = player.getLocomotionState(p.currentSpeed)
+                -- Transition to appropriate locomotion state (no hysteresis needed here)
+                local targetState = player.getLocomotionState(p.currentSpeed, nil)
                 player.changeState(appSelf, targetState)
             end
         end
@@ -423,11 +473,6 @@ function player.updateStateMachine(appSelf, dt)
         elseif player.isLocomotionState(state) then
             -- Just left ground (walked off edge) - go to falling
             player.changeState(appSelf, AnimState.Falling)
-        end
-
-        -- Check for landing
-        if p.isGrounded and (state == AnimState.Jump or state == AnimState.Falling) then
-            player.changeState(appSelf, AnimState.Landing)
         end
     end
 end

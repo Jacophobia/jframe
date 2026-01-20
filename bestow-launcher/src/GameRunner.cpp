@@ -473,6 +473,11 @@ return { main = main }
             // Update timers (hot-reload-safe timer callbacks)
             updateTimers(dt);
 
+            // Update physics systems (before game logic sees state)
+            if (engine_.has<IPhysics3DSystem>()) {
+                engine_.get<IPhysics3DSystem>().update(dt);
+            }
+
             // Update animation system (calculates bone transforms)
             if (engine_.has<IAnimationSystem>()) {
                 engine_.get<IAnimationSystem>().update(dt);

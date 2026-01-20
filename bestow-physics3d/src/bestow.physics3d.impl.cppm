@@ -6,6 +6,9 @@ module;
 // Required for Jolt's use of std::is_trivial before import std
 #include <type_traits>
 
+// Logging
+#include <spdlog/spdlog.h>
+
 // Jolt Physics headers - MUST be in global module fragment
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
@@ -713,7 +716,9 @@ public:
 // Implementation
 //==========================================================================
 
-JoltPhysics3DSystem::JoltPhysics3DSystem() = default;
+JoltPhysics3DSystem::JoltPhysics3DSystem() {
+    initialize();
+}
 
 JoltPhysics3DSystem::~JoltPhysics3DSystem() {
     // Clean up in reverse order
@@ -1640,7 +1645,9 @@ Result<float, Physics3DError> JoltPhysics3DSystem::getConstraintForce(UUID const
 
 Result<void, Physics3DError> JoltPhysics3DSystem::createCharacter(Entity entity,
                                                                    const CharacterControllerDef& def) {
-    if (!initialized_) return std::unexpected(Physics3DError::InternalError);
+    if (!initialized_) {
+        return std::unexpected(Physics3DError::InternalError);
+    }
 
     std::uint32_t entityId = static_cast<std::uint32_t>(entity);
     if (characters_.contains(entityId)) {
