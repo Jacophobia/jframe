@@ -560,6 +560,11 @@ void AnimationSystem::update(DeltaTime dt) {
                 ltmJob.output = ozz::make_span(animator.modelMatrices);
 
                 if (ltmJob.Run()) {
+                    // Resize model space poses if needed
+                    if (animator.modelSpacePoses.size() != boneCount) {
+                        animator.modelSpacePoses.resize(boneCount, Mat4{1.0f});
+                    }
+
                     for (std::size_t ozzIdx = 0; ozzIdx < boneCount; ++ozzIdx) {
                         std::int32_t boneIdx = skeleton.ozzToBoneIndex[ozzIdx];
                         Mat4 modelPose = fromOzz(animator.modelMatrices[ozzIdx]);

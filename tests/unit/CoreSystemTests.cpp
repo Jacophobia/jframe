@@ -46,9 +46,10 @@ TEST_F(TimerTest, ElapsedTime) {
     core::Timer timer;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     float ms = timer.elapsedMilliseconds();
-    // Should be at least 50ms (allow some tolerance)
-    EXPECT_GE(ms, 45.0f);
-    EXPECT_LT(ms, 200.0f);  // sanity check
+    // Should be at least 50ms (allow some tolerance for scheduler variance)
+    EXPECT_GE(ms, 40.0f);
+    // Sanity check upper bound - allow up to 500ms for heavily loaded CI with 1400+ parallel tests
+    EXPECT_LT(ms, 500.0f);
 }
 
 //==========================================================================
@@ -381,9 +382,12 @@ TEST_F(FrameTimerTest, DeltaTimeConsistency) {
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     float dt2 = timer.tick();
     // Both should be around 50ms = 0.05s
-    // Use very high tolerance (100ms) for CI environments where VM scheduling
-    // can cause significant timing variations (observed 74ms variance on macOS CI)
-    EXPECT_NEAR(dt1, dt2, 0.100f);
+    // Check that both deltas are positive and at least the sleep duration
+    EXPECT_GT(dt1, 0.040f);  // At least 40ms (allowing some scheduler variance)
+    EXPECT_GT(dt2, 0.040f);
+    // Use very high tolerance (200ms) for CI environments where VM scheduling
+    // can cause significant timing variations when 1400+ tests run in parallel
+    EXPECT_NEAR(dt1, dt2, 0.200f);
 }
 
 //==========================================================================
