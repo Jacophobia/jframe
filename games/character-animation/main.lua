@@ -70,6 +70,9 @@ return {
             bestow.input.initialize(windowHandle)
         end
 
+        -- Capture and hide mouse cursor for FPS-style camera control
+        bestow.input.setCursorMode(CursorMode.Disabled)
+
         -- Setup lighting for outdoor scene
         bestow.graphics3d.setDirectionalLight({
             direction = Vec3.new(0.5, -1.0, 0.3),
@@ -117,10 +120,11 @@ return {
         this.transient.camera = app.camera.create(this, scope)
 
         -- Subscribe to Jump action (hot-reload-safe: table + method name)
-        this.transient.jumpSub = bestow.events.subscribe("Jump", {}, this, "onJump")
+        -- Input actions are published as "action_triggered" with action name in event data
+        this.transient.jumpSub = bestow.events.subscribe("action_triggered", { action = "Jump" }, this, "onJump")
 
         -- Subscribe to Quit action
-        this.transient.quitSub = bestow.events.subscribe("Quit", {}, this, "onQuit")
+        this.transient.quitSub = bestow.events.subscribe("action_triggered", { action = "Quit" }, this, "onQuit")
 
         -- Set initial phase for input system
         bestow.phase.change("game.playing")
@@ -214,9 +218,12 @@ return {
 
     onQuit = function(self, event, scope)
         local this = app.main
-        bestow.info("Quit requested")
+        bestow.info("========== QUIT REQUESTED ==========")
         if this.transient then
             this.transient.running = false
+            bestow.info("Set running = false")
+        else
+            bestow.info("ERROR: this.transient is nil!")
         end
     end,
 
