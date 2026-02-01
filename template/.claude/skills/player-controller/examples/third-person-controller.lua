@@ -75,9 +75,9 @@ return {
         local moveDir = Vec3.zero()
         if math.abs(inputX) > 0.01 or math.abs(inputZ) > 0.01 then
             local cam = bestow.graphics3d.getCamera()
-            local camForward = cam.transform.rotation:rotateVector(Vec3.forward())
+            local camForward = cam.rotation:rotateVector(Vec3.forward())
             camForward = Vec3.new(camForward.x, 0, camForward.z):normalize()
-            local camRight = cam.transform.rotation:rotateVector(Vec3.right())
+            local camRight = cam.rotation:rotateVector(Vec3.right())
             camRight = Vec3.new(camRight.x, 0, camRight.z):normalize()
 
             moveDir = camRight * inputX + camForward * inputZ

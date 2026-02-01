@@ -151,7 +151,7 @@ end
 ```lua
 local function getMouseWorldPosition()
     local mouseScreen = bestow.input.getMousePosition()
-    local ray = bestow.camera3d.screenToRay(mouseScreen)
+    local ray = bestow.graphics3d.screenToRay(mouseScreen)
 
     local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
     if hit then

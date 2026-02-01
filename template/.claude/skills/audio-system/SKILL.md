@@ -240,11 +240,12 @@ end
 -- In camera system update
 local function updateAudioListener()
     local cam = bestow.graphics3d.getCamera()
+    if not cam then return end
 
     bestow.audio.setListener({
-        position = cam.transform.position,
-        forward = cam.transform.rotation:rotateVector(Vec3.forward()),
-        up = cam.transform.rotation:rotateVector(Vec3.up()),
+        position = cam.position,
+        forward = cam.rotation:rotateVector(Vec3.forward()),
+        up = cam.rotation:rotateVector(Vec3.up()),
         velocity = Vec3.zero()  -- Add actual velocity for doppler
     })
 end

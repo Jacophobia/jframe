@@ -103,12 +103,8 @@ return {
             self.spawnObject(obj)
         end
 
-        -- Set camera bounds
-        bestow.camera3d.setBounds(
-            self.cameraBounds.minX, self.cameraBounds.maxX,
-            self.cameraBounds.minY, self.cameraBounds.maxY,
-            self.cameraBounds.minZ, self.cameraBounds.maxZ
-        )
+        -- Store camera bounds for the camera system to enforce
+        state.cameraBounds = self.cameraBounds
 
         -- Spawn player at designated point
         local spawnPoint = state.nextSpawnPoint or "player"
@@ -146,7 +142,7 @@ return {
         end
 
         -- Clear camera bounds
-        bestow.camera3d.clearBounds()
+        state.cameraBounds = nil
     end
 }
 ```

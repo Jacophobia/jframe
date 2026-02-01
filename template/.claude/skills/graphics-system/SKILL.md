@@ -234,36 +234,39 @@ bestow.graphics3d.drawDebugSphere(
 
 ### Screen Shake
 
+Screen shake is implemented as a Lua camera system (see camera-system skill):
+
 ```lua
--- Camera shake for impacts
-bestow.camera3d.shake(
-    0.5,    -- Intensity (units)
-    0.3     -- Duration (seconds)
-)
+-- Trigger shake from camera system
+app.systems.camera.shake(0.5, 0.3)  -- intensity, duration
 ```
 
 ### Zoom
 
+Zoom is implemented by adjusting the camera FOV (see camera-system skill):
+
 ```lua
--- Zoom in (values > 1)
-bestow.camera3d.setZoom(1.5)
-
--- Zoom out (values < 1)
-bestow.camera3d.setZoom(0.75)
-
--- Reset
-bestow.camera3d.setZoom(1.0)
+-- Zoom via FOV change
+local cam = bestow.graphics3d.getCamera()
+bestow.graphics3d.setCamera({
+    position = cam.position,
+    rotation = cam.rotation,
+    fov = cam.fov / 1.5,  -- Zoom in
+    near = cam.near,
+    far = cam.far
+})
 ```
 
 ## Coordinate Conversion
 
 ```lua
--- Screen position to world
+-- Screen position to world (via raycast)
 local screenPos = bestow.input.getMousePosition()
-local worldPos = bestow.camera3d.screenToWorld(screenPos)
+local ray = bestow.graphics3d.screenToRay(screenPos)
+local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
 
 -- World position to screen
-local screenPos = bestow.camera3d.worldToScreen(Vec3.new(5, 0, 10))
+local screenPos = bestow.graphics3d.worldToScreen(Vec3.new(5, 0, 10))
 ```
 
 ## Material System

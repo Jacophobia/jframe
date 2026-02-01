@@ -40,9 +40,9 @@ return {
         local cam = bestow.graphics3d.getCamera()
         if cam then
             bestow.audio.setListener({
-                position = cam.transform.position,
-                forward = cam.transform.rotation:rotateVector(Vec3.forward()),
-                up = cam.transform.rotation:rotateVector(Vec3.up()),
+                position = cam.position,
+                forward = cam.rotation:rotateVector(Vec3.forward()),
+                up = cam.rotation:rotateVector(Vec3.up()),
                 velocity = Vec3.zero()
             })
         end
