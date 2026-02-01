@@ -250,9 +250,11 @@ private:
 
 /// Vulkan implementation of IUIRenderBackend.
 /// Provides 2D rendering primitives for UI systems like RmlUi.
+/// Uses AssetSystem for shader loading with runtime GLSL-to-SPIR-V compilation
+/// and hot reload support.
 class VulkanUIRenderBackend : public bestow::IUIRenderBackend {
 public:
-    explicit VulkanUIRenderBackend(VulkanContext* context);
+    explicit VulkanUIRenderBackend(VulkanContext* context, bestow::IAssetSystem* assetSystem);
     ~VulkanUIRenderBackend() override;
 
     //======================================================================
@@ -320,9 +322,21 @@ public:
 
 private:
     VulkanContext* context_ = nullptr;
+    bestow::IAssetSystem* assetSystem_ = nullptr;
     bool initialized_ = false;
     bool inUIPass_ = false;
     bool scissorEnabled_ = false;
+
+    // Pipeline
+    VulkanPipelineHandle uiPipeline_ = 0;
+
+    // Descriptor resources for textures
+    VkDescriptorSetLayout textureDescSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool textureDescPool_ = VK_NULL_HANDLE;
+
+    // White texture (used when no texture is bound)
+    VulkanImageHandle whiteTextureImage_ = 0;
+    VkDescriptorSet whiteTextureDescSet_ = VK_NULL_HANDLE;
 
     // Geometry cache
     struct GeometryResource {
@@ -338,12 +352,20 @@ private:
     // Texture cache
     struct TextureResource {
         VulkanImageHandle imageHandle = 0;
-        VkImage image = VK_NULL_HANDLE;
+        VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
         int width = 0;
         int height = 0;
     };
     std::unordered_map<bestow::UITextureHandle, TextureResource> textureCache_;
     bestow::UITextureHandle nextTextureHandle_ = 1;
+
+    // Shader hot reload
+    struct ShaderFileInfo {
+        bestow::AssetHandle vertShaderAsset;
+        bestow::AssetHandle fragShaderAsset;
+    };
+    ShaderFileInfo pipelineShaders_{};
+    bestow::SubscriptionId shaderSubscriptionId_ = 0;
 
     // Viewport
     int viewportWidth_ = 0;
@@ -352,6 +374,14 @@ private:
     // Statistics
     std::uint32_t drawCallCount_ = 0;
     std::uint32_t triangleCount_ = 0;
+
+    // Private helpers
+    bool createUIPipeline();
+    bool createDescriptorResources();
+    bool createWhiteTexture();
+    VkDescriptorSet allocateTextureDescriptorSet(VulkanImageHandle imageHandle);
+    void onShaderAssetChanged(bestow::AssetHandle handle, bestow::AssetType type);
+    void reloadPipelineShaders();
 };
 
 //==========================================================================

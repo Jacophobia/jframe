@@ -1588,13 +1588,12 @@ TEST_F(AssetSystemTest, GetAssetTemplateDataAsset) {
     AssetHandle handle = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     assetSystem_->loadAsset(handle);
 
-    // Use template method to get typed asset
-    std::any* data = assetSystem_->getAsset<std::any>(handle);
+    // Use template method to get typed asset directly
+    const DataAsset* data = assetSystem_->getAsset<DataAsset>(handle);
     ASSERT_NE(data, nullptr);
 
-    const DataAsset& dataAsset = std::any_cast<const DataAsset&>(*data);
-    EXPECT_TRUE(dataAsset.isJson);
-    const auto& json = std::any_cast<const nlohmann::json&>(dataAsset.jsonData);
+    EXPECT_TRUE(data->isJson);
+    const auto& json = std::any_cast<const nlohmann::json&>(data->jsonData);
     EXPECT_EQ(json["name"], "TestGame");
 }
 
@@ -1603,17 +1602,16 @@ TEST_F(AssetSystemTest, GetAssetTemplateConstVersion) {
     assetSystem_->loadAsset(handle);
 
     const IAssetSystem* constSystem = assetSystem_.get();
-    const std::any* data = constSystem->getAsset<std::any>(handle);
+    const SoundData* data = constSystem->getAsset<SoundData>(handle);
     ASSERT_NE(data, nullptr);
 
-    const SoundData& soundData = std::any_cast<const SoundData&>(*data);
-    EXPECT_GT(soundData.fileSize, 0);
+    EXPECT_GT(data->fileSize, 0);
 }
 
 TEST_F(AssetSystemTest, GetAssetTemplateUnloadedReturnsNull) {
     AssetHandle handle = assetSystem_->registerAsset(AssetType::Texture, "textures/test.png");
 
-    std::any* data = assetSystem_->getAsset<std::any>(handle);
+    const TextureData* data = assetSystem_->getAsset<TextureData>(handle);
     EXPECT_EQ(data, nullptr);
 }
 

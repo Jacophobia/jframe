@@ -110,6 +110,7 @@ endif()
 # Demos (require Vulkan, only for dev builds)
 if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan AND BESTOW_DEV_TOOLS)
     add_subdirectory(demos/animation-showcase)
+    add_subdirectory(demos/ui-menu-demo)
 endif()
 
 # Single executable launcher (requires Vulkan for full functionality)
