@@ -13,7 +13,7 @@ The `io` library is disabled. All assets must go through `bestow.assets`:
 local file = io.open("sounds/music.ogg")
 
 -- CORRECT: Use bestow.assets
-local handle = bestow.assets.registerAsset(bestow.assets.Type.Sound, "sounds/music.ogg")
+local handle = bestow.assets.registerAsset(AssetType.Sound, "sounds/music.ogg")
 bestow.assets.loadAsset(handle)
 ```
 
@@ -26,7 +26,7 @@ bestow.assets.loadAsset(handle)
 
 ```lua
 -- 1. Register
-local musicHandle = bestow.assets.registerAsset(bestow.assets.Type.Music, "music/theme.ogg")
+local musicHandle = bestow.assets.registerAsset(AssetType.Music, "music/theme.ogg")
 
 -- 2. Load (sync)
 bestow.assets.loadAsset(musicHandle)
@@ -47,7 +47,7 @@ bestow.assets.unloadAsset(musicHandle)
 For textures, meshes, and other large assets, prefer async loading:
 
 ```lua
-local textureHandle = bestow.assets.registerAsset(bestow.assets.Type.Texture, "textures/large.png")
+local textureHandle = bestow.assets.registerAsset(AssetType.Texture, "textures/large.png")
 
 -- Async load - continues without blocking
 bestow.assets.loadAssetAsync(textureHandle)
@@ -61,13 +61,13 @@ end
 ## Asset Types
 
 ```lua
-bestow.assets.Type.Texture   -- Images (png, jpg, etc.)
-bestow.assets.Type.Sound     -- Sound effects (wav, ogg)
-bestow.assets.Type.Music     -- Streaming music (ogg, mp3)
-bestow.assets.Type.Font      -- Fonts (ttf, otf)
-bestow.assets.Type.Mesh      -- 3D meshes (obj, gltf)
-bestow.assets.Type.Model     -- 3D models with materials
-bestow.assets.Type.Material  -- Material definitions
-bestow.assets.Type.Shader    -- Shader programs
-bestow.assets.Type.Cubemap   -- Skybox textures
+AssetType.Texture   -- Images (png, jpg, etc.)
+AssetType.Sound     -- Sound effects (wav, ogg)
+AssetType.Music     -- Streaming music (ogg, mp3)
+AssetType.Font      -- Fonts (ttf, otf)
+AssetType.Mesh      -- 3D meshes (obj, gltf)
+AssetType.Model     -- 3D models with materials
+AssetType.Material  -- Material definitions
+AssetType.Shader    -- Shader programs
+AssetType.Cubemap   -- Skybox textures
 ```

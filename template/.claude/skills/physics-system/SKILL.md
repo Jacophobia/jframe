@@ -67,65 +67,61 @@ bestow.physics3d.createBody(crate, {
 For player movement with proper collision:
 
 ```lua
--- Create character controller
+-- Create character controller (attached to entity)
 local player = bestow.entity.create()
 bestow.entity.addComponent(player, "Transform3D", {
     position = Vec3.new(0, 1, 0),
     rotation = Quat.identity(),
-    scale = Vec3.new(1, 1, 1)
+    scale = Vec3.one()
 })
 
-local charHandle = bestow.physics3d.createCharacter(player, {
+bestow.physics3d.createCharacter(player, {
     radius = 0.4,
     height = 1.8,
     stepHeight = 0.35,      -- Can step up this high
     maxSlopeAngle = 45.0,   -- Can walk on slopes up to this
     mass = 80.0
 })
-
--- Store handle for later use
-bestow.entity.addComponent(player, "CharacterController", {
-    handle = charHandle
-})
 ```
 
 ### Moving the Character
 
 ```lua
--- In movement system update
-local controller = bestow.entity.getComponent(player, "CharacterController")
+-- In movement system update (use Action Builder, not direct polling)
 local velocity = Vec3.new(0, 0, 0)
+local moveX, moveZ = 0, 0
+if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
+if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end
+if bestow.input.isActionActive("MoveForward") then moveZ = moveZ - 1 end
+if bestow.input.isActionActive("MoveBack") then moveZ = moveZ + 1 end
 
--- Get input
-if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
-    velocity.z = -1
-end
--- ... more input handling
-
--- Normalize and scale
-if velocity:length() > 0 then
-    velocity = velocity:normalize() * speed
+local moveDir = Vec3.new(moveX, 0, moveZ)
+if moveDir:lengthSquared() > 1.0 then
+    moveDir = moveDir:normalize()
 end
 
 -- Apply gravity if not grounded
-local groundInfo = bestow.physics3d.getCharacterGroundInfo(controller.handle)
-if not groundInfo.grounded then
-    velocity.y = velocity.y - 9.81 * dt
+local groundInfo = bestow.physics3d.getCharacterGroundInfo(player)
+if not (groundInfo and groundInfo.grounded) then
+    self.velocityY = self.velocityY + GRAVITY * dt
+else
+    self.velocityY = -1  -- Small downward force to stay grounded
 end
 
 -- Move the character (handles collision)
-bestow.physics3d.moveCharacter(controller.handle, velocity, dt)
+local velocity = Vec3.new(moveDir.x * speed, self.velocityY, moveDir.z * speed)
+bestow.physics3d.moveCharacter(player, velocity, dt)
 ```
 
 ### Ground Detection
 
 ```lua
-local groundInfo = bestow.physics3d.getCharacterGroundInfo(charHandle)
+-- Pass the entity directly (not a separate handle)
+local groundInfo = bestow.physics3d.getCharacterGroundInfo(player)
 
-if groundInfo.grounded then
+if groundInfo and groundInfo.grounded then
     -- Character is on ground
-    print("Standing on surface at: " .. groundInfo.contactPoint)
-    print("Surface normal: " .. groundInfo.normal)
+    print("Surface normal: " .. tostring(groundInfo.normal))
     print("Slope angle: " .. groundInfo.slopeAngle)
 end
 ```
@@ -259,35 +255,47 @@ bestow.physics3d.setAngularVelocity(entity, Vec3.new(0, 0, 0))
 
 ## Collision Callbacks
 
-Listen for collision events:
+Listen for collision events using the table+method pattern (hot-reload safe):
 
 ```lua
--- Subscribe to collision events
-bestow.events.subscribe("collision_3d", function(event)
-    local entityA = event.entityA
-    local entityB = event.entityB
-    local point = event.contactPoint
-    local normal = event.contactNormal
-    local impulse = event.impulse
+-- systems/collision_handler.lua
+return {
+    init = function()
+        local self = app.systems.collision_handler
 
-    -- Check if player involved
-    if entityA == app.main.state.player or entityB == app.main.state.player then
-        local other = entityA == app.main.state.player and entityB or entityA
+        -- Subscribe with table+method pattern (NOT closures)
+        self.collisionSubId = bestow.events.subscribe("collision_3d", {},
+            app.systems.collision_handler, "onCollision")
 
-        if bestow.entity.hasComponent(other, "DamageDealer") then
-            app.systems.combat.damagePlayer(impulse)
+        self.triggerSubId = bestow.events.subscribe("trigger_enter_3d", {},
+            app.systems.collision_handler, "onTriggerEnter")
+    end,
+
+    onCollision = function(event)
+        local state = app.main.state
+        if event.entityA == state.player or event.entityB == state.player then
+            local other = event.entityA == state.player and event.entityB or event.entityA
+            if bestow.entity.hasComponent(other, "DamageDealer") then
+                app.systems.combat.damagePlayer(event.impulse)
+            end
         end
-    end
-end)
+    end,
 
--- Trigger events (for sensors)
-bestow.events.subscribe("trigger_enter_3d", function(event)
-    if event.entityA == app.main.state.player then
-        if bestow.entity.hasComponent(event.entityB, "Checkpoint") then
-            app.systems.save.setCheckpoint(event.entityB)
+    onTriggerEnter = function(event)
+        local state = app.main.state
+        if event.entityA == state.player then
+            if bestow.entity.hasComponent(event.entityB, "Checkpoint") then
+                app.systems.checkpoints.activate(event.entityB)
+            end
         end
+    end,
+
+    shutdown = function()
+        local self = app.systems.collision_handler
+        if self.collisionSubId then bestow.events.unsubscribe(self.collisionSubId) end
+        if self.triggerSubId then bestow.events.unsubscribe(self.triggerSubId) end
     end
-end)
+}
 ```
 
 ## 2D Physics (Box2D)
@@ -298,8 +306,8 @@ For 2D games, use the 2D physics system:
 -- Create 2D body
 bestow.physics.createBody(entity, {
     type = "Dynamic",  -- "Static", "Kinematic", "Dynamic"
-    x = 100, y = 200,
-    width = 32, height = 48,
+    transform = { x = 100, y = 200 },
+    size = Vec2.new(32, 48),
     density = 1.0,
     friction = 0.3,
     restitution = 0.0,
@@ -326,37 +334,40 @@ return {
     jumpForce = 12.0,
     gravity = -30.0,
     velocityY = 0,
-    grounded = false,
 
     update = function(dt)
         local self = app.systems.player
         local state = app.main.state
+        if not state.player then return end
 
-        -- Check ground
-        local charHandle = bestow.entity.getComponent(state.player, "CharacterController").handle
-        local groundInfo = bestow.physics3d.getCharacterGroundInfo(charHandle)
-        self.grounded = groundInfo.grounded
+        -- Check ground (pass entity directly)
+        local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
+        local grounded = groundInfo and groundInfo.grounded
 
         -- Apply gravity
-        if not self.grounded then
-            self.velocityY = self.velocityY + self.gravity * dt
+        if grounded then
+            self.velocityY = -1  -- Small downward force to stay grounded
         else
-            self.velocityY = 0
+            self.velocityY = self.velocityY + self.gravity * dt
         end
 
-        -- Jump
-        if self.grounded and bestow.input.wasKeyJustPressed(Keys.Space) then
+        -- Jump (use Action Builder, not direct polling)
+        if grounded and bestow.input.wasActionJustPressed("Jump") then
             self.velocityY = self.jumpForce
-            self.grounded = false
-            app.systems.audio.playSfx("jump")
         end
 
-        -- Build velocity
-        local velocity = Vec3.new(0, self.velocityY, 0)
-        -- ... add horizontal movement
+        -- Build velocity (get movement from Action Builder)
+        local moveX, moveZ = 0, 0
+        if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
+        if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end
+        if bestow.input.isActionActive("MoveForward") then moveZ = moveZ - 1 end
+        if bestow.input.isActionActive("MoveBack") then moveZ = moveZ + 1 end
 
-        -- Move character
-        bestow.physics3d.moveCharacter(charHandle, velocity, dt)
+        local moveDir = Vec3.new(moveX, 0, moveZ)
+        if moveDir:lengthSquared() > 1.0 then moveDir = moveDir:normalize() end
+
+        local velocity = Vec3.new(moveDir.x * 8.0, self.velocityY, moveDir.z * 8.0)
+        bestow.physics3d.moveCharacter(state.player, velocity, dt)
     end
 }
 ```

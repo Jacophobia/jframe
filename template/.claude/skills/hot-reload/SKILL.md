@@ -157,38 +157,42 @@ return {
             bestow.events.unsubscribe(self.subscriptionId)
         end
 
-        -- Subscribe fresh
-        self.subscriptionId = bestow.events.subscribe("collision", function(event)
-            app.systems.damage.onCollision(event)  -- Use full path in callback!
-        end)
+        -- Subscribe using table+method pattern (hot-reload safe, no closures)
+        self.subscriptionId = bestow.events.subscribe("collision", {},
+            app.systems.damage, "onCollision")
     end,
 
     onCollision = function(event)
         local self = app.systems.damage
         -- Handle collision
+    end,
+
+    shutdown = function()
+        local self = app.systems.damage
+        if self.subscriptionId then
+            bestow.events.unsubscribe(self.subscriptionId)
+        end
     end
 }
 ```
 
-### Pattern 4: Timer/Callback Closures
+### Pattern 4: Timer/Callback - Use Table+Method
 
 ```lua
 -- WRONG: Closure captures stale reference
 return {
     startTimer = function()
-        local self = app.systems.game  -- Captured here
+        local self = app.systems.game
         bestow.timer.after(1.0, function()
             self.onTimerComplete()  -- Stale after reload!
         end)
     end
 }
 
--- CORRECT: Resolve reference inside callback
+-- CORRECT: Use table+method pattern (no closures)
 return {
     startTimer = function()
-        bestow.timer.after(1.0, function()
-            app.systems.game.onTimerComplete()  -- Fresh reference
-        end)
+        bestow.timer.after(1.0, app.systems.game, "onTimerComplete")
     end,
 
     onTimerComplete = function()
@@ -250,7 +254,7 @@ app.main.state.score = app.main.state.score or 0
 
 ## Hot Reload Events
 
-Listen for reload events to perform cleanup or reinitialization:
+Listen for reload events using table+method pattern:
 
 ```lua
 -- systems/game.lua
@@ -258,19 +262,24 @@ return {
     init = function()
         local self = app.systems.game
 
-        bestow.events.subscribe("lua_reload", function(event)
-            app.systems.game.onReload(event.path)
-        end)
+        -- Use table+method pattern for hot-reload safety
+        self.reloadSubId = bestow.events.subscribe("lua_reload", {},
+            app.systems.game, "onReload")
     end,
 
-    onReload = function(path)
+    onReload = function(event)
         local self = app.systems.game
-        print("Reloaded: " .. path)
+        print("Reloaded: " .. event.path)
 
         -- Reinitialize anything that depends on the reloaded file
-        if path:match("levels/") then
+        if event.path:match("levels/") then
             app.systems.level.reload()
         end
+    end,
+
+    shutdown = function()
+        local self = app.systems.game
+        if self.reloadSubId then bestow.events.unsubscribe(self.reloadSubId) end
     end
 }
 ```
@@ -290,12 +299,9 @@ bestow.entity.addComponent(entity, "MeshRenderer", {
 ### Responding to Asset Reloads
 
 ```lua
-bestow.events.subscribe("asset_reloaded", function(event)
-    if event.type == "Material" then
-        print("Material reloaded: " .. event.path)
-        -- Possibly refresh cached material references
-    end
-end)
+-- Use table+method pattern:
+bestow.events.subscribe("asset_reloaded", {},
+    app.systems.renderer, "onAssetReloaded")
 ```
 
 ## main.lua and Callbacks

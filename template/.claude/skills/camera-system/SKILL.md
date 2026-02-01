@@ -85,7 +85,7 @@ return {
 
         -- Calculate rotation to look at target
         local forward = (lookTarget - camState.position):normalize()
-        local rotation = Quat.lookRotation(forward, Vec3.new(0, 1, 0))
+        local rotation = Quat.lookAt(forward, Vec3.new(0, 1, 0))
 
         -- Apply camera
         bestow.graphics3d.setCamera({

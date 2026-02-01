@@ -19,8 +19,5 @@
   },
   "sandbox": {
     "enabled": false
-  },
-  "model": {
-    "thinking": true
   }
 }

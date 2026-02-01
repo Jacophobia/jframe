@@ -1,532 +1,397 @@
 ---
 name: ui-and-menus
-description: Create UI elements, HUDs, and menu systems in Bestow. Use when implementing health bars, score displays, menus, or any user interface elements.
+description: Create UI elements, HUDs, menus, and overlays using the bestow.ui system (RmlUI-based). Use when implementing health bars, score displays, menus, dialogue boxes, or any user interface elements.
 ---
 
-# UI and Menus
+# UI System (bestow.ui)
 
-Implement user interfaces, HUDs, and menu systems.
+Bestow provides a document-based UI system built on RmlUI. UI is defined using RML documents (HTML-like markup with CSS styling) and controlled from Lua.
 
-## Basic UI System
+**IMPORTANT:** Always use the `bestow.ui` API for UI. Do NOT manually draw UI with graphics primitives - the engine provides a full UI system.
+
+**Note:** The UI system currently works with OpenGL rendering. Vulkan UI rendering is in development.
+
+## Lifecycle
 
 ```lua
--- systems/ui.lua
-return {
-    -- Screen dimensions (update on resize)
-    screenWidth = 1280,
-    screenHeight = 720,
+-- Initialize (usually done once in main.lua init)
+bestow.ui.initialize({
+    baseScale = 1.0,
+    enableDebugMode = false
+})
 
-    -- UI state
-    visible = true,
+-- In your update loop
+bestow.ui.update(dt)
 
-    init = function()
-        local self = app.systems.ui
-        local size = bestow.graphics3d.getWindowSize()
-        self.screenWidth = size.x
-        self.screenHeight = size.y
-    end,
+-- In your render function (after beginFrame, before endFrame)
+bestow.ui.render()
 
-    -- Basic drawing functions
-    drawText = function(text, x, y, options)
-        options = options or {}
-        local color = options.color or Color.new(1, 1, 1, 1)
-        local scale = options.scale or 1.0
-        local align = options.align or "left"
-
-        -- Adjust x based on alignment
-        if align == "center" then
-            local width = #text * 8 * scale  -- Approximate
-            x = x - width / 2
-        elseif align == "right" then
-            local width = #text * 8 * scale
-            x = x - width
-        end
-
-        bestow.graphics3d.drawText(text, x, y, {
-            color = color,
-            scale = scale
-        })
-    end,
-
-    drawTitle = function(text, x, y)
-        local self = app.systems.ui
-        self.drawText(text, x, y, {
-            scale = 3.0,
-            align = "center",
-            color = Color.new(1, 0.9, 0.3, 1)
-        })
-    end,
-
-    drawRect = function(x, y, width, height, color)
-        bestow.graphics3d.drawScreenRect(x, y, width, height, color)
-    end,
-
-    drawPanel = function(x, y, width, height, options)
-        local self = app.systems.ui
-        options = options or {}
-
-        local bgColor = options.bgColor or Color.new(0, 0, 0, 0.7)
-        local borderColor = options.borderColor or Color.new(1, 1, 1, 0.5)
-        local borderWidth = options.borderWidth or 2
-
-        -- Background
-        self.drawRect(x, y, width, height, bgColor)
-
-        -- Border
-        if borderWidth > 0 then
-            self.drawRect(x, y, width, borderWidth, borderColor)  -- Top
-            self.drawRect(x, y + height - borderWidth, width, borderWidth, borderColor)  -- Bottom
-            self.drawRect(x, y, borderWidth, height, borderColor)  -- Left
-            self.drawRect(x + width - borderWidth, y, borderWidth, height, borderColor)  -- Right
-        end
-    end
-}
+-- On shutdown
+bestow.ui.shutdown()
 ```
 
-## HUD Elements
+## Loading Documents
+
+```lua
+-- Load from file
+local doc = bestow.ui.loadDocument("ui/hud.rml")
+
+-- Load from string (for dynamic UI)
+local doc = bestow.ui.loadDocumentFromString([[
+<rml>
+<head>
+    <style>
+        body { width: 100%; height: 100%; }
+        .health-bar {
+            width: 200dp; height: 20dp;
+            background-color: #333;
+            margin: 10dp;
+        }
+        .health-fill {
+            height: 100%;
+            background-color: #4a4;
+        }
+        .score {
+            color: #ff0;
+            font-size: 24dp;
+            text-align: right;
+            margin: 10dp;
+        }
+    </style>
+</head>
+<body>
+    <div class="health-bar">
+        <div id="health-fill" class="health-fill" style="width: 100%;"/>
+    </div>
+    <div id="score" class="score">Score: 0</div>
+</body>
+</rml>
+]], "hud")
+
+-- Show/hide documents
+bestow.ui.showDocument(doc)
+bestow.ui.hideDocument(doc)
+bestow.ui.isDocumentVisible(doc) -> bool
+
+-- Unload when done
+bestow.ui.unloadDocument(doc)
+```
+
+## Element Access
+
+```lua
+-- Find elements
+local elem = bestow.ui.getElementById(doc, "health-fill")
+local elems = bestow.ui.getElementsByClass(doc, "menu-item")
+local buttons = bestow.ui.getElementsByTag(doc, "button")
+local results = bestow.ui.queryElements(doc, ".panel .title")
+
+-- Navigate DOM
+local children = bestow.ui.getChildren(elem)
+local parent = bestow.ui.getParent(elem)
+```
+
+## Element Properties
+
+```lua
+-- Text content
+bestow.ui.setElementText(elem, "Score: 1500")
+local text = bestow.ui.getElementText(elem)
+
+-- Visibility
+bestow.ui.setElementVisible(elem, "Visible")    -- UIVisibility: Visible, Hidden, Collapsed
+bestow.ui.setElementVisible(elem, "Hidden")      -- Takes space but invisible
+bestow.ui.setElementVisible(elem, "Collapsed")   -- No space, invisible
+
+-- CSS classes
+bestow.ui.addClass(elem, "active")
+bestow.ui.removeClass(elem, "active")
+bestow.ui.hasClass(elem, "active") -> bool
+
+-- Attributes
+bestow.ui.setAttribute(elem, "data-value", "100")
+local val = bestow.ui.getAttribute(elem, "data-value")
+
+-- Inline styles
+bestow.ui.setStyle(elem, "width", "75%")
+bestow.ui.setStyle(elem, "background-color", "#f00")
+bestow.ui.setStyle(elem, "display", "none")
+
+-- Bounds
+local rect = bestow.ui.getBounds(elem)  -- { x, y, width, height }
+
+-- Focus
+bestow.ui.focus(elem)
+bestow.ui.blur(elem)
+```
+
+## Dynamic Element Creation
+
+```lua
+-- Create new elements
+local div = bestow.ui.createElement(doc, "div")
+bestow.ui.appendChild(parent, div)
+bestow.ui.setElementText(div, "New element!")
+bestow.ui.addClass(div, "notification")
+
+-- Set inner HTML content
+bestow.ui.setInnerContent(elem, "<span class='bold'>Hello</span> World")
+
+-- Remove elements
+bestow.ui.removeElement(elem)
+```
+
+## Event Handling
+
+```lua
+-- Listen for events on specific elements
+bestow.ui.onElementEvent(button, "click", function(event)
+    -- event.targetId, event.targetClass, event.mouseX, event.mouseY
+    startGame()
+end)
+
+-- Listen for events globally
+bestow.ui.onEvent("click", function(event)
+    -- Any click in any document
+end)
+
+-- Remove listeners
+bestow.ui.offEvent("click")
+```
+
+## Input Integration
+
+```lua
+-- Forward input events to UI
+bestow.ui.processInput(inputEvent) -> bool  -- Returns true if UI consumed the input
+
+-- Check if UI wants input (gate game input on this)
+if bestow.ui.wantsKeyboardInput() then
+    -- Don't process game keyboard input
+end
+if bestow.ui.wantsMouseInput() then
+    -- Don't process game mouse input
+end
+```
+
+## Data Binding
+
+Bind Lua data to UI elements for automatic updates:
+
+```lua
+-- Bind data variables
+bestow.ui.bindData(doc, "player_health", 100)        -- int
+bestow.ui.bindData(doc, "player_name", "Hero")        -- string
+bestow.ui.bindData(doc, "is_paused", false)            -- bool
+bestow.ui.bindData(doc, "score_multiplier", 1.5)       -- float
+
+-- Update bound data (UI updates automatically)
+bestow.ui.updateData(doc, "player_health", 75)
+```
+
+In RML, use data binding syntax:
+```html
+<div>Health: {{ player_health }}</div>
+<div data-if="is_paused">PAUSED</div>
+```
+
+## Common UI Patterns
+
+### HUD Document
+
+```xml
+<!-- ui/hud.rml -->
+<rml>
+<head>
+    <style>
+        body { width: 100%; height: 100%; font-family: "default"; }
+        #hud { position: absolute; top: 0; left: 0; right: 0; padding: 10dp; }
+        .health-container { width: 200dp; height: 24dp; background-color: #222; border: 1dp #666; }
+        .health-bar { height: 100%; background-color: #4a4; transition: width 0.3s; }
+        .health-bar.low { background-color: #a44; }
+        .health-bar.medium { background-color: #aa4; }
+        #score { float: right; color: #ff0; font-size: 28dp; }
+        #lives { margin-top: 5dp; }
+        .heart { display: inline-block; width: 20dp; height: 20dp; background-color: #f44; margin-right: 5dp; }
+    </style>
+</head>
+<body>
+    <div id="hud">
+        <div id="score">Score: 0</div>
+        <div class="health-container">
+            <div id="health-bar" class="health-bar" style="width: 100%;"/>
+        </div>
+        <div id="lives"></div>
+    </div>
+</body>
+</rml>
+```
+
+### Updating HUD from Lua
 
 ```lua
 -- systems/hud.lua
 return {
-    render = function()
+    doc = nil,
+
+    init = function()
         local self = app.systems.hud
-        local state = app.main.state
-
-        if not state.player then return end
-
-        -- Health bar
-        self.renderHealthBar()
-
-        -- Score
-        self.renderScore()
-
-        -- Lives
-        self.renderLives()
-
-        -- Coins
-        self.renderCoins()
-
-        -- Power-up indicators
-        self.renderPowerups()
+        self.doc = bestow.ui.loadDocument("ui/hud.rml")
+        bestow.ui.showDocument(self.doc)
     end,
 
-    renderHealthBar = function()
+    update = function(dt)
         local self = app.systems.hud
         local state = app.main.state
+        if not self.doc or not state.player then return end
 
+        -- Update health bar width
         local health = bestow.entity.getComponent(state.player, "Health")
-        if not health then return end
-
-        local x, y = 20, 20
-        local width, height = 200, 20
-        local healthPercent = health.current / health.max
-
-        -- Background
-        app.systems.ui.drawRect(x, y, width, height, Color.new(0.2, 0.2, 0.2, 0.8))
-
-        -- Health fill
-        local fillColor = Color.new(0.2, 0.8, 0.2, 1)
-        if healthPercent < 0.3 then
-            fillColor = Color.new(0.8, 0.2, 0.2, 1)  -- Red when low
-        elseif healthPercent < 0.6 then
-            fillColor = Color.new(0.8, 0.8, 0.2, 1)  -- Yellow when medium
+        if health then
+            local pct = math.floor(health.current / health.max * 100)
+            local bar = bestow.ui.getElementById(self.doc, "health-bar")
+            if bar then
+                bestow.ui.setStyle(bar, "width", pct .. "%")
+                -- Color based on health
+                bestow.ui.removeClass(bar, "low")
+                bestow.ui.removeClass(bar, "medium")
+                if pct < 30 then bestow.ui.addClass(bar, "low")
+                elseif pct < 60 then bestow.ui.addClass(bar, "medium") end
+            end
         end
 
-        app.systems.ui.drawRect(x, y, width * healthPercent, height, fillColor)
-
-        -- Border
-        app.systems.ui.drawRect(x, y, width, 2, Color.new(1, 1, 1, 0.5))
-        app.systems.ui.drawRect(x, y + height - 2, width, 2, Color.new(1, 1, 1, 0.5))
-
-        -- Text
-        local text = math.floor(health.current) .. " / " .. health.max
-        app.systems.ui.drawText(text, x + width / 2, y + 3, {
-            align = "center",
-            scale = 0.8
-        })
-    end,
-
-    renderScore = function()
-        local self = app.systems.hud
-        local state = app.main.state
-
-        local x = app.systems.ui.screenWidth - 20
-        local y = 20
-
-        app.systems.ui.drawText("SCORE", x, y, {
-            align = "right",
-            color = Color.new(0.7, 0.7, 0.7, 1)
-        })
-
-        app.systems.ui.drawText(tostring(state.score or 0), x, y + 25, {
-            align = "right",
-            scale = 2.0,
-            color = Color.new(1, 1, 0, 1)
-        })
-    end,
-
-    renderLives = function()
-        local self = app.systems.hud
-        local state = app.main.state
-
-        local x = 20
-        local y = 50
-
-        for i = 1, (state.lives or 3) do
-            -- Draw heart icon
-            app.systems.ui.drawRect(x + (i - 1) * 25, y, 20, 20, Color.new(1, 0.3, 0.3, 1))
-        end
-    end,
-
-    renderCoins = function()
-        local self = app.systems.hud
-        local state = app.main.state
-
-        local x = 20
-        local y = 80
-
-        -- Coin icon
-        app.systems.ui.drawRect(x, y, 16, 16, Color.new(1, 0.85, 0, 1))
-
-        -- Count
-        app.systems.ui.drawText("x " .. (state.coins or 0), x + 25, y, {
-            scale = 1.2
-        })
-    end,
-
-    renderPowerups = function()
-        local self = app.systems.hud
-        local state = app.main.state
-
-        local x = app.systems.ui.screenWidth / 2
-        local y = 20
-        local index = 0
-
-        for powerupType, data in pairs(app.systems.powerups.active) do
-            local iconX = x + index * 50 - 25
-
-            -- Icon background
-            app.systems.ui.drawRect(iconX, y, 40, 40, Color.new(0.2, 0.2, 0.5, 0.8))
-
-            -- Timer bar
-            local timerPercent = data.timer / 10  -- Assume max 10 seconds
-            app.systems.ui.drawRect(iconX, y + 40, 40 * timerPercent, 5, Color.new(0.5, 0.8, 1, 1))
-
-            -- Timer text
-            app.systems.ui.drawText(string.format("%.1f", data.timer), iconX + 20, y + 45, {
-                align = "center",
-                scale = 0.7
-            })
-
-            index = index + 1
+        -- Update score
+        local scoreElem = bestow.ui.getElementById(self.doc, "score")
+        if scoreElem then
+            bestow.ui.setElementText(scoreElem, "Score: " .. (state.score or 0))
         end
     end
 }
 ```
 
-## Menu System
+### Menu System
+
+```xml
+<!-- ui/main-menu.rml -->
+<rml>
+<head>
+    <style>
+        body { width: 100%; height: 100%; }
+        #overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.8);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+        }
+        h1 { color: #fc3; font-size: 48dp; margin-bottom: 40dp; }
+        .menu-btn {
+            width: 300dp; padding: 15dp; margin: 5dp;
+            background-color: #335; color: #fff; font-size: 20dp;
+            text-align: center; cursor: pointer; border: 1dp #557;
+        }
+        .menu-btn:hover { background-color: #447; border-color: #88a; }
+        .menu-btn:active { background-color: #224; }
+    </style>
+</head>
+<body>
+    <div id="overlay">
+        <h1>My Game</h1>
+        <div id="start-btn" class="menu-btn">Start Game</div>
+        <div id="options-btn" class="menu-btn">Options</div>
+        <div id="quit-btn" class="menu-btn">Quit</div>
+    </div>
+</body>
+</rml>
+```
 
 ```lua
--- systems/menu.lua
+-- systems/main_menu.lua
 return {
-    items = {},
-    selectedIndex = 1,
-    visible = false,
+    doc = nil,
 
-    show = function(menuItems)
-        local self = app.systems.menu
-        self.items = menuItems
-        self.selectedIndex = 1
-        self.visible = true
+    show = function()
+        local self = app.systems.main_menu
+        self.doc = bestow.ui.loadDocument("ui/main-menu.rml")
+        bestow.ui.showDocument(self.doc)
+
+        -- Wire up buttons
+        local startBtn = bestow.ui.getElementById(self.doc, "start-btn")
+        local optionsBtn = bestow.ui.getElementById(self.doc, "options-btn")
+        local quitBtn = bestow.ui.getElementById(self.doc, "quit-btn")
+
+        bestow.ui.onElementEvent(startBtn, "click", function()
+            app.systems.main_menu.hide()
+            app.main.startGame()
+        end)
+
+        bestow.ui.onElementEvent(optionsBtn, "click", function()
+            app.systems.main_menu.hide()
+            app.systems.options.show()
+        end)
+
+        bestow.ui.onElementEvent(quitBtn, "click", function()
+            app.main.state.running = false
+        end)
     end,
 
     hide = function()
-        local self = app.systems.menu
-        self.visible = false
-    end,
-
-    update = function(dt)
-        local self = app.systems.menu
-
-        if not self.visible then return end
-
-        -- Navigate up
-        if bestow.input.wasKeyJustPressed(Keys.Up) or
-           bestow.input.wasKeyJustPressed(Keys.Comma) or
-           bestow.input.wasKeyJustPressed(Keys.W) then
-            self.selectedIndex = self.selectedIndex - 1
-            if self.selectedIndex < 1 then
-                self.selectedIndex = #self.items
-            end
-            app.systems.audio.playSfx("menu_move")
-        end
-
-        -- Navigate down
-        if bestow.input.wasKeyJustPressed(Keys.Down) or
-           bestow.input.wasKeyJustPressed(Keys.O) or
-           bestow.input.wasKeyJustPressed(Keys.S) then
-            self.selectedIndex = self.selectedIndex + 1
-            if self.selectedIndex > #self.items then
-                self.selectedIndex = 1
-            end
-            app.systems.audio.playSfx("menu_move")
-        end
-
-        -- Select
-        if bestow.input.wasKeyJustPressed(Keys.Enter) or
-           bestow.input.wasKeyJustPressed(Keys.Space) then
-            local item = self.items[self.selectedIndex]
-            if item and item.action then
-                app.systems.audio.playSfx("menu_select")
-                item.action()
-            end
-        end
-
-        -- Back
-        if bestow.input.wasKeyJustPressed(Keys.Escape) then
-            if self.onBack then
-                self.onBack()
-            end
-        end
-    end,
-
-    render = function()
-        local self = app.systems.menu
-
-        if not self.visible then return end
-
-        local ui = app.systems.ui
-        local centerX = ui.screenWidth / 2
-        local startY = ui.screenHeight / 2 - (#self.items * 30) / 2
-
-        for i, item in ipairs(self.items) do
-            local y = startY + (i - 1) * 40
-            local selected = i == self.selectedIndex
-
-            -- Selection indicator
-            if selected then
-                ui.drawRect(centerX - 150, y - 5, 300, 35, Color.new(0.3, 0.3, 0.6, 0.8))
-                ui.drawText("> ", centerX - 140, y, { color = Color.new(1, 1, 0, 1) })
-            end
-
-            -- Menu item text
-            local color = selected and Color.new(1, 1, 1, 1) or Color.new(0.7, 0.7, 0.7, 1)
-            ui.drawText(item.text, centerX, y, {
-                align = "center",
-                color = color,
-                scale = selected and 1.2 or 1.0
-            })
+        local self = app.systems.main_menu
+        if self.doc then
+            bestow.ui.hideDocument(self.doc)
         end
     end
 }
-
--- Usage
-app.systems.menu.show({
-    { text = "Start Game", action = function() app.main.startGame() end },
-    { text = "Options", action = function() app.main.showOptions() end },
-    { text = "Quit", action = function() return false end }
-})
 ```
 
-## Dialogue System
+### Pause Overlay
 
 ```lua
--- systems/dialogue.lua
 return {
-    active = false,
-    currentDialogue = nil,
-    currentLine = 1,
-    displayedText = "",
-    charIndex = 0,
-    charTimer = 0,
-    charDelay = 0.03,  -- Seconds per character
+    doc = nil,
 
-    show = function(dialogue)
-        local self = app.systems.dialogue
-        self.active = true
-        self.currentDialogue = dialogue
-        self.currentLine = 1
-        self.displayedText = ""
-        self.charIndex = 0
-    end,
+    toggle = function()
+        local self = app.systems.pause
+        if self.doc and bestow.ui.isDocumentVisible(self.doc) then
+            bestow.ui.hideDocument(self.doc)
+            bestow.input.popPhase()  -- Resume gameplay input phase
+        else
+            if not self.doc then
+                self.doc = bestow.ui.loadDocumentFromString([[
+                <rml><head><style>
+                    #overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                               background-color: rgba(0,0,0,0.6); display: flex;
+                               align-items: center; justify-content: center; }
+                    h1 { color: #fff; font-size: 48dp; }
+                    .btn { width: 200dp; padding: 10dp; margin: 5dp; background-color: #335;
+                           color: #fff; text-align: center; cursor: pointer; }
+                    .btn:hover { background-color: #447; }
+                </style></head><body>
+                    <div id="overlay">
+                        <h1>PAUSED</h1>
+                        <div id="resume-btn" class="btn">Resume</div>
+                        <div id="quit-btn" class="btn">Quit to Menu</div>
+                    </div>
+                </body></rml>
+                ]], "pause")
 
-    update = function(dt)
-        local self = app.systems.dialogue
-
-        if not self.active then return end
-
-        local line = self.currentDialogue[self.currentLine]
-        if not line then
-            self.active = false
-            return
-        end
-
-        local fullText = line.text
-
-        -- Typewriter effect
-        if self.charIndex < #fullText then
-            self.charTimer = self.charTimer + dt
-            while self.charTimer >= self.charDelay and self.charIndex < #fullText do
-                self.charIndex = self.charIndex + 1
-                self.displayedText = string.sub(fullText, 1, self.charIndex)
-                self.charTimer = self.charTimer - self.charDelay
+                local resumeBtn = bestow.ui.getElementById(self.doc, "resume-btn")
+                bestow.ui.onElementEvent(resumeBtn, "click", function()
+                    app.systems.pause.toggle()
+                end)
             end
-        end
-
-        -- Advance dialogue
-        if bestow.input.wasKeyJustPressed(Keys.Space) or
-           bestow.input.wasKeyJustPressed(Keys.Enter) then
-            if self.charIndex < #fullText then
-                -- Skip to end of line
-                self.charIndex = #fullText
-                self.displayedText = fullText
-            else
-                -- Next line
-                self.currentLine = self.currentLine + 1
-                if self.currentLine > #self.currentDialogue then
-                    self.active = false
-                    if self.currentDialogue.onComplete then
-                        self.currentDialogue.onComplete()
-                    end
-                else
-                    self.displayedText = ""
-                    self.charIndex = 0
-                end
-            end
-        end
-    end,
-
-    render = function()
-        local self = app.systems.dialogue
-
-        if not self.active then return end
-
-        local ui = app.systems.ui
-        local line = self.currentDialogue[self.currentLine]
-        if not line then return end
-
-        -- Dialogue box
-        local boxX = 50
-        local boxY = ui.screenHeight - 180
-        local boxW = ui.screenWidth - 100
-        local boxH = 130
-
-        ui.drawPanel(boxX, boxY, boxW, boxH)
-
-        -- Speaker name
-        if line.speaker then
-            ui.drawText(line.speaker, boxX + 20, boxY + 10, {
-                color = Color.new(1, 0.8, 0.3, 1),
-                scale = 1.2
-            })
-        end
-
-        -- Dialogue text
-        ui.drawText(self.displayedText, boxX + 20, boxY + 40, {
-            color = Color.new(1, 1, 1, 1)
-        })
-
-        -- Continue indicator
-        if self.charIndex >= #line.text then
-            ui.drawText("▼", boxX + boxW - 30, boxY + boxH - 25, {
-                color = Color.new(1, 1, 1, math.abs(math.sin(os.clock() * 4)))
-            })
+            bestow.ui.showDocument(self.doc)
+            bestow.input.pushPhase("pause")  -- Switch input to pause phase
         end
     end
 }
-
--- Usage
-app.systems.dialogue.show({
-    { speaker = "NPC", text = "Hello, adventurer! Welcome to our village." },
-    { speaker = "NPC", text = "The dragon has been terrorizing us for weeks..." },
-    { speaker = "Player", text = "I'll help you defeat it!" },
-    onComplete = function()
-        -- Give quest
-    end
-})
-```
-
-## Notification System
-
-```lua
--- systems/notifications.lua
-return {
-    queue = {},
-    current = nil,
-    displayTime = 3.0,
-    timer = 0,
-
-    show = function(message, options)
-        local self = app.systems.notifications
-        options = options or {}
-
-        table.insert(self.queue, {
-            message = message,
-            color = options.color or Color.new(1, 1, 1, 1),
-            duration = options.duration or self.displayTime,
-            icon = options.icon
-        })
-    end,
-
-    update = function(dt)
-        local self = app.systems.notifications
-
-        if self.current then
-            self.timer = self.timer - dt
-            if self.timer <= 0 then
-                self.current = nil
-            end
-        end
-
-        if not self.current and #self.queue > 0 then
-            self.current = table.remove(self.queue, 1)
-            self.timer = self.current.duration
-        end
-    end,
-
-    render = function()
-        local self = app.systems.notifications
-
-        if not self.current then return end
-
-        local ui = app.systems.ui
-        local x = ui.screenWidth / 2
-        local y = 100
-
-        -- Fade out effect
-        local alpha = 1.0
-        if self.timer < 0.5 then
-            alpha = self.timer / 0.5
-        end
-
-        local color = self.current.color
-        color = Color.new(color.r, color.g, color.b, alpha)
-
-        -- Background
-        ui.drawPanel(x - 200, y - 10, 400, 50, {
-            bgColor = Color.new(0, 0, 0, 0.7 * alpha)
-        })
-
-        -- Text
-        ui.drawText(self.current.message, x, y + 5, {
-            align = "center",
-            color = color,
-            scale = 1.2
-        })
-    end
-}
-
--- Usage
-app.systems.notifications.show("Level Complete!")
-app.systems.notifications.show("New Ability Unlocked!", { color = Color.new(1, 0.8, 0, 1) })
 ```
 
 ## Best Practices
 
-1. **Layer UI on top** - Render after game world
-2. **Use consistent styling** - Colors, fonts, margins
-3. **Provide audio feedback** - Menu navigation sounds
-4. **Support keyboard navigation** - Dvorak and QWERTY
-5. **Fade transitions** - Smooth appearances/disappearances
-6. **Keep HUD minimal** - Only show what's needed
-7. **Update on window resize** - Recalculate positions
+1. **Use `bestow.ui` for ALL UI** - Never draw UI manually with graphics primitives
+2. **Use CSS for styling** - RmlUI supports a subset of CSS (flexbox, transitions, colors, borders)
+3. **Gate game input on UI** - Check `wantsKeyboardInput()`/`wantsMouseInput()` before processing game input
+4. **Load documents once, show/hide** - Don't reload documents every frame
+5. **Use classes for state** - Add/remove CSS classes instead of inline styles for visual states
+6. **Use data binding** for frequently updating values (health, score, timers)
+7. **Update UI in update(), render in render()** - Call `bestow.ui.update(dt)` in update and `bestow.ui.render()` in render
