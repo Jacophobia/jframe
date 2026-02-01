@@ -45,7 +45,6 @@ target_link_libraries(bestow-tests
         bestow-input
         bestow-audio
         bestow-animation
-        bestow-opengl
         bestow-physics
         bestow-level
         bestow-ai

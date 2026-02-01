@@ -55,8 +55,6 @@ add_subdirectory(bestow-metrics)
 add_subdirectory(bestow-components)
 add_subdirectory(bestow-core)
 add_subdirectory(bestow-entity)
-add_subdirectory(bestow-opengl-helpers)
-add_subdirectory(bestow-opengl)
 add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
@@ -134,8 +132,6 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-components
     bestow-core
     bestow-entity
-    bestow-opengl-helpers
-    bestow-opengl
     bestow-audio
     bestow-input
     bestow-assets
