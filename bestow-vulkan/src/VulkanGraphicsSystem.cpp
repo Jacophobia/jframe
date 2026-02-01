@@ -575,7 +575,7 @@ void VulkanGraphicsSystem::createPipelines() {
 
 IUIRenderBackend* VulkanGraphicsSystem::getUIRenderBackend() {
     if (!uiRenderBackend_) {
-        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_);
+        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_, pIAssetSystem_);
         if (!uiRenderBackend_->initialize()) {
             spdlog::error("VulkanGraphicsSystem: Failed to initialize UI render backend");
             uiRenderBackend_.reset();

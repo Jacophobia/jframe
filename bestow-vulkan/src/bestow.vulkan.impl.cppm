@@ -250,9 +250,10 @@ private:
 
 /// Vulkan implementation of IUIRenderBackend.
 /// Provides 2D rendering primitives for UI systems like RmlUi.
+/// Loads shaders via AssetSystem for runtime compilation and hot reload support.
 class VulkanUIRenderBackend : public bestow::IUIRenderBackend {
 public:
-    explicit VulkanUIRenderBackend(VulkanContext* context);
+    explicit VulkanUIRenderBackend(VulkanContext* context, bestow::IAssetSystem* assetSystem);
     ~VulkanUIRenderBackend() override;
 
     //======================================================================
@@ -320,9 +321,24 @@ public:
 
 private:
     VulkanContext* context_ = nullptr;
+    bestow::IAssetSystem* assetSystem_ = nullptr;
     bool initialized_ = false;
     bool inUIPass_ = false;
     bool scissorEnabled_ = false;
+
+    // Pipeline
+    VulkanPipelineHandle uiPipeline_ = 0;
+
+    // Descriptor set layout and pool (for texture binding)
+    VkDescriptorSetLayout textureDescriptorSetLayout_ = VK_NULL_HANDLE;
+    VkDescriptorPool textureDescriptorPool_ = VK_NULL_HANDLE;
+
+    // White texture for solid color rendering (no texture bound)
+    VulkanImageHandle whiteTexture_ = 0;
+    VkDescriptorSet whiteTextureDescriptorSet_ = VK_NULL_HANDLE;
+
+    // Per-texture descriptor sets
+    std::unordered_map<bestow::UITextureHandle, VkDescriptorSet> textureDescriptorSets_;
 
     // Geometry cache
     struct GeometryResource {
@@ -352,6 +368,28 @@ private:
     // Statistics
     std::uint32_t drawCallCount_ = 0;
     std::uint32_t triangleCount_ = 0;
+
+    //======================================================================
+    // Shader Hot Reload (follows VulkanGraphics3DSystem pattern)
+    //======================================================================
+
+    struct ShaderFileInfo {
+        std::string vertGlslPath;
+        std::string fragGlslPath;
+        bestow::AssetHandle vertShaderAsset;
+        bestow::AssetHandle fragShaderAsset;
+    };
+    std::unordered_map<VulkanPipelineHandle, ShaderFileInfo> pipelineShaderFiles_;
+    std::unordered_map<bestow::UUID, std::vector<VulkanPipelineHandle>> shaderAssetToPipelines_;
+    bestow::SubscriptionId shaderSubscriptionId_ = bestow::InvalidSubscriptionId;
+    bool hotReloadEnabled_ = true;
+
+    void onShaderAssetChanged(bestow::AssetHandle handle, bestow::AssetType type);
+    void reloadPipelineShaders(VulkanPipelineHandle oldPipeline, const ShaderFileInfo& info);
+    bool createUIPipeline();
+    bool createDescriptorResources();
+    bool createWhiteTexture();
+    VkDescriptorSet allocateTextureDescriptorSet(VulkanImageHandle imageHandle);
 };
 
 //==========================================================================

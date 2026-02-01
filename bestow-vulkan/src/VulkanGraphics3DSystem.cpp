@@ -3370,7 +3370,7 @@ void VulkanGraphics3DSystem::renderDebugLines() {
 
 IUIRenderBackend* VulkanGraphics3DSystem::getUIRenderBackend() {
     if (!uiRenderBackend_) {
-        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_);
+        uiRenderBackend_ = std::make_unique<VulkanUIRenderBackend>(&context_, pIAssetSystem_);
         if (!uiRenderBackend_->initialize()) {
             spdlog::error("VulkanGraphics3DSystem: Failed to initialize UI render backend");
             uiRenderBackend_.reset();
