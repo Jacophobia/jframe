@@ -1,354 +1,278 @@
 ---
 name: input-system
-description: Handle keyboard, mouse, and controller input in Bestow. Use when implementing player controls, input mapping, detecting key presses, mouse movement, or controller support.
+description: Handle keyboard, mouse, and controller input in Bestow using the Action Builder or direct polling. Use when implementing player controls, input mapping, detecting key presses, mouse movement, cursor control, or controller support.
 ---
 
 # Input System
 
-The input system handles all player input including keyboard, mouse, and game controllers.
+## Action Builder (Recommended)
 
-## Complete API Reference
+The Action Builder is the modern, event-driven input system. Actions are registered at init time and consumed via polling or events.
 
-### Action-Based Input (Recommended)
-
-Actions are named inputs that can be bound to multiple keys/buttons:
+### Registering Actions
 
 ```lua
--- Check if action is currently active (held down)
-bestow.input.isActionActive(action: string) -> bool
+local k = KeyCode
+local mb = MouseButton
+local gb = GamepadButton
+local ga = GamepadAxis
 
--- Check if action was just pressed this frame
-bestow.input.wasActionJustPressed(action: string) -> bool
+-- Movement (Dvorak + QWERTY, keyboard + gamepad)
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.Comma):emitAction("MoveForward"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.W):emitAction("MoveForward"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.O):emitAction("MoveBack"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.S):emitAction("MoveBack"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.A):emitAction("MoveLeft"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.E):emitAction("MoveRight"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.D):emitAction("MoveRight"):continuously()
 
--- Check if action was just released this frame
-bestow.input.wasActionJustReleased(action: string) -> bool
+-- Analog stick
+bestow.action.builder():duringPhase("gameplay"):whenActive(ga.LeftX):withDeadzone(0.15):emitAction("MoveAxisX"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(ga.LeftY):withDeadzone(0.15):emitAction("MoveAxisY"):continuously()
 
--- Get analog value (0.0 to 1.0 for buttons, -1.0 to 1.0 for axes)
-bestow.input.getActionValue(action: string) -> float
+-- Discrete actions (fire once per press)
+bestow.action.builder():duringPhase("gameplay"):whenPressed(k.Space):emitAction("Jump"):discretely()
+bestow.action.builder():duringPhase("gameplay"):whenPressed(gb.A):emitAction("Jump"):discretely()
+bestow.action.builder():duringPhase("gameplay"):whenPressed(mb.Left):emitAction("Attack"):discretely()
 
--- Get full action state
-bestow.input.getActionState(action: string) -> ActionState
--- Returns: { action: string, active: bool, value: float, justPressed: bool, justReleased: bool }
+-- Hold detection
+bestow.action.builder():duringPhase("gameplay"):whenHeld(k.LeftShift, 0.0):emitAction("Sprint"):continuously()
 
--- Get all action states
-bestow.input.getAllActionStates() -> table<string, ActionState>
+-- Phase transitions
+bestow.action.builder():duringPhase("gameplay"):whenPressed(k.Escape):pushPhase("pause"):discretely()
+bestow.action.builder():duringPhase("pause"):whenPressed(k.Escape):popPhase():discretely()
 ```
 
-### Action Mapping
+### Builder API
 
 ```lua
--- Register a new input mapping
-bestow.input.registerMapping(mapping: InputMapping)
--- InputMapping = { binding: InputBinding, action: string }
--- InputBinding = {
---     deviceType: "Keyboard" | "Mouse" | "Controller",
---     deviceIndex: int (default 0),
---     keyCode: int,
---     requiredModifiers: ModifierKey (default None),
---     scale: float (default 1.0),
---     deadzone: float (default 0.0)
--- }
-
--- Remove a mapping
-bestow.input.removeMapping(binding: InputBinding)
-
--- Clear all mappings
-bestow.input.clearMappings()
-
--- Get all current mappings
-bestow.input.getMappings() -> table<InputMapping>
+bestow.action.builder()
+    :duringPhase(phaseName)          -- Which input phase this binding is active in
+    :whenPressed(input)              -- Trigger on press (discrete)
+    :whenReleased(input)             -- Trigger on release
+    :whenActive(input)               -- Trigger while held (continuous)
+    :whenInactive(input)             -- Trigger while NOT held
+    :whenHeld(input, threshold?)     -- Trigger after holding for threshold seconds
+    :withDeadzone(0.0-1.0)           -- Analog deadzone (for axes)
+    :emitAction(actionName)          -- Emit named action
+    :pushPhase(phaseName)            -- Push a new input phase
+    :popPhase()                      -- Pop current input phase
+    :changePhase(phaseName)          -- Replace current input phase
+    :discretely()                    -- Fire once per trigger
+    :continuously()                  -- Fire every frame while active
 ```
 
-### Direct Keyboard Input
+### Input Types for Builder
 
 ```lua
--- Is key currently held down?
-bestow.input.isKeyDown(keyCode: int) -> bool
+-- Keyboard
+KeyCode.Space, KeyCode.Escape, KeyCode.Enter, KeyCode.Tab, KeyCode.Backspace
+KeyCode.A through KeyCode.Z
+KeyCode.Num0 through KeyCode.Num9
+KeyCode.F1 through KeyCode.F25
+KeyCode.Up, KeyCode.Down, KeyCode.Left, KeyCode.Right
+KeyCode.Comma, KeyCode.Period, KeyCode.Minus, KeyCode.Apostrophe
+KeyCode.LeftShift, KeyCode.RightShift, KeyCode.LeftCtrl, KeyCode.RightCtrl
+KeyCode.LeftAlt, KeyCode.RightAlt, KeyCode.LeftSuper, KeyCode.RightSuper
 
--- Was key just pressed this frame?
-bestow.input.wasKeyJustPressed(keyCode: int) -> bool
+-- Mouse
+MouseButton.Left, MouseButton.Right, MouseButton.Middle, MouseButton.Button4, MouseButton.Button5
 
--- Was key just released this frame?
-bestow.input.wasKeyJustReleased(keyCode: int) -> bool
+-- Gamepad Buttons
+GamepadButton.A, .B, .X, .Y, .Back, .Guide, .Start
+GamepadButton.LeftStick, .RightStick, .LeftShoulder, .RightShoulder
+GamepadButton.DPadUp, .DPadDown, .DPadLeft, .DPadRight
+
+-- Gamepad Axes (analog, returns -1.0 to 1.0)
+GamepadAxis.LeftX, .LeftY, .RightX, .RightY, .TriggerLeft, .TriggerRight
 ```
 
-### Mouse Input
+### Consuming Actions
 
 ```lua
--- Get mouse position in screen coordinates
+-- In update()
+if bestow.input.isActionActive("MoveForward") then
+    -- Player is holding forward
+end
+
+if bestow.input.wasActionJustPressed("Jump") then
+    -- Player just pressed jump this frame
+end
+
+local value = bestow.input.getActionValue("MoveAxisX")  -- -1.0 to 1.0
+```
+
+### Phase Management
+
+Phases control which actions are active. Only actions registered for the current phase fire.
+
+```lua
+-- Push/pop phases for menus, pause, etc.
+bestow.input.pushPhase("gameplay")
+bestow.input.pushPhase("pause")       -- Pauses gameplay actions
+bestow.input.popPhase()                -- Returns to gameplay
+bestow.input.changePhase("menu")       -- Replace current phase
+
+-- Query phase state
+local phase = bestow.input.getCurrentPhase()
+local stack = bestow.input.getPhaseStack()
+local active = bestow.input.isPhaseActive("gameplay")
+```
+
+## Direct Polling API
+
+> **DISCOURAGED:** Direct polling bypasses the Action Builder's phase system, rebinding support, and multi-device handling. **Always prefer the Action Builder above** for game input. Direct polling should only be used for debug tools, editor UI, or cases where the Action Builder genuinely cannot work.
+
+For raw input state (debug/editor use only):
+
+```lua
+-- Keyboard
+bestow.input.isKeyDown(KeyCode.Space) -> bool
+bestow.input.wasKeyJustPressed(KeyCode.Enter) -> bool
+bestow.input.wasKeyJustReleased(KeyCode.Escape) -> bool
+
+-- Mouse position and movement
 bestow.input.getMousePosition() -> Vec2
-
--- Get mouse movement since last frame
 bestow.input.getMouseDelta() -> Vec2
+bestow.input.getScrollDelta() -> Vec2
 
--- Check mouse button state
-bestow.input.isMouseButtonDown(button: int) -> bool
-bestow.input.wasMouseButtonJustPressed(button: int) -> bool
-bestow.input.wasMouseButtonJustReleased(button: int) -> bool
+-- Mouse buttons
+bestow.input.isMouseButtonDown(MouseButton.Left) -> bool
+bestow.input.wasMouseButtonJustPressed(MouseButton.Left) -> bool
+bestow.input.wasMouseButtonJustReleased(MouseButton.Left) -> bool
 
--- Get scroll wheel delta
-bestow.input.getScrollDelta() -> float
-
--- Mouse button constants
-bestow.input.Mouse.LEFT    -- 0
-bestow.input.Mouse.RIGHT   -- 1
-bestow.input.Mouse.MIDDLE  -- 2
-bestow.input.Mouse.BUTTON_4 through BUTTON_8
-```
-
-### Modifier Keys
-
-```lua
--- Check modifier state
+-- Modifier keys
 bestow.input.isShiftPressed() -> bool
 bestow.input.isCtrlPressed() -> bool
 bestow.input.isAltPressed() -> bool
 bestow.input.isSuperPressed() -> bool
+bestow.input.getModifierState() -> ModifierKey  -- bitmask
 
--- Get modifier bitmask
-bestow.input.getModifierState() -> ModifierKey
-
--- Check specific modifier in bitmask
-bestow.input.isModifierPressed(mod: ModifierKey) -> bool
-
--- ModifierKey values
-ModifierKey.None, .Shift, .Ctrl, .Alt, .Super, .CapsLock, .NumLock
+-- Gamepad
+bestow.input.isGamepadButtonDown(GamepadButton.A, playerIndex?) -> bool
+bestow.input.getGamepadAxisValue(GamepadAxis.LeftX, playerIndex?) -> float
+bestow.input.getLeftStick(playerIndex?) -> Vec2
+bestow.input.getRightStick(playerIndex?) -> Vec2
+bestow.input.getConnectedControllerCount() -> int
+bestow.input.isControllerConnected(index) -> bool
 ```
 
-### Text Input (for UI)
+## Cursor Control
 
 ```lua
--- Enable text input mode (shows virtual keyboard on mobile)
+bestow.input.showMouseCursor()
+bestow.input.hideMouseCursor()
+bestow.input.isMouseCursorVisible() -> bool
+
+-- CursorMode: Normal (visible, free), Hidden (invisible, free), Disabled (invisible, locked)
+bestow.input.setCursorMode(CursorMode.Normal)
+bestow.input.setCursorMode(CursorMode.Disabled)  -- For FPS camera
+bestow.input.getCursorMode() -> CursorMode
+```
+
+## Text Input (for UI/Chat)
+
+```lua
 bestow.input.enableTextInput()
-
--- Disable text input mode
 bestow.input.disableTextInput()
-
--- Check if text input is enabled
 bestow.input.isTextInputEnabled() -> bool
-
--- Get accumulated text input
-bestow.input.getTextInput() -> string
-
--- Clear text input buffer
+bestow.input.getTextInput() -> string      -- Accumulated text since last clear
 bestow.input.clearTextInput()
 ```
 
-### Controller Support
+## Input Rebinding (for Settings Screen)
 
 ```lua
--- Get number of connected controllers
-bestow.input.getConnectedControllerCount() -> int
-
--- Check if specific controller is connected
-bestow.input.isControllerConnected(index: int) -> bool
-
--- Get controller name
-bestow.input.getControllerName(index: int) -> string
-```
-
-### Input Rebinding (for Settings UI)
-
-```lua
--- Start listening for any input (for rebinding)
 bestow.input.startListeningForInput()
-
--- Stop listening
 bestow.input.stopListeningForInput()
-
--- Check if listening
 bestow.input.isListeningForInput() -> bool
-
--- Get the last input received (returns nil if none)
-bestow.input.getLastInput() -> InputBinding | nil
+bestow.input.getLastInput() -> InputBinding | nil  -- Returns the binding for whatever was pressed
 ```
 
-## Key Constants
+## Global Key Aliases
 
-### Global Keys.* Aliases (Convenient)
-
+For convenience, a global `Keys.*` table is also available:
 ```lua
-Keys.A through Keys.Z
-Keys.Space, Keys.Escape, Keys.Enter, Keys.Tab, Keys.Backspace
+Keys.A through Keys.Z, Keys.Space, Keys.Escape, Keys.Enter, Keys.Tab
 Keys.Up, Keys.Down, Keys.Left, Keys.Right
-Keys.F1 through Keys.F12
-Keys.LeftShift, Keys.RightShift
-Keys.LeftCtrl, Keys.RightCtrl
-Keys.LeftAlt, Keys.RightAlt
 Keys.Comma, Keys.O, Keys.E  -- Dvorak movement equivalents
-```
-
-### Full Key Codes (bestow.input.Key.*)
-
-```lua
-bestow.input.Key.SPACE       -- 32
-bestow.input.Key.A-Z         -- 65-90
-bestow.input.Key.LEFT        -- 263
-bestow.input.Key.RIGHT       -- 262
-bestow.input.Key.UP          -- 265
-bestow.input.Key.DOWN        -- 264
-bestow.input.Key.ESCAPE      -- 256
-bestow.input.Key.ENTER       -- 257
-bestow.input.Key.TAB         -- 258
-bestow.input.Key.BACKSPACE   -- 259
-bestow.input.Key.F1-F12      -- 290-301
-bestow.input.Key.LEFT_SHIFT  -- 340
-bestow.input.Key.LEFT_CONTROL-- 341
-bestow.input.Key.LEFT_ALT    -- 342
-bestow.input.Key.COMMA       -- 44
+Keys.F1 through Keys.F12, Keys.LeftShift, Keys.LeftCtrl, Keys.LeftAlt
 ```
 
 ## Common Patterns
 
-### Basic Movement (Dvorak + QWERTY)
-
-```lua
-local function getMovementInput()
-    local moveX = 0
-    local moveZ = 0
-
-    -- Left (same on both layouts)
-    if bestow.input.isKeyDown(Keys.A) then moveX = moveX - 1 end
-
-    -- Right (Dvorak: E, QWERTY: D)
-    if bestow.input.isKeyDown(Keys.E) or bestow.input.isKeyDown(Keys.D) then
-        moveX = moveX + 1
-    end
-
-    -- Forward (Dvorak: comma, QWERTY: W)
-    if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
-        moveZ = moveZ - 1
-    end
-
-    -- Back (Dvorak: O, QWERTY: S)
-    if bestow.input.isKeyDown(Keys.O) or bestow.input.isKeyDown(Keys.S) then
-        moveZ = moveZ + 1
-    end
-
-    return Vec2.new(moveX, moveZ)
-end
-```
-
-### Action-Based Movement Setup
+### Full Movement Setup
 
 ```lua
 -- In init()
-local function registerMovementMappings()
-    -- Forward (Dvorak + QWERTY)
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.Comma },
-        action = "move_forward"
-    })
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.W },
-        action = "move_forward"
-    })
+local function setupInput()
+    local k = KeyCode
+    local ga = GamepadAxis
+    local gb = GamepadButton
 
-    -- Back
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.O },
-        action = "move_back"
-    })
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.S },
-        action = "move_back"
-    })
+    -- Movement (Dvorak + QWERTY + Gamepad)
+    for _, key in ipairs({k.Comma, k.W}) do
+        bestow.action.builder():duringPhase("gameplay"):whenActive(key):emitAction("MoveForward"):continuously()
+    end
+    for _, key in ipairs({k.O, k.S}) do
+        bestow.action.builder():duringPhase("gameplay"):whenActive(key):emitAction("MoveBack"):continuously()
+    end
+    bestow.action.builder():duringPhase("gameplay"):whenActive(k.A):emitAction("MoveLeft"):continuously()
+    for _, key in ipairs({k.E, k.D}) do
+        bestow.action.builder():duringPhase("gameplay"):whenActive(key):emitAction("MoveRight"):continuously()
+    end
 
-    -- Left
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.A },
-        action = "move_left"
-    })
-
-    -- Right
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.E },
-        action = "move_right"
-    })
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.D },
-        action = "move_right"
-    })
+    -- Gamepad analog sticks
+    bestow.action.builder():duringPhase("gameplay"):whenActive(ga.LeftX):withDeadzone(0.15):emitAction("MoveAxisX"):continuously()
+    bestow.action.builder():duringPhase("gameplay"):whenActive(ga.LeftY):withDeadzone(0.15):emitAction("MoveAxisY"):continuously()
 
     -- Jump
-    bestow.input.registerMapping({
-        binding = { deviceType = "Keyboard", keyCode = Keys.Space },
-        action = "jump"
-    })
+    bestow.action.builder():duringPhase("gameplay"):whenPressed(k.Space):emitAction("Jump"):discretely()
+    bestow.action.builder():duringPhase("gameplay"):whenPressed(gb.A):emitAction("Jump"):discretely()
+
+    -- Start in gameplay phase
+    bestow.input.pushPhase("gameplay")
 end
 
 -- In update()
-local function getMovementFromActions()
-    local moveX = 0
-    local moveZ = 0
+local function getMovement()
+    local moveX, moveZ = 0, 0
 
-    if bestow.input.isActionActive("move_left") then moveX = moveX - 1 end
-    if bestow.input.isActionActive("move_right") then moveX = moveX + 1 end
-    if bestow.input.isActionActive("move_forward") then moveZ = moveZ - 1 end
-    if bestow.input.isActionActive("move_back") then moveZ = moveZ + 1 end
+    -- Digital input
+    if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
+    if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end
+    if bestow.input.isActionActive("MoveForward") then moveZ = moveZ - 1 end
+    if bestow.input.isActionActive("MoveBack") then moveZ = moveZ + 1 end
 
-    return Vec2.new(moveX, moveZ)
+    -- Analog override
+    local stickX = bestow.input.getActionValue("MoveAxisX") or 0
+    local stickY = bestow.input.getActionValue("MoveAxisY") or 0
+    if math.abs(stickX) > 0.01 then moveX = stickX end
+    if math.abs(stickY) > 0.01 then moveZ = stickY end
+
+    return moveX, moveZ
 end
 ```
 
-### Mouse Look (FPS Camera)
+### FPS Mouse Look
 
 ```lua
-local sensitivity = 0.002
-local yaw = 0
-local pitch = 0
+bestow.input.setCursorMode(CursorMode.Disabled)
 
-local function updateMouseLook()
+local function updateMouseLook(state)
     local delta = bestow.input.getMouseDelta()
-
-    yaw = yaw - delta.x * sensitivity
-    pitch = pitch - delta.y * sensitivity
-
-    -- Clamp pitch to prevent flipping
-    pitch = math.max(-1.5, math.min(1.5, pitch))
-
-    -- Create rotation quaternion
-    local rotation = Quat.fromEuler(pitch, yaw, 0)
-    return rotation
-end
-```
-
-### Input Rebinding UI
-
-```lua
-local waitingForKey = nil  -- Action name we're rebinding
-
-local function startRebind(actionName)
-    waitingForKey = actionName
-    bestow.input.startListeningForInput()
-end
-
-local function checkRebind()
-    if not waitingForKey then return end
-
-    local input = bestow.input.getLastInput()
-    if input then
-        -- Remove old mapping
-        bestow.input.removeMapping({ deviceType = "Keyboard", keyCode = oldKey })
-
-        -- Add new mapping
-        bestow.input.registerMapping({
-            binding = input,
-            action = waitingForKey
-        })
-
-        -- Done rebinding
-        bestow.input.stopListeningForInput()
-        waitingForKey = nil
-    end
+    local sensitivity = 0.002
+    state.yaw = state.yaw - delta.x * sensitivity
+    state.pitch = math.max(-1.5, math.min(1.5, state.pitch - delta.y * sensitivity))
+    return Quat.fromEuler(state.pitch, state.yaw, 0)
 end
 ```
 
 ## Best Practices
 
-1. **Use action-based input** for maintainability and rebinding support
-2. **Always support Dvorak** - Use ,AOE in addition to WASD
-3. **Check justPressed for one-shot actions** like jumping, shooting
-4. **Check isKeyDown for continuous actions** like movement
-5. **Use modifiers for alternative actions** like shift+click
-6. **Gate input on UI** - Check `bestow.ui.wantsKeyboardInput()` before game input
+1. **Use Action Builder** for all game input - supports rebinding and multiple devices
+2. **Always support Dvorak** - Bind ,AOE alongside WASD
+3. **Use phases** to manage input contexts (gameplay, pause, menu, dialogue)
+4. **Use `discretely()`** for one-shot actions (jump, attack, interact)
+5. **Use `continuously()`** for held actions (movement, sprint, aim)
+6. **Gate on UI** - Check `bestow.ui.wantsKeyboardInput()` before processing game input when UI is active

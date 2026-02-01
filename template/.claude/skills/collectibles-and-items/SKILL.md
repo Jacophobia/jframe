@@ -62,10 +62,14 @@ return {
     init = function()
         local self = app.systems.collectibles
 
-        -- Subscribe to trigger events
-        bestow.events.subscribe("trigger_enter_3d", function(event)
-            self.onTriggerEnter(event.entityA, event.entityB)
-        end)
+        -- Subscribe using table+method pattern (hot-reload safe)
+        self.triggerSubId = bestow.events.subscribe("trigger_enter_3d", {},
+            app.systems.collectibles, "onTrigger")
+    end,
+
+    onTrigger = function(event)
+        local self = app.systems.collectibles
+        self.onTriggerEnter(event.entityA, event.entityB)
     end,
 
     update = function(dt)

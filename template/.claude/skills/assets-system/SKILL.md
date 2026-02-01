@@ -21,9 +21,11 @@ bestow.entity.addComponent(entity, "MeshRenderer", {
     material = "materials/player"
 })
 
--- CORRECT: Play sound by path
-bestow.audio.playOnChannel(Channels.UI, {
-    path = "sounds/click.wav",
+-- CORRECT: Register and play sound by handle
+local handle = bestow.assets.registerAsset(AssetType.Sound, "sounds/click.wav")
+bestow.assets.loadAsset(handle)
+bestow.audio.playOnChannel(bestow.audio.Channel.UI, {
+    asset = handle,
     volume = 1.0
 })
 ```
@@ -51,20 +53,33 @@ material = "materials/default"  -- assets/materials/default.lua
 path = "sounds/jump.wav"        -- assets/sounds/jump.wav
 ```
 
-## Automatic Asset Loading
+## Registering and Loading Assets
 
-Most assets are loaded automatically when first used:
+Assets follow a register → load → use workflow:
 
 ```lua
--- Mesh and material loaded on first render
+-- Register (creates a handle, doesn't load yet)
+local handle = bestow.assets.registerAsset(AssetType.Sound, "sounds/jump.wav")
+
+-- Load (synchronous)
+bestow.assets.loadAsset(handle)
+
+-- Or load asynchronously
+bestow.assets.loadAssetAsync(handle, function(h, state)
+    if state == "Loaded" then
+        -- Ready to use
+    end
+end)
+
+-- Check state
+bestow.assets.isLoaded(handle) -> bool
+```
+
+**MeshRenderer components** handle loading automatically via path references:
+```lua
 bestow.entity.addComponent(entity, "MeshRenderer", {
     mesh = "meshes/cube.obj",
     material = "materials/stone"
-})
-
--- Sound loaded on first play
-bestow.audio.playOnChannel(Channels.UI, {
-    path = "sounds/explosion.wav"
 })
 ```
 
@@ -109,9 +124,11 @@ return {
         self.loadProgress = 0
 
         -- Queue all assets for loading
+        local typeMap = { meshes = AssetType.Mesh, textures = AssetType.Texture, sounds = AssetType.Sound }
         for assetType, list in pairs(self.assetsToLoad) do
             for _, path in ipairs(list) do
-                bestow.assets.loadAssetAsync(path, function(state)
+                local handle = bestow.assets.registerAsset(typeMap[assetType], path)
+                bestow.assets.loadAssetAsync(handle, function(h, state)
                     if state == "Loaded" then
                         self.loadedAssets = self.loadedAssets + 1
                         self.loadProgress = self.loadedAssets / self.totalAssets
@@ -147,17 +164,12 @@ end
 ## Checking Asset State
 
 ```lua
+-- Register first to get a handle
+local handle = bestow.assets.registerAsset(AssetType.Mesh, "meshes/boss.obj")
+
 -- Check if asset is loaded
-if bestow.assets.isLoaded("meshes/boss.obj") then
+if bestow.assets.isLoaded(handle) then
     -- Asset is ready to use
-end
-
--- Get detailed state
-local state = bestow.assets.getAssetState("meshes/player.obj")
--- state is one of: "Unloaded", "Loading", "Loaded", "Failed"
-
-if state == "Failed" then
-    print("Failed to load asset!")
 end
 ```
 
@@ -205,18 +217,14 @@ When you save a texture, mesh, or material file, it's reloaded automatically. Yo
 If you need to respond to asset changes:
 
 ```lua
--- Subscribe to asset reload events
-bestow.events.subscribe("asset_reloaded", function(event)
-    local assetPath = event.path
-    local assetType = event.type
+-- Subscribe using table+method pattern (hot-reload safe)
+bestow.events.subscribe("asset_reloaded", {},
+    app.systems.renderer, "onAssetReloaded")
 
-    print("Reloaded: " .. assetPath)
-
-    -- Refresh anything that cached this asset
-    if assetType == "Material" then
-        -- Material changed, might need to update visuals
-    end
-end)
+-- In the receiving system:
+-- onAssetReloaded = function(event)
+--     print("Reloaded: " .. event.path)
+-- end
 ```
 
 ## Asset Organization

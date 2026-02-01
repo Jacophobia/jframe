@@ -62,7 +62,7 @@ return {
         local forward = (lookAt - camPos):normalize()
 
         -- Create rotation from forward vector
-        local rotation = Quat.lookRotation(forward, Vec3.new(0, 1, 0))
+        local rotation = Quat.lookAt(forward, Vec3.new(0, 1, 0))
 
         bestow.graphics3d.setCamera({
             position = camPos,

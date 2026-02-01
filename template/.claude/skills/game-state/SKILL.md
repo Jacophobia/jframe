@@ -256,10 +256,9 @@ return {
     end,
 
     render = function()
-        -- Draw menu
-        app.systems.ui.drawTitle("MY GAME", 640, 200)
-        app.systems.ui.drawText("Press ENTER to Start", 640, 400)
-        app.systems.ui.drawText("Press ESC to Quit", 640, 450)
+        -- Draw menu using bestow.ui (RmlUI)
+        -- Load a menu document in onEnter, show/hide here
+        bestow.ui.render()
     end
 }
 
@@ -310,14 +309,13 @@ return {
         -- Render game world
         app.systems.camera.update(0)  -- Ensure camera is set
 
-        -- HUD
+        -- Update HUD via bestow.ui
         local state = app.main.state
-        app.systems.ui.drawText("Score: " .. state.score, 20, 20)
-
-        local health = bestow.entity.getComponent(state.player, "Health")
-        if health then
-            app.systems.ui.drawHealthBar(20, 50, health.current, health.max)
+        local scoreEl = bestow.ui.getElementById(app.systems.hud.doc, "score")
+        if scoreEl then
+            bestow.ui.setElementText(scoreEl, "Score: " .. state.score)
         end
+        bestow.ui.render()
     end
 }
 
@@ -347,12 +345,9 @@ return {
     end,
 
     render = function()
-        -- Draw semi-transparent overlay
-        bestow.graphics3d.drawScreenQuad(Color.new(0, 0, 0, 0.5))
-
-        app.systems.ui.drawTitle("PAUSED", 640, 300)
-        app.systems.ui.drawText("Press ESC to Resume", 640, 400)
-        app.systems.ui.drawText("Press Q to Quit", 640, 450)
+        -- Use bestow.ui (RmlUI) for pause overlay
+        -- Load a pause_overlay.rml document in onEnter, show/hide here
+        bestow.ui.render()
     end
 }
 
@@ -363,7 +358,16 @@ return {
     onEnter = function()
         local self = app.states.game_over
         self.deathTimer = 0
-        app.systems.audio.playSfx("death")
+        -- Load and show game over UI document
+        self.doc = bestow.ui.loadDocument("ui/game_over.rml")
+        bestow.ui.showDocument(self.doc)
+    end,
+
+    onExit = function()
+        local self = app.states.game_over
+        if self.doc then
+            bestow.ui.hideDocument(self.doc)
+        end
     end,
 
     update = function(dt)
@@ -389,14 +393,13 @@ return {
     end,
 
     render = function()
-        bestow.graphics3d.drawScreenQuad(Color.new(0.5, 0, 0, 0.7))
-
-        app.systems.ui.drawTitle("GAME OVER", 640, 300)
-
+        -- Update dynamic UI elements
         local state = app.main.state
-        app.systems.ui.drawText("Final Score: " .. state.score, 640, 380)
-        app.systems.ui.drawText("Press SPACE to Retry", 640, 450)
-        app.systems.ui.drawText("Press ESC for Menu", 640, 500)
+        local scoreEl = bestow.ui.getElementById(app.states.game_over.doc, "score")
+        if scoreEl then
+            bestow.ui.setElementText(scoreEl, "Final Score: " .. state.score)
+        end
+        bestow.ui.render()
     end
 }
 ```
@@ -462,17 +465,18 @@ return {
 
     renderTransition = function()
         local self = app.systems.state_manager
-
         if not self.transitioning then return end
 
         if self.transitionType == "fade" then
             local alpha = self.transitionProgress
-            if alpha > 0.5 then
-                alpha = 1 - alpha
-            end
+            if alpha > 0.5 then alpha = 1 - alpha end
             alpha = alpha * 2
 
-            bestow.graphics3d.drawScreenQuad(Color.new(0, 0, 0, alpha))
+            -- Use bestow.ui to update a fade overlay element's opacity
+            local fadeEl = bestow.ui.getElementById(self.fadeDoc, "fade-overlay")
+            if fadeEl then
+                bestow.ui.setStyle(fadeEl, "opacity", tostring(alpha))
+            end
         end
     end
 }
