@@ -512,11 +512,29 @@ void VulkanUIRenderBackend::beginUIPass() {
     // Bind the UI pipeline
     context_->bindPipeline(uiPipeline_);
 
+    // Get framebuffer dimensions (may differ from logical viewport on HiDPI/Retina)
+    auto fbExtent = context_->getSwapchainExtent();
+    float fbWidth = static_cast<float>(fbExtent.width);
+    float fbHeight = static_cast<float>(fbExtent.height);
+
+    // Set viewport with negative height to flip Y axis for OpenGL-compatible projection.
+    // This uses VK_KHR_maintenance1 (core since Vulkan 1.1) so that glm::ortho with
+    // top-left origin works correctly in Vulkan's coordinate system.
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = fbHeight;
+    viewport.width = fbWidth;
+    viewport.height = -fbHeight;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    vkCmdSetViewport(cmd, 0, 1, &viewport);
+
     // Set up orthographic projection (top-left origin, pixel coordinates)
+    // Uses logical viewport dimensions; the viewport transform handles scaling to framebuffer.
     UIPushConstants pc{};
     pc.projection = glm::ortho(
         0.0f, static_cast<float>(viewportWidth_),
-        static_cast<float>(viewportHeight_), 0.0f,   // flipped Y: top=0, bottom=height
+        static_cast<float>(viewportHeight_), 0.0f,   // top-left origin: y=0 at top
         -1.0f, 1.0f);
     pc.translation = {0.0f, 0.0f};
     pc.hasTexture = 0;
@@ -526,11 +544,10 @@ void VulkanUIRenderBackend::beginUIPass() {
                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
                        0, sizeof(UIPushConstants), &pc);
 
-    // Reset scissor to full viewport
+    // Reset scissor to full framebuffer (scissor works in framebuffer coordinates)
     VkRect2D fullScissor{};
     fullScissor.offset = {0, 0};
-    fullScissor.extent = {static_cast<uint32_t>(viewportWidth_),
-                          static_cast<uint32_t>(viewportHeight_)};
+    fullScissor.extent = fbExtent;
     vkCmdSetScissor(cmd, 0, 1, &fullScissor);
 }
 
@@ -703,14 +720,14 @@ void VulkanUIRenderBackend::enableScissor(bool enable) {
 
     if (!initialized_ || !inUIPass_) return;
 
-    // When disabling scissor, reset to full viewport
+    // When disabling scissor, reset to full framebuffer
     if (!enable) {
         auto cmd = context_->getCurrentCommandBuffer();
         if (cmd != VK_NULL_HANDLE) {
+            auto fbExtent = context_->getSwapchainExtent();
             VkRect2D fullScissor{};
             fullScissor.offset = {0, 0};
-            fullScissor.extent = {static_cast<uint32_t>(viewportWidth_),
-                                  static_cast<uint32_t>(viewportHeight_)};
+            fullScissor.extent = fbExtent;
             vkCmdSetScissor(cmd, 0, 1, &fullScissor);
         }
     }
@@ -726,11 +743,18 @@ void VulkanUIRenderBackend::setScissorRegion(const UIScissorRect& region) {
         return;
     }
 
+    // Scale logical coordinates to framebuffer coordinates (handles HiDPI/Retina)
+    auto fbExtent = context_->getSwapchainExtent();
+    float scaleX = (viewportWidth_ > 0)
+        ? static_cast<float>(fbExtent.width) / static_cast<float>(viewportWidth_) : 1.0f;
+    float scaleY = (viewportHeight_ > 0)
+        ? static_cast<float>(fbExtent.height) / static_cast<float>(viewportHeight_) : 1.0f;
+
     VkRect2D scissor{};
-    scissor.offset.x = std::max(0, region.x);
-    scissor.offset.y = std::max(0, region.y);
-    scissor.extent.width = static_cast<uint32_t>(std::max(0, region.width));
-    scissor.extent.height = static_cast<uint32_t>(std::max(0, region.height));
+    scissor.offset.x = static_cast<int32_t>(std::max(0.0f, region.x * scaleX));
+    scissor.offset.y = static_cast<int32_t>(std::max(0.0f, region.y * scaleY));
+    scissor.extent.width = static_cast<uint32_t>(std::max(0.0f, region.width * scaleX));
+    scissor.extent.height = static_cast<uint32_t>(std::max(0.0f, region.height * scaleY));
 
     vkCmdSetScissor(cmd, 0, 1, &scissor);
 }
