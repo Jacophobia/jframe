@@ -62,10 +62,14 @@ return {
     init = function()
         local self = app.systems.collectibles
 
-        -- Subscribe to trigger events
-        bestow.events.subscribe("trigger_enter_3d", function(event)
-            self.onTriggerEnter(event.entityA, event.entityB)
-        end)
+        -- Subscribe using table+method pattern (hot-reload safe)
+        self.triggerSubId = bestow.events.subscribe("trigger_enter_3d", {},
+            app.systems.collectibles, "onTrigger")
+    end,
+
+    onTrigger = function(event)
+        local self = app.systems.collectibles
+        self.onTriggerEnter(event.entityA, event.entityB)
     end,
 
     update = function(dt)
@@ -411,9 +415,9 @@ return {
         local itemDef = app.data.items[slot.id]
         if not itemDef.usable then return false end
 
-        -- Apply item effect
+        -- Apply item effect (pass state for hot-reload safe context)
         if itemDef.onUse then
-            itemDef.onUse()
+            itemDef.onUse(app.main.state)
         end
 
         -- Consume item
@@ -434,8 +438,8 @@ return {
         maxStack = 10,
         usable = true,
         consumable = true,
-        onUse = function()
-            local state = app.main.state
+        onUse = function(state)
+            if not state.player or not bestow.entity.isValid(state.player) then return end
             local health = bestow.entity.getComponent(state.player, "Health")
             health.current = math.min(health.max, health.current + 50)
             bestow.entity.setComponent(state.player, "Health", health)
@@ -458,7 +462,7 @@ return {
         maxStack = 1,
         usable = true,
         consumable = false,
-        onUse = function()
+        onUse = function(state)
             -- Equip sword
             app.systems.equipment.equip("weapon", "sword")
         end

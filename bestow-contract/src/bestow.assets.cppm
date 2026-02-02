@@ -784,14 +784,20 @@ public:
     virtual void* getRawAsset(AssetHandle handle) = 0;
     virtual const void* getRawAsset(AssetHandle handle) const = 0;
 
+    /// Type-safe asset accessor. getRawAsset returns a pointer to std::any,
+    /// so we use std::any_cast to extract the actual data pointer.
     template<typename T>
     T* getAsset(AssetHandle handle) {
-        return static_cast<T*>(getRawAsset(handle));
+        void* raw = getRawAsset(handle);
+        if (!raw) return nullptr;
+        return std::any_cast<T>(static_cast<std::any*>(raw));
     }
 
     template<typename T>
     const T* getAsset(AssetHandle handle) const {
-        return static_cast<const T*>(getRawAsset(handle));
+        const void* raw = getRawAsset(handle);
+        if (!raw) return nullptr;
+        return std::any_cast<const T>(static_cast<const std::any*>(raw));
     }
 
     //======================================================================

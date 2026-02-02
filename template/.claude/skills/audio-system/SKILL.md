@@ -135,7 +135,7 @@ bestow.audio.assignChannelToGroup(channel: Channel, group: string)
 -- In init() or level start
 local function playBackgroundMusic()
     local musicHandle = bestow.assets.registerAsset(
-        bestow.assets.Type.Music,
+        AssetType.Music,
         "music/level1_theme.ogg"
     )
     bestow.assets.loadAsset(musicHandle)
@@ -154,7 +154,7 @@ local function crossfadeToMusic(newMusicPath, fadeDuration)
     bestow.audio.stopChannel(bestow.audio.Channel.Music, fadeDuration)
 
     -- Load and play new
-    local handle = bestow.assets.registerAsset(bestow.assets.Type.Music, newMusicPath)
+    local handle = bestow.assets.registerAsset(AssetType.Music, newMusicPath)
     bestow.assets.loadAsset(handle)
 
     bestow.audio.playOnChannel(bestow.audio.Channel.Music, {
@@ -181,7 +181,7 @@ local function loadUISounds()
     }
 
     for name, path in pairs(sounds) do
-        uiSounds[name] = bestow.assets.registerAsset(bestow.assets.Type.Sound, path)
+        uiSounds[name] = bestow.assets.registerAsset(AssetType.Sound, path)
         bestow.assets.loadAsset(uiSounds[name])
     end
 end
@@ -207,7 +207,7 @@ local footstepHandle = nil
 
 local function initFootsteps()
     footstepHandle = bestow.assets.registerAsset(
-        bestow.assets.Type.Sound,
+        AssetType.Sound,
         "sounds/footstep.wav"
     )
     bestow.assets.loadAsset(footstepHandle)
@@ -240,11 +240,12 @@ end
 -- In camera system update
 local function updateAudioListener()
     local cam = bestow.graphics3d.getCamera()
+    if not cam then return end
 
     bestow.audio.setListener({
-        position = cam.transform.position,
-        forward = cam.transform.rotation:rotateVector(Vec3.forward()),
-        up = cam.transform.rotation:rotateVector(Vec3.up()),
+        position = cam.position,
+        forward = cam.rotation:rotateVector(Vec3.forward()),
+        up = cam.rotation:rotateVector(Vec3.up()),
         velocity = Vec3.zero()  -- Add actual velocity for doppler
     })
 end

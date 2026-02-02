@@ -162,46 +162,34 @@ return {
 
 ## System Modules
 
-Systems contain update logic and game behavior:
+Systems contain update logic and game behavior. **Always use Action Builder for input** (not direct polling):
 
 ```lua
 -- systems/movement.lua
-return {
-    speed = 8.0,
+local MOVE_SPEED = 8.0
 
+return {
     update = function(dt)
         local self = app.systems.movement
         local state = app.main.state
-
         if not state.player then return end
 
-        local movement = self.getInputMovement()
-        if movement:length() > 0 then
-            movement = movement:normalize() * self.speed * dt
+        -- Read actions (registered in init via Action Builder)
+        local moveX, moveZ = 0, 0
+        if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
+        if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end
+        if bestow.input.isActionActive("MoveForward") then moveZ = moveZ - 1 end
+        if bestow.input.isActionActive("MoveBack") then moveZ = moveZ + 1 end
 
-            local pos = bestow.entity.getField(state.player, "Transform3D", "position")
-            bestow.entity.setField(state.player, "Transform3D", "position", pos + movement)
-        end
-    end,
-
-    getInputMovement = function()
-        local move = Vec3.new(0, 0, 0)
-
-        -- Dvorak and QWERTY support
-        if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
-            move.z = -1
-        end
-        if bestow.input.isKeyDown(Keys.O) or bestow.input.isKeyDown(Keys.S) then
-            move.z = 1
-        end
-        if bestow.input.isKeyDown(Keys.A) then
-            move.x = -1
-        end
-        if bestow.input.isKeyDown(Keys.E) or bestow.input.isKeyDown(Keys.D) then
-            move.x = 1
+        local moveDir = Vec3.new(moveX, 0, moveZ)
+        if moveDir:lengthSquared() > 1.0 then
+            moveDir = moveDir:normalize()
         end
 
-        return move
+        if moveDir:lengthSquared() > 0.01 then
+            local velocity = moveDir * MOVE_SPEED
+            bestow.physics3d.moveCharacter(state.player, Vec3.new(velocity.x, -1, velocity.z), dt)
+        end
     end
 }
 ```

@@ -8,59 +8,39 @@ The project owner uses **Dvorak keyboard layout**. All movement controls MUST su
 
 ## Movement Key Mapping
 
-| Action | Dvorak | QWERTY | Key Constants |
-|--------|--------|--------|---------------|
-| Forward | `,` (comma) | W | `Keys.Comma`, `Keys.W` |
-| Back | `O` | S | `Keys.O`, `Keys.S` |
-| Left | `A` | A | `Keys.A` (same) |
-| Right | `E` | D | `Keys.E`, `Keys.D` |
+| Action | Dvorak | QWERTY | KeyCode |
+|--------|--------|--------|---------|
+| Forward | `,` (comma) | W | `KeyCode.Comma`, `KeyCode.W` |
+| Back | O | S | `KeyCode.O`, `KeyCode.S` |
+| Left | A | A | `KeyCode.A` (same) |
+| Right | E | D | `KeyCode.E`, `KeyCode.D` |
 
-## Required Pattern
+## Required Pattern (Action Builder)
 
-Always check BOTH layouts:
+Always register BOTH layouts using the Action Builder:
 
 ```lua
--- Movement input (supports both layouts)
-local moveX = 0
-local moveZ = 0
-
--- Left (same key on both layouts)
-if bestow.input.isKeyDown(Keys.A) then moveX = moveX - 1 end
-
--- Right (Dvorak: E, QWERTY: D)
-if bestow.input.isKeyDown(Keys.E) or bestow.input.isKeyDown(Keys.D) then
-    moveX = moveX + 1
-end
-
--- Forward (Dvorak: comma, QWERTY: W)
-if bestow.input.isKeyDown(Keys.Comma) or bestow.input.isKeyDown(Keys.W) then
-    moveZ = moveZ - 1
-end
-
--- Back (Dvorak: O, QWERTY: S)
-if bestow.input.isKeyDown(Keys.O) or bestow.input.isKeyDown(Keys.S) then
-    moveZ = moveZ + 1
-end
+local k = KeyCode
+-- Forward
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.Comma):emitAction("MoveForward"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.W):emitAction("MoveForward"):continuously()
+-- Back
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.O):emitAction("MoveBack"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.S):emitAction("MoveBack"):continuously()
+-- Left (same on both)
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.A):emitAction("MoveLeft"):continuously()
+-- Right
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.E):emitAction("MoveRight"):continuously()
+bestow.action.builder():duringPhase("gameplay"):whenActive(k.D):emitAction("MoveRight"):continuously()
 ```
 
-## Action Mapping Alternative
+## For Direct Polling (Legacy)
 
-For cleaner code, define action mappings in init:
+If using direct key checks instead of Action Builder, always check both:
 
 ```lua
--- In init()
-bestow.input.registerMapping({
-    binding = { deviceType = "Keyboard", keyCode = Keys.Comma },
-    action = "move_forward"
-})
-bestow.input.registerMapping({
-    binding = { deviceType = "Keyboard", keyCode = Keys.W },
-    action = "move_forward"
-})
--- ... etc
-
--- In update()
-if bestow.input.isActionActive("move_forward") then
-    moveZ = moveZ - 1
-end
+local forward = bestow.input.isKeyDown(KeyCode.Comma) or bestow.input.isKeyDown(KeyCode.W)
+local back = bestow.input.isKeyDown(KeyCode.O) or bestow.input.isKeyDown(KeyCode.S)
+local left = bestow.input.isKeyDown(KeyCode.A)
+local right = bestow.input.isKeyDown(KeyCode.E) or bestow.input.isKeyDown(KeyCode.D)
 ```

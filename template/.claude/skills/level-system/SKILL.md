@@ -103,12 +103,8 @@ return {
             self.spawnObject(obj)
         end
 
-        -- Set camera bounds
-        bestow.camera3d.setBounds(
-            self.cameraBounds.minX, self.cameraBounds.maxX,
-            self.cameraBounds.minY, self.cameraBounds.maxY,
-            self.cameraBounds.minZ, self.cameraBounds.maxZ
-        )
+        -- Store camera bounds for the camera system to enforce
+        state.cameraBounds = self.cameraBounds
 
         -- Spawn player at designated point
         local spawnPoint = state.nextSpawnPoint or "player"
@@ -146,7 +142,7 @@ return {
         end
 
         -- Clear camera bounds
-        bestow.camera3d.clearBounds()
+        state.cameraBounds = nil
     end
 }
 ```
@@ -399,43 +395,56 @@ return {
 
 ## Level Events
 
+Use table+method pattern for event subscriptions (hot-reload safe):
+
 ```lua
--- Subscribe to level door triggers
-bestow.events.subscribe("trigger_enter_3d", function(event)
-    local entityA = event.entityA
-    local entityB = event.entityB
-    local state = app.main.state
+-- systems/level_triggers.lua
+return {
+    init = function()
+        local self = app.systems.level_triggers
+        self.subId = bestow.events.subscribe("trigger_enter_3d", {},
+            app.systems.level_triggers, "onTriggerEnter")
+    end,
 
-    -- Check if player entered a door
-    local door = nil
-    if entityA == state.player and bestow.entity.hasComponent(entityB, "LevelDoor") then
-        door = entityB
-    elseif entityB == state.player and bestow.entity.hasComponent(entityA, "LevelDoor") then
-        door = entityA
-    end
+    onTriggerEnter = function(event)
+        local state = app.main.state
 
-    if door then
-        local doorData = bestow.entity.getComponent(door, "LevelDoor")
-        app.systems.transitions.transitionTo(doorData.targetLevel, doorData.targetSpawn)
-    end
-
-    -- Check checkpoint
-    local checkpoint = nil
-    if entityA == state.player and bestow.entity.hasComponent(entityB, "Checkpoint") then
-        checkpoint = entityB
-    elseif entityB == state.player and bestow.entity.hasComponent(entityA, "Checkpoint") then
-        checkpoint = entityA
-    end
-
-    if checkpoint then
-        local checkpointData = bestow.entity.getComponent(checkpoint, "Checkpoint")
-        if not checkpointData.activated then
-            checkpointData.activated = true
-            bestow.entity.setComponent(checkpoint, "Checkpoint", checkpointData)
-            app.systems.checkpoints.activate(checkpointData.id)
+        -- Check if player entered a door
+        local door = nil
+        if event.entityA == state.player and bestow.entity.hasComponent(event.entityB, "LevelDoor") then
+            door = event.entityB
+        elseif event.entityB == state.player and bestow.entity.hasComponent(event.entityA, "LevelDoor") then
+            door = event.entityA
         end
+
+        if door then
+            local doorData = bestow.entity.getComponent(door, "LevelDoor")
+            app.systems.transitions.transitionTo(doorData.targetLevel, doorData.targetSpawn)
+        end
+
+        -- Check checkpoint
+        local checkpoint = nil
+        if event.entityA == state.player and bestow.entity.hasComponent(event.entityB, "Checkpoint") then
+            checkpoint = event.entityB
+        elseif event.entityB == state.player and bestow.entity.hasComponent(event.entityA, "Checkpoint") then
+            checkpoint = event.entityA
+        end
+
+        if checkpoint then
+            local checkpointData = bestow.entity.getComponent(checkpoint, "Checkpoint")
+            if not checkpointData.activated then
+                checkpointData.activated = true
+                bestow.entity.setComponent(checkpoint, "Checkpoint", checkpointData)
+                app.systems.checkpoints.activate(checkpointData.id)
+            end
+        end
+    end,
+
+    shutdown = function()
+        local self = app.systems.level_triggers
+        if self.subId then bestow.events.unsubscribe(self.subId) end
     end
-end)
+}
 ```
 
 ## Best Practices

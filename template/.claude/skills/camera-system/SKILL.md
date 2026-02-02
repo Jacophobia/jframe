@@ -5,7 +5,7 @@ description: Control cameras, implement following behavior, screen shake, and zo
 
 # Camera System
 
-The camera system provides follow behavior, effects, and coordinate conversion.
+Bestow provides `bestow.graphics3d.setCamera()` for setting camera position and orientation. All high-level camera features (follow, shake, zoom, bounds) are implemented as Lua systems using this API.
 
 ## Basic Camera Setup
 
@@ -20,23 +20,10 @@ bestow.graphics3d.setCamera({
     near = 0.1,
     far = 1000.0
 })
-```
 
-### Using the Camera System
-
-The camera system provides high-level features:
-
-```lua
--- In init()
-local camera = bestow.camera3d
-
--- Set target entity to follow
-camera.setTarget(app.main.state.player)
-
--- Configure follow behavior
-camera.setFollowSmoothing(0.1)  -- 0 = instant, 1 = very slow
-camera.setOffset(Vec3.new(0, 10, -15))  -- Camera offset from target
-camera.setDeadzone(Vec3.new(2, 1, 0))   -- Target can move this much without camera moving
+-- Read current camera
+local cam = bestow.graphics3d.getCamera()
+-- cam.position, cam.rotation, cam.fov, cam.near, cam.far
 ```
 
 ## Follow Camera Pattern
@@ -65,6 +52,7 @@ return {
         local camState = state.camera
 
         if not state.player then return end
+        if not bestow.entity.isValid(state.player) then return end
 
         -- Get target position
         local targetPos = bestow.entity.getField(state.player, "Transform3D", "position")
@@ -85,7 +73,7 @@ return {
 
         -- Calculate rotation to look at target
         local forward = (lookTarget - camState.position):normalize()
-        local rotation = Quat.lookRotation(forward, Vec3.new(0, 1, 0))
+        local rotation = Quat.lookAt(forward, Vec3.new(0, 1, 0))
 
         -- Apply camera
         bestow.graphics3d.setCamera({
@@ -107,23 +95,18 @@ app.systems.camera.update(dt)
 
 ## Camera Bounds
 
-Limit camera movement to level boundaries:
+Limit camera movement to level boundaries (implemented in Lua):
 
 ```lua
--- Set bounds
-bestow.camera3d.setBounds(
-    -50, 50,   -- minX, maxX
-    0, 100,    -- minY, maxY
-    -50, 50    -- minZ, maxZ
-)
+-- In camera system
+local function clampToBounds(position, bounds)
+    return Vec3.new(
+        math.max(bounds.minX, math.min(bounds.maxX, position.x)),
+        math.max(bounds.minY, math.min(bounds.maxY, position.y)),
+        math.max(bounds.minZ, math.min(bounds.maxZ, position.z))
+    )
+end
 
--- Clear bounds
-bestow.camera3d.clearBounds()
-```
-
-### Bounds with Follow Camera
-
-```lua
 update = function(dt)
     local self = app.systems.camera
     local state = app.main.state
@@ -133,11 +116,8 @@ update = function(dt)
 
     -- Clamp to bounds
     local level = app.levels[state.currentLevel]
-    if level.cameraBounds then
-        local b = level.cameraBounds
-        desiredPos.x = math.max(b.minX, math.min(b.maxX, desiredPos.x))
-        desiredPos.y = math.max(b.minY, math.min(b.maxY, desiredPos.y))
-        desiredPos.z = math.max(b.minZ, math.min(b.maxZ, desiredPos.z))
+    if level and level.cameraBounds then
+        desiredPos = clampToBounds(desiredPos, level.cameraBounds)
     end
 
     -- Continue with smoothing...
@@ -146,33 +126,84 @@ end
 
 ## Screen Shake
 
-Add impact feedback:
+Add impact feedback (implemented as Lua camera state):
 
 ```lua
--- Trigger shake
-bestow.camera3d.shake(
-    0.5,    -- Intensity (world units of displacement)
-    0.3     -- Duration (seconds)
-)
+-- systems/camera.lua - add shake support
+return {
+    offset = Vec3.new(0, 8, -12),
+    smoothing = 0.1,
 
--- Stop shake early
-bestow.camera3d.stopShake()
+    initState = function()
+        app.main.state.camera = {
+            position = Vec3.new(0, 8, -12),
+            shakeIntensity = 0,
+            shakeDuration = 0,
+            shakeTimer = 0
+        }
+    end,
+
+    shake = function(intensity, duration)
+        local camState = app.main.state.camera
+        camState.shakeIntensity = intensity
+        camState.shakeDuration = duration
+        camState.shakeTimer = 0
+    end,
+
+    stopShake = function()
+        local camState = app.main.state.camera
+        camState.shakeIntensity = 0
+        camState.shakeTimer = 0
+    end,
+
+    update = function(dt)
+        local self = app.systems.camera
+        local camState = app.main.state.camera
+
+        -- ... follow logic (calculate finalPos and rotation) ...
+
+        -- Apply shake offset
+        if camState.shakeIntensity > 0 then
+            camState.shakeTimer = camState.shakeTimer + dt
+            if camState.shakeTimer < camState.shakeDuration then
+                local t = 1.0 - (camState.shakeTimer / camState.shakeDuration)
+                local strength = camState.shakeIntensity * t
+                local shakeOffset = Vec3.new(
+                    (math.random() - 0.5) * 2 * strength,
+                    (math.random() - 0.5) * 2 * strength,
+                    (math.random() - 0.5) * 2 * strength
+                )
+                finalPos = finalPos + shakeOffset
+            else
+                camState.shakeIntensity = 0
+            end
+        end
+
+        bestow.graphics3d.setCamera({
+            position = finalPos,
+            rotation = rotation,
+            fov = 45.0,
+            near = 0.1,
+            far = 1000.0
+        })
+    end
+}
 ```
 
 ### Contextual Shake
 
 ```lua
 -- Light hit
-bestow.camera3d.shake(0.1, 0.1)
+app.systems.camera.shake(0.1, 0.1)
 
 -- Heavy hit
-bestow.camera3d.shake(0.3, 0.2)
+app.systems.camera.shake(0.3, 0.2)
 
 -- Explosion
-bestow.camera3d.shake(0.8, 0.5)
+app.systems.camera.shake(0.8, 0.5)
 
 -- Earthquake
-bestow.camera3d.shake(0.5, 2.0)
+app.systems.camera.shake(0.5, 2.0)
 ```
 
 ### Shake with Audio
@@ -183,17 +214,18 @@ function explosion(position)
     app.systems.effects.spawnExplosion(position)
 
     -- Screen shake based on distance
-    local camPos = bestow.camera3d.getPosition()
-    local distance = (position - camPos):length()
+    local cam = bestow.graphics3d.getCamera()
+    local distance = (position - cam.position):length()
     local intensity = math.max(0, 1.0 - distance / 50.0)
 
     if intensity > 0 then
-        bestow.camera3d.shake(intensity * 0.8, 0.4)
+        app.systems.camera.shake(intensity * 0.8, 0.4)
     end
 
-    -- Audio
+    -- Audio (use asset handle, not path)
+    local explosionSound = app.main.state.sounds.explosion  -- preloaded asset handle
     bestow.audio.playPositional({
-        path = "sounds/explosion.wav",
+        asset = explosionSound,
         position = position,
         volume = 1.0,
         minDistance = 10.0,
@@ -204,27 +236,15 @@ end
 
 ## Zoom
 
-```lua
--- Zoom in (values > 1)
-bestow.camera3d.setZoom(1.5)
-
--- Zoom out (values < 1)
-bestow.camera3d.setZoom(0.75)
-
--- Get current zoom
-local zoom = bestow.camera3d.getZoom()
-
--- Reset to normal
-bestow.camera3d.setZoom(1.0)
-```
-
-### Smooth Zoom
+Zoom is implemented by adjusting the camera's FOV:
 
 ```lua
 -- In camera state
 app.main.state.camera = {
+    position = Vec3.new(0, 8, -12),
     currentZoom = 1.0,
-    targetZoom = 1.0
+    targetZoom = 1.0,
+    baseFov = 45.0
 }
 
 -- Update with smoothing
@@ -235,7 +255,16 @@ update = function(dt)
     local zoomDiff = camState.targetZoom - camState.currentZoom
     camState.currentZoom = camState.currentZoom + zoomDiff * 0.1
 
-    bestow.camera3d.setZoom(camState.currentZoom)
+    -- Apply zoom as FOV adjustment (higher zoom = lower FOV)
+    local fov = camState.baseFov / camState.currentZoom
+
+    bestow.graphics3d.setCamera({
+        position = camState.position,
+        rotation = rotation,
+        fov = fov,
+        near = 0.1,
+        far = 1000.0
+    })
 end
 
 -- Trigger zoom change
@@ -250,15 +279,16 @@ end
 
 ## Coordinate Conversion
 
-### Screen to World
+### Screen to World (Raycasting)
 
 ```lua
--- Get world position from screen position
+-- For 3D, use a raycast from camera through screen point
 local screenPos = bestow.input.getMousePosition()
-local worldPos = bestow.camera3d.screenToWorld(screenPos)
+local cam = bestow.graphics3d.getCamera()
 
--- For 3D, you often need a raycast
-local ray = bestow.camera3d.screenToRay(screenPos)
+-- Raycast from camera into the scene
+local windowSize = bestow.graphics3d.getWindowSize()
+local ray = bestow.graphics3d.screenToRay(screenPos)
 local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
 if hit then
     local clickedWorldPos = hit.point
@@ -270,11 +300,11 @@ end
 ```lua
 -- Get screen position of world object
 local enemyPos = bestow.entity.getField(enemy, "Transform3D", "position")
-local screenPos = bestow.camera3d.worldToScreen(enemyPos)
+local screenPos = bestow.graphics3d.worldToScreen(enemyPos)
 
 -- Check if on screen
 local windowSize = bestow.graphics3d.getWindowSize()
-if screenPos.x >= 0 and screenPos.x <= windowSize.x and
+if screenPos and screenPos.x >= 0 and screenPos.x <= windowSize.x and
    screenPos.y >= 0 and screenPos.y <= windowSize.y then
     -- Enemy is visible on screen
 end
@@ -313,10 +343,11 @@ return {
 
     transitionTo = function(newPosition, newRotation, duration)
         local self = app.systems.camera
+        local cam = bestow.graphics3d.getCamera()
         self.transitioning = true
         self.transitionStart = {
-            position = bestow.camera3d.getPosition(),
-            rotation = bestow.camera3d.getCamera().rotation
+            position = cam.position,
+            rotation = cam.rotation
         }
         self.transitionEnd = {
             position = newPosition,
@@ -369,3 +400,4 @@ return {
 4. **Shake on impacts** - Great feedback, but don't overdo it
 5. **Bound camera to level** - Prevent showing void
 6. **Transition smoothly** - No hard cuts between camera positions
+7. **Validate entity handles** - Always check `bestow.entity.isValid()` before accessing

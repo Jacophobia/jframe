@@ -1,369 +1,406 @@
 ---
 name: animation-system
-description: Control skeletal animations, playback, blending, and IK in Bestow. Use when playing character animations, crossfading between animations, or implementing procedural animation.
+description: Control skeletal animations, playback, blending, IK, sockets, ragdoll, and state machines in Bestow. Use when playing character animations, crossfading between animations, attaching weapons to bones, or implementing procedural animation.
 ---
 
 # Animation System
 
-The animation system provides skeletal animation playback, blending, and inverse kinematics.
+## Loading Animated Models
 
-## Basic Animation Playback
+### Quick Method: loadCharacter
 
-### Setting Up an Animated Entity
+The simplest way to get an animated character running:
 
 ```lua
-local character = bestow.entity.create()
-
--- Add transform and mesh
-bestow.entity.addComponent(character, "Transform3D", {
+local character = bestow.animation.loadCharacter({
+    model = ":library:/models/character.glb",  -- Path to model with skeleton and animations
     position = Vec3.new(0, 0, 0),
     rotation = Quat.identity(),
     scale = Vec3.new(1, 1, 1)
 })
 
-bestow.entity.addComponent(character, "MeshRenderer", {
-    mesh = "meshes/character.gltf",
-    material = "materials/character"
-})
+-- Check if loaded
+if character:isLoaded() then
+    character:playAnimation("idle")
+end
 
--- Create animator
-local animator = bestow.animation.createAnimator(character, "meshes/character.gltf")
-
--- Store animator handle
-bestow.entity.addComponent(character, "Animator", {
-    handle = animator
-})
+-- Control
+character:setPosition(Vec3.new(5, 0, 0))
+character:setRotation(Quat.fromAxisAngle(Vec3.up(), math.rad(90)))
+character:crossfadeAnimation("walk", 0.2)
+character:stopAnimation()
 ```
 
-### Playing Animations
+### Manual Method: Step by Step
+
+For full control over the animation pipeline:
 
 ```lua
-local animator = bestow.entity.getComponent(character, "Animator").handle
+-- 1. Load model asset
+local modelHandle = bestow.assets.loadModel(":library:/models/character.glb")
+bestow.assets.loadAsset(modelHandle)
 
--- Play animation (replaces current)
+-- 2. Create skeleton from model data
+local skeleton = bestow.animation.createSkeleton(modelHandle)
+
+-- 3. Get available animations
+local clipNames = bestow.assets.getAnimationNames(modelHandle)
+-- e.g., {"idle", "walk", "run", "jump"}
+
+-- 4. Create animator for playback
+local animator = bestow.animation.createAnimator(skeleton)
+
+-- 5. Store in state
+app.main.state.playerAnimator = animator
+app.main.state.playerSkeleton = skeleton
+```
+
+## Skeleton Info
+
+```lua
+local info = bestow.animation.getSkeletonInfo(skeleton)
+-- info.boneCount, info.bones, info.rootBoneIndex, info.bounds
+-- info:findBone("Spine") -> boneIndex or nil
+-- info:getChildren(boneIndex) -> [boneIndex]
+
+local boneIndex = bestow.animation.findBoneIndex(skeleton, "RightHand")
+local boneNames = bestow.animation.getBoneNames(skeleton)
+local count = bestow.animation.getBoneCount(skeleton)
+```
+
+## Animation Playback
+
+### Basic Play
+
+```lua
+-- Play by clip name (with default 0.25s transition)
 bestow.animation.play(animator, "idle")
 
--- Play with options
+-- Play with explicit transition time
+bestow.animation.play(animator, "run", 0.3)
+
+-- Play with full config
 bestow.animation.play(animator, {
-    clip = "run",
+    clipName = "attack",      -- or clip = clipHandle
     speed = 1.0,
-    loop = true,
-    startTime = 0.0
-})
-
--- Play once (no loop)
-bestow.animation.play(animator, {
-    clip = "attack",
-    loop = false
-})
-```
-
-### Crossfading
-
-Smooth transition between animations:
-
-```lua
--- Crossfade to new animation over 0.2 seconds
-bestow.animation.crossfade(animator, "walk", 0.2)
-
--- Crossfade with options
-bestow.animation.crossfade(animator, {
-    clip = "run",
-    duration = 0.3,
-    loop = true
+    weight = 1.0,
+    layer = 0,
+    wrapMode = "Once",        -- "Once", "Loop", "PingPong", "ClampForever"
+    blendInTime = 0.2,
+    blendOutTime = 0.2,
+    startTime = 0.0,
+    restartIfSame = true
 })
 ```
 
-### Stopping and Pausing
+### Stop and Pause
 
 ```lua
--- Stop animation
-bestow.animation.stop(animator)
-
--- Pause/Resume
+bestow.animation.stop(animator, fadeOutTime?)           -- Stop all layers
+bestow.animation.stopLayer(animator, layerIndex, fade?) -- Stop specific layer
 bestow.animation.setPaused(animator, true)
 bestow.animation.setPaused(animator, false)
-
--- Check if paused
-if bestow.animation.isPaused(animator) then
-    -- Animation is paused
-end
+bestow.animation.isPaused(animator) -> bool
+bestow.animation.isPlaying(animator) -> bool
+bestow.animation.isLayerPlaying(animator, layer) -> bool
 ```
 
-### Playback Control
+### Speed and Time Control
 
 ```lua
--- Set playback speed (1.0 = normal, 2.0 = double, -1.0 = reverse)
-bestow.animation.setSpeed(animator, 1.5)
-local speed = bestow.animation.getSpeed(animator)
+bestow.animation.setSpeed(animator, 1.5)              -- 1.0 = normal, 2.0 = double, -1 = reverse
+bestow.animation.getSpeed(animator) -> float
 
--- Get current time
-local time = bestow.animation.getCurrentTime(animator)
-local normalized = bestow.animation.getNormalizedTime(animator)  -- 0.0 to 1.0
-
--- Set time directly
-bestow.animation.setCurrentTime(animator, 0.5)
-bestow.animation.setNormalizedTime(animator, 0.5)  -- Jump to middle
-
--- Get clip duration
-local duration = bestow.animation.getClipDuration(animator, "run")
+bestow.animation.getCurrentTime(animator, layer?) -> float
+bestow.animation.getNormalizedTime(animator, layer?) -> float  -- 0.0 to 1.0
+bestow.animation.setCurrentTime(animator, time, layer?)
+bestow.animation.setNormalizedTime(animator, 0.5, layer?)      -- Jump to middle
+bestow.animation.getClipDuration(animator, layer?) -> float
 ```
 
 ## Animation Layers
 
-Layer animations for partial body control:
+Layers allow playing multiple animations simultaneously (e.g., run + aim):
 
 ```lua
--- Layer 0: Full body (default)
-bestow.animation.play(animator, { clip = "run", layer = 0 })
+-- Layer 0: Full body locomotion
+bestow.animation.play(animator, { clipName = "run", layer = 0, wrapMode = "Loop" })
 
--- Layer 1: Upper body only (for aiming while running)
-bestow.animation.play(animator, {
-    clip = "aim",
-    layer = 1,
-    blendMode = "Override"  -- or "Additive"
-})
+-- Layer 1: Upper body aiming (overrides upper body bones)
+bestow.animation.play(animator, { clipName = "aim", layer = 1, blendMode = "Override" })
 
--- Set layer weight
+-- Set layer weight (0.0 = no effect, 1.0 = full)
 bestow.animation.setLayerWeight(animator, 1, 0.8)
+bestow.animation.getLayerWeight(animator, 1) -> float
 
--- Stop specific layer
-bestow.animation.stopLayer(animator, 1)
-```
+-- Set blend mode: "Override" (replaces) or "Additive" (adds on top)
+bestow.animation.setLayerBlendMode(animator, 1, "Additive")
 
-### Bone Masks
-
-Limit which bones a layer affects:
-
-```lua
--- Create mask for upper body
-local upperBodyBones = {
-    "Spine", "Spine1", "Spine2",
-    "Neck", "Head",
+-- Bone masks: restrict which bones a layer affects
+bestow.animation.setLayerBoneMask(animator, 1, {
+    "Spine", "Spine1", "Spine2", "Neck", "Head",
     "LeftShoulder", "LeftArm", "LeftForeArm", "LeftHand",
     "RightShoulder", "RightArm", "RightForeArm", "RightHand"
-}
+})
 
-bestow.animation.setLayerBoneMask(animator, 1, upperBodyBones)
+-- Get layer state
+local state = bestow.animation.getLayerState(animator, 0)
+-- state.clipName, state.time, state.normalizedTime, state.speed,
+-- state.weight, state.fadeWeight, state.wrapMode, state.playing, state.finished
 ```
 
 ## Animation Events
 
-Respond to animation events (defined in animation files):
+Events fire at specific times during animation playback (defined in model or added at runtime):
 
 ```lua
 -- Subscribe to animation events
-bestow.animation.subscribeToEvents(animator, function(event)
+local subId = bestow.animation.subscribeToEvents(animator, function(event)
+    -- event.name, event.clipTime, event.normalizedTime
+    -- event.stringParam, event.floatParam, event.intParam
     if event.name == "footstep" then
-        app.systems.audio.playSfx("footstep")
+        local sound = event.stringParam == "left" and "step_l" or "step_r"
+        bestow.audio.playOnChannel(3, { asset = stepHandle, volume = 0.5 })
     elseif event.name == "attack_hit" then
-        app.systems.combat.checkHit(character)
+        checkDamage()
     end
 end)
 
--- Subscribe to animation completion
-bestow.animation.subscribeToComplete(animator, function(clipName)
-    if clipName == "attack" then
-        -- Attack finished, return to idle
-        bestow.animation.crossfade(animator, "idle", 0.1)
-    elseif clipName == "death" then
-        bestow.entity.destroy(character)
-    end
+-- Subscribe to animation completion (one-shot animations)
+local completeId = bestow.animation.subscribeToComplete(animator, function(animHandle, clipHandle, layer)
+    -- Animation finished on this layer
+    bestow.animation.play(animator, "idle", 0.15)
 end)
+
+-- Clean up
+bestow.animation.unsubscribe(subId)
+bestow.animation.unsubscribe(completeId)
 ```
 
-## Animation State Machine Pattern
+## Sockets (Attachment Points)
+
+Attach objects (weapons, effects) to animated bones:
 
 ```lua
--- systems/player_animation.lua
-return {
-    states = {
-        idle = "idle",
-        walking = "walk",
-        running = "run",
-        jumping = "jump",
-        falling = "fall",
-        attacking = "attack"
-    },
+-- Define a socket on a bone
+bestow.animation.defineSocket(skeleton, {
+    name = "right_hand_weapon",
+    boneName = "RightHand",
+    localPosition = Vec3.new(0, 0, 0),
+    localRotation = Quat.identity(),
+    localScale = Vec3.one(),
+    attachMode = "FollowBone"  -- "FollowBone", "FollowPosition", "FollowRotation", "WorldSpace"
+})
 
-    currentState = "idle",
+-- Check if socket exists
+bestow.animation.hasSocket(skeleton, "right_hand_weapon") -> bool
 
-    update = function(dt)
-        local self = app.systems.player_animation
-        local state = app.main.state
-        local player = state.player
+-- Get socket world transform (needs entity world matrix)
+local entityMatrix = Mat4.fromTransform(entityTransform)
+local socket = bestow.animation.getSocketTransform(animator, "right_hand_weapon", entityMatrix)
+if socket then
+    -- socket.position, socket.rotation, socket.scale
+    -- socket.forward, socket.up, socket.right
+    -- socket.worldMatrix
+    bestow.entity.setField(weapon, "Transform3D", "position", socket.position)
+    bestow.entity.setField(weapon, "Transform3D", "rotation", socket.rotation)
+end
+```
 
-        if not player then return end
+### Socket Raycasting
 
-        local animator = bestow.entity.getComponent(player, "Animator").handle
-        local velocity = bestow.entity.getComponent(player, "Velocity")
-        local controller = bestow.entity.getComponent(player, "CharacterController")
-        local grounded = bestow.physics3d.getCharacterGroundInfo(controller.handle).grounded
+Cast rays from sockets for melee weapon hit detection:
 
-        -- Determine desired state
-        local newState = "idle"
+```lua
+local result = bestow.animation.raycastFromSocket(animator, {
+    socketName = "sword_tip",
+    direction = Vec3.new(0, 0, 1),  -- Local forward
+    maxDistance = 1.5,
+    collisionMask = 0xFFFF
+}, entityMatrix, bestow.physics3d)
 
-        if not grounded then
-            if velocity.linear.y > 0 then
-                newState = "jumping"
-            else
-                newState = "falling"
-            end
-        else
-            local speed = Vec3.new(velocity.linear.x, 0, velocity.linear.z):length()
-            if speed > 5 then
-                newState = "running"
-            elseif speed > 0.5 then
-                newState = "walking"
-            else
-                newState = "idle"
-            end
-        end
-
-        -- Transition if changed
-        if newState ~= self.currentState then
-            local clip = self.states[newState]
-            bestow.animation.crossfade(animator, clip, 0.2)
-            self.currentState = newState
-        end
-    end
-}
+if result.hit then
+    -- result.hitPoint, result.hitNormal, result.distance, result.hitEntity
+    applyDamage(result.hitEntity)
+end
 ```
 
 ## Inverse Kinematics (IK)
 
-### Two-Bone IK (Arms, Legs)
+### Two-Bone IK (Arms/Legs)
 
 ```lua
--- Define IK chain for right arm
-bestow.animation.defineIKChain(animator, {
+-- Define IK chain
+bestow.animation.defineIKChain(skeleton, {
     name = "right_arm",
-    rootBone = "RightArm",
-    midBone = "RightForeArm",
-    endBone = "RightHand"
+    rootBoneName = "RightArm",
+    midBoneName = "RightForeArm",
+    tipBoneName = "RightHand"
 })
 
--- Set IK target
-bestow.animation.setIKTarget(animator, "right_arm", {
-    position = targetPosition,
-    rotation = targetRotation,
-    weight = 1.0
+-- Set target in update
+bestow.animation.setIKTarget(animator, {
+    chainName = "right_arm",
+    targetPosition = worldTargetPos,
+    poleVector = elbowHintPos,   -- Optional: controls elbow direction
+    weight = 1.0,
+    enabled = true
 })
 
--- Clear IK target
+-- Adjust weight for blending
+bestow.animation.setIKWeight(animator, "right_arm", 0.5)
+
+-- Clear target
 bestow.animation.clearIKTarget(animator, "right_arm")
+bestow.animation.clearAllIKTargets(animator)
 ```
 
 ### Aim IK (Look At)
 
 ```lua
--- Define aim for head
-bestow.animation.defineIKAim(animator, {
-    name = "head_aim",
-    bone = "Head",
-    aimAxis = Vec3.new(0, 0, 1),  -- Which axis points forward
-    upAxis = Vec3.new(0, 1, 0)
+-- Define aim constraint
+bestow.animation.defineIKAim(skeleton, {
+    name = "head_look",
+    boneName = "Head",
+    aimAxis = Vec3.new(0, 0, 1),    -- Which axis points forward
+    upAxis = Vec3.new(0, 1, 0),
+    horizontalLimit = math.rad(70),
+    verticalLimit = math.rad(45)
 })
 
--- Set aim target
-bestow.animation.setIKTarget(animator, "head_aim", {
-    position = lookAtPosition,
-    weight = 0.8
+-- Set look target
+bestow.animation.setIKTarget(animator, {
+    configName = "head_look",
+    targetPosition = enemyHeadPos,
+    worldUp = Vec3.up(),
+    weight = 0.8,
+    enabled = true
 })
 ```
 
 ## Root Motion
 
-Use animation movement for character movement:
+Extract movement from animation data and apply to game entity:
 
 ```lua
 -- Enable root motion
 bestow.animation.setRootMotionEnabled(animator, true)
 
--- In update loop
-local rootMotion = bestow.animation.extractRootMotion(animator)
-if rootMotion then
-    -- Apply to character position
-    local pos = bestow.entity.getField(character, "Transform3D", "position")
-    pos = pos + rootMotion.deltaPosition
-    bestow.entity.setField(character, "Transform3D", "position", pos)
-
-    -- Apply rotation
-    local rot = bestow.entity.getField(character, "Transform3D", "rotation")
-    rot = rootMotion.deltaRotation * rot
-    bestow.entity.setField(character, "Transform3D", "rotation", rot)
-end
-```
-
-## Sockets (Attachment Points)
-
-Attach objects to animated bones:
-
-```lua
--- Define socket on hand
-bestow.animation.defineSocket(animator, {
-    name = "right_hand_weapon",
-    bone = "RightHand",
-    localOffset = Vec3.new(0, 0, 0),
-    localRotation = Quat.identity()
+-- Configure what to extract
+bestow.animation.setRootMotionConfig(animator, {
+    enabled = true,
+    extractTranslationX = true,
+    extractTranslationY = false,   -- Usually don't extract vertical
+    extractTranslationZ = true,
+    extractRotationY = true,
+    extractRotationXZ = false,
+    rootBoneName = "Root"
 })
 
--- Get socket transform for attaching weapon
-local socket = bestow.animation.getSocketTransform(animator, "right_hand_weapon")
-bestow.entity.setField(weapon, "Transform3D", "position", socket.position)
-bestow.entity.setField(weapon, "Transform3D", "rotation", socket.rotation)
+-- In update: consume and apply root motion
+local rootMotion = bestow.animation.getRootMotion(animator)
+if rootMotion.hasTranslation then
+    local pos = bestow.entity.getField(entity, "Transform3D", "position")
+    pos = pos + rootMotion.deltaPosition
+    bestow.entity.setField(entity, "Transform3D", "position", pos)
+end
+if rootMotion.hasRotation then
+    local rot = bestow.entity.getField(entity, "Transform3D", "rotation")
+    rot = rootMotion.deltaRotation * rot
+    bestow.entity.setField(entity, "Transform3D", "rotation", rot)
+end
+bestow.animation.consumeRootMotion(animator)  -- Reset delta
 ```
 
 ## Ragdoll
 
-Switch between animation and physics:
+Switch between animation and physics-driven ragdoll:
 
 ```lua
--- Create ragdoll (usually done once in init)
-bestow.animation.createRagdoll(animator, {
-    -- Physics body definitions for each bone
-    -- Usually auto-generated from skeleton
-})
+-- Create ragdoll from skeleton (usually once in init)
+bestow.animation.createRagdoll(entity, ragdollDef, bestow.physics3d)
 
 -- Activate ragdoll (e.g., on death)
-bestow.animation.activateRagdoll(animator)
+bestow.animation.activateRagdoll(entity, bestow.physics3d)               -- Instant
+bestow.animation.activateRagdoll(entity, bestow.physics3d, false, 0.3)   -- Blend over 0.3s
 
--- Deactivate and return to animation
-bestow.animation.deactivateRagdoll(animator)
+-- Deactivate (return to animation)
+bestow.animation.deactivateRagdoll(entity, bestow.physics3d, false, 0.3)
 
--- Blend between animation and ragdoll
-bestow.animation.setRagdollBlendWeight(animator, 0.5)
+-- Blend weight (0 = animation, 1 = ragdoll)
+bestow.animation.setRagdollBlendWeight(entity, 0.5)
+bestow.animation.isRagdollActive(entity) -> bool
+
+-- Apply hit impulse
+bestow.animation.applyBoneImpulse(entity, "Spine", Vec3.new(0, 0, 100), bestow.physics3d)
+
+-- Clean up
+bestow.animation.destroyRagdoll(entity, bestow.physics3d)
 ```
 
-## Animation for Non-Characters
+## Bone Transforms
 
-### Simple Animation Playback
-
-For environmental objects:
+Access bone positions for effects, targeting, etc.:
 
 ```lua
-local door = bestow.entity.create()
--- ... add mesh
+local boneTransform = bestow.animation.getBoneTransform(animator, "Head")
+local worldTransform = bestow.animation.getBoneWorldTransform(animator, boneIndex, entityWorldMatrix)
+-- Returns Mat4
+```
 
-local doorAnimator = bestow.animation.createAnimator(door, "meshes/door.gltf")
-bestow.entity.addComponent(door, "Animator", { handle = doorAnimator })
+## Animation State Machine Pattern
 
--- When player interacts
-function openDoor(door)
-    local animator = bestow.entity.getComponent(door, "Animator").handle
-    bestow.animation.play(animator, {
-        clip = "open",
-        loop = false
-    })
-end
+A typical character controller with animation states:
+
+```lua
+-- systems/player_animation.lua
+local BLEND_TIME = 0.2
+
+return {
+    currentState = "idle",
+
+    update = function(dt)
+        local self = app.systems.player_animation
+        local state = app.main.state
+        if not state.player or not state.playerAnimator then return end
+
+        local animator = state.playerAnimator
+        local velocity = bestow.entity.getComponent(state.player, "Velocity")
+        local ground = bestow.physics3d.getCharacterGroundInfo(state.player)
+        local grounded = ground and ground.grounded
+
+        -- Determine target state
+        local target = "idle"
+        if not grounded then
+            target = (velocity and velocity.linear.y > 0) and "jump" or "fall"
+        else
+            local speed = velocity and Vec3.new(velocity.linear.x, 0, velocity.linear.z):length() or 0
+            if speed > 5 then target = "run"
+            elseif speed > 0.5 then target = "walk"
+            else target = "idle" end
+        end
+
+        -- Transition if state changed
+        if target ~= self.currentState then
+            local wrapMode = (target == "jump" or target == "fall") and "Once" or "Loop"
+            bestow.animation.play(animator, {
+                clipName = target,
+                wrapMode = wrapMode,
+                blendInTime = BLEND_TIME
+            })
+            self.currentState = target
+        end
+    end
+}
 ```
 
 ## Best Practices
 
-1. **Use crossfade for transitions** - Avoids jarring pops
-2. **Keep crossfade times short** - 0.1-0.3 seconds typical
-3. **Use animation events for timing** - Don't guess when attacks hit
-4. **Subscribe to completion** - For one-shot animations
-5. **Use layers for partial body** - Aim while running, wave while walking
-6. **Enable IK sparingly** - It's computationally expensive
-7. **Store animator handles in components** - Access them efficiently
+1. **Use `loadCharacter` for simple cases** - handles skeleton, animator, clips automatically
+2. **Use short crossfade times** - 0.1-0.3 seconds for responsive transitions
+3. **Use animation events for timing** - Don't guess when attacks connect
+4. **Subscribe to completion** for one-shot animations (attacks, jumps)
+5. **Use layers for partial body** - Run on layer 0, aim on layer 1 with upper body mask
+6. **Store animator handles in `app.main.state`** - Survives hot reload
+7. **Consume root motion every frame** - Or it accumulates
+8. **Clean up subscriptions** - Unsubscribe when entities are destroyed
