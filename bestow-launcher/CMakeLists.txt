@@ -13,6 +13,8 @@ target_sources(bestow
         src/GameRunner.cpp
 )
 
+find_package(nlohmann_json CONFIG REQUIRED)
+
 target_link_libraries(bestow
     PRIVATE
         bestow-core
@@ -30,6 +32,7 @@ target_link_libraries(bestow
         unofficial::luajit::luajit
         sol2::sol2
         spdlog::spdlog
+        nlohmann_json::nlohmann_json
 )
 
 # Link Vulkan backend if available

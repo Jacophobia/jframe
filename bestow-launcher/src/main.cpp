@@ -2,6 +2,7 @@
 // Single executable entry point for Bestow Engine
 
 #include <spdlog/spdlog.h>
+#include <nlohmann/json.hpp>
 
 // Platform-specific includes for executable path detection
 #if defined(__APPLE__)
@@ -44,6 +45,7 @@ struct CommandLineArgs {
     std::string projectName;
     bool verbose = false;
     bool debug = false;
+    bool nightly = false;
 };
 
 void printUsage(const char* programName);
@@ -397,14 +399,19 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
     spdlog::info("Looking for latest release: {}", archiveName);
     spdlog::info("");
 
-    // Use GitHub CLI or curl to fetch latest release info
-    spdlog::info("Fetching latest release information...");
+    // Fetch release info from GitHub API
+    std::string releaseType = args.nightly ? "nightly (pre-release)" : "stable";
+    spdlog::info("Fetching latest {} release information...", releaseType);
 
-    std::string apiCmd = "curl -sL https://api.github.com/repos/radical-beard/bestow/releases/latest";
+    // /releases/latest only returns stable releases; /releases returns all including pre-releases
+    std::string apiUrl = args.nightly
+        ? "https://api.github.com/repos/radical-beard/bestow/releases?per_page=10"
+        : "https://api.github.com/repos/radical-beard/bestow/releases/latest";
+    std::string apiCmd = "curl -sL " + apiUrl;
     FILE* pipe = popen(apiCmd.c_str(), "r");
     if (!pipe) {
         spdlog::error("Failed to query GitHub API");
-        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases/latest");
+        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases");
         return 1;
     }
 
@@ -417,35 +424,75 @@ int handleUpdate([[maybe_unused]] const CommandLineArgs& args) {
 
     if (apiResult != 0 || apiResponse.empty()) {
         spdlog::error("Failed to fetch release information");
-        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases/latest");
+        spdlog::info("Try manually downloading from: https://github.com/radical-beard/bestow/releases");
         return 1;
     }
 
-    // Parse JSON to find download URL (simple string search since we know the pattern)
-    std::string searchPattern = "\"browser_download_url\": \"";
-    size_t urlStart = apiResponse.find(searchPattern);
-    std::string downloadUrl;
+    // Parse JSON response and find the matching release
+    nlohmann::json json;
+    try {
+        json = nlohmann::json::parse(apiResponse);
+    } catch (const nlohmann::json::parse_error& e) {
+        spdlog::error("Failed to parse GitHub API response: {}", e.what());
+        return 1;
+    }
 
-    while (urlStart != std::string::npos) {
-        urlStart += searchPattern.length();
-        size_t urlEnd = apiResponse.find("\"", urlStart);
-        if (urlEnd != std::string::npos) {
-            std::string url = apiResponse.substr(urlStart, urlEnd - urlStart);
+    std::string downloadUrl;
+    std::string releaseName;
+
+    // Helper: search a release object for our platform's download URL
+    auto findAssetUrl = [&](const nlohmann::json& release) -> std::string {
+        if (!release.contains("assets") || !release["assets"].is_array()) return "";
+        for (const auto& asset : release["assets"]) {
+            if (!asset.contains("browser_download_url")) continue;
+            std::string url = asset["browser_download_url"].get<std::string>();
             if (url.find(archiveName) != std::string::npos) {
-                downloadUrl = url;
-                break;
+                return url;
             }
         }
-        urlStart = apiResponse.find(searchPattern, urlEnd);
+        return "";
+    };
+
+    if (args.nightly) {
+        // /releases returns an array sorted newest-first; find first pre-release
+        if (!json.is_array()) {
+            spdlog::error("Unexpected API response format");
+            return 1;
+        }
+        for (const auto& release : json) {
+            if (release.value("prerelease", false)) {
+                downloadUrl = findAssetUrl(release);
+                if (!downloadUrl.empty()) {
+                    releaseName = release.value("tag_name", "");
+                    break;
+                }
+            }
+        }
+        if (downloadUrl.empty()) {
+            spdlog::error("No nightly (pre-release) builds found with {} asset", archiveName);
+            spdlog::info("Available releases: https://github.com/radical-beard/bestow/releases");
+            return 1;
+        }
+    } else {
+        // /releases/latest returns a single release object
+        if (!json.is_object()) {
+            spdlog::error("Unexpected API response format");
+            return 1;
+        }
+        downloadUrl = findAssetUrl(json);
+        releaseName = json.value("tag_name", "");
+        if (downloadUrl.empty()) {
+            spdlog::error("Could not find {} in latest release", archiveName);
+            spdlog::info("Available releases: https://github.com/radical-beard/bestow/releases");
+            return 1;
+        }
     }
 
-    if (downloadUrl.empty()) {
-        spdlog::error("Could not find {} in latest release", archiveName);
-        spdlog::info("Available releases: https://github.com/radical-beard/bestow/releases/latest");
-        return 1;
+    if (!releaseName.empty()) {
+        spdlog::info("Found {} release: {}", releaseType, releaseName);
+    } else {
+        spdlog::info("Found {} release", releaseType);
     }
-
-    spdlog::info("Found latest release");
     spdlog::info("Download URL: {}", downloadUrl);
     spdlog::info("");
 
