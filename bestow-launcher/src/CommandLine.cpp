@@ -25,6 +25,7 @@ struct CommandLineArgs {
     std::string projectName;
     bool verbose = false;
     bool debug = false;
+    bool nightly = false;
 };
 
 void printUsage(const char* programName) {
@@ -39,6 +40,7 @@ void printUsage(const char* programName) {
     spdlog::info("  new <name>          Create a new project in a new directory");
     spdlog::info("  init                Initialize current directory with template files");
     spdlog::info("  update | upgrade    Update Bestow to the latest version");
+    spdlog::info("    --nightly                Use latest nightly (pre-release) build");
     spdlog::info("  version             Show version information");
     spdlog::info("  help                Show this help message");
     spdlog::info("");
@@ -139,6 +141,14 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
         if (arg == "update" || arg == "upgrade") {
             args.command = Command::Update;
             ++i;
+            // Check for --nightly flag
+            if (i < argc) {
+                std::string_view nextArg = argv[i];
+                if (nextArg == "--nightly") {
+                    args.nightly = true;
+                    ++i;
+                }
+            }
             continue;
         }
 
