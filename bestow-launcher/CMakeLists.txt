@@ -148,12 +148,9 @@ endif()
 # Install template directory for 'bestow init' command
 # This places template at: <prefix>/share/bestow/template
 # Which is found by: exeDir / ".." / "share" / "bestow" / "template"
+# Copy everything (including dot-prefixed dirs like .claude/)
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
     DESTINATION ${CMAKE_INSTALL_DATADIR}/bestow/template
-    FILES_MATCHING
-        PATTERN "*.md"
-        PATTERN "*.lua"
-        PATTERN "*.json"
 )
 
 # On macOS, also install template into app bundle Resources directory
@@ -161,9 +158,5 @@ install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
 if(APPLE)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/template/
         DESTINATION ${CMAKE_INSTALL_BINDIR}/bestow.app/Contents/Resources/template
-        FILES_MATCHING
-            PATTERN "*.md"
-            PATTERN "*.lua"
-            PATTERN "*.json"
     )
 endif()

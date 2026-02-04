@@ -46,6 +46,7 @@ struct CommandLineArgs {
     bool verbose = false;
     bool debug = false;
     bool nightly = false;
+    bool overwrite = false;
 };
 
 void printUsage(const char* programName);
@@ -264,7 +265,7 @@ std::optional<std::filesystem::path> findTemplateDirectory() {
 }
 
 void copyDirectoryRecursive(const std::filesystem::path& src, const std::filesystem::path& dst,
-                            int& copiedFiles, int& skippedFiles) {
+                            int& copiedFiles, int& skippedFiles, bool overwrite) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
         const auto& srcPath = entry.path();
         auto relativePath = std::filesystem::relative(srcPath, src);
@@ -273,12 +274,13 @@ void copyDirectoryRecursive(const std::filesystem::path& src, const std::filesys
         if (entry.is_directory()) {
             std::filesystem::create_directories(dstPath);
         } else if (entry.is_regular_file()) {
-            if (std::filesystem::exists(dstPath)) {
+            if (std::filesystem::exists(dstPath) && !overwrite) {
                 spdlog::warn("Skipping existing file: {}", relativePath.string());
                 ++skippedFiles;
             } else {
                 std::filesystem::create_directories(dstPath.parent_path());
-                std::filesystem::copy_file(srcPath, dstPath);
+                std::filesystem::copy_file(srcPath, dstPath,
+                    std::filesystem::copy_options::overwrite_existing);
                 spdlog::debug("Copied: {}", relativePath.string());
                 ++copiedFiles;
             }
@@ -304,7 +306,7 @@ int handleInit([[maybe_unused]] const CommandLineArgs& args) {
     int skippedFiles = 0;
 
     try {
-        copyDirectoryRecursive(*templateDir, targetDir, copiedFiles, skippedFiles);
+        copyDirectoryRecursive(*templateDir, targetDir, copiedFiles, skippedFiles, args.overwrite);
     } catch (const std::filesystem::filesystem_error& e) {
         spdlog::error("Failed to copy template files: {}", e.what());
         return 1;
@@ -318,6 +320,8 @@ int handleInit([[maybe_unused]] const CommandLineArgs& args) {
     spdlog::info("");
     spdlog::info("Added:");
     spdlog::info("  CLAUDE.md           - AI agent guidance for game development");
+    spdlog::info("  .claude/settings.json");
+    spdlog::info("  .claude/rules/      - Project rules for AI agents");
     spdlog::info("  .claude/skills/     - Claude skills for Bestow game development");
     spdlog::info("");
 
