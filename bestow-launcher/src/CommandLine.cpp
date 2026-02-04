@@ -26,6 +26,7 @@ struct CommandLineArgs {
     bool verbose = false;
     bool debug = false;
     bool nightly = false;
+    bool overwrite = false;
 };
 
 void printUsage(const char* programName) {
@@ -39,6 +40,7 @@ void printUsage(const char* programName) {
     spdlog::info("  generate-stubs <out> Generate IDE type stubs to output directory");
     spdlog::info("  new <name>          Create a new project in a new directory");
     spdlog::info("  init                Initialize current directory with template files");
+    spdlog::info("    --overwrite              Overwrite existing files");
     spdlog::info("  update | upgrade    Update Bestow to the latest version");
     spdlog::info("    --nightly                Use latest nightly (pre-release) build");
     spdlog::info("  version             Show version information");
@@ -123,6 +125,14 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
         if (arg == "init") {
             args.command = Command::Init;
             ++i;
+            // Check for --overwrite flag
+            if (i < argc) {
+                std::string_view nextArg = argv[i];
+                if (nextArg == "--overwrite") {
+                    args.overwrite = true;
+                    ++i;
+                }
+            }
             continue;
         }
 
