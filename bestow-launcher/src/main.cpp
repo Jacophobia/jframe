@@ -264,7 +264,7 @@ std::optional<std::filesystem::path> findTemplateDirectory() {
 }
 
 void copyDirectoryRecursive(const std::filesystem::path& src, const std::filesystem::path& dst,
-                            int& copiedFiles, int& overwrittenFiles) {
+                            int& copiedFiles, int& skippedFiles) {
     for (const auto& entry : std::filesystem::recursive_directory_iterator(src)) {
         const auto& srcPath = entry.path();
         auto relativePath = std::filesystem::relative(srcPath, src);
@@ -273,17 +273,15 @@ void copyDirectoryRecursive(const std::filesystem::path& src, const std::filesys
         if (entry.is_directory()) {
             std::filesystem::create_directories(dstPath);
         } else if (entry.is_regular_file()) {
-            std::filesystem::create_directories(dstPath.parent_path());
-            bool existed = std::filesystem::exists(dstPath);
-            std::filesystem::copy_file(srcPath, dstPath,
-                std::filesystem::copy_options::overwrite_existing);
-            if (existed) {
-                spdlog::debug("Overwrote: {}", relativePath.string());
-                ++overwrittenFiles;
+            if (std::filesystem::exists(dstPath)) {
+                spdlog::warn("Skipping existing file: {}", relativePath.string());
+                ++skippedFiles;
             } else {
+                std::filesystem::create_directories(dstPath.parent_path());
+                std::filesystem::copy_file(srcPath, dstPath);
                 spdlog::debug("Copied: {}", relativePath.string());
+                ++copiedFiles;
             }
-            ++copiedFiles;
         }
     }
 }
@@ -303,10 +301,10 @@ int handleInit([[maybe_unused]] const CommandLineArgs& args) {
     std::filesystem::path targetDir = std::filesystem::current_path();
 
     int copiedFiles = 0;
-    int overwrittenFiles = 0;
+    int skippedFiles = 0;
 
     try {
-        copyDirectoryRecursive(*templateDir, targetDir, copiedFiles, overwrittenFiles);
+        copyDirectoryRecursive(*templateDir, targetDir, copiedFiles, skippedFiles);
     } catch (const std::filesystem::filesystem_error& e) {
         spdlog::error("Failed to copy template files: {}", e.what());
         return 1;
@@ -314,8 +312,8 @@ int handleInit([[maybe_unused]] const CommandLineArgs& args) {
 
     spdlog::info("");
     spdlog::info("Initialized project with {} files", copiedFiles);
-    if (overwrittenFiles > 0) {
-        spdlog::info("Overwrote {} existing files", overwrittenFiles);
+    if (skippedFiles > 0) {
+        spdlog::info("Skipped {} existing files", skippedFiles);
     }
     spdlog::info("");
     spdlog::info("Added:");
