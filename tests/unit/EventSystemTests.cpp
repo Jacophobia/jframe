@@ -14,8 +14,9 @@ import bestow.events.impl;  // For EventSystemService
 
 namespace bestow::tests {
 
-// Mock Event System for interface testing
-class MockEventSystem : public IEventSystem {
+// Functional mock for EventSystem tests that actually routes publish/subscribe
+// (The shared MockEventSystem uses simple delegates; this one needs real dispatch)
+class FunctionalMockEventSystem : public IEventSystem {
 public:
     SubscriptionId subscribe(const EventType& eventType, EventCallback callback) override {
         callbacks_[eventType].push_back({++nextId_, callback});
@@ -46,7 +47,6 @@ public:
     }
 
     void processQueue() override {
-        // Process all queued events
         auto queueCopy = std::move(eventQueue_);
         eventQueue_.clear();
         for (const auto& [type, data] : queueCopy) {
@@ -71,10 +71,10 @@ private:
 class EventSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        eventSystem_ = std::make_unique<MockEventSystem>();
+        eventSystem_ = std::make_unique<FunctionalMockEventSystem>();
     }
 
-    std::unique_ptr<MockEventSystem> eventSystem_;
+    std::unique_ptr<FunctionalMockEventSystem> eventSystem_;
 };
 
 TEST_F(EventSystemTest, SubscribeAndPublish) {
@@ -477,13 +477,13 @@ TEST_F(EventSystemTest, CommonEventTypeConstants) {
         triggerEnterCount++;
     });
 
-    eventSystem_->subscribe(Events::LevelLoaded, [&](const EventData&) {
+    eventSystem_->subscribe(Events::ScenePushed, [&](const EventData&) {
         levelLoadedCount++;
     });
 
     eventSystem_->publish(Events::Collision, EntityEventData{});
     eventSystem_->publish(Events::TriggerEnter, EntityEventData{});
-    eventSystem_->publish(Events::LevelLoaded, EntityEventData{});
+    eventSystem_->publish(Events::ScenePushed, EntityEventData{});
 
     EXPECT_EQ(collisionCount, 1);
     EXPECT_EQ(triggerEnterCount, 1);

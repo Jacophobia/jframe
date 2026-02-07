@@ -1,4 +1,8 @@
 #include <gtest/gtest.h>
+
+#include "../mocks/MockInputSystem.hpp"
+#include "../mocks/MockPhysicsSystem.hpp"
+
 import bestow.components;
 import bestow.builders;
 import bestow.luaconfig;
@@ -9,6 +13,8 @@ import std;
 
 using namespace bestow;
 using namespace bestow::components;
+using bestow::tests::MockInputSystem;
+using bestow::tests::MockPhysicsSystem;
 
 //==========================================================================
 // Health Component Tests
@@ -638,196 +644,7 @@ TEST(ComponentsTests, Score_Overflow) {
     EXPECT_NE(score.value, 2147483647);
 }
 
-//==========================================================================
-// Mock Classes for Builder Tests
-//==========================================================================
-
-class MockInputSystem : public IInputSystem {
-public:
-    std::vector<InputMapping> registeredMappings;
-    std::vector<ActionRegistration> registeredActions;
-    std::string currentPhase_;
-    std::vector<std::string> phaseStack_;
-    bool phaseSet_ = false;
-
-    bool initialize(void* nativeWindow) override { return true; }
-    void shutdown() override {}
-
-    // Phase management
-    std::string getCurrentPhase() const override { return currentPhase_; }
-    std::vector<std::string> getPhaseStack() const override { return phaseStack_; }
-    void pushPhase(const std::string& phase) override { phaseStack_.push_back(phase); currentPhase_ = phase; phaseSet_ = true; }
-    void popPhase() override { if (!phaseStack_.empty()) { phaseStack_.pop_back(); currentPhase_ = phaseStack_.empty() ? "" : phaseStack_.back(); } }
-    void changePhase(const std::string& phase) override { phaseStack_.clear(); phaseStack_.push_back(phase); currentPhase_ = phase; phaseSet_ = true; }
-    bool isPhaseActive(const std::string& phase) const override { return currentPhase_.find(phase) == 0; }
-    bool hasPhaseBeenSet() const override { return phaseSet_; }
-
-    // Action registration (new API)
-    void registerAction(const ActionRegistration& registration) override { registeredActions.push_back(registration); }
-    void unregisterAction(const std::string& actionName) override {}
-    void unregisterPhaseActions(const std::string& phase) override {}
-    void clearActions() override { registeredActions.clear(); }
-    std::vector<ActionRegistration> getActions() const override { return registeredActions; }
-
-    // Input state queries
-    InputState getInputState(const InputBinding& binding) const override { return InputState::NotPressed; }
-    float getInputHoldDuration(const InputBinding& binding) const override { return 0.0f; }
-    void setDefaultHoldThreshold(float seconds) override {}
-    float getDefaultHoldThreshold() const override { return 0.5f; }
-
-    // Config loading
-    bool loadInputConfig(const std::string& path) override { return true; }
-    bool reloadInputConfig() override { return true; }
-
-    // Legacy mapping API (deprecated)
-    void registerMapping(const InputMapping& mapping) override {
-        registeredMappings.push_back(mapping);
-    }
-
-    void removeMapping(const InputBinding& binding) override {}
-    void clearMappings() override {}
-    std::vector<InputMapping> getMappings() const override { return registeredMappings; }
-
-    // Legacy action state queries (deprecated)
-    ActionState getActionState(const Action& action) const override { return {}; }
-    std::vector<ActionState> getAllActionStates() const override { return {}; }
-    bool isActionActive(const Action& action) const override { return false; }
-    bool wasActionJustPressed(const Action& action) const override { return false; }
-    bool wasActionJustReleased(const Action& action) const override { return false; }
-    float getActionValue(const Action& action) const override { return 0.0f; }
-
-    std::optional<InputBinding> getLastInput() const override { return std::nullopt; }
-    bool isListeningForInput() const override { return false; }
-    void startListeningForInput() override {}
-    void stopListeningForInput() override {}
-
-    Vec2 getMousePosition() const override { return {0, 0}; }
-    Vec2 getMouseDelta() const override { return {0, 0}; }
-    bool isMouseButtonDown(MouseButton button) const override { return false; }
-    bool wasMouseButtonJustPressed(MouseButton button) const override { return false; }
-    bool wasMouseButtonJustReleased(MouseButton button) const override { return false; }
-
-    Vec2 getScrollDelta() const override { return Vec2{0.0f, 0.0f}; }
-
-    // Modifier key queries
-    ModifierKey getModifierState() const override { return ModifierKey::None; }
-    bool isModifierPressed(ModifierKey mod) const override { return false; }
-    bool isShiftPressed() const override { return false; }
-    bool isCtrlPressed() const override { return false; }
-    bool isAltPressed() const override { return false; }
-    bool isSuperPressed() const override { return false; }
-
-    // Direct keyboard state queries (using KeyCode)
-    bool isKeyDown(KeyCode key) const override { return false; }
-    bool wasKeyJustPressed(KeyCode key) const override { return false; }
-    bool wasKeyJustReleased(KeyCode key) const override { return false; }
-
-    // Gamepad queries
-    bool isGamepadButtonDown(GamepadButton button, int gamepadIndex = 0) const override { return false; }
-    bool wasGamepadButtonJustPressed(GamepadButton button, int gamepadIndex = 0) const override { return false; }
-    bool wasGamepadButtonJustReleased(GamepadButton button, int gamepadIndex = 0) const override { return false; }
-    float getGamepadAxisValue(GamepadAxis axis, int gamepadIndex = 0) const override { return 0.0f; }
-    Vec2 getLeftStick(int gamepadIndex = 0) const override { return {0, 0}; }
-    Vec2 getRightStick(int gamepadIndex = 0) const override { return {0, 0}; }
-
-    void enableTextInput() override {}
-    void disableTextInput() override {}
-    bool isTextInputEnabled() const override { return false; }
-    std::string getTextInput() const override { return ""; }
-    void clearTextInput() override {}
-
-    int getConnectedControllerCount() const override { return 0; }
-    bool isControllerConnected(int index) const override { return false; }
-    std::string getControllerName(int index) const override { return ""; }
-
-    // Cursor control
-    void showMouseCursor() override {}
-    void hideMouseCursor() override {}
-    bool isMouseCursorVisible() const override { return true; }
-    void setCursorMode(CursorMode mode) override {}
-    CursorMode getCursorMode() const override { return CursorMode::Normal; }
-
-    void update() override {}
-};
-
-class MockPhysicsSystem : public IPhysicsSystem {
-public:
-    struct BodyRecord {
-        Entity entity;
-        PhysicsBodyDef def;
-        CollisionLayer layer = 0xFFFF;
-        CollisionMask mask = 0xFFFF;
-    };
-
-    std::vector<BodyRecord> createdBodies;
-
-    void createBody(Entity entity, const PhysicsBodyDef& def) override {
-        BodyRecord record;
-        record.entity = entity;
-        record.def = def;
-        createdBodies.push_back(record);
-    }
-
-    void destroyBody(Entity entity) override {}
-    bool hasBody(Entity entity) const override { return false; }
-
-    void setBodyType(Entity entity, BodyType type) override {}
-    BodyType getBodyType(Entity entity) const override { return BodyType::Dynamic; }
-
-    void setPosition(Entity entity, Vec2 position) override {}
-    Vec2 getPosition(Entity entity) const override { return {0, 0}; }
-
-    void setRotation(Entity entity, float radians) override {}
-    float getRotation(Entity entity) const override { return 0.0f; }
-
-    void setVelocity(Entity entity, Vec2 velocity) override {}
-    Vec2 getVelocity(Entity entity) const override { return {0, 0}; }
-
-    void setAngularVelocity(Entity entity, float velocity) override {}
-    float getAngularVelocity(Entity entity) const override { return 0.0f; }
-
-    Vec2 getBodySize(Entity entity) const override { return {0, 0}; }
-
-    void applyForce(Entity entity, Vec2 force, Vec2 point = Vec2{0, 0}) override {}
-    void applyImpulse(Entity entity, Vec2 impulse, Vec2 point = Vec2{0, 0}) override {}
-    void applyTorque(Entity entity, float torque) override {}
-
-    void setCollisionLayer(Entity entity, CollisionLayer layer) override {
-        for (auto& body : createdBodies) {
-            if (body.entity == entity) {
-                body.layer = layer;
-                break;
-            }
-        }
-    }
-
-    void setCollisionMask(Entity entity, CollisionMask mask) override {
-        for (auto& body : createdBodies) {
-            if (body.entity == entity) {
-                body.mask = mask;
-                break;
-            }
-        }
-    }
-
-    void setSensor(Entity entity, bool isSensor) override {}
-
-    std::vector<Entity> queryAABB(Vec2 min, Vec2 max) const override { return {}; }
-    std::vector<Entity> queryCircle(Vec2 center, float radius) const override { return {}; }
-    std::optional<RaycastHit> raycast(Vec2 origin, Vec2 direction, float maxDistance, CollisionMask mask = 0xFFFF) const override { return std::nullopt; }
-    std::vector<RaycastHit> raycastAll(Vec2 origin, Vec2 direction, float maxDistance, CollisionMask mask = 0xFFFF) const override { return {}; }
-
-    void setGravity(Vec2 gravity) override {}
-    Vec2 getGravity() const override { return {0, -980}; }
-
-    void setCollisionCallback(CollisionCallback callback) override {}
-
-    GroundCheckResult checkGrounded(Entity entity, const GroundCheckParams& params = {}) const override { return {}; }
-
-    CollisionLayer getCollisionLayer(Entity entity) const override { return 0xFFFF; }
-
-    void update(DeltaTime dt) override {}
-};
+// Mock classes now in tests/mocks/ - imported via includes above
 
 //==========================================================================
 // InputMappingBuilder Tests
