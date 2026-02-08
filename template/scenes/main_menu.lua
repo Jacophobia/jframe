@@ -35,7 +35,7 @@ return {
         nav.onBack = nil  -- No back action from main menu
 
         -- Subscribe to confirm events for keyboard/gamepad
-        bestow.events.subscribe("menu:confirm", function(data)
+        bestow.scene.subscribe("menu:confirm", function(data)
             if data.id == "btn-play"         then bestow.scene.push("play")
             elseif data.id == "btn-controls" then bestow.scene.push("controls")
             elseif data.id == "btn-settings" then bestow.scene.push("settings")

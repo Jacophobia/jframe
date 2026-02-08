@@ -408,6 +408,9 @@ private:
     //=========================================================================
 
     /// Load a .cfg.lua file and return the table it produces.
+    /// Config files are executed in a bare sandbox — no access to bestow.*,
+    /// math.*, string.*, or any other globals.  Only Lua syntax (table
+    /// constructors, literals, local variables) is available.
     /// Returns sol::nil if the file doesn't exist or fails to parse.
     sol::object loadConfigFile(const std::string& relativePath) {
         auto fullPath = gameRoot_ / relativePath;
@@ -417,7 +420,11 @@ private:
 
         spdlog::debug("[GameRunner] Loading config: {}", fullPath.string());
 
-        auto result = lua_.safe_script_file(fullPath.string(), sol::script_pass_on_error);
+        // Bare environment — config files are pure data, no API access
+        sol::environment sandbox(lua_, sol::create);
+
+        auto result = lua_.safe_script_file(fullPath.string(), sandbox,
+                                            sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
             spdlog::error("[GameRunner] Failed to parse {}: {}", relativePath, err.what());

@@ -90,6 +90,33 @@ bestow.scene.replace("level2", { from = "level1" }) -- Swap top scene
 bestow.scene.clear()                                -- Empty entire stack
 ```
 
+### Scene-Scoped Events
+
+Use `bestow.scene.subscribe()` instead of `bestow.events.subscribe()` inside scenes. Subscriptions are **automatically unsubscribed** when the scene exits — no manual cleanup needed.
+
+```lua
+-- scenes/my_scene.lua
+return {
+    phase = "gameplay",
+
+    enter = function(params)
+        -- These are cleaned up automatically when the scene exits
+        bestow.scene.subscribe("action:Pause", function()
+            bestow.scene.push("pause")
+        end)
+        bestow.scene.subscribe("menu:confirm", function(data)
+            if data.id == "btn-quit" then app.main.state.running = false end
+        end)
+    end,
+
+    exit = function()
+        -- No manual unsubscribe needed!
+    end,
+}
+```
+
+**Important:** `bestow.scene.subscribe` is for scene-local events only. For entities and systems that live across scene transitions, use `bestow.events.subscribe` with the table+method pattern.
+
 ### Template Scenes
 
 | Scene | Phase | Purpose |
@@ -223,7 +250,8 @@ bestow.input         getMousePosition(), getMouseDelta(), isKeyDown(), wasKeyJus
                      [DEPRECATED: isActionActive(), getActionValue(), wasActionJustPressed()
                       -- prefer event subscriptions via bestow.events.subscribe()]
 bestow.phase         push(), pop(), current(), stack(), change(), isActive()
-bestow.scene         register(), push(), pop(), replace(), clear(), active(), stack(), state(), registered()
+bestow.scene         register(), push(), pop(), replace(), clear(), active(), stack(), state(), registered(),
+                     subscribe()
 bestow.graphics3d    beginFrame(), endFrame(), setCamera(), drawMesh(), createMaterial(),
                      createCubeMesh/SphereMesh/PlaneMesh(), setDirectionalLight(),
                      setAmbientLight(), setFog(), setFullscreen(), setClearColor(),

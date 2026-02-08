@@ -7,7 +7,7 @@ return {
 
     enter = function(params)
         -- Subscribe to pause action
-        bestow.events.subscribe("action:Pause", function()
+        bestow.scene.subscribe("action:Pause", function()
             bestow.scene.push("pause")
         end)
 
@@ -32,6 +32,5 @@ return {
     end,
 
     exit = function()
-        -- Clean up when leaving gameplay (popped or paused)
     end,
 }

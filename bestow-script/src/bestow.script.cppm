@@ -125,7 +125,7 @@ public:
     //=========================================================================
 
     /// Set folders to ignore during script discovery.
-    /// Default: ["assets", "build", ".git", "node_modules"]
+    /// Default: ["assets", "build", "config", ".git", "node_modules", "vendor", "external"]
     /// @param folders List of folder names to ignore
     void setIgnoredFolders(std::vector<std::string> folders);
 
@@ -199,7 +199,7 @@ private:
 
     // Ignored folders
     std::vector<std::string> ignoredFolders_ = {
-        "assets", "build", ".git", "node_modules", "vendor", "external"
+        "assets", "build", "config", ".git", "node_modules", "vendor", "external"
     };
 
     // Hot reload queue

@@ -170,6 +170,51 @@ void bindSceneSystem(sol::state& lua, ISceneSystem& scene, IAssetSystem* assets)
     };
 
     bestow["scene"] = sceneTable;
+
+    // ------------------------------------------------------------------
+    // bestow.scene.subscribe(eventType, callback) — scene-scoped events
+    //
+    // Wraps a closure in a table+method pair so it works with the existing
+    // hot-reload-safe event dispatcher, tracks the subscription ID under
+    // the active scene name, and auto-unsubscribes when the scene exits.
+    //
+    // bestow.scene._cleanupSubs(sceneName) is called by SceneSystem C++
+    // before/after every exit() callback.
+    // ------------------------------------------------------------------
+    lua.safe_script(R"(
+        local _sceneSubs = {}
+
+        function bestow.scene.subscribe(eventType, callback)
+            -- Wrap the closure in a table so it passes the table+method check
+            local wrapper = { _fn = callback }
+            function wrapper:_handle(data, scope)
+                self._fn(data)
+            end
+
+            local id = bestow.events.subscribe(eventType, {}, wrapper, "_handle")
+
+            -- Track under the currently active scene
+            local active = bestow.scene.active()
+            if active then
+                if not _sceneSubs[active] then
+                    _sceneSubs[active] = {}
+                end
+                table.insert(_sceneSubs[active], id)
+            end
+
+            return id
+        end
+
+        function bestow.scene._cleanupSubs(sceneName)
+            local subs = _sceneSubs[sceneName]
+            if subs then
+                for _, id in ipairs(subs) do
+                    bestow.events.unsubscribe(id)
+                end
+                _sceneSubs[sceneName] = nil
+            end
+        end
+    )", sol::script_pass_on_error);
 }
 
 } // namespace bestow

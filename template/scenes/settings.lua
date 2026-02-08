@@ -147,7 +147,7 @@ return {
         nav.focus("toggle-fullscreen")
         nav.onBack = function() bestow.scene.pop() end
 
-        bestow.events.subscribe("menu:confirm", function(data)
+        bestow.scene.subscribe("menu:confirm", function(data)
             if data.id == "btn-back" then
                 bestow.scene.pop()
             end

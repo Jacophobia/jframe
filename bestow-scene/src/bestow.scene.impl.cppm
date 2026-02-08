@@ -119,6 +119,9 @@ private:
     void publishEvent(const char* eventType, const std::string& sceneName,
                       SceneId id, SceneState state);
 
+    /// Clean up scene-scoped Lua event subscriptions (calls bestow.scene._cleanupSubs)
+    void cleanupSceneLuaSubs(const std::string& sceneName);
+
     /// Handle hot reload for a scene asset
     void onAssetChanged(AssetHandle handle, AssetType type);
 

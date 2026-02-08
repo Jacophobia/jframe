@@ -102,6 +102,26 @@ void registerSceneDoc(DocRegistry& registry) {
         .seeAlso = {"bestow.scene.register"},
     });
 
+    sys.methods.push_back(MethodDoc{
+        .name = "subscribe",
+        .qualifiedName = "bestow.scene.subscribe",
+        .description = "Subscribe to an event for the lifetime of the active scene. "
+                       "The subscription is automatically unsubscribed when the scene exits "
+                       "(pushed down, popped, replaced, or cleared). Use this instead of "
+                       "bestow.events.subscribe inside scene enter() callbacks.",
+        .params = {
+            {.name = "eventType", .type = "string", .description = "Event type to subscribe to (e.g., 'action:Pause', 'menu:confirm')"},
+            {.name = "callback", .type = "function", .description = "Callback function(data) called when the event fires"},
+        },
+        .returns = {{.type = "number", .description = "Subscription ID (can be used with bestow.events.unsubscribe for early removal)"}},
+        .example = "-- In a scene's enter() function:\n"
+                   "bestow.scene.subscribe(\"action:Pause\", function()\n"
+                   "    bestow.scene.push(\"pause\")\n"
+                   "end)\n"
+                   "-- No cleanup needed in exit() — automatic!",
+        .seeAlso = {"bestow.events.subscribe", "bestow.scene.push"},
+    });
+
     registry.addSystem(std::move(sys));
 }
 

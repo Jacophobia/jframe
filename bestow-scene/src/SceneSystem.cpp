@@ -210,6 +210,7 @@ Result<void, std::error_code> SceneSystem::pushScene(
         if (currentRegIt != registry_.end()) {
             // Call exit() on current scene
             callLuaCallback(currentRegIt->second.def.table, "exit");
+            cleanupSceneLuaSubs(current.name);
             currentRegIt->second.metadata.state = SceneState::Paused;
 
             // Hide current scene's UI
@@ -260,6 +261,7 @@ Result<void, std::error_code> SceneSystem::popScene() {
     if (regIt != registry_.end()) {
         // Call exit() on current scene
         callLuaCallback(regIt->second.def.table, "exit");
+        cleanupSceneLuaSubs(poppedName);
 
         // Hide and unload UI
         unloadSceneUI(top);
@@ -319,6 +321,7 @@ Result<void, std::error_code> SceneSystem::replaceScene(
         if (oldRegIt != registry_.end()) {
             // Call exit() + shutdown() on current scene
             callLuaCallback(oldRegIt->second.def.table, "exit");
+            cleanupSceneLuaSubs(top.name);
             callLuaCallback(oldRegIt->second.def.table, "shutdown");
 
             // Hide and unload UI
@@ -371,6 +374,7 @@ void SceneSystem::clearStack() {
         auto regIt = registry_.find(top.name);
         if (regIt != registry_.end()) {
             callLuaCallback(regIt->second.def.table, "exit");
+            cleanupSceneLuaSubs(top.name);
             callLuaCallback(regIt->second.def.table, "shutdown");
             unloadSceneUI(top);
 
@@ -672,6 +676,7 @@ void SceneSystem::onAssetChanged(AssetHandle handle, AssetType type) {
         if (isActive) {
             // Call exit() on old definition
             callLuaCallback(reg.def.table, "exit");
+            cleanupSceneLuaSubs(name);
         }
 
         // Replace the definition
@@ -688,6 +693,36 @@ void SceneSystem::onAssetChanged(AssetHandle handle, AssetType type) {
                      reg.metadata.id, reg.metadata.state);
 
         break;
+    }
+}
+
+void SceneSystem::cleanupSceneLuaSubs(const std::string& sceneName) {
+    if (!lua_) {
+        return;
+    }
+
+    sol::object bestowObj = (*lua_)["bestow"];
+    if (!bestowObj.valid() || bestowObj.get_type() != sol::type::table) {
+        return;
+    }
+
+    sol::table bestow = bestowObj;
+    sol::object sceneObj = bestow["scene"];
+    if (!sceneObj.valid() || sceneObj.get_type() != sol::type::table) {
+        return;
+    }
+
+    sol::table scene = sceneObj;
+    sol::object cleanupObj = scene["_cleanupSubs"];
+    if (!cleanupObj.valid() || cleanupObj.get_type() != sol::type::function) {
+        return;
+    }
+
+    sol::protected_function cleanup = cleanupObj;
+    sol::protected_function_result result = cleanup(sceneName);
+    if (!result.valid()) {
+        sol::error err = result;
+        spdlog::error("[SceneSystem] _cleanupSubs error: {}", err.what());
     }
 }
 

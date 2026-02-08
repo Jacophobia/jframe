@@ -43,10 +43,10 @@ return {
         bestow.ui.onElementEvent(tabKb,   "click", function() showTab("keyboard") end)
 
         -- Tab switching via left/right menu actions
-        bestow.events.subscribe("menu:left", function()
+        bestow.scene.subscribe("menu:left", function()
             showTab("controller")
         end)
-        bestow.events.subscribe("menu:right", function()
+        bestow.scene.subscribe("menu:right", function()
             showTab("keyboard")
         end)
 
@@ -83,10 +83,6 @@ return {
             end
         end
 
-        -- Poll for captured input during update (set on the scene's update fn)
-        app.main.state._controlsListening = false
-        app.main.state._controlsBindElem  = nil
-
         -- Back button
         bestow.ui.onElementEvent(btnBack, "click", function()
             bestow.scene.pop()
@@ -97,7 +93,7 @@ return {
         nav.focus("tab-controller")
         nav.onBack = function() bestow.scene.pop() end
 
-        bestow.events.subscribe("menu:confirm", function(data)
+        bestow.scene.subscribe("menu:confirm", function(data)
             if data.id == "tab-controller" then showTab("controller")
             elseif data.id == "tab-keyboard" then showTab("keyboard")
             elseif data.id == "btn-back" then bestow.scene.pop()

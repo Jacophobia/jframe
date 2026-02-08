@@ -32,12 +32,12 @@ return {
         nav.onBack = function() bestow.scene.pop() end
 
         -- Subscribe to Resume action (Escape / Start while paused)
-        bestow.events.subscribe("action:Resume", function()
+        bestow.scene.subscribe("action:Resume", function()
             bestow.scene.pop()
         end)
 
         -- Confirm via keyboard/gamepad
-        bestow.events.subscribe("menu:confirm", function(data)
+        bestow.scene.subscribe("menu:confirm", function(data)
             if data.id == "btn-resume"    then bestow.scene.pop()
             elseif data.id == "btn-main-menu" then
                 bestow.scene.clear()
