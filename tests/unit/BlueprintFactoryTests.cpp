@@ -2,7 +2,6 @@
 // Blueprint Factory unit tests
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.blueprints;
 import bestow.blueprints.impl;
@@ -1096,45 +1095,6 @@ TEST_F(BlueprintFactoryTest, DefaultPhysicsSizeUsedWhenNoSizeAvailable) {
     // Should use default size of 32x32
     EXPECT_FLOAT_EQ(bodySize.x, 32.0f);
     EXPECT_FLOAT_EQ(bodySize.y, 32.0f);
-}
-
-//=============================================================================
-// Kangaru DI Integration Tests
-//=============================================================================
-
-TEST(BlueprintFactoryKangaruTest, ServiceInstantiation) {
-    kgr::container container;
-
-    // BlueprintFactory requires IEntitySystem reference
-    auto entitySystem = std::make_unique<EntitySystem>();
-
-    auto physicsImpl = std::make_unique<Box2DPhysicsSystem>();
-    physicsImpl->initialize();
-
-    // Test that we can create a BlueprintFactory via Kangaru service
-    auto blueprintFactory = std::make_unique<BlueprintFactory>(*entitySystem, physicsImpl.get());
-    EXPECT_NE(blueprintFactory, nullptr);
-
-    // Verify basic functionality
-    const char* lua = R"(
-        Blueprints = {
-            TestEntity = {
-                components = {}
-            }
-        }
-    )";
-
-    EXPECT_TRUE(blueprintFactory->loadBlueprints(lua));
-    EXPECT_TRUE(blueprintFactory->hasBlueprint("TestEntity"));
-}
-
-TEST(BlueprintFactoryKangaruTest, ServiceTypeVerification) {
-    // Verify the service definition exists and is a single service
-    using ServiceType = BlueprintFactoryService;
-
-    // Check that it's a single_service (compile-time check)
-    static_assert(std::is_base_of_v<kgr::single_service<BlueprintFactory>, ServiceType>,
-                  "BlueprintFactoryService should derive from kgr::single_service<BlueprintFactory>");
 }
 
 }  // namespace bestow::tests

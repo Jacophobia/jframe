@@ -218,7 +218,7 @@ enum class AssetType : std::uint8_t {
     Sound,
     Music,
     Font,
-    Level,
+    Scene,
     Data,
     Shader,
     NavMesh,
@@ -997,44 +997,32 @@ struct Light3DComponent {
 };
 
 //==========================================================================
-// Level Types
+// Scene Types
 //==========================================================================
 
-using LevelId = UUID;
+using SceneId = UUID;
 
-enum class LevelState : std::uint8_t {
-    Unloaded,
-    Loading,
-    Loaded,
-    Active,
-    Unloading
+enum class SceneState : std::uint8_t {
+    Unloaded,   // Not loaded
+    Loading,    // Asset being loaded
+    Ready,      // Loaded, not on stack
+    Active,     // Top of stack — receives update/render
+    Paused,     // On stack but not top — frozen
+    Unloading   // Being torn down
 };
 
-enum class LevelEvent : std::uint8_t {
-    LoadStarted,
-    LoadCompleted,
-    UnloadStarted,
-    UnloadCompleted,
-    Activated,
-    Deactivated
+struct SceneMetadata {
+    SceneId id;
+    std::string name;           // Unique scene name (e.g., "main_menu", "level1")
+    AssetHandle assetHandle;    // The Lua file defining this scene
+    std::string phase;          // Input phase this scene activates
+    SceneState state = SceneState::Unloaded;
 };
 
-struct LevelEventData {
-    LevelId levelId;
-    LevelEvent event;
-};
-
-struct LevelTransition {
-    LevelId fromLevel;
-    LevelId toLevel;
-    std::optional<std::string> spawnPoint;
-    bool unloadPrevious = true;
-};
-
-struct EntityDef {
-    std::string type;  // "platform", "enemy", "collectible", etc.
-    Transform2D transform;
-    std::unordered_map<std::string, std::any> properties;  // Custom properties
+struct SceneEventData {
+    SceneId sceneId;
+    std::string sceneName;
+    SceneState newState;
 };
 
 //==========================================================================
@@ -1091,7 +1079,7 @@ struct FileChangeEventData {
 using EventData = std::variant<
     EntityEventData,
     DamageEventData,
-    LevelEventData,
+    SceneEventData,
     CollisionEvent,
     TriggerEvent,
     CollisionEvent3D,

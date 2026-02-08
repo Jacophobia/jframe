@@ -9,15 +9,14 @@ target_sources(bestow-core
         src/JobSystem.cpp
         src/Easing.cpp
         src/Timer.cpp
-        $<$<CXX_COMPILER_ID:MSVC>:src/kangaru_symbols.cpp>
 )
 
-# Engine is now a simple composition root that uses Kangaru DI
-# It doesn't need to link against all system implementations
+# Engine is the composition root that uses bestow-di for dependency injection
 # Clients import the implementations they need
 target_link_libraries(bestow-core
     PUBLIC
         bestow-contract
+        bestow-di
         spdlog::spdlog
         Taskflow::Taskflow
 )

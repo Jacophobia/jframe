@@ -35,8 +35,8 @@ namespace {
 #endif
 }  // anonymous namespace
 
-FMODAudioSystem::FMODAudioSystem(IAssetSystem* assetSystem)
-    : assetSystem_(assetSystem) {
+FMODAudioSystem::FMODAudioSystem(IAssetSystem& assetSystem)
+    : assetSystem_(&assetSystem) {
 }
 
 FMODAudioSystem::~FMODAudioSystem() {

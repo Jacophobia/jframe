@@ -43,7 +43,6 @@ target_sources(bestow-vulkan
 target_link_libraries(bestow-vulkan
     PUBLIC
         bestow-contract
-        kangaru::kangaru
         Vulkan::Vulkan
         GPUOpen::VulkanMemoryAllocator
         vk-bootstrap::vk-bootstrap

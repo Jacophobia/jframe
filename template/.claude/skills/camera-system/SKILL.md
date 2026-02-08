@@ -12,7 +12,7 @@ Bestow provides `bestow.graphics3d.setCamera()` for setting camera position and 
 ### Manual Camera Control
 
 ```lua
--- Set camera directly
+-- Set camera directly (table shorthand - accepts position, rotation, fov, near, far)
 bestow.graphics3d.setCamera({
     position = Vec3.new(0, 10, -20),
     rotation = Quat.identity(),
@@ -21,9 +21,25 @@ bestow.graphics3d.setCamera({
     far = 1000.0
 })
 
--- Read current camera
+-- Or use look-at style (target instead of rotation)
+bestow.graphics3d.setCamera({
+    position = Vec3.new(0, 10, -20),
+    target = Vec3.new(0, 0, 0),      -- Look at origin
+    up = Vec3.new(0, 1, 0),          -- Optional, defaults to Y-up
+    fov = 45.0,
+    near = 0.1,
+    far = 1000.0
+})
+
+-- Read current camera (returns Camera3D struct)
 local cam = bestow.graphics3d.getCamera()
--- cam.position, cam.rotation, cam.fov, cam.near, cam.far
+-- cam.transform.position  (Vec3)
+-- cam.transform.rotation  (Quat)
+-- cam.fovY                (float)
+-- cam.nearPlane           (float)
+-- cam.farPlane            (float)
+-- cam.aspectRatio         (float)
+-- cam.projection          (ProjectionType.Perspective or .Orthographic)
 ```
 
 ## Follow Camera Pattern
@@ -215,7 +231,7 @@ function explosion(position)
 
     -- Screen shake based on distance
     local cam = bestow.graphics3d.getCamera()
-    local distance = (position - cam.position):length()
+    local distance = (position - cam.transform.position):length()
     local intensity = math.max(0, 1.0 - distance / 50.0)
 
     if intensity > 0 then
@@ -284,11 +300,9 @@ end
 ```lua
 -- For 3D, use a raycast from camera through screen point
 local screenPos = bestow.input.getMousePosition()
-local cam = bestow.graphics3d.getCamera()
 
 -- Raycast from camera into the scene
-local windowSize = bestow.graphics3d.getWindowSize()
-local ray = bestow.graphics3d.screenToRay(screenPos)
+local ray = bestow.graphics3d.screenToWorldRay(screenPos)
 local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
 if hit then
     local clickedWorldPos = hit.point
@@ -302,10 +316,10 @@ end
 local enemyPos = bestow.entity.getField(enemy, "Transform3D", "position")
 local screenPos = bestow.graphics3d.worldToScreen(enemyPos)
 
--- Check if on screen
+-- Check if on screen (getWindowSize returns Size with .width and .height)
 local windowSize = bestow.graphics3d.getWindowSize()
-if screenPos and screenPos.x >= 0 and screenPos.x <= windowSize.x and
-   screenPos.y >= 0 and screenPos.y <= windowSize.y then
+if screenPos and screenPos.x >= 0 and screenPos.x <= windowSize.width and
+   screenPos.y >= 0 and screenPos.y <= windowSize.height then
     -- Enemy is visible on screen
 end
 ```
@@ -346,8 +360,8 @@ return {
         local cam = bestow.graphics3d.getCamera()
         self.transitioning = true
         self.transitionStart = {
-            position = cam.position,
-            rotation = cam.rotation
+            position = cam.transform.position,
+            rotation = cam.transform.rotation
         }
         self.transitionEnd = {
             position = newPosition,

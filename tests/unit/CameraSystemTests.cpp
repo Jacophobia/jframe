@@ -7,8 +7,6 @@
 // MSVC C++23 module compatibility - use full EnTT header
 #include <bestow/entt_compat.hpp>
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
-
 import bestow.camera;
 import bestow.camera.impl;
 import bestow.types;
@@ -676,36 +674,6 @@ TEST_F(CameraSystemTest, TargetEntityDoesNotAffectUpdate) {
     // Update uses the Vec2 parameter, not the entity
     EXPECT_FLOAT_EQ(pos.x, targetPos.x);
     EXPECT_FLOAT_EQ(pos.y, targetPos.y);
-}
-
-//=============================================================================
-// Kangaru DI Integration Tests
-//=============================================================================
-
-TEST(CameraSystemKangaruTest, ServiceInstantiation) {
-    kgr::container container;
-
-    // CameraSystem requires Size parameter
-    Size viewportSize{1920, 1080};
-
-    // Test that we can create a CameraSystem via Kangaru service
-    auto cameraSystem = std::make_unique<CameraSystem>(viewportSize);
-    EXPECT_NE(cameraSystem, nullptr);
-
-    // Verify basic functionality
-    EXPECT_FLOAT_EQ(cameraSystem->getZoom(), 1.0f);
-    Vec2 pos = cameraSystem->getPosition();
-    EXPECT_FLOAT_EQ(pos.x, 0.0f);
-    EXPECT_FLOAT_EQ(pos.y, 0.0f);
-}
-
-TEST(CameraSystemKangaruTest, ServiceTypeVerification) {
-    // Verify the service definition exists and is a single service
-    using ServiceType = CameraSystemService;
-
-    // Check that it's a single_service (compile-time check)
-    static_assert(std::is_base_of_v<kgr::single_service<CameraSystem>, ServiceType>,
-                  "CameraSystemService should derive from kgr::single_service<CameraSystem>");
 }
 
 }  // namespace bestow::tests

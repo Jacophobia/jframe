@@ -12,145 +12,24 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 #include <nlohmann/json.hpp>  // For accessing JSON data stored in std::any
 
 import bestow;
 import bestow.types;
-import bestow.assets.impl;  // For AssetSystemService
+import bestow.assets.impl;
 import bestow.events.impl;  // AssetSystem depends on EventSystem
 
 namespace bestow::tests {
-
-// Mock Asset System for interface testing
-// Asset info stored in mock
-struct MockAssetInfo {
-    AssetState state = AssetState::Unloaded;
-    std::filesystem::path path;
-    std::size_t sizeBytes = 0;
-};
-
-class MockAssetSystem : public IAssetSystem {
-public:
-    void update() override {}
-
-    AssetHandle registerAsset(AssetType type, const std::filesystem::path& path) override {
-        AssetHandle handle{++nextId_, type};
-        MockAssetInfo info;
-        info.state = AssetState::Unloaded;
-        info.path = path;
-        info.sizeBytes = 0;
-        assets_[handle] = info;
-        return handle;
-    }
-    void unregisterAsset(AssetHandle handle) override { assets_.erase(handle); }
-
-    void loadAsset(AssetHandle handle) override {
-        if (assets_.find(handle) != assets_.end()) {
-            assets_[handle].state = AssetState::Loaded;
-        }
-    }
-    void loadAssetAsync(AssetHandle handle, AssetLoadCallback callback) override {
-        loadAsset(handle);
-        if (callback) callback(handle, AssetState::Loaded);
-    }
-    void unloadAsset(AssetHandle handle) override {
-        if (assets_.find(handle) != assets_.end()) {
-            assets_[handle].state = AssetState::Unloaded;
-        }
-    }
-
-    AssetState getAssetState(AssetHandle handle) const override {
-        auto it = assets_.find(handle);
-        return (it != assets_.end()) ? it->second.state : AssetState::Unloaded;
-    }
-    AssetMetadata getAssetMetadata(AssetHandle handle) const override {
-        auto it = assets_.find(handle);
-        if (it != assets_.end()) {
-            return AssetMetadata{handle, it->second.path, it->second.state, it->second.sizeBytes};
-        }
-        return AssetMetadata{AssetHandle::invalid(), "", AssetState::Unloaded, 0};
-    }
-    bool isLoaded(AssetHandle handle) const override {
-        return getAssetState(handle) == AssetState::Loaded;
-    }
-
-    void* getRawAsset(AssetHandle handle) override { return nullptr; }
-    const void* getRawAsset(AssetHandle handle) const override { return nullptr; }
-
-    void loadAll() override {
-        for (auto& [handle, info] : assets_) {
-            info.state = AssetState::Loaded;
-        }
-    }
-    void unloadAll() override {
-        for (auto& [handle, info] : assets_) {
-            info.state = AssetState::Unloaded;
-        }
-    }
-    std::vector<AssetHandle> getAssetsOfType(AssetType type) const override {
-        std::vector<AssetHandle> result;
-        for (const auto& [handle, info] : assets_) {
-            if (handle.type == type) {
-                result.push_back(handle);
-            }
-        }
-        return result;
-    }
-
-    void enableHotReload(bool enable) override {}
-    void checkForReloads() override {}
-    void reloadAsset(AssetHandle handle) override { loadAsset(handle); }
-
-    SubscriptionId subscribe(AssetHandle handle, AssetChangeCallback callback) override { return 1; }
-    SubscriptionId subscribeToType(AssetType type, AssetChangeCallback callback) override { return 1; }
-    void unsubscribe(SubscriptionId id) override {}
-
-    AssetHandle loadShader(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Shader, path);
-    }
-    AssetHandle loadShaderCompiled(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Shader, path);
-    }
-    const ShaderData* getShaderData(AssetHandle handle) const override { return nullptr; }
-
-    const MeshData* getMeshData(AssetHandle handle) const override { return nullptr; }
-    const ModelData* getModelData(AssetHandle handle) const override { return nullptr; }
-    const MaterialData* getMaterialData(AssetHandle handle) const override { return nullptr; }
-    const CubemapData* getCubemapData(AssetHandle handle) const override { return nullptr; }
-
-    AssetHandle loadMesh(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Mesh, path);
-    }
-    AssetHandle loadModel(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Model, path);
-    }
-    AssetHandle loadCubemap(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Cubemap, path);
-    }
-    AssetHandle loadCubemap(const std::filesystem::path& posX, const std::filesystem::path& negX,
-                           const std::filesystem::path& posY, const std::filesystem::path& negY,
-                           const std::filesystem::path& posZ, const std::filesystem::path& negZ) override {
-        return registerAsset(AssetType::Cubemap, posX);
-    }
-
-    AssetHandle loadMaterial(const std::filesystem::path& path) override {
-        return registerAsset(AssetType::Data, path);
-    }
-    const LuaMaterialData* getLuaMaterialData(AssetHandle /*handle*/) const override { return nullptr; }
-
-private:
-    UUID nextId_ = 0;
-    std::unordered_map<AssetHandle, MockAssetInfo, AssetHandleHash> assets_;
-};
 
 class AssetSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Use the real AssetSystem for integration testing with actual file I/O
-        assetSystem_ = std::make_unique<AssetSystem>();
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
     }
 
+    std::unique_ptr<IEventSystem> eventSystem_;
     std::unique_ptr<IAssetSystem> assetSystem_;
 };
 
@@ -322,7 +201,7 @@ TEST_F(AssetSystemTest, LoadMultipleAssets) {
     // Use real test files
     AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAsset(h1);
     assetSystem_->loadAsset(h2);
@@ -477,7 +356,7 @@ TEST_F(AssetSystemTest, LoadAllAssets) {
     // Use real test files
     AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAll();
 
@@ -505,7 +384,7 @@ TEST_F(AssetSystemTest, UnloadAllAssets) {
     // Use real test files
     AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level.lua");
 
     assetSystem_->loadAll();
     EXPECT_TRUE(assetSystem_->isLoaded(h1));
@@ -938,7 +817,7 @@ TEST_F(AssetSystemTest, RegisterAllAssetTypes) {
     AssetHandle sound = assetSystem_->registerAsset(AssetType::Sound, "sounds/effect.wav");
     AssetHandle music = assetSystem_->registerAsset(AssetType::Music, "music/bgm.mp3");
     AssetHandle font = assetSystem_->registerAsset(AssetType::Font, "fonts/arial.ttf");
-    AssetHandle level = assetSystem_->registerAsset(AssetType::Level, "levels/level1.lua");
+    AssetHandle level = assetSystem_->registerAsset(AssetType::Scene, "levels/level1.lua");
     AssetHandle data = assetSystem_->registerAsset(AssetType::Data, "data/config.json");
     AssetHandle shader = assetSystem_->registerAsset(AssetType::Shader, "shaders/basic.glsl");
     AssetHandle navMesh = assetSystem_->registerAsset(AssetType::NavMesh, "navmesh/level1.nav");
@@ -948,7 +827,7 @@ TEST_F(AssetSystemTest, RegisterAllAssetTypes) {
     EXPECT_EQ(sound.type, AssetType::Sound);
     EXPECT_EQ(music.type, AssetType::Music);
     EXPECT_EQ(font.type, AssetType::Font);
-    EXPECT_EQ(level.type, AssetType::Level);
+    EXPECT_EQ(level.type, AssetType::Scene);
     EXPECT_EQ(data.type, AssetType::Data);
     EXPECT_EQ(shader.type, AssetType::Shader);
     EXPECT_EQ(navMesh.type, AssetType::NavMesh);
@@ -1090,7 +969,7 @@ TEST_F(AssetSystemTest, LoadDataAssetNonJSON) {
 
 TEST_F(AssetSystemTest, LoadLevelAsset) {
     std::filesystem::path testLevelPath = "../../../tests/testdata/test_level.lua";
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, testLevelPath);
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, testLevelPath);
 
     assetSystem_->loadAsset(handle);
 
@@ -1124,7 +1003,7 @@ TEST_F(AssetSystemTest, LoadDataAssetFileNotFound) {
 
 TEST_F(AssetSystemTest, LoadLevelAssetFileNotFound) {
     std::filesystem::path nonexistentPath = "levels/nonexistent.lua";
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, nonexistentPath);
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, nonexistentPath);
 
     assetSystem_->loadAsset(handle);
 
@@ -1630,7 +1509,7 @@ TEST_F(AssetSystemTest, LoadMultipleAssetsAsyncConcurrently) {
     // Use real test files
     AssetHandle h1 = assetSystem_->registerAsset(AssetType::Data, "../../../tests/testdata/test_config.json");
     AssetHandle h2 = assetSystem_->registerAsset(AssetType::Sound, "../../../tests/testdata/test_sound.wav");
-    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
+    AssetHandle h3 = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level.lua");
     AssetHandle h4 = assetSystem_->registerAsset(AssetType::Shader, "../../../tests/testdata/test_shader.glsl");
     AssetHandle h5 = assetSystem_->registerAsset(AssetType::Font, "../../../tests/testdata/test_font.ttf");
 
@@ -1806,7 +1685,7 @@ TEST_F(AssetSystemTest, ReloadWhileAsyncLoadPending) {
 }
 
 TEST_F(AssetSystemTest, UnregisterWhileLoaded) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level.lua");
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level.lua");
     assetSystem_->loadAsset(handle);
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
 
@@ -1881,7 +1760,7 @@ TEST_F(AssetSystemTest, GetAssetMetadataContainsSizeBytes) {
 
 TEST_F(AssetSystemTest, LoadLargeDataFile) {
     // Use the largest test file we have
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level_large.lua");
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level_large.lua");
     assetSystem_->loadAsset(handle);
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -1993,7 +1872,7 @@ TEST_F(AssetSystemTest, LoadEmptyDataFile) {
 
 TEST_F(AssetSystemTest, LoadEmptyLevelFile) {
     // Use the existing empty level test file
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level_empty.lua");
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level_empty.lua");
     assetSystem_->loadAsset(handle);
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -2152,7 +2031,7 @@ TEST_F(AssetSystemTest, GetAssetsOfTypeWithMixedStates) {
 //==========================================================================
 
 TEST_F(AssetSystemTest, LoadLevelWithEntities) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level_with_entities.lua");
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level_with_entities.lua");
     assetSystem_->loadAsset(handle);
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -2168,7 +2047,7 @@ TEST_F(AssetSystemTest, LoadLevelWithEntities) {
 }
 
 TEST_F(AssetSystemTest, LoadLevelWithSpawns) {
-    AssetHandle handle = assetSystem_->registerAsset(AssetType::Level, "../../../tests/testdata/test_level_with_spawns.lua");
+    AssetHandle handle = assetSystem_->registerAsset(AssetType::Scene, "../../../tests/testdata/test_level_with_spawns.lua");
     assetSystem_->loadAsset(handle);
 
     EXPECT_TRUE(assetSystem_->isLoaded(handle));
@@ -2230,46 +2109,6 @@ TEST_F(AssetSystemTest, ConcurrentGetRawAssetCalls) {
     }
 
     EXPECT_EQ(successCount, 1000);  // 10 threads * 100 accesses
-}
-
-//==========================================================================
-// Kangaru DI Integration Tests
-//==========================================================================
-
-TEST(AssetSystemKangaruTest, CanInstantiateViaService) {
-    kgr::container container;
-
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    // Get the asset service instance
-    auto& assetSystem = container.service<AssetSystemService>();
-
-    EXPECT_NE(&assetSystem, nullptr);
-}
-
-TEST(AssetSystemKangaruTest, ServiceIsSingleton) {
-    kgr::container container;
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    auto& assetSystem1 = container.service<AssetSystemService>();
-    auto& assetSystem2 = container.service<AssetSystemService>();
-
-    // Should be the same instance (singleton)
-    EXPECT_EQ(&assetSystem1, &assetSystem2);
-}
-
-TEST(AssetSystemKangaruTest, CanRegisterAssetViaService) {
-    kgr::container container;
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    auto& assetSystem = container.service<AssetSystemService>();
-
-    AssetHandle handle = assetSystem.registerAsset(AssetType::Texture, "test.png");
-    EXPECT_TRUE(handle.isValid());
-    EXPECT_EQ(handle.type, AssetType::Texture);
 }
 
 }  // namespace bestow::tests

@@ -270,20 +270,31 @@ private:
         // Register event system
         engine_.use<IEventSystem, EventSystem>();
 
-        // Register asset system (needed by other systems)
-        engine_.use<IAssetSystem, AssetSystem>();
+        // Register asset system (depends on EventSystem)
+        engine_.use<IAssetSystem, AssetSystem>(
+            [](di::ServiceProvider& sp) { return new AssetSystem(sp.get<IEventSystem>()); });
 
-        // Register config system
-        engine_.use<IConfigSystem, ConfigSystem>();
+        // Register config system (depends on AssetSystem, EventSystem)
+        engine_.use<IConfigSystem, ConfigSystem>(
+            [](di::ServiceProvider& sp) {
+                return new ConfigSystem(sp.get<IAssetSystem>(), sp.get<IEventSystem>());
+            });
 
-        // Register input system
-        engine_.use<IInputSystem, InputSystem>();
+        // Register input system (depends on EventSystem, AssetSystem)
+        engine_.use<IInputSystem, InputSystem>(
+            [](di::ServiceProvider& sp) {
+                return new InputSystem(sp.get<IEventSystem>(), sp.get<IAssetSystem>());
+            });
 
-        // Register audio system (uses FMOD if available, otherwise miniaudio)
-        engine_.use<IAudioSystem, AudioSystem>();
+        // Register audio system (depends on AssetSystem)
+        engine_.use<IAudioSystem, AudioSystem>(
+            [](di::ServiceProvider& sp) { return new AudioSystem(sp.get<IAssetSystem>()); });
 
-        // Register graphics 3D system (Vulkan)
-        engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+        // Register graphics 3D system (depends on AssetSystem, ConfigSystem)
+        engine_.use<IGraphics3DSystem, VulkanGraphics3DSystem>(
+            [](di::ServiceProvider& sp) {
+                return new VulkanGraphics3DSystem(sp.get<IAssetSystem>(), sp.get<IConfigSystem>());
+            });
 
         // Register animation system
         engine_.use<IAnimationSystem, AnimationSystem>();

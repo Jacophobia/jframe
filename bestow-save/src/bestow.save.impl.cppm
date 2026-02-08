@@ -5,10 +5,6 @@
 // module compatibility issues. All cereal/JSON usage is confined to SaveSystem.cpp
 // using the PIMPL pattern for archive classes.
 
-module;
-
-#include <kangaru/kangaru.hpp>
-
 export module bestow.save.impl;
 
 import std;
@@ -138,9 +134,5 @@ private:
     float completionPercentage_ = 0.0f;
     std::string currentLevel_;
 };
-
-// Kangaru service definitions
-// Concrete service that provides SaveSystem as ISaveSystem
-struct SaveSystemService : kgr::single_service<SaveSystem>, kgr::overrides<ISaveSystemService> {};
 
 }  // namespace bestow

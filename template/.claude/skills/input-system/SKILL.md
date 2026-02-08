@@ -87,36 +87,39 @@ GamepadButton.DPadUp, .DPadDown, .DPadLeft, .DPadRight
 GamepadAxis.LeftX, .LeftY, .RightX, .RightY, .TriggerLeft, .TriggerRight
 ```
 
-### Consuming Actions
+### Consuming Actions (Event-Driven)
+
+The recommended way to consume actions is through event subscriptions. The Action Builder emits actions as events that you subscribe to:
 
 ```lua
--- In update()
-if bestow.input.isActionActive("MoveForward") then
-    -- Player is holding forward
-end
-
-if bestow.input.wasActionJustPressed("Jump") then
-    -- Player just pressed jump this frame
-end
-
-local value = bestow.input.getActionValue("MoveAxisX")  -- -1.0 to 1.0
+-- In init() - subscribe to action events
+bestow.events.subscribe("action:Jump", {}, app.systems.movement, "onJump")
+bestow.events.subscribe("action:MoveForward", {}, app.systems.movement, "onMoveForward")
 ```
+
+> **DEPRECATED polling API:** `bestow.input.isActionActive()`, `bestow.input.wasActionJustPressed()`, and `bestow.input.getActionValue()` still work but emit deprecation warnings. Prefer event subscriptions for new code. If you must poll, these remain available:
+> ```lua
+> -- DEPRECATED - use event subscriptions instead
+> if bestow.input.isActionActive("MoveForward") then ... end
+> if bestow.input.wasActionJustPressed("Jump") then ... end
+> local value = bestow.input.getActionValue("MoveAxisX")
+> ```
 
 ### Phase Management
 
-Phases control which actions are active. Only actions registered for the current phase fire.
+Phases control which actions are active. Only actions registered for the current phase fire. Phase management uses the `bestow.phase` API:
 
 ```lua
 -- Push/pop phases for menus, pause, etc.
-bestow.input.pushPhase("gameplay")
-bestow.input.pushPhase("pause")       -- Pauses gameplay actions
-bestow.input.popPhase()                -- Returns to gameplay
-bestow.input.changePhase("menu")       -- Replace current phase
+bestow.phase.push("gameplay")
+bestow.phase.push("pause")            -- Pauses gameplay actions
+bestow.phase.pop()                     -- Returns to gameplay
+bestow.phase.change("menu")           -- Replace current phase
 
 -- Query phase state
-local phase = bestow.input.getCurrentPhase()
-local stack = bestow.input.getPhaseStack()
-local active = bestow.input.isPhaseActive("gameplay")
+local phase = bestow.phase.current()
+local stack = bestow.phase.stack()
+local active = bestow.phase.isActive("gameplay")
 ```
 
 ## Direct Polling API
@@ -231,20 +234,20 @@ local function setupInput()
     bestow.action.builder():duringPhase("gameplay"):whenPressed(gb.A):emitAction("Jump"):discretely()
 
     -- Start in gameplay phase
-    bestow.input.pushPhase("gameplay")
+    bestow.phase.push("gameplay")
 end
 
--- In update()
+-- In update() (using deprecated polling API - prefer event subscriptions for new code)
 local function getMovement()
     local moveX, moveZ = 0, 0
 
-    -- Digital input
+    -- Digital input (DEPRECATED - these emit deprecation warnings)
     if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
     if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end
     if bestow.input.isActionActive("MoveForward") then moveZ = moveZ - 1 end
     if bestow.input.isActionActive("MoveBack") then moveZ = moveZ + 1 end
 
-    -- Analog override
+    -- Analog override (DEPRECATED - these emit deprecation warnings)
     local stickX = bestow.input.getActionValue("MoveAxisX") or 0
     local stickY = bestow.input.getActionValue("MoveAxisY") or 0
     if math.abs(stickX) > 0.01 then moveX = stickX end

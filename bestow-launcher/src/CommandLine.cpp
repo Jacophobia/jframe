@@ -13,6 +13,7 @@ enum class Command {
     GenerateStubs,
     New,
     Init,
+    Api,
     Version,
     Help,
     Update
@@ -23,10 +24,12 @@ struct CommandLineArgs {
     std::filesystem::path mainScript;
     std::filesystem::path outputDir;
     std::string projectName;
+    std::string apiQuery;
     bool verbose = false;
     bool debug = false;
     bool nightly = false;
     bool overwrite = false;
+    bool apiNoColor = false;
 };
 
 void printUsage(const char* programName) {
@@ -38,6 +41,8 @@ void printUsage(const char* programName) {
     spdlog::info("Commands:");
     spdlog::info("  run <main.lua>      Run a game from its main Lua script");
     spdlog::info("  generate-stubs <out> Generate IDE type stubs to output directory");
+    spdlog::info("  api [query]         Browse and search Lua API documentation");
+    spdlog::info("    --no-color               Disable ANSI colors (for piping)");
     spdlog::info("  new <name>          Create a new project in a new directory");
     spdlog::info("  init                Initialize current directory with template files");
     spdlog::info("    --overwrite              Overwrite existing files");
@@ -108,6 +113,34 @@ std::optional<CommandLineArgs> parseCommandLine(int argc, char* argv[]) {
             }
             args.outputDir = argv[i + 1];
             i += 2;
+            continue;
+        }
+
+        if (arg == "api") {
+            args.command = Command::Api;
+            ++i;
+            // Consume remaining args as query and flags
+            // Examples:
+            //   bestow api                      -> apiQuery = ""
+            //   bestow api assets               -> apiQuery = "assets"
+            //   bestow api assets.registerAsset  -> apiQuery = "assets.registerAsset"
+            //   bestow api search raycast        -> apiQuery = "search raycast"
+            //   bestow api --no-color            -> apiQuery = "", apiNoColor = true
+            std::vector<std::string> parts;
+            while (i < argc) {
+                std::string_view nextArg = argv[i];
+                if (nextArg == "--no-color") {
+                    args.apiNoColor = true;
+                } else {
+                    parts.push_back(std::string(nextArg));
+                }
+                ++i;
+            }
+            // Join with spaces (not dots) to preserve "search <query>" form
+            for (size_t j = 0; j < parts.size(); ++j) {
+                if (j > 0) args.apiQuery += " ";
+                args.apiQuery += parts[j];
+            }
             continue;
         }
 

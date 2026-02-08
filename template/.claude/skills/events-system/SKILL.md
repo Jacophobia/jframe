@@ -192,7 +192,7 @@ return {
         local state = app.main.state
         state.lives = state.lives - 1
         if state.lives <= 0 then
-            bestow.input.pushPhase("gameover")
+            bestow.phase.push("gameover")
             app.systems.ui.showGameOver()
         else
             app.systems.spawner.respawnPlayer()

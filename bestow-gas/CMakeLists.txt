@@ -17,7 +17,6 @@ target_link_libraries(bestow-gas
         bestow-contract
         unofficial::luajit::luajit
         sol2::sol2
-        kangaru::kangaru
 )
 
 target_compile_features(bestow-gas PUBLIC cxx_std_23)

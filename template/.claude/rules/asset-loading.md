@@ -34,8 +34,11 @@ bestow.assets.loadAsset(musicHandle)
 -- 3. Use
 bestow.audio.playOnChannel(bestow.audio.Channel.Music, {
     asset = musicHandle,
-    volume = 0.8,
-    looping = true
+    volume = 0.8,           -- float, default 1.0
+    pitch = 1.0,            -- float, default 1.0
+    looping = true,         -- bool, default false
+    fadeInTime = 0.5,       -- float (seconds), default 0.0
+    startTime = 2.0         -- optional float (seconds), start playback at offset
 })
 
 -- 4. Unload (when no longer needed)

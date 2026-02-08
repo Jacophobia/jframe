@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 // Use compatibility header for MSVC C++23 module support
 #include <bestow/entt_compat.hpp>
 
@@ -310,15 +309,6 @@ private:
     std::unordered_map<std::string, ComponentTypeInfo> componentTypes_;
     std::unordered_map<std::string, ComponentFactory> componentFactories_;
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
 };
-
-// Service type for Engine::use<IEntitySystem, EntitySystem>()
-struct EntitySystem::Service : kgr::single_service<EntitySystem>, kgr::overrides<IEntitySystemService> {};
-
-// Backwards compatibility alias
-using EntitySystemService = EntitySystem::Service;
 
 }  // namespace bestow

@@ -3,17 +3,17 @@
 //
 // The Engine is the composition root that:
 // 1. Allows clients to register implementations against contract interfaces
-// 2. Uses Kangaru DI to wire dependencies
+// 2. Uses bestow.di to wire dependencies automatically
 // 3. Instantiates and runs the client's Application with injected dependencies
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <taskflow/taskflow.hpp>
 
 export module bestow.core;
 
 import std;
+export import bestow.di;
 import bestow.services;  // For IApplication, system interfaces
 export import bestow.utils;  // Re-export utilities for backwards compatibility
 
@@ -121,40 +121,54 @@ public:
     Engine(Engine&&) noexcept = default;
     Engine& operator=(Engine&&) noexcept = default;
 
-    /// Register an implementation for a contract interface.
-    /// Example: engine.use<IGraphics3DSystem, VulkanGraphics3DSystem>();
+    /// Register a default-constructible implementation for a contract interface.
+    /// Example: engine.use<IEventSystem, EventSystem>();
     template<typename Contract, typename Implementation>
+        requires std::is_default_constructible_v<Implementation>
     void use() {
         static_assert(std::is_base_of_v<Contract, Implementation>,
             "Implementation must inherit from Contract");
-        container_.service<typename Implementation::Service>();
-        registered_.insert(typeid(Contract).hash_code());
+        services_.addSingleton<Contract, Implementation>();
+    }
+
+    /// Register an implementation with a factory that resolves dependencies.
+    /// Example: engine.use<IAssetSystem, AssetSystem>(
+    ///     [](auto& sp) { return new AssetSystem(sp.template get<IEventSystem>()); });
+    template<typename Contract, typename Implementation>
+    void use(std::function<Implementation*(di::ServiceProvider&)> factory) {
+        static_assert(std::is_base_of_v<Contract, Implementation>,
+            "Implementation must inherit from Contract");
+        services_.addSingleton<Contract, Implementation>(std::move(factory));
     }
 
     /// Check if a system has been registered for a contract interface.
-    /// Useful for optional systems like audio.
-    /// Example: if (engine.has<IAudioSystem>()) { ... }
     template<typename Contract>
     bool has() const {
-        return registered_.contains(typeid(Contract).hash_code());
+        if (provider_) {
+            return provider_->has<Contract>();
+        }
+        return false;
     }
 
     /// Get a system by its contract interface.
-    /// Throws if the system is not registered. Use has<>() to check first.
-    /// Example: engine.get<IGraphics3DSystem>()
+    /// Only available after build() (called automatically by run()).
     template<typename Contract>
     Contract& get() {
-        return container_.service<typename ServiceFor<Contract>::type>();
+        ensureBuilt();
+        return provider_->get<Contract>();
     }
 
     /// Get a system by its contract interface, or nullptr if not registered.
-    /// Example: auto* audio = engine.tryGet<IAudioSystem>();
     template<typename Contract>
     Contract* tryGet() {
-        if (!has<Contract>()) {
-            return nullptr;
-        }
-        return &container_.service<typename ServiceFor<Contract>::type>();
+        ensureBuilt();
+        return provider_->tryGet<Contract>();
+    }
+
+    /// Build the service provider (creates all singletons, calls initialize()).
+    /// Called automatically by run(), but can be called explicitly for testing.
+    void build() {
+        provider_ = std::make_unique<di::ServiceProvider>(services_.build());
     }
 
     /// Run the application.
@@ -165,13 +179,14 @@ public:
         static_assert(std::is_base_of_v<IApplication, App>,
             "App must inherit from IApplication or Application<>");
 
+        ensureBuilt();
+
         if constexpr (sizeof...(Contracts) > 0) {
             // Explicit contracts provided - use them
             App app(get<Contracts>()...);
             app.run();
         } else if constexpr (requires { typename App::Dependencies; }) {
             // App has Dependencies type (from Application<> base) - use it
-            // Use pointer to avoid instantiating abstract types in tuple
             runWithDeps<App>(static_cast<typename App::Dependencies*>(nullptr));
         } else {
             // Fallback to Engine& constructor
@@ -181,16 +196,21 @@ public:
     }
 
 private:
+    void ensureBuilt() {
+        if (!provider_) {
+            build();
+        }
+    }
+
     /// Helper to unpack tuple and inject dependencies
-    /// Takes a pointer to avoid instantiating abstract types in the tuple
     template<typename App, typename... Deps>
     void runWithDeps(std::tuple<Deps...>*) {
         App app(get<Deps>()...);
         app.run();
     }
 
-    kgr::container container_;
-    std::unordered_set<std::size_t> registered_;  // Track registered contract types
+    di::ServiceCollection services_;
+    std::unique_ptr<di::ServiceProvider> provider_;
 };
 
 }  // namespace bestow::core

@@ -90,36 +90,64 @@ bestow.entity.addComponent(entity, "MeshRenderer", {
 
 ### Manual Drawing
 
-For special cases, draw meshes manually:
+For special cases, draw meshes manually. `drawMesh()` requires MeshHandle and MaterialHandle -- not string paths. Use primitive mesh generators or `bestow.assets` to obtain handles first:
 
 ```lua
--- Draw at specific transform
-bestow.graphics3d.drawMesh("meshes/cube.obj", "materials/default", {
+-- Create mesh and material handles first
+local cubeMesh = bestow.graphics3d.createCubeMesh(1.0)  -- returns MeshHandle
+local mat = PBRMaterial.new()
+mat.baseColorFactor = Vec4(0.8, 0.2, 0.2, 1.0)
+local redMaterial = bestow.graphics3d.createMaterial(mat)  -- returns MaterialHandle
+
+-- Draw with a Transform3D
+bestow.graphics3d.drawMesh(cubeMesh, redMaterial, {
     position = Vec3.new(5, 0, 0),
     rotation = Quat.identity(),
     scale = Vec3.new(1, 1, 1)
 })
 
--- Or with a Mat4 transform
+-- Or draw with a Mat4 transform
 local transform = Mat4.identity()
-bestow.graphics3d.drawMesh("meshes/cube.obj", "materials/default", transform)
+bestow.graphics3d.drawMesh(cubeMesh, redMaterial, transform)
+
+-- Optional: control shadow casting/receiving (both default to true)
+bestow.graphics3d.drawMesh(cubeMesh, redMaterial, transform, true, true)
 ```
 
-### Instanced Rendering
-
-For many identical objects:
+### Primitive Mesh Generators
 
 ```lua
-local transforms = {}
-for i = 1, 100 do
-    table.insert(transforms, {
-        position = Vec3.new(i * 2, 0, 0),
-        rotation = Quat.identity(),
-        scale = Vec3.new(1, 1, 1)
-    })
-end
+local cube = bestow.graphics3d.createCubeMesh(1.0)           -- size
+local sphere = bestow.graphics3d.createSphereMesh(0.5, 32, 16) -- radius, segments, rings
+local cylinder = bestow.graphics3d.createCylinderMesh(0.5, 1.0, 32) -- radius, height, segments
+local capsule = bestow.graphics3d.createCapsuleMesh(0.5, 1.0, 32, 8) -- radius, height, segments, rings
+local plane = bestow.graphics3d.createPlaneMesh(1.0, 1.0, 1, 1) -- width, height, wSegments, hSegments
 
-bestow.graphics3d.drawMeshInstanced("meshes/tree.obj", "materials/tree", transforms)
+-- Clean up when no longer needed
+bestow.graphics3d.destroyMesh(cube)
+```
+
+### Material Creation
+
+```lua
+-- PBR material
+local pbr = PBRMaterial.new()
+pbr.baseColorFactor = Vec4(1.0, 0.5, 0.0, 1.0)
+pbr.metallicFactor = 0.8
+pbr.roughnessFactor = 0.2
+local metalMat = bestow.graphics3d.createMaterial(pbr)
+
+-- Unlit material (no lighting calculations)
+local unlit = UnlitMaterial.new()
+unlit.color = Color.new(1.0, 0.0, 1.0, 1.0)
+local unlitMat = bestow.graphics3d.createUnlitMaterial(unlit)
+
+-- Get built-in defaults
+local defaultPBR = bestow.graphics3d.getDefaultPBRMaterial()
+local defaultUnlit = bestow.graphics3d.getDefaultUnlitMaterial()
+
+-- Clean up when no longer needed
+bestow.graphics3d.destroyMaterial(metalMat)
 ```
 
 ## Lighting
@@ -127,10 +155,10 @@ bestow.graphics3d.drawMeshInstanced("meshes/tree.obj", "materials/tree", transfo
 ### Ambient Light
 
 ```lua
--- Set global ambient light
+-- Set global ambient light (color is Vec3, not Color)
 bestow.graphics3d.setAmbientLight(
-    Color.new(0.2, 0.2, 0.3, 1.0),  -- Color (slight blue)
-    0.3                              -- Intensity
+    Vec3.new(0.2, 0.2, 0.3),  -- Color as Vec3 (slight blue)
+    0.3                        -- Intensity (optional, defaults to 1.0)
 )
 ```
 
@@ -139,41 +167,49 @@ bestow.graphics3d.setAmbientLight(
 ```lua
 bestow.graphics3d.setDirectionalLight({
     direction = Vec3.new(-0.5, -1, -0.5):normalize(),
-    color = Color.new(1.0, 0.95, 0.8, 1.0),  -- Warm sunlight
+    color = Vec3.new(1.0, 0.95, 0.8),  -- Warm sunlight (Vec3)
     intensity = 1.0,
-    castShadows = true
+    castShadows = true,
+    shadowMapResolution = 2048  -- optional
 })
 ```
 
 ### Point Lights
 
 ```lua
--- Add a point light
-local lightId = bestow.graphics3d.addPointLight({
-    position = Vec3.new(5, 3, 0),
-    color = Color.new(1.0, 0.5, 0.0, 1.0),  -- Orange
-    intensity = 2.0,
-    range = 10.0,
-    castShadows = false
-})
+-- Add a point light: light struct + position as separate args
+local light = PointLight.new()
+light.color = Vec3.new(1.0, 0.5, 0.0)  -- Orange (Vec3)
+light.intensity = 2.0
+light.range = 10.0
+light.castShadows = false
+
+local lightId = bestow.graphics3d.addPointLight(light, Vec3.new(5, 3, 0))
+
+-- Move a light
+bestow.graphics3d.setLightPosition(lightId, Vec3.new(10, 3, 0))
 
 -- Remove light later
 bestow.graphics3d.removeLight(lightId)
+
+-- Remove all lights
+bestow.graphics3d.clearLights()
 ```
 
 ### Spot Lights
 
 ```lua
-local spotId = bestow.graphics3d.addSpotLight({
-    position = Vec3.new(0, 5, 0),
-    direction = Vec3.new(0, -1, 0),
-    color = Color.new(1.0, 1.0, 1.0, 1.0),
-    intensity = 3.0,
-    range = 20.0,
-    innerConeAngle = 15.0,  -- degrees
-    outerConeAngle = 30.0,
-    castShadows = true
-})
+-- Spot light: light struct + position as separate args
+local spot = SpotLight.new()
+spot.direction = Vec3.new(0, -1, 0)
+spot.color = Vec3.new(1.0, 1.0, 1.0)
+spot.intensity = 3.0
+spot.range = 20.0
+spot.innerConeAngle = 15.0  -- degrees
+spot.outerConeAngle = 30.0
+spot.castShadows = true
+
+local spotId = bestow.graphics3d.addSpotLight(spot, Vec3.new(0, 5, 0))
 ```
 
 ## Fog
@@ -194,13 +230,15 @@ bestow.graphics3d.setFog({ enabled = false })
 ## Skybox
 
 ```lua
--- Set skybox from cubemap
-bestow.graphics3d.setSkybox("textures/skybox")
+-- Set skybox from cubemap texture handle
+local skybox = Skybox.new()
+skybox.cubemapTexture = cubemapHandle  -- TextureHandle from bestow.assets
+skybox.rotation = 0.0                  -- Rotation in radians
+skybox.exposure = 1.0                  -- Exposure multiplier
+bestow.graphics3d.setSkybox(skybox)
 
--- The path refers to a cubemap with faces:
--- textures/skybox_right.png, textures/skybox_left.png
--- textures/skybox_top.png, textures/skybox_bottom.png
--- textures/skybox_front.png, textures/skybox_back.png
+-- Clear skybox
+bestow.graphics3d.clearSkybox()
 ```
 
 ## Debug Drawing
@@ -208,25 +246,33 @@ bestow.graphics3d.setSkybox("textures/skybox")
 For development visualization:
 
 ```lua
--- Draw debug line
-bestow.graphics3d.drawDebugLine(
+-- Draw debug line (color, duration, depthTest are optional)
+bestow.graphics3d.debugDrawLine(
     Vec3.new(0, 0, 0),      -- Start
     Vec3.new(10, 0, 0),     -- End
-    Color.new(1, 0, 0, 1)   -- Red
+    Color.new(1, 0, 0, 1)   -- Red (optional, defaults to white)
 )
 
--- Draw debug box
-bestow.graphics3d.drawDebugBox(
+-- Draw debug box (rotation, color, duration, depthTest are optional)
+bestow.graphics3d.debugDrawBox(
     Vec3.new(5, 1, 5),      -- Center
     Vec3.new(1, 2, 1),      -- Half extents
-    Color.new(0, 1, 0, 1)   -- Green
+    Quat.identity(),         -- Rotation (optional)
+    Color.new(0, 1, 0, 1)   -- Green (optional)
 )
 
--- Draw debug sphere
-bestow.graphics3d.drawDebugSphere(
+-- Draw debug sphere (color, duration, depthTest are optional)
+bestow.graphics3d.debugDrawSphere(
     Vec3.new(0, 3, 0),      -- Center
     1.5,                     -- Radius
-    Color.new(0, 0, 1, 1)   -- Blue
+    Color.new(0, 0, 1, 1)   -- Blue (optional)
+)
+
+-- Draw debug ray
+bestow.graphics3d.debugDrawRay(
+    Vec3.new(0, 0, 0),      -- Origin
+    Vec3.new(0, 1, 0),      -- Direction
+    5.0                      -- Length
 )
 ```
 
@@ -246,14 +292,14 @@ app.systems.camera.shake(0.5, 0.3)  -- intensity, duration
 Zoom is implemented by adjusting the camera FOV (see camera-system skill):
 
 ```lua
--- Zoom via FOV change
+-- Zoom via FOV change (getCamera returns Camera3D struct)
 local cam = bestow.graphics3d.getCamera()
 bestow.graphics3d.setCamera({
-    position = cam.position,
-    rotation = cam.rotation,
-    fov = cam.fov / 1.5,  -- Zoom in
-    near = cam.near,
-    far = cam.far
+    position = cam.transform.position,
+    rotation = cam.transform.rotation,
+    fov = cam.fovY / 1.5,  -- Zoom in
+    near = cam.nearPlane,
+    far = cam.farPlane
 })
 ```
 
@@ -262,7 +308,7 @@ bestow.graphics3d.setCamera({
 ```lua
 -- Screen position to world (via raycast)
 local screenPos = bestow.input.getMousePosition()
-local ray = bestow.graphics3d.screenToRay(screenPos)
+local ray = bestow.graphics3d.screenToWorldRay(screenPos)
 local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
 
 -- World position to screen

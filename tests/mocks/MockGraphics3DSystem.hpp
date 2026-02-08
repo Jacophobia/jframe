@@ -3,10 +3,9 @@
 
 #pragma once
 
-#include <kangaru/kangaru.hpp>
-
 import std;
 import bestow.graphics3d;
+import bestow.uirender;
 import bestow.types;
 import bestow.assets;
 import bestow.entity;
@@ -1073,8 +1072,5 @@ private:
     std::vector<DebugLineCall> debugLineCalls_;
     std::vector<RenderItem> renderItemQueue_;
 };
-
-// Kangaru service definition for DI integration
-struct MockGraphics3DSystemService : kgr::single_service<MockGraphics3DSystem> {};
 
 }  // namespace bestow::tests

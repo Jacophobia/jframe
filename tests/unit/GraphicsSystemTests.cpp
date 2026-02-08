@@ -4,21 +4,21 @@
 #include <memory>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import std;
 import bestow;
 import bestow.types;
 
-// Mock Graphics System implemented inline for interface testing
+// Note: The shared MockGraphicsSystem in tests/mocks/ is designed for use by
+// files that already import the specific graphics module. This file uses a local
+// mock to avoid C++20 module visibility issues with IGraphicsContext.
 
 namespace bestow::tests {
 
 //==============================================================================
-// Real GraphicsSystem Tests (Basic Instantiation Only)
+// Local MockGraphicsSystem for 2D graphics interface testing
 //==============================================================================
 
-// Mock Graphics System for testing
 class MockGraphicsSystem : public IGraphicsSystem {
 public:
     void beginFrame() override { frameCount_++; beginFrameCalled_ = true; }
@@ -42,14 +42,20 @@ public:
     void drawTextCentered(const std::string& text, Vec2 position, AssetHandle fontHandle,
                          float size, const Color& color) override {}
     Vec2 measureText(const std::string& text, AssetHandle fontHandle, float size) const override {
-        return Vec2{text.length() * size * 0.5f, size};
+        return Vec2{static_cast<float>(text.length()) * size * 0.5f, size};
     }
 
     Vec2 worldToScreen(Vec2 worldPos) const override {
-        return Vec2{worldPos.x + windowSize_.width/2.0f, worldPos.y + windowSize_.height/2.0f};
+        return Vec2{
+            (worldPos.x - camera_.transform.x) * camera_.zoom + windowSize_.width / 2.0f,
+            (worldPos.y - camera_.transform.y) * camera_.zoom + windowSize_.height / 2.0f
+        };
     }
     Vec2 screenToWorld(Vec2 screenPos) const override {
-        return Vec2{screenPos.x - windowSize_.width/2.0f, screenPos.y - windowSize_.height/2.0f};
+        return Vec2{
+            (screenPos.x - windowSize_.width / 2.0f) / camera_.zoom + camera_.transform.x,
+            (screenPos.y - windowSize_.height / 2.0f) / camera_.zoom + camera_.transform.y
+        };
     }
 
     void setWindowSize(Size size) override { windowSize_ = size; }
@@ -79,7 +85,6 @@ public:
     int getFrameCount() const { return frameCount_; }
 
 private:
-    IAssetSystem* assets_ = nullptr;
     Camera camera_;
     Size windowSize_{800, 600};
     Color clearColor_{0, 0, 0, 255};
@@ -302,8 +307,5 @@ TEST_F(MockGraphicsSystemTest, ShouldCloseDefaultsFalse) {
 TEST_F(MockGraphicsSystemTest, NativeWindowHandleReturnsNull) {
     EXPECT_EQ(mockGraphics_->getNativeWindowHandle(), nullptr);
 }
-
-// Kangaru DI tests commented out - MockGraphicsSystemService definition not available
-// These tests would require defining a Kangaru service for MockGraphicsSystem
 
 }  // namespace bestow::tests

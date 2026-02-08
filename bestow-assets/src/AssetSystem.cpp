@@ -232,8 +232,8 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 break;
             }
 
-            case AssetType::Level: {
-                // Load Lua level file
+            case AssetType::Scene: {
+                // Load Lua scene file
                 std::ifstream file(sourcePath);
                 if (!file.is_open()) {
                     throw std::runtime_error("Failed to open file: " + sourcePath.string());
@@ -243,11 +243,11 @@ void AssetSystem::loadAssetImpl(AssetHandle handle) {
                 buffer << file.rdbuf();
                 std::string luaContents = buffer.str();
 
-                DataAsset levelAsset;
-                levelAsset.rawText = luaContents;
-                levelAsset.isJson = false;  // Lua files are not JSON
+                DataAsset sceneAsset;
+                sceneAsset.rawText = luaContents;
+                sceneAsset.isJson = false;  // Lua files are not JSON
 
-                loadedData = std::move(levelAsset);
+                loadedData = std::move(sceneAsset);
                 loadedSize = luaContents.size();
                 break;
             }

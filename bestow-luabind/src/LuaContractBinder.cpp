@@ -128,11 +128,12 @@ void LuaContractBinder::bindAll() {
         spdlog::debug("[LuaContractBinder] Bound IGASSystem -> bestow.gas");
     }
 
-    // Level System
-    if (engine_->has<ILevelSystem>()) {
-        bindLevelSystem(*lua_, engine_->get<ILevelSystem>());
-        boundSystems_.push_back("level");
-        spdlog::debug("[LuaContractBinder] Bound ILevelSystem -> bestow.level");
+    // Scene System
+    if (engine_->has<ISceneSystem>()) {
+        IAssetSystem* assetSys = engine_->has<IAssetSystem>() ? &engine_->get<IAssetSystem>() : nullptr;
+        bindSceneSystem(*lua_, engine_->get<ISceneSystem>(), assetSys);
+        boundSystems_.push_back("scene");
+        spdlog::debug("[LuaContractBinder] Bound ISceneSystem -> bestow.scene");
     }
 
     // Blueprint Factory

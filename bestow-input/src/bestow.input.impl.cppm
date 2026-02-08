@@ -4,8 +4,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-#include <bestow/kangaru_macros.hpp>
 #include <GLFW/glfw3.h>
 #include <SDL.h>
 
@@ -69,8 +67,8 @@ namespace PhaseTree {
 
 class InputSystem : public IInputSystem {
 public:
-    explicit InputSystem(IEventSystem* pIEventSystem = nullptr, IAssetSystem* pIAssetSystem = nullptr)
-        : pIEventSystem_(pIEventSystem), pIAssetSystem_(pIAssetSystem) {}
+    explicit InputSystem(IEventSystem& eventSystem, IAssetSystem& assetSystem)
+        : pIEventSystem_(&eventSystem), pIAssetSystem_(&assetSystem) {}
     ~InputSystem() override;
 
     //======================================================================
@@ -355,22 +353,6 @@ private:
     IEventSystem* pIEventSystem_ = nullptr;
     IAssetSystem* pIAssetSystem_ = nullptr;
 
-public:
-    struct Service;
 };
-
-//==========================================================================
-// Kangaru Service Registration
-//==========================================================================
-
-struct InputSystem::Service : kgr::single_service<InputSystem>, kgr::overrides<IInputSystemService> {
-    static auto construct(kgr::inject_t<IEventSystemService> d1, kgr::inject_t<IAssetSystemService> d2)
-        -> kgr::inject_result<IEventSystem*, IAssetSystem*> {
-        return kgr::inject(&d1.forward(), &d2.forward());
-    }
-};
-
-// Backwards compatibility alias
-using InputSystemService = InputSystem::Service;
 
 }  // namespace bestow

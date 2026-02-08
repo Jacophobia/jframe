@@ -3,8 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-#include <bestow/kangaru_macros.hpp>
 #include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 #include <VkBootstrap.h>
@@ -390,8 +388,8 @@ private:
 
 class VulkanGraphicsSystem : public bestow::IGraphicsSystem {
 public:
-    explicit VulkanGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
-        : pIAssetSystem_(pIAssetSystem) {}
+    explicit VulkanGraphicsSystem(IAssetSystem& assetSystem)
+        : pIAssetSystem_(&assetSystem) {}
     ~VulkanGraphicsSystem() override;
 
     Result<void, VulkanError> initialize(const VulkanConfig& config);
@@ -532,8 +530,6 @@ private:
     IAssetSystem* pIAssetSystem_ = nullptr;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
 //==========================================================================
 // VulkanGraphics3DSystem - 3D Vulkan Renderer
@@ -541,10 +537,10 @@ BESTOW_SERVICE(VulkanGraphicsSystem, GraphicsSystem, AssetSystem);
 
 class VulkanGraphics3DSystem : public IGraphics3DSystem {
 public:
-    explicit VulkanGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
-                                     IConfigSystem* pIConfigSystem = nullptr)
-        : pIAssetSystem_(pIAssetSystem)
-        , pIConfigSystem_(pIConfigSystem) {}
+    explicit VulkanGraphics3DSystem(IAssetSystem& assetSystem,
+                                     IConfigSystem& configSystem)
+        : pIAssetSystem_(&assetSystem)
+        , pIConfigSystem_(&configSystem) {}
     ~VulkanGraphics3DSystem() override;
 
     //======================================================================
@@ -1130,23 +1126,7 @@ private:
     IAssetSystem* pIAssetSystem_ = nullptr;
     IConfigSystem* pIConfigSystem_ = nullptr;
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
 };
-
-// Service type for Engine::use<IGraphics3DSystem, VulkanGraphics3DSystem>()
-struct VulkanGraphics3DSystem::Service : kgr::single_service<VulkanGraphics3DSystem>, kgr::overrides<IGraphics3DSystemService> {
-    static auto construct(
-        kgr::inject_t<IAssetSystemService> d1,
-        kgr::inject_t<IConfigSystemService> d2)
-        -> kgr::inject_result<IAssetSystem*, IConfigSystem*> {
-        return kgr::inject(&d1.forward(), &d2.forward());
-    }
-};
-
-// Backwards compatibility alias
-using VulkanGraphics3DSystemService = VulkanGraphics3DSystem::Service;
 
 }  // namespace bestow::vulkan
 

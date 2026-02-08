@@ -58,7 +58,7 @@ return {
         bestow.ui.initialize()
 
         -- 6. Load first level (LAST)
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
         app.levels.forest.load()
     end,
 
@@ -243,7 +243,7 @@ return {
 --         })
 --         bestow.physics3d.createBody(ground, {
 --             type = "Static", shapeType = "Box",
---             halfExtents = Vec3.new(100, 0.5, 50)
+--             shapeHalfExtents = Vec3.new(100, 0.5, 50)
 --         })
 --         table.insert(state.levelEntities, ground)
 --

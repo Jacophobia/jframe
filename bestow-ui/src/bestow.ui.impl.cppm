@@ -4,8 +4,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-
 #ifdef BESTOW_HAS_RMLUI
 #include <RmlUi/Core.h>
 #include <RmlUi/Debugger.h>
@@ -168,8 +166,8 @@ class RmlUISystem : public IUISystem {
 public:
     /// Constructor with dependency injection.
     /// Receives IGraphicsContext for render backend access.
-    explicit RmlUISystem(IGraphicsContext* graphics = nullptr, IAssetSystem* assets = nullptr)
-        : graphics_(graphics), assetSystem_(assets) {}
+    explicit RmlUISystem(IGraphicsContext& graphics, IAssetSystem& assets)
+        : graphics_(&graphics), assetSystem_(&assets) {}
 
     ~RmlUISystem() override;
 
@@ -1533,31 +1531,5 @@ void RmlUISystem::reloadStyleSheet(UIStyleSheetHandle styleHandle) {
 //==========================================================================
 // Kangaru Service Definitions
 //==========================================================================
-
-#ifdef BESTOW_HAS_RMLUI
-
-/// Service definition for RmlUISystem with dependency injection.
-/// Receives IGraphicsContext and IAssetSystem via constructor injection.
-struct RmlUISystemService
-    : kgr::single_service<RmlUISystem>
-    , kgr::overrides<IUISystemService>
-{
-    static auto construct(
-        kgr::inject_t<IGraphicsContextService> graphics,
-        kgr::inject_t<IAssetSystemService> assets)
-        -> kgr::inject_result<IGraphicsContext*, IAssetSystem*>
-    {
-        return kgr::inject(&graphics.forward(), &assets.forward());
-    }
-};
-
-// Backwards compatibility alias
-using UISystemService = RmlUISystemService;
-
-#else
-
-struct UISystemService : kgr::single_service<StubUISystem>, kgr::overrides<IUISystemService> {};
-
-#endif
 
 }  // namespace bestow

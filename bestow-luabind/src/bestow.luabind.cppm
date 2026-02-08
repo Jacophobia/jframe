@@ -55,8 +55,8 @@ void bindAssetSystem(sol::state& lua, IAssetSystem& assets);
 // Gameplay Ability System binding
 void bindGASSystem(sol::state& lua, IGASSystem& gas);
 
-// Level System binding
-void bindLevelSystem(sol::state& lua, ILevelSystem& level);
+// Scene System binding
+void bindSceneSystem(sol::state& lua, ISceneSystem& scene, IAssetSystem* assets = nullptr);
 
 // Blueprint Factory binding
 void bindBlueprintFactory(sol::state& lua, IBlueprintFactory& blueprints);
@@ -92,6 +92,168 @@ void cleanupLuaBindings();
 // Future bindings
 // void bindAISystem(sol::state& lua, IAISystem& ai);
 // void bindCameraSystem(sol::state& lua, ICameraSystem& camera);
+
+//=============================================================================
+// API Documentation Data Model
+//=============================================================================
+
+struct ParamDoc {
+    std::string name;
+    std::string type;
+    std::string description;
+    bool optional = false;
+    std::string defaultVal;
+};
+
+struct ReturnDoc {
+    std::string type;
+    std::string description;
+};
+
+struct MethodDoc {
+    std::string name;
+    std::string qualifiedName;
+    std::string description;
+    std::vector<ParamDoc> params;
+    std::vector<ReturnDoc> returns;
+    std::string example;
+    bool deprecated = false;
+    std::vector<std::string> seeAlso;
+};
+
+struct EnumValueDoc {
+    std::string name;
+    std::string description;
+};
+
+struct EnumDoc {
+    std::string name;
+    std::string qualifiedName;
+    std::string description;
+    std::vector<EnumValueDoc> values;
+};
+
+struct FieldDoc {
+    std::string name;
+    std::string type;
+    std::string description;
+    bool readOnly = false;
+};
+
+struct TypeDoc {
+    std::string name;
+    std::string qualifiedName;
+    std::string description;
+    std::vector<FieldDoc> fields;
+    std::vector<MethodDoc> methods;
+    std::string example;
+};
+
+struct PropertyDoc {
+    std::string name;
+    std::string type;
+    std::string description;
+    bool readOnly = false;
+};
+
+struct SystemDoc {
+    std::string name;
+    std::string qualifiedName;
+    std::string description;
+    std::vector<MethodDoc> methods;
+    std::vector<EnumDoc> enums;
+    std::vector<TypeDoc> types;
+    std::vector<PropertyDoc> properties;
+    std::vector<std::string> seeAlso;
+};
+
+//=============================================================================
+// DocRegistry - Stores and queries API documentation
+//=============================================================================
+
+class DocRegistry {
+public:
+    // Registration
+    void addSystem(SystemDoc system);
+
+    // Queries
+    const std::vector<SystemDoc>& getAllSystems() const;
+    const SystemDoc* getSystem(const std::string& name) const;
+    const MethodDoc* getMethod(const std::string& qualifiedName) const;
+    const EnumDoc* getEnum(const std::string& qualifiedName) const;
+    const TypeDoc* getType(const std::string& qualifiedName) const;
+
+    struct SearchResult {
+        std::string qualifiedName;
+        std::string kind; // "method", "enum", "type", "system", "property"
+        std::string description;
+        std::string systemName;
+    };
+    std::vector<SearchResult> search(const std::string& query) const;
+
+private:
+    std::vector<SystemDoc> systems_;
+};
+
+//=============================================================================
+// DocFormatter - Formats documentation for terminal output
+//=============================================================================
+
+class DocFormatter {
+public:
+    explicit DocFormatter(bool useColor = true);
+
+    std::string formatSystemList(const DocRegistry& registry) const;
+    std::string formatSystem(const SystemDoc& system) const;
+    std::string formatMethod(const MethodDoc& method) const;
+    std::string formatEnum(const EnumDoc& e) const;
+    std::string formatType(const TypeDoc& type) const;
+    std::string formatSearchResults(const std::vector<DocRegistry::SearchResult>& results,
+                                    const std::string& query) const;
+    std::string formatNotFound(const std::string& query) const;
+
+private:
+    std::string bold(const std::string& text) const;
+    std::string dim(const std::string& text) const;
+    std::string cyan(const std::string& text) const;
+    std::string green(const std::string& text) const;
+    std::string yellow(const std::string& text) const;
+    std::string magenta(const std::string& text) const;
+    std::string underline(const std::string& text) const;
+    std::string reset() const;
+
+    bool useColor_;
+};
+
+//=============================================================================
+// createFullDocRegistry - Populates registry with all API docs
+//=============================================================================
+
+DocRegistry createFullDocRegistry();
+
+// Per-system doc registration functions (implemented in docs/*_binding_doc.cpp)
+void registerTypesDoc(DocRegistry& registry);
+void registerCoreDoc(DocRegistry& registry);
+void registerInputDoc(DocRegistry& registry);
+void registerActionDoc(DocRegistry& registry);
+void registerAudioDoc(DocRegistry& registry);
+void registerPhysicsDoc(DocRegistry& registry);
+void registerPhysics3DDoc(DocRegistry& registry);
+void registerGraphics3DDoc(DocRegistry& registry);
+void registerAnimationDoc(DocRegistry& registry);
+void registerCharacterDoc(DocRegistry& registry);
+void registerEntityDoc(DocRegistry& registry);
+void registerConfigDoc(DocRegistry& registry);
+void registerAssetsDoc(DocRegistry& registry);
+void registerGASDoc(DocRegistry& registry);
+void registerSceneDoc(DocRegistry& registry);
+void registerBlueprintsDoc(DocRegistry& registry);
+void registerGamestateDoc(DocRegistry& registry);
+void registerSaveDoc(DocRegistry& registry);
+void registerEventsDoc(DocRegistry& registry);
+void registerUIDoc(DocRegistry& registry);
+void registerMetricsDoc(DocRegistry& registry);
+void registerTimerDoc(DocRegistry& registry);
 
 //=============================================================================
 // LuaErrorContext - Captures Lua call context for better error messages

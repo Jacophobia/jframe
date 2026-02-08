@@ -23,7 +23,7 @@ add_executable(bestow-tests
     unit/GraphicsSystemTests.cpp
     unit/Graphics3DSystemTests.cpp
     unit/PhysicsSystemTests.cpp
-    unit/LevelSystemTests.cpp
+    unit/SceneSystemTests.cpp
     unit/AISystemTests.cpp
     unit/CameraSystemTests.cpp
     unit/GASSystemTests.cpp
@@ -47,7 +47,7 @@ target_link_libraries(bestow-tests
         bestow-animation
         bestow-opengl
         bestow-physics
-        bestow-level
+        bestow-scene
         bestow-ai
         bestow-camera
         bestow-gas
@@ -112,29 +112,3 @@ else()
         )
     endif()
 endif()
-
-# Kangaru DI compatibility test (basic)
-add_executable(test-kangaru-basic
-    test_kangaru_modules.cpp
-)
-target_link_libraries(test-kangaru-basic PRIVATE kangaru::kangaru)
-target_compile_features(test-kangaru-basic PRIVATE cxx_std_23)
-add_test(NAME KangaruBasicTest COMMAND test-kangaru-basic)
-
-# Kangaru DI integration test with C++20 modules
-add_executable(test-kangaru-integration
-    test_kangaru_integration_main.cpp
-)
-target_sources(test-kangaru-integration
-    PUBLIC
-        FILE_SET CXX_MODULES FILES
-            test_kangaru_integration.cppm
-)
-target_use_std_module(test-kangaru-integration)
-target_link_libraries(test-kangaru-integration
-    PRIVATE
-        kangaru::kangaru
-        bestow-contract
-)
-target_compile_features(test-kangaru-integration PRIVATE cxx_std_23)
-add_test(NAME KangaruIntegrationTest COMMAND test-kangaru-integration)

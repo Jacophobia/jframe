@@ -8,8 +8,6 @@ module;
 // The actual nlohmann/json include is in AssetSystem.cpp.
 
 #include <cstddef>  // For size_t
-#include <kangaru/kangaru.hpp>
-#include <bestow/kangaru_macros.hpp>
 #include <efsw/efsw.hpp>
 
 export module bestow.assets.impl;
@@ -62,8 +60,8 @@ const std::any& getBehaviorTreeJsonAny(const BehaviorTreeData& data);
 
 class AssetSystem : public IAssetSystem {
 public:
-    explicit AssetSystem(IEventSystem* pIEventSystem = nullptr)
-        : pIEventSystem_(pIEventSystem)
+    explicit AssetSystem(IEventSystem& eventSystem)
+        : pIEventSystem_(&eventSystem)
         , assetLibrary_(AssetLibrary::create()) {}
     ~AssetSystem() override;
 
@@ -223,20 +221,6 @@ private:
     // Injected dependencies
     IEventSystem* pIEventSystem_ = nullptr;
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
 };
-
-// Service type for Engine::use<IAssetSystem, AssetSystem>()
-struct AssetSystem::Service : kgr::single_service<AssetSystem>, kgr::overrides<IAssetSystemService> {
-    static auto construct(kgr::inject_t<IEventSystemService> d1)
-        -> kgr::inject_result<IEventSystem*> {
-        return kgr::inject(&d1.forward());
-    }
-};
-
-// Backwards compatibility alias
-using AssetSystemService = AssetSystem::Service;
 
 }  // namespace bestow

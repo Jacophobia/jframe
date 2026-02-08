@@ -20,7 +20,6 @@ target_sources(bestow-opengl
 target_link_libraries(bestow-opengl
     PUBLIC
         bestow-contract
-        kangaru::kangaru
         glfw
         glad::glad
         glm::glm

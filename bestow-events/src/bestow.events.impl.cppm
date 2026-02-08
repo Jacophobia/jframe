@@ -1,10 +1,6 @@
 // bestow-events/src/bestow.events.impl.cppm
 // Event system implementation
 
-module;
-
-#include <kangaru/kangaru.hpp>
-
 export module bestow.events.impl;
 
 import std;
@@ -126,15 +122,6 @@ private:
     mutable std::mutex queueMutex_;
     SubscriptionId nextSubscriptionId_ = 1;
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
 };
-
-// Service type for Engine::use<IEventSystem, EventSystem>()
-struct EventSystem::Service : kgr::single_service<EventSystem>, kgr::overrides<IEventSystemService> {};
-
-// Backwards compatibility alias
-using EventSystemService = EventSystem::Service;
 
 }  // namespace bestow

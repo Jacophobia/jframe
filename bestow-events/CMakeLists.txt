@@ -11,8 +11,6 @@ target_sources(bestow-events
 target_link_libraries(bestow-events
     PUBLIC
         bestow-contract
-    PRIVATE
-        kangaru::kangaru
 )
 
 target_compile_features(bestow-events PUBLIC cxx_std_23)

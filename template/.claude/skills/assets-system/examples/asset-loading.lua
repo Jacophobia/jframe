@@ -21,24 +21,11 @@ return {
         bestow.assets.loadAsset(self.handles.hitSound)
 
         -- Async load (non-blocking - good for large assets)
-        state.assetsLoaded = 0
-        state.totalAssets = 3
-
-        bestow.assets.loadAssetAsync(self.handles.playerMesh, function(h, assetState)
-            if assetState == "Loaded" then
-                state.assetsLoaded = state.assetsLoaded + 1
-            end
-        end)
-        bestow.assets.loadAssetAsync(self.handles.enemyMesh, function(h, assetState)
-            if assetState == "Loaded" then
-                state.assetsLoaded = state.assetsLoaded + 1
-            end
-        end)
-        bestow.assets.loadAssetAsync(self.handles.bgMusic, function(h, assetState)
-            if assetState == "Loaded" then
-                state.assetsLoaded = state.assetsLoaded + 1
-            end
-        end)
+        -- Note: loadAssetAsync does NOT accept a callback in Lua.
+        -- Poll with bestow.assets.isLoaded(handle) to check completion.
+        bestow.assets.loadAssetAsync(self.handles.playerMesh)
+        bestow.assets.loadAssetAsync(self.handles.enemyMesh)
+        bestow.assets.loadAssetAsync(self.handles.bgMusic)
 
         -- Enable hot reload for development
         bestow.assets.enableHotReload(true)
@@ -48,14 +35,22 @@ return {
             app.systems.asset_loader, "onAssetReloaded")
     end,
 
+    -- Poll async loading status (no callback available in Lua)
     isLoadingComplete = function()
-        local state = app.main.state
-        return state.assetsLoaded >= state.totalAssets
+        local self = app.systems.asset_loader
+        return bestow.assets.isLoaded(self.handles.playerMesh)
+            and bestow.assets.isLoaded(self.handles.enemyMesh)
+            and bestow.assets.isLoaded(self.handles.bgMusic)
     end,
 
     getLoadProgress = function()
-        local state = app.main.state
-        return state.assetsLoaded / state.totalAssets
+        local self = app.systems.asset_loader
+        local loaded = 0
+        local total = 3
+        if bestow.assets.isLoaded(self.handles.playerMesh) then loaded = loaded + 1 end
+        if bestow.assets.isLoaded(self.handles.enemyMesh) then loaded = loaded + 1 end
+        if bestow.assets.isLoaded(self.handles.bgMusic) then loaded = loaded + 1 end
+        return loaded / total
     end,
 
     onAssetReloaded = function(event)

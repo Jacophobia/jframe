@@ -11,7 +11,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.save;
 import bestow.save.impl;
@@ -1488,65 +1487,6 @@ TEST_F(SaveSystemTest, QuickSaveAndAutoSaveAreIndependent) {
     EXPECT_EQ(saveable.value, 222);
 
     saveSystem_->unregisterSaveable(&saveable);
-}
-
-// ============================================================================
-// Kangaru DI Integration Tests
-// ============================================================================
-
-TEST_F(SaveSystemTest, KangaruServiceInstantiation) {
-    // Test that SaveSystem can be instantiated via Kangaru DI
-    kgr::container container;
-
-    // SaveSystemService has no dependencies, should instantiate cleanly
-    auto& saveSystem = container.service<SaveSystemService>();
-
-    // Set unique profile for this test to avoid conflicts
-    std::string testProfile = uniqueProfile_ + "_kangaru_test";
-    saveSystem.setActiveProfile(testProfile);
-
-    // Verify the service is valid
-    EXPECT_NE(&saveSystem, nullptr);
-
-    // Verify it behaves like a SaveSystem
-    EXPECT_FALSE(saveSystem.saveExists(0));
-
-    // Test that it's a singleton
-    auto& saveSystem2 = container.service<SaveSystemService>();
-    EXPECT_EQ(&saveSystem, &saveSystem2);
-
-    // Cleanup
-    std::error_code ec;
-    std::filesystem::remove_all(std::filesystem::path("saves") / testProfile, ec);
-}
-
-TEST_F(SaveSystemTest, KangaruServiceWithSaveOperations) {
-    // Test full save/load cycle using Kangaru-instantiated service
-    kgr::container container;
-    auto& saveSystem = container.service<SaveSystemService>();
-
-    TestSaveable saveable;
-    saveable.value = 999;
-    saveable.name = "Kangaru Test";
-
-    saveSystem.registerSaveable(&saveable);
-
-    auto saveResult = saveSystem.save(0, "DI Test Save");
-    EXPECT_TRUE(saveResult.has_value());
-
-    // Modify and reload
-    saveable.value = 0;
-    saveable.name = "";
-
-    auto loadResult = saveSystem.load(0);
-    EXPECT_TRUE(loadResult.has_value());
-
-    if (loadResult.has_value()) {
-        EXPECT_EQ(saveable.value, 999);
-        EXPECT_EQ(saveable.name, "Kangaru Test");
-    }
-
-    saveSystem.unregisterSaveable(&saveable);
 }
 
 // ============================================================================

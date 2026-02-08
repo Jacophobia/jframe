@@ -48,7 +48,13 @@ return {
         end
 
         -- Process UI input (so RmlUI receives mouse/keyboard)
-        bestow.ui.processInput()
+        -- processInput requires a table describing the input event
+        local mx, my = bestow.input.getMousePosition()
+        bestow.ui.processInput({
+            type = UIInputType.MouseMove,
+            x = mx,
+            y = my
+        })
     end,
 
     render = function()

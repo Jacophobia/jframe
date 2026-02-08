@@ -64,14 +64,10 @@ local handle = bestow.assets.registerAsset(AssetType.Sound, "sounds/jump.wav")
 -- Load (synchronous)
 bestow.assets.loadAsset(handle)
 
--- Or load asynchronously
-bestow.assets.loadAssetAsync(handle, function(h, state)
-    if state == "Loaded" then
-        -- Ready to use
-    end
-end)
+-- Or load asynchronously (non-blocking, no callback)
+bestow.assets.loadAssetAsync(handle)
 
--- Check state
+-- Check state (poll until loaded)
 bestow.assets.isLoaded(handle) -> bool
 ```
 
@@ -123,29 +119,38 @@ return {
         self.loadedAssets = 0
         self.loadProgress = 0
 
-        -- Queue all assets for loading
+        -- Queue all assets for async loading
+        self.handles = {}
         local typeMap = { meshes = AssetType.Mesh, textures = AssetType.Texture, sounds = AssetType.Sound }
         for assetType, list in pairs(self.assetsToLoad) do
             for _, path in ipairs(list) do
                 local handle = bestow.assets.registerAsset(typeMap[assetType], path)
-                bestow.assets.loadAssetAsync(handle, function(h, state)
-                    if state == "Loaded" then
-                        self.loadedAssets = self.loadedAssets + 1
-                        self.loadProgress = self.loadedAssets / self.totalAssets
-                    end
-                end)
+                bestow.assets.loadAssetAsync(handle)
+                table.insert(self.handles, handle)
             end
         end
     end,
 
     isComplete = function()
         local self = app.systems.loader
-        return self.loadedAssets >= self.totalAssets
+        -- Poll each handle to check if loading is done
+        for _, handle in ipairs(self.handles) do
+            if not bestow.assets.isLoaded(handle) then
+                return false
+            end
+        end
+        return true
     end,
 
     getProgress = function()
         local self = app.systems.loader
-        return self.loadProgress
+        local loaded = 0
+        for _, handle in ipairs(self.handles) do
+            if bestow.assets.isLoaded(handle) then
+                loaded = loaded + 1
+            end
+        end
+        return loaded / self.totalAssets
     end
 }
 
@@ -206,8 +211,11 @@ material = "materials/player"  -- Loads materials/player.lua
 Assets are automatically reloaded when modified during development:
 
 ```bash
-# Run with hot reload enabled
-bestow run main.lua --hot-reload
+# Hot reload is enabled by default
+bestow run main.lua
+
+# Debug mode disables hot reload
+bestow run main.lua -d
 ```
 
 When you save a texture, mesh, or material file, it's reloaded automatically. Your game doesn't need to handle this - it happens transparently.

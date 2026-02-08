@@ -71,6 +71,6 @@ return {
     shutdown = function()
         local self = app.systems.spawner
         -- Cancel all timers owned by this system
-        bestow.timer.cancelByOwner(app.systems.spawner)
+        bestow.timer.cancelFor(app.systems.spawner)
     end
 }

@@ -129,8 +129,8 @@ struct MiniaudioSystem::Impl {
 // MiniaudioSystem implementation
 // ============================================================================
 
-MiniaudioSystem::MiniaudioSystem(IAssetSystem* assetSystem)
-    : impl_(std::make_unique<Impl>()), assetSystem_(assetSystem) {
+MiniaudioSystem::MiniaudioSystem(IAssetSystem& assetSystem)
+    : impl_(std::make_unique<Impl>()), assetSystem_(&assetSystem) {
 }
 
 MiniaudioSystem::~MiniaudioSystem() {

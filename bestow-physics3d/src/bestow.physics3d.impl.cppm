@@ -48,9 +48,6 @@ module;
 #include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
 #include <Jolt/Physics/Body/BodyLock.h>
 
-// Kangaru DI framework
-#include <kangaru/kangaru.hpp>
-
 // EnTT for Entity type
 #include <entt/entity/entity.hpp>
 
@@ -2551,10 +2548,4 @@ JPH::Ref<JPH::Shape> JoltPhysics3DSystem::createShape(const PhysicsBodyDef3D& de
 }
 
 //==========================================================================
-// Kangaru Service Definitions
-//==========================================================================
-
-// Concrete service that provides JoltPhysics3DSystem as IPhysics3DSystem
-struct Physics3DSystemService : kgr::single_service<JoltPhysics3DSystem>, kgr::overrides<IPhysics3DSystemService> {};
-
 }  // namespace bestow

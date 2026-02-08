@@ -10,7 +10,6 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.core;
 import bestow.types;
@@ -671,7 +670,9 @@ TEST_F(LoggingTest, LogLongString) {
 class ConfigSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        configSystem_ = std::make_unique<ConfigSystem>();
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
+        configSystem_ = std::make_unique<ConfigSystem>(*assetSystem_, *eventSystem_);
         ASSERT_TRUE(configSystem_->initialize());
     }
 
@@ -681,6 +682,8 @@ protected:
         }
     }
 
+    std::unique_ptr<EventSystem> eventSystem_;
+    std::unique_ptr<AssetSystem> assetSystem_;
     std::unique_ptr<ConfigSystem> configSystem_;
 };
 
@@ -876,21 +879,14 @@ TEST_F(ConfigSystemTest, UnsubscribeInvalidId) {
 }
 
 // ============================================================================
-// Kangaru DI Integration Tests for ConfigSystem
+// DI Integration Tests for ConfigSystem
 // ============================================================================
 
-TEST_F(ConfigSystemTest, KangaruServiceInstantiation) {
-    // Test that ConfigSystem can be instantiated via Kangaru DI
-    kgr::container container;
-
-    // Register dependencies first - ConfigSystem depends on AssetSystem and EventSystem
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& configSystem = container.service<ConfigSystemService>();
-
-    // Verify the service is valid
-    EXPECT_NE(&configSystem, nullptr);
+TEST_F(ConfigSystemTest, DirectConstructionWithDependencies) {
+    // Test that ConfigSystem can be instantiated with direct construction
+    EventSystem eventSystem;
+    AssetSystem assetSystem(eventSystem);
+    ConfigSystem configSystem(assetSystem, eventSystem);
 
     // Verify it needs initialization
     EXPECT_TRUE(configSystem.initialize());
@@ -898,26 +894,20 @@ TEST_F(ConfigSystemTest, KangaruServiceInstantiation) {
     // Verify it behaves like a ConfigSystem
     EXPECT_FALSE(configSystem.hasKey("nonexistent.key"));
 
-    // Test that it's a singleton
-    auto& configSystem2 = container.service<ConfigSystemService>();
-    EXPECT_EQ(&configSystem, &configSystem2);
-
     configSystem.shutdown();
 }
 
-TEST_F(ConfigSystemTest, KangaruServiceWithSetGet) {
-    // Test set/get operations using Kangaru-instantiated service
-    kgr::container container;
-    // Register dependencies first - ConfigSystem depends on AssetSystem and EventSystem
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-    auto& configSystem = container.service<ConfigSystemService>();
+TEST_F(ConfigSystemTest, DirectConstructionWithSetGet) {
+    // Test set/get operations using directly constructed service
+    EventSystem eventSystem;
+    AssetSystem assetSystem(eventSystem);
+    ConfigSystem configSystem(assetSystem, eventSystem);
 
     ASSERT_TRUE(configSystem.initialize());
 
     configSystem.setFloat("di.test.float", 99.9f);
     configSystem.setInt("di.test.int", 777);
-    configSystem.setString("di.test.string", "kangaru");
+    configSystem.setString("di.test.string", "direct");
 
     auto floatVal = configSystem.getFloat("di.test.float");
     auto intVal = configSystem.getInt("di.test.int");
@@ -934,7 +924,7 @@ TEST_F(ConfigSystemTest, KangaruServiceWithSetGet) {
         EXPECT_EQ(*intVal, 777);
     }
     if (stringVal.has_value()) {
-        EXPECT_EQ(*stringVal, "kangaru");
+        EXPECT_EQ(*stringVal, "direct");
     }
 
     configSystem.shutdown();

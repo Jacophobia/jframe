@@ -50,6 +50,7 @@ include(StandardLibraryModules)
 set(CMAKE_CXX_SCAN_FOR_MODULES ON)
 
 # Add subdirectories
+add_subdirectory(bestow-di)
 add_subdirectory(bestow-contract)
 add_subdirectory(bestow-metrics)
 add_subdirectory(bestow-components)
@@ -61,7 +62,7 @@ add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
 add_subdirectory(bestow-save)
-add_subdirectory(bestow-level)
+add_subdirectory(bestow-scene)
 add_subdirectory(bestow-events)
 add_subdirectory(bestow-physics-common)
 add_subdirectory(bestow-physics)
@@ -130,6 +131,7 @@ include(CMakePackageConfigHelpers)
 
 # List of all Bestow library targets
 set(BESTOW_LIBRARY_TARGETS
+    bestow-di
     bestow-contract
     bestow-metrics
     bestow-components
@@ -141,7 +143,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-input
     bestow-assets
     bestow-save
-    bestow-level
+    bestow-scene
     bestow-events
     bestow-physics-common
     bestow-physics

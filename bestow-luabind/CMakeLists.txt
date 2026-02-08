@@ -23,7 +23,7 @@ target_sources(bestow-luabind
         src/bindings/config_binding.cpp
         src/bindings/assets_binding.cpp
         src/bindings/gas_binding.cpp
-        src/bindings/level_binding.cpp
+        src/bindings/scene_binding.cpp
         src/bindings/blueprints_binding.cpp
         src/bindings/gamestate_binding.cpp
         src/bindings/save_binding.cpp
@@ -32,6 +32,31 @@ target_sources(bestow-luabind
         src/bindings/metrics_binding.cpp
         src/bindings/timer_binding.cpp
         src/stubs/StubGenerator.cpp
+        src/docs/DocRegistry.cpp
+        src/docs/DocFormatter.cpp
+        src/docs/DocRegistration.cpp
+        src/docs/types_binding_doc.cpp
+        src/docs/core_binding_doc.cpp
+        src/docs/input_binding_doc.cpp
+        src/docs/action_binding_doc.cpp
+        src/docs/audio_binding_doc.cpp
+        src/docs/physics_binding_doc.cpp
+        src/docs/physics3d_binding_doc.cpp
+        src/docs/graphics3d_binding_doc.cpp
+        src/docs/animation_binding_doc.cpp
+        src/docs/character_binding_doc.cpp
+        src/docs/entity_binding_doc.cpp
+        src/docs/config_binding_doc.cpp
+        src/docs/assets_binding_doc.cpp
+        src/docs/gas_binding_doc.cpp
+        src/docs/scene_binding_doc.cpp
+        src/docs/blueprints_binding_doc.cpp
+        src/docs/gamestate_binding_doc.cpp
+        src/docs/save_binding_doc.cpp
+        src/docs/events_binding_doc.cpp
+        src/docs/ui_binding_doc.cpp
+        src/docs/metrics_binding_doc.cpp
+        src/docs/timer_binding_doc.cpp
 )
 
 target_link_libraries(bestow-luabind
@@ -41,7 +66,7 @@ target_link_libraries(bestow-luabind
     PRIVATE
         bestow-metrics   # For Tracy profiling support
         bestow-gas       # For GAS bindings
-        bestow-level     # For Level bindings
+        bestow-scene     # For Scene bindings
         bestow-blueprints # For Blueprint bindings
         bestow-gamestate # For GameState bindings
         bestow-save      # For Save bindings

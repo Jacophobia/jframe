@@ -36,7 +36,6 @@ if(JOLT_FOUND)
             bestow-contract
             bestow-physics-common
             ${JOLT_TARGET}
-            kangaru
     )
 
     target_compile_features(bestow-physics3d PUBLIC cxx_std_23)

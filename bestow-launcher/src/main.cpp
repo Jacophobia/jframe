@@ -8,6 +8,7 @@
 #if defined(__APPLE__)
     #include <mach-o/dyld.h>
     #include <climits>
+    #include <unistd.h>
 #elif defined(__linux__)
     #include <unistd.h>
     #include <linux/limits.h>
@@ -23,6 +24,9 @@ import std;
 import bestow.luabind;  // For StubGenerator
 
 using bestow::StubGenerator;
+using bestow::DocRegistry;
+using bestow::DocFormatter;
+using bestow::createFullDocRegistry;
 
 // Forward declarations from CommandLine.cpp
 namespace bestow::launcher {
@@ -33,6 +37,7 @@ enum class Command {
     GenerateStubs,
     New,
     Init,
+    Api,
     Version,
     Help,
     Update
@@ -43,10 +48,12 @@ struct CommandLineArgs {
     std::filesystem::path mainScript;
     std::filesystem::path outputDir;
     std::string projectName;
+    std::string apiQuery;
     bool verbose = false;
     bool debug = false;
     bool nightly = false;
     bool overwrite = false;
+    bool apiNoColor = false;
 };
 
 void printUsage(const char* programName);
@@ -107,6 +114,73 @@ int handleGenerateStubs(const CommandLineArgs& args) {
     spdlog::info("  }}");
 
     return 0;
+}
+
+int handleApi(const CommandLineArgs& args) {
+    auto registry = createFullDocRegistry();
+
+    // Detect if stdout is a terminal for color support
+    bool useColor = !args.apiNoColor;
+#if !defined(_WIN32)
+    if (!isatty(fileno(stdout))) useColor = false;
+#endif
+
+    DocFormatter fmt(useColor);
+    std::string query = args.apiQuery;
+
+    // No query — list all systems
+    if (query.empty()) {
+        std::cout << fmt.formatSystemList(registry);
+        return 0;
+    }
+
+    // "search <term>" — search across all APIs
+    if (query.starts_with("search ")) {
+        std::string term = query.substr(7);
+        auto results = registry.search(term);
+        std::cout << fmt.formatSearchResults(results, term);
+        return 0;
+    }
+    if (query == "search") {
+        spdlog::error("search requires a query term: bestow api search <query>");
+        return 1;
+    }
+
+    // Check if query is a system name (e.g., "assets")
+    if (auto* sys = registry.getSystem(query)) {
+        std::cout << fmt.formatSystem(*sys);
+        return 0;
+    }
+
+    // Check if query is a qualified method/enum/type (e.g., "assets.registerAsset")
+    // Convert shorthand to fully qualified: "assets.foo" -> "bestow.assets.foo"
+    std::string qualified = query;
+    if (!query.starts_with("bestow.")) {
+        qualified = "bestow." + query;
+    }
+
+    if (auto* method = registry.getMethod(qualified)) {
+        std::cout << fmt.formatMethod(*method);
+        return 0;
+    }
+    if (auto* e = registry.getEnum(qualified)) {
+        std::cout << fmt.formatEnum(*e);
+        return 0;
+    }
+    if (auto* t = registry.getType(qualified)) {
+        std::cout << fmt.formatType(*t);
+        return 0;
+    }
+
+    // Try fuzzy search as fallback
+    auto results = registry.search(query);
+    if (!results.empty()) {
+        std::cout << fmt.formatSearchResults(results, query);
+        return 0;
+    }
+
+    std::cout << fmt.formatNotFound(query);
+    return 1;
 }
 
 int handleNew(const CommandLineArgs& args) {
@@ -761,6 +835,9 @@ int main(int argc, char* argv[]) {
 
         case Command::New:
             return handleNew(*args);
+
+        case Command::Api:
+            return handleApi(*args);
 
         case Command::Init:
             return handleInit(*args);

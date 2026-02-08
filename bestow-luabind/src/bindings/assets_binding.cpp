@@ -44,7 +44,7 @@ void bindAssetSystem(sol::state& lua, IAssetSystem& assets) {
     assetTypeTable["Sound"] = AssetType::Sound;
     assetTypeTable["Music"] = AssetType::Music;
     assetTypeTable["Font"] = AssetType::Font;
-    assetTypeTable["Level"] = AssetType::Level;
+    assetTypeTable["Scene"] = AssetType::Scene;
     assetTypeTable["Data"] = AssetType::Data;
     assetTypeTable["Shader"] = AssetType::Shader;
     assetTypeTable["NavMesh"] = AssetType::NavMesh;

@@ -27,7 +27,7 @@ return {
             bestow.action.builder():duringPhase("gameplay"):whenActive(key):emitAction("MoveRight"):continuously()
         end
         bestow.action.builder():duringPhase("gameplay"):whenPressed(k.Space):emitAction("Jump"):discretely()
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
 
         -- Create player with character controller
         state.player = bestow.entity.create()
@@ -54,7 +54,7 @@ return {
         bestow.physics3d.createBody(ground, {
             type = "Static",
             shapeType = "Box",
-            halfExtents = Vec3.new(25, 0.5, 25)
+            shapeHalfExtents = Vec3.new(25, 0.5, 25)
         })
 
         -- Dynamic crates
@@ -72,8 +72,8 @@ return {
             bestow.physics3d.createBody(crate, {
                 type = "Dynamic",
                 shapeType = "Box",
-                halfExtents = Vec3.new(0.5, 0.5, 0.5),
-                mass = 10.0,
+                shapeHalfExtents = Vec3.new(0.5, 0.5, 0.5),
+                density = 10.0,
                 friction = 0.5,
                 restitution = 0.3
             })
@@ -98,7 +98,7 @@ return {
 
         -- Ground check and gravity
         local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
-        local grounded = groundInfo and groundInfo.grounded
+        local grounded = groundInfo and groundInfo.state == CharacterGroundState.OnGround
 
         if grounded then
             state.velocityY = -1
@@ -117,7 +117,7 @@ return {
         local playerPos = bestow.entity.getField(state.player, "Transform3D", "position")
         local hit = bestow.physics3d.raycast(playerPos, Vec3.new(0, -1, 0), 100)
         if hit then
-            bestow.graphics3d.drawDebugSphere(hit.point, 0.1, Color.red())
+            bestow.graphics3d.debugDrawSphere(hit.point, 0.1, Color.red())
         end
 
         return true

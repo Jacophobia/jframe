@@ -3,8 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-#include <bestow/kangaru_macros.hpp>
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
 
@@ -32,9 +30,9 @@ struct ConfigSubscription {
 
 class ConfigSystem : public IConfigSystem {
 public:
-    explicit ConfigSystem(IAssetSystem* pIAssetSystem = nullptr,
-                          IEventSystem* pIEventSystem = nullptr)
-        : pIAssetSystem_(pIAssetSystem), pIEventSystem_(pIEventSystem) {}
+    explicit ConfigSystem(IAssetSystem& assetSystem,
+                          IEventSystem& eventSystem)
+        : pIAssetSystem_(&assetSystem), pIEventSystem_(&eventSystem) {}
     ~ConfigSystem() override = default;
 
     //==========================================================================
@@ -175,22 +173,6 @@ private:
     IAssetSystem* pIAssetSystem_ = nullptr;
     IEventSystem* pIEventSystem_ = nullptr;
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
 };
-
-// Service type for Engine::use<IConfigSystem, ConfigSystem>()
-struct ConfigSystem::Service : kgr::single_service<ConfigSystem>, kgr::overrides<IConfigSystemService> {
-    static auto construct(
-        kgr::inject_t<IAssetSystemService> d1,
-        kgr::inject_t<IEventSystemService> d2)
-        -> kgr::inject_result<IAssetSystem*, IEventSystem*> {
-        return kgr::inject(&d1.forward(), &d2.forward());
-    }
-};
-
-// Backwards compatibility alias
-using ConfigSystemService = ConfigSystem::Service;
 
 }  // namespace bestow
