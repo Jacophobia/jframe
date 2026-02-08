@@ -1,0 +1,102 @@
+<rml>
+<head>
+    <link type="text/rcss" href="theme.rcss"/>
+    <style>
+        #controls-panel {
+            width: 600dp;
+            min-height: 400dp;
+        }
+
+        .bindings-list {
+            margin-top: 16dp;
+        }
+
+        #listening-prompt {
+            font-size: 22dp;
+            color: #f0a030;
+            text-align: center;
+            margin-top: 20dp;
+        }
+    </style>
+</head>
+<body>
+    <div class="screen">
+        <h2>Controls</h2>
+
+        <!-- Tab bar: Controller / Mouse & Keyboard -->
+        <div class="tab-bar">
+            <div id="tab-controller" class="tab active">Controller</div>
+            <div id="tab-keyboard"   class="tab">Mouse &amp; Keyboard</div>
+        </div>
+
+        <div id="controls-panel" class="panel">
+            <!-- Controller bindings (shown when Controller tab active) -->
+            <div id="panel-controller" class="bindings-list">
+                <div class="binding-row" data-action="MoveForward">
+                    <span class="binding-action">Move Forward</span>
+                    <span class="binding-key" id="bind-ctrl-fwd">Left Stick Up</span>
+                </div>
+                <div class="binding-row" data-action="MoveBack">
+                    <span class="binding-action">Move Back</span>
+                    <span class="binding-key" id="bind-ctrl-back">Left Stick Down</span>
+                </div>
+                <div class="binding-row" data-action="MoveLeft">
+                    <span class="binding-action">Move Left</span>
+                    <span class="binding-key" id="bind-ctrl-left">Left Stick Left</span>
+                </div>
+                <div class="binding-row" data-action="MoveRight">
+                    <span class="binding-action">Move Right</span>
+                    <span class="binding-key" id="bind-ctrl-right">Left Stick Right</span>
+                </div>
+                <div class="binding-row" data-action="Jump">
+                    <span class="binding-action">Jump</span>
+                    <span class="binding-key" id="bind-ctrl-jump">A</span>
+                </div>
+                <div class="binding-row" data-action="Attack">
+                    <span class="binding-action">Attack</span>
+                    <span class="binding-key" id="bind-ctrl-attack">X</span>
+                </div>
+                <div class="binding-row" data-action="Pause">
+                    <span class="binding-action">Pause</span>
+                    <span class="binding-key" id="bind-ctrl-pause">Start</span>
+                </div>
+            </div>
+
+            <!-- Keyboard bindings (hidden by default) -->
+            <div id="panel-keyboard" class="bindings-list hidden">
+                <div class="binding-row" data-action="MoveForward">
+                    <span class="binding-action">Move Forward</span>
+                    <span class="binding-key" id="bind-kb-fwd">, / W</span>
+                </div>
+                <div class="binding-row" data-action="MoveBack">
+                    <span class="binding-action">Move Back</span>
+                    <span class="binding-key" id="bind-kb-back">O / S</span>
+                </div>
+                <div class="binding-row" data-action="MoveLeft">
+                    <span class="binding-action">Move Left</span>
+                    <span class="binding-key" id="bind-kb-left">A</span>
+                </div>
+                <div class="binding-row" data-action="MoveRight">
+                    <span class="binding-action">Move Right</span>
+                    <span class="binding-key" id="bind-kb-right">E / D</span>
+                </div>
+                <div class="binding-row" data-action="Jump">
+                    <span class="binding-action">Jump</span>
+                    <span class="binding-key" id="bind-kb-jump">Space</span>
+                </div>
+                <div class="binding-row" data-action="Pause">
+                    <span class="binding-action">Pause</span>
+                    <span class="binding-key" id="bind-kb-pause">Escape</span>
+                </div>
+            </div>
+
+            <!-- Listening prompt (shown during rebind) -->
+            <div id="listening-prompt" class="hidden">Press a key...</div>
+        </div>
+
+        <div style="margin-top: 24dp;">
+            <div id="btn-back" class="btn btn-sm">Back</div>
+        </div>
+    </div>
+</body>
+</rml>

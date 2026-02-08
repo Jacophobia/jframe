@@ -27,6 +27,8 @@ target_link_libraries(bestow
         bestow-physics
         bestow-animation
         bestow-config
+        bestow-scene
+        bestow-ui
         bestow-script
         bestow-luabind
         unofficial::luajit::luajit

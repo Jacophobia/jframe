@@ -1,0 +1,134 @@
+<rml>
+<head>
+    <link type="text/rcss" href="theme.rcss"/>
+    <style>
+        .settings-panel {
+            width: 560dp;
+        }
+
+        .section {
+            margin-bottom: 28dp;
+        }
+
+        .section-title {
+            font-size: 20dp;
+            color: #6aaaf0;
+            margin-bottom: 12dp;
+            border-bottom: 1dp solid #2a3050;
+            padding-bottom: 6dp;
+        }
+
+        .value-label {
+            width: 48dp;
+            text-align: right;
+            color: #a0a0b8;
+            font-size: 16dp;
+        }
+    </style>
+</head>
+<body>
+    <div class="screen">
+        <h2>Settings</h2>
+
+        <div class="settings-panel panel">
+            <!-- Display section -->
+            <div class="section">
+                <div class="section-title">Display</div>
+                <div class="form-row">
+                    <span class="form-label">Fullscreen</span>
+                    <div id="toggle-fullscreen" class="toggle">
+                        <span id="toggle-fullscreen-label">Off</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">VSync</span>
+                    <div id="toggle-vsync" class="toggle on">
+                        <span id="toggle-vsync-label">On</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">Render Scale</span>
+                    <div class="row">
+                        <div id="slider-render-scale" class="slider">
+                            <div id="slider-render-scale-fill" class="slider-fill" style="width: 100%;"/>
+                        </div>
+                        <span id="label-render-scale" class="value-label">1.0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Audio section -->
+            <div class="section">
+                <div class="section-title">Audio</div>
+                <div class="form-row">
+                    <span class="form-label">Master Volume</span>
+                    <div class="row">
+                        <div id="slider-master" class="slider">
+                            <div id="slider-master-fill" class="slider-fill" style="width: 100%;"/>
+                        </div>
+                        <span id="label-master" class="value-label">100%</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">Music</span>
+                    <div class="row">
+                        <div id="slider-music" class="slider">
+                            <div id="slider-music-fill" class="slider-fill" style="width: 70%;"/>
+                        </div>
+                        <span id="label-music" class="value-label">70%</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">SFX</span>
+                    <div class="row">
+                        <div id="slider-sfx" class="slider">
+                            <div id="slider-sfx-fill" class="slider-fill" style="width: 100%;"/>
+                        </div>
+                        <span id="label-sfx" class="value-label">100%</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">UI</span>
+                    <div class="row">
+                        <div id="slider-ui" class="slider">
+                            <div id="slider-ui-fill" class="slider-fill" style="width: 80%;"/>
+                        </div>
+                        <span id="label-ui" class="value-label">80%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graphics section -->
+            <div class="section">
+                <div class="section-title">Graphics</div>
+                <div class="form-row">
+                    <span class="form-label">Shadows</span>
+                    <div id="toggle-shadows" class="toggle on">
+                        <span id="toggle-shadows-label">On</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">SSAO</span>
+                    <div id="toggle-ssao" class="toggle on">
+                        <span id="toggle-ssao-label">On</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">Bloom</span>
+                    <div id="toggle-bloom" class="toggle on">
+                        <span id="toggle-bloom-label">On</span>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <span class="form-label">Shadow Resolution</span>
+                    <div id="select-shadow-res" class="select">2048</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 24dp;">
+            <div id="btn-back" class="btn btn-sm">Back</div>
+        </div>
+    </div>
+</body>
+</rml>

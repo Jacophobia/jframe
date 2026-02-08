@@ -28,19 +28,6 @@ void registerConfigDoc(DocRegistry& registry) {
         .description = "Shut down the config system and release resources.",
     });
 
-    // --- Lua File Parsing ---
-
-    sys.methods.push_back(MethodDoc{
-        .name = "parseLuaFile",
-        .qualifiedName = "bestow.config.parseLuaFile",
-        .description = "Parse and execute a Lua file, returning its result. Useful for loading data files (levels, configs, sound definitions).",
-        .params = {
-            {.name = "filePath", .type = "string", .description = "Path to the Lua file"},
-        },
-        .returns = {{.type = "any|nil", .description = "Result of executing the Lua file, or nil on failure"}},
-        .example = "local data = bestow.config.parseLuaFile(\"config/game.lua\")\nif data then\n    print(data.title)\nend",
-    });
-
     sys.methods.push_back(MethodDoc{
         .name = "loadConfig",
         .qualifiedName = "bestow.config.loadConfig",

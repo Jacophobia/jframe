@@ -1,0 +1,22 @@
+<rml>
+<head>
+    <link type="text/rcss" href="theme.rcss"/>
+    <style>
+        #pause-title {
+            font-size: 48dp;
+            color: #f0f0ff;
+            margin-bottom: 40dp;
+        }
+    </style>
+</head>
+<body>
+    <div class="overlay">
+        <div id="pause-title">Paused</div>
+        <div class="column gap-md">
+            <div id="btn-resume"    class="btn">Resume</div>
+            <div id="btn-main-menu" class="btn">Main Menu</div>
+            <div id="btn-quit"      class="btn">Quit Game</div>
+        </div>
+    </div>
+</body>
+</rml>

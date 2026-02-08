@@ -18,7 +18,6 @@
 #   bestow::bestow-assets    - Asset management
 #   bestow::bestow-events    - Event system
 #   bestow::bestow-save      - Save/Load system
-#   bestow::bestow-level     - Level management
 #   bestow::bestow-ai        - AI/Pathfinding
 #   bestow::bestow-camera    - Camera system
 #   bestow::bestow-config    - Configuration

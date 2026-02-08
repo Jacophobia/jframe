@@ -33,13 +33,7 @@ SceneSystem::~SceneSystem() {
     clearStack();
 }
 
-void SceneSystem::initialize(IAssetSystem* assets, IInputSystem* input,
-                             IUISystem* ui, IEventSystem* events,
-                             sol::state* lua) {
-    assets_ = assets;
-    input_ = input;
-    ui_ = ui;
-    events_ = events;
+void SceneSystem::initialize(sol::state* lua) {
     lua_ = lua;
 
     // Subscribe to scene asset changes for hot reload

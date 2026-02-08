@@ -15,13 +15,13 @@ export namespace bestow {
 
 class SceneSystem : public ISceneSystem {
 public:
-    SceneSystem() = default;
+    explicit SceneSystem(IAssetSystem& assets, IInputSystem& input,
+                         IUISystem& ui, IEventSystem& events)
+        : assets_(&assets), input_(&input), ui_(&ui), events_(&events) {}
     ~SceneSystem() override;
 
-    /// Initialize with dependencies (called after DI construction)
-    void initialize(IAssetSystem* assets, IInputSystem* input,
-                    IUISystem* ui, IEventSystem* events,
-                    sol::state* lua);
+    /// Initialize Lua state (called after DI construction and engine build)
+    void initialize(sol::state* lua);
 
     //==================================================================
     // Lifecycle

@@ -5,8 +5,6 @@ module;
 
 #include <bestow/sol2_compat.hpp>
 #include <spdlog/spdlog.h>
-#include <fstream>
-#include <sstream>
 
 module bestow.luabind;
 
@@ -32,33 +30,6 @@ void bindConfigSystem(sol::state& lua, IConfigSystem& config) {
 
     configTable["shutdown"] = [&config]() {
         config.shutdown();
-    };
-
-    //-------------------------------------------------------------------------
-    // Lua File Parsing (for data files like levels, configs, sounds)
-    //-------------------------------------------------------------------------
-
-    configTable["parseLuaFile"] = [&lua](const std::string& filePath) -> sol::object {
-        // Read file contents
-        std::ifstream file(filePath);
-        if (!file.is_open()) {
-            spdlog::error("[Config] Failed to open file: {}", filePath);
-            return sol::nil;
-        }
-
-        std::stringstream buffer;
-        buffer << file.rdbuf();
-        std::string contents = buffer.str();
-
-        // Execute the Lua code and return the result
-        auto result = lua.safe_script(contents, sol::script_pass_on_error);
-        if (!result.valid()) {
-            sol::error err = result;
-            spdlog::error("[Config] Failed to parse Lua file {}: {}", filePath, err.what());
-            return sol::nil;
-        }
-
-        return result.get<sol::object>();
     };
 
     //-------------------------------------------------------------------------
