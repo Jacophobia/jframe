@@ -222,7 +222,7 @@ return {
         bestow.action.builder():duringPhase("gameplay"):whenPressed(k.Space):emitAction("Jump"):discretely()
 
         -- Push the gameplay input phase
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
     end,
 
     update = function(dt)
@@ -316,7 +316,7 @@ return {
         bestow.physics3d.createBody(ground, {
             type = "Static",
             shapeType = "Box",
-            halfExtents = Vec3.new(100, 0.5, 50)
+            shapeHalfExtents = Vec3.new(100, 0.5, 50)
         })
         table.insert(state.levelEntities, ground)
 
@@ -509,7 +509,7 @@ init = function()
     app.systems.hud.init()
 
     -- 6. Load first level (LAST - creates entities that systems operate on)
-    bestow.input.pushPhase("gameplay")
+    bestow.phase.push("gameplay")
     app.levels.level1.load()
 end
 ```
@@ -954,7 +954,7 @@ return {
         })
 
         -- Load level
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
         app.levels.level1.load()
     end,
 

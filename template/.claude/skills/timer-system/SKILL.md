@@ -53,7 +53,7 @@ bestow.timer.isActive(timerId) -> bool
 bestow.timer.cancelAll()
 
 -- Cancel all timers owned by a specific table
-bestow.timer.cancelByOwner(app.systems.spawner)
+bestow.timer.cancelFor(app.systems.spawner)
 ```
 
 ## Frame Update (Required)
@@ -160,5 +160,5 @@ return {
 1. **Always call `bestow.timer.update(dt)`** in your main update loop
 2. **Use table+method pattern** for hot-reload safety (not closures)
 3. **Store timer IDs** if you need to cancel them later
-4. **Use `cancelByOwner`** when cleaning up a system
+4. **Use `cancelFor`** when cleaning up a system
 5. **Cancel timers** when entities are destroyed to avoid callbacks on dead objects

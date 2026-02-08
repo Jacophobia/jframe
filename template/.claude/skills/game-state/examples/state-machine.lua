@@ -70,7 +70,7 @@ return {
 
         if bestow.input.wasActionJustPressed("Pause") then
             state.phase = "paused"
-            bestow.input.pushPhase("pause")
+            bestow.phase.push("pause")
             bestow.audio.setMasterVolume(0.3)
             return true
         end
@@ -93,7 +93,7 @@ return {
     updatePaused = function(dt)
         if bestow.input.wasActionJustPressed("Resume") then
             app.main.state.phase = "playing"
-            bestow.input.popPhase()
+            bestow.phase.pop()
             bestow.audio.setMasterVolume(1.0)
         end
         return true
@@ -114,7 +114,7 @@ return {
         local state = app.main.state
         state.phase = "playing"
         state.score = 0
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
         bestow.audio.setMasterVolume(1.0)
         -- Load level, create player, etc.
     end

@@ -4,8 +4,8 @@ Lua-first game engine. Games are written entirely in Lua and run via the `bestow
 
 ```bash
 bestow run main.lua                # Run game
-bestow run main.lua --hot-reload   # Run with live code reloading
-bestow run main.lua --debug        # Run with debug overlay
+bestow run main.lua -d             # Run with debug mode (extra logging)
+bestow run main.lua -v             # Run with verbose logging
 ```
 
 ## Architecture
@@ -119,17 +119,40 @@ bestow.action.builder():duringPhase("gameplay"):whenActive(k.W):emitAction("Move
 4. **Not checking nil returns** - Many functions return nil on failure
 5. **Using WASD only** - Always support Dvorak (,AOE)
 6. **Reimplementing engine features** - Use `bestow.timer`, `bestow.ui`, `bestow.events` etc.
-7. **Using `os.clock()`** - Use `bestow.core.time()` instead
+7. **Using `os.clock()`** - Use `bestow.util.time()` for timestamps or `bestow.util.clock()` for high-precision timing
+
+## API Documentation
+
+Full API docs are built into the CLI:
+
+```bash
+bestow api                          # List all systems
+bestow api <system>                 # Show system details (methods, enums, types, properties)
+bestow api <system>.<method>        # Show method details (params, returns, example)
+bestow api search <query>           # Search across all APIs
+bestow api --no-color               # Disable ANSI colors (for piping)
+```
+
+Examples:
+```bash
+bestow api physics3d                # See all 3D physics methods
+bestow api assets.loadAssetAsync    # See async loading params and usage
+bestow api search raycast           # Find all raycast-related APIs
+```
 
 ## Quick API Cheatsheet
 
 ```
-bestow.core          deltaTime(), time(), frameCount()
+bestow.core          deltaTime(), frameCount()
+bestow.util          time(), clock(), date()
 bestow.entity        create(), destroy(), addComponent(), getComponent(), setComponent(),
                      getField(), setField(), hasComponent(), each(), count(), isValid()
 bestow.action        builder():duringPhase():whenPressed/Active/Released():emitAction():discretely/continuously()
-bestow.input         isActionActive(), getActionValue(), getMousePosition(), getMouseDelta(),
-                     isKeyDown(), wasKeyJustPressed(), setCursorMode(), showMouseCursor()
+bestow.input         getMousePosition(), getMouseDelta(), isKeyDown(), wasKeyJustPressed(),
+                     setCursorMode(), showMouseCursor()
+                     [DEPRECATED: isActionActive(), getActionValue(), wasActionJustPressed()
+                      -- prefer event subscriptions via bestow.events.subscribe()]
+bestow.phase         push(), pop(), current(), stack(), change(), isActive()
 bestow.graphics3d    beginFrame(), endFrame(), setCamera(), drawMesh(), createMaterial(),
                      createCubeMesh/SphereMesh/PlaneMesh(), setDirectionalLight(),
                      setAmbientLight(), setFog(), debugDrawLine/Box/Sphere()
@@ -146,21 +169,22 @@ bestow.ui            loadDocument(), getElementById(), setElementText(), addClas
                      setAttribute(), setStyle(), onElementEvent(), showDocument()
 bestow.events        subscribe(), emit(), unsubscribe()
 bestow.timer         after(), every(), cancel(), pause(), resume(), update()
+bestow.scene         register(), push(), pop(), replace(), clear(), active(), stack(), state(), registered()
 bestow.config        loadConfig(), getFloat/Int/Bool/String(), enableHotReload()
 bestow.metrics       beginZone(), endZone(), plot(), message()
 ```
 
 ### Key Type Constructors
 ```
-Vec2.new(x, y)              Vec3.new(x, y, z)           Vec4.new(x, y, z, w)
-Quat.identity()             Quat.fromAxisAngle(axis, r)  Quat.fromEuler(p, y, r)
+Vec2.new(x, y)              Vec3.new(x, y, z)           Vec4(x, y, z, w)
+Quat.identity()             Quat.fromAxisAngle(axis, r)  Quat.fromEuler(pitch, yaw, roll)
 Color.new(r, g, b, a)       Transform3D.identity()       Mat4.identity()
 AABB3D.new(min, max)         Ray3D.new(origin, dir)
 ```
 
 ### Key Enums
 ```
-AssetType    .Texture .Sound .Music .Font .Mesh .Model .Material .Shader .Cubemap
+AssetType    .Texture .Sound .Music .Font .Scene .Mesh .Model .Material .Shader .Cubemap
 BodyType3D   .Static .Kinematic .Dynamic
 BlendMode    .Opaque .AlphaBlend .Additive
 KeyCode      .Space .Escape .Enter .W .A .S .D .Comma .O .E .Up .Down .Left .Right
@@ -175,8 +199,8 @@ Claude has specialized skills for detailed API docs and patterns. These load aut
 
 **START HERE:** architecture — Best practices for structuring a Bestow game. Read this before writing any code.
 
-**Core Systems:** entity-system, input-system, graphics-system, audio-system, physics-system, animation-system, assets-system, camera-system, ui-and-menus, timer-system, events-system, math-types
+**Core Systems:** entity-system, input-system, graphics-system, audio-system, physics-system, animation-system, assets-system, camera-system, scene-system, ui-and-menus, timer-system, events-system, math-types
 
-**Game Patterns:** player-controller, enemies-and-ai, collectibles-and-items, game-state, level-system, save-system
+**Game Patterns:** player-controller, enemies-and-ai, collectibles-and-items, game-state
 
 **Development:** hot-reload, project-structure

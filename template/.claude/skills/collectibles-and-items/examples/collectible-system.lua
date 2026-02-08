@@ -31,7 +31,7 @@ return {
         bestow.physics3d.createBody(entity, {
             type = "Static",
             shapeType = "Sphere",
-            radius = 0.75,
+            shapeRadius = 0.75,
             isSensor = true
         })
 
@@ -76,8 +76,7 @@ return {
         end)
     end,
 
-    onTriggerEnter = function(event)
-        local self = app.systems.collectibles
+    onTriggerEnter = function(self, event, scope)
         local state = app.main.state
 
         -- Check if player touched a collectible

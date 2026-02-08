@@ -38,11 +38,13 @@ return {
         bestow.action.builder():duringPhase("pause"):whenPressed(k.Escape):popPhase():discretely()
 
         -- Start in gameplay phase
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
     end,
 
     update = function(dt)
         -- Read digital movement
+        -- NOTE: bestow.input.isActionActive/wasActionJustPressed/getActionValue are DEPRECATED.
+        -- Prefer event subscriptions (bestow.events.subscribe("action:Name", ...)) for new code.
         local moveX, moveZ = 0, 0
         if bestow.input.isActionActive("MoveLeft") then moveX = moveX - 1 end
         if bestow.input.isActionActive("MoveRight") then moveX = moveX + 1 end

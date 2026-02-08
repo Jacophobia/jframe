@@ -48,9 +48,9 @@ return {
         bestow.physics3d.createBody(entity, {
             type = "Dynamic",
             shapeType = "Capsule",
-            radius = 0.4,
-            height = 1.6,
-            mass = 50.0
+            shapeRadius = 0.4,
+            shapeHalfHeight = 0.8,
+            density = 1000.0
         })
 
         return entity

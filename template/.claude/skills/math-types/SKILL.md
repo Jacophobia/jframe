@@ -14,8 +14,8 @@ All math types are globally available in Lua. No import needed.
 Vec2.new(x, y)
 Vec2.zero()    -- (0, 0)
 Vec2.one()     -- (1, 1)
-Vec2.up()      -- (0, -1) -- Screen space: up is negative Y
-Vec2.down()    -- (0, 1)
+Vec2.up()      -- (0, 1)
+Vec2.down()    -- (0, -1)
 Vec2.left()    -- (-1, 0)
 Vec2.right()   -- (1, 0)
 
@@ -68,9 +68,8 @@ v1 + v2, v1 - v2, v * scalar, v / scalar, -v, v1 == v2
 ## Vec4
 
 ```lua
-Vec4.new(x, y, z, w)
+Vec4(x, y, z, w)       -- Constructor (no .new factory)
 v.x, v.y, v.z, v.w
--- Same operators as Vec2/Vec3
 ```
 
 ## Quat (Quaternion)
@@ -137,7 +136,7 @@ Mat4.fromTransform(transform3d)      -- From Transform3D
 
 -- View/projection
 Mat4.lookAt(eye, target, up)
-Mat4.perspective(fovRad, aspect, near, far)
+Mat4.perspective(fovDegrees, aspect, near, far)
 Mat4.ortho(left, right, bottom, top, near, far)
 
 -- Operators

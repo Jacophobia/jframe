@@ -22,7 +22,7 @@ bestow.entity.addComponent(wall, "Transform3D", {
 bestow.physics3d.createBody(wall, {
     type = "Static",
     shapeType = "Box",
-    halfExtents = Vec3.new(5, 2.5, 0.5)  -- Half of the actual size
+    shapeHalfExtents = Vec3.new(5, 2.5, 0.5)  -- Half of the actual size
 })
 ```
 
@@ -39,8 +39,8 @@ bestow.entity.addComponent(crate, "Transform3D", {
 bestow.physics3d.createBody(crate, {
     type = "Dynamic",
     shapeType = "Box",
-    halfExtents = Vec3.new(0.5, 0.5, 0.5),
-    mass = 10.0,
+    shapeHalfExtents = Vec3.new(0.5, 0.5, 0.5),
+    density = 10.0,
     friction = 0.5,
     restitution = 0.3  -- Bounciness
 })
@@ -50,16 +50,16 @@ bestow.physics3d.createBody(crate, {
 
 ```lua
 -- Box
-{ shapeType = "Box", halfExtents = Vec3.new(1, 1, 1) }
+{ shapeType = "Box", shapeHalfExtents = Vec3.new(1, 1, 1) }
 
 -- Sphere
-{ shapeType = "Sphere", radius = 0.5 }
+{ shapeType = "Sphere", shapeRadius = 0.5 }
 
 -- Capsule (for characters)
-{ shapeType = "Capsule", radius = 0.4, height = 1.8 }
+{ shapeType = "Capsule", shapeRadius = 0.4, shapeHalfHeight = 0.9 }
 
 -- Cylinder
-{ shapeType = "Cylinder", radius = 0.5, height = 2.0 }
+{ shapeType = "Cylinder", shapeRadius = 0.5, shapeHalfHeight = 1.0 }
 ```
 
 ## Character Controller
@@ -102,7 +102,7 @@ end
 
 -- Apply gravity if not grounded
 local groundInfo = bestow.physics3d.getCharacterGroundInfo(player)
-if not (groundInfo and groundInfo.grounded) then
+if not (groundInfo and groundInfo.state == CharacterGroundState.OnGround) then
     self.velocityY = self.velocityY + GRAVITY * dt
 else
     self.velocityY = -1  -- Small downward force to stay grounded
@@ -119,9 +119,9 @@ bestow.physics3d.moveCharacter(player, velocity, dt)
 -- Pass the entity directly (not a separate handle)
 local groundInfo = bestow.physics3d.getCharacterGroundInfo(player)
 
-if groundInfo and groundInfo.grounded then
+if groundInfo and groundInfo.state == CharacterGroundState.OnGround then
     -- Character is on ground
-    print("Surface normal: " .. tostring(groundInfo.normal))
+    print("Surface normal: " .. tostring(groundInfo.groundNormal))
     print("Slope angle: " .. groundInfo.slopeAngle)
 end
 ```
@@ -151,7 +151,7 @@ end
 ```lua
 local function getMouseWorldPosition()
     local mouseScreen = bestow.input.getMousePosition()
-    local ray = bestow.graphics3d.screenToRay(mouseScreen)
+    local ray = bestow.graphics3d.screenToWorldRay(mouseScreen)
 
     local hit = bestow.physics3d.raycast(ray.origin, ray.direction, 1000)
     if hit then
@@ -208,17 +208,17 @@ local entities = bestow.physics3d.overlapBox(
 Filter what collides with what:
 
 ```lua
--- Predefined layers
-Layers.Default    -- 0
-Layers.Static     -- 1
-Layers.Dynamic    -- 2
-Layers.Character  -- 3
-Layers.Projectile -- 4
-Layers.Trigger    -- 5
+-- Predefined layers (accessed via bestow.physics3d.Layer)
+bestow.physics3d.Layer.Default
+bestow.physics3d.Layer.Static
+bestow.physics3d.Layer.Dynamic
+bestow.physics3d.Layer.Character
+bestow.physics3d.Layer.Trigger
+bestow.physics3d.Layer.Debris
 
 -- Set layer and mask on body
-bestow.physics3d.setCollisionLayer(entity, Layers.Character)
-bestow.physics3d.setCollisionMask(entity, Layers.Static | Layers.Dynamic)
+bestow.physics3d.setCollisionLayer(entity, bestow.physics3d.Layer.Character)
+bestow.physics3d.setCollisionMask(entity, bestow.physics3d.Layer.Static | bestow.physics3d.Layer.Dynamic)
 ```
 
 ## Applying Forces
@@ -245,11 +245,11 @@ bestow.physics3d.applyTorque(entity, Vec3.new(0, 10, 0))
 
 ```lua
 -- Get current velocity
-local vel = bestow.physics3d.getVelocity(entity)
+local vel = bestow.physics3d.getLinearVelocity(entity)
 local angVel = bestow.physics3d.getAngularVelocity(entity)
 
 -- Set velocity directly
-bestow.physics3d.setVelocity(entity, Vec3.new(0, 10, 0))
+bestow.physics3d.setLinearVelocity(entity, Vec3.new(0, 10, 0))
 bestow.physics3d.setAngularVelocity(entity, Vec3.new(0, 0, 0))
 ```
 
@@ -318,7 +318,7 @@ bestow.physics.createBody(entity, {
 local result = bestow.physics.checkGrounded(entity, {
     rayDistance = 5.0,
     slopeToleranceDeg = 45.0,
-    groundMask = Layers.Terrain
+    groundMask = bestow.physics.Layer.Terrain
 })
 
 if result.grounded then
@@ -342,7 +342,7 @@ return {
 
         -- Check ground (pass entity directly)
         local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
-        local grounded = groundInfo and groundInfo.grounded
+        local grounded = groundInfo and groundInfo.state == CharacterGroundState.OnGround
 
         -- Apply gravity
         if grounded then

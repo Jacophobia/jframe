@@ -32,7 +32,7 @@ return {
             app.systems.movement, "onCollision")
 
         -- Timers: use table+method pattern
-        bestow.timer.cancelByOwner(app.systems.movement)  -- Clean up old timers
+        bestow.timer.cancelFor(app.systems.movement)  -- Clean up old timers
         bestow.timer.every(1.0, app.systems.movement, "tick")
     end,
 
@@ -72,7 +72,7 @@ return {
         if self.collisionSubId then
             bestow.events.unsubscribe(self.collisionSubId)
         end
-        bestow.timer.cancelByOwner(app.systems.movement)
+        bestow.timer.cancelFor(app.systems.movement)
     end
 }
 

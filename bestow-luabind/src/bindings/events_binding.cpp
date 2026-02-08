@@ -347,9 +347,10 @@ private:
                 // This is used for custom event data
                 result["_isAny"] = true;
             }
-            else if constexpr (std::is_same_v<T, LevelEventData>) {
-                result["levelId"] = arg.levelId;
-                result["event"] = static_cast<int>(arg.event);
+            else if constexpr (std::is_same_v<T, SceneEventData>) {
+                result["sceneId"] = arg.sceneId;
+                result["sceneName"] = arg.sceneName;
+                result["newState"] = static_cast<int>(arg.newState);
             }
             else if constexpr (std::is_same_v<T, CollisionEvent>) {
                 result["entityA"] = static_cast<std::uint32_t>(arg.entityA);

@@ -11,7 +11,7 @@ export import bestow.audio;
 export import bestow.input;
 export import bestow.assets;
 export import bestow.save;
-export import bestow.level;
+export import bestow.scene;
 export import bestow.events;
 export import bestow.physics;
 export import bestow.physics3d;
@@ -37,7 +37,7 @@ struct BestowEngine {
     IInputSystem* input = nullptr;
     IPhysicsSystem* physics = nullptr;
     IPhysics3DSystem* physics3d = nullptr;
-    ILevelSystem* levels = nullptr;
+    ISceneSystem* scenes = nullptr;
     ISaveSystem* save = nullptr;
     IAISystem* ai = nullptr;
     IConfigSystem* config = nullptr;
@@ -49,7 +49,7 @@ struct BestowEngine {
 
     bool isValid() const {
         return events && assets && entities && graphics &&
-               audio && input && physics && levels && save && ai && config;
+               audio && input && physics && scenes && save && ai && config;
     }
 
     bool has3DSupport() const {

@@ -36,7 +36,7 @@ return {
         bestow.physics3d.createBody(entity, {
             type = "Static",
             shapeType = "Sphere",
-            radius = 0.5,
+            shapeRadius = 0.5,
             isSensor = true,
             layer = Layers.Trigger
         })
@@ -67,8 +67,7 @@ return {
             app.systems.collectibles, "onTrigger")
     end,
 
-    onTrigger = function(event)
-        local self = app.systems.collectibles
+    onTrigger = function(self, event, scope)
         self.onTriggerEnter(event.entityA, event.entityB)
     end,
 
@@ -213,7 +212,7 @@ return {
         bestow.physics3d.createBody(entity, {
             type = "Static",
             shapeType = "Sphere",
-            radius = 0.75,
+            shapeRadius = 0.75,
             isSensor = true
         })
 

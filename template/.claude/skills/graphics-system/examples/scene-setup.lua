@@ -23,12 +23,12 @@ return {
 
         -- Lighting
         bestow.graphics3d.setAmbientLight(
-            Color.new(0.2, 0.2, 0.3, 1.0),
+            Vec3.new(0.2, 0.2, 0.3),
             0.3
         )
         bestow.graphics3d.setDirectionalLight({
             direction = Vec3.new(-0.5, -1, -0.5):normalize(),
-            color = Color.new(1.0, 0.95, 0.8, 1.0),
+            color = Vec3.new(1.0, 0.95, 0.8),
             intensity = 1.0,
             castShadows = true
         })
@@ -41,8 +41,12 @@ return {
             endDistance = 150.0
         })
 
-        -- Skybox
-        bestow.graphics3d.setSkybox("textures/skybox")
+        -- Skybox (requires a cubemap texture handle loaded via bestow.assets)
+        -- local cubemapHandle = bestow.assets.registerAsset(AssetType.Cubemap, "textures/skybox")
+        -- bestow.assets.loadAsset(cubemapHandle)
+        -- local skybox = Skybox.new()
+        -- skybox.cubemapTexture = cubemapHandle
+        -- bestow.graphics3d.setSkybox(skybox)
 
         -- Ground plane
         local ground = bestow.entity.create()
@@ -58,7 +62,7 @@ return {
         bestow.physics3d.createBody(ground, {
             type = "Static",
             shapeType = "Box",
-            halfExtents = Vec3.new(25, 0.5, 25)
+            shapeHalfExtents = Vec3.new(25, 0.5, 25)
         })
 
         -- Some objects
@@ -85,13 +89,13 @@ return {
         -- Entities with MeshRenderer are drawn automatically
 
         -- Debug drawing (dev only)
-        bestow.graphics3d.drawDebugLine(
+        bestow.graphics3d.debugDrawLine(
             Vec3.zero(), Vec3.new(5, 0, 0), Color.red()
         )
-        bestow.graphics3d.drawDebugLine(
+        bestow.graphics3d.debugDrawLine(
             Vec3.zero(), Vec3.new(0, 5, 0), Color.green()
         )
-        bestow.graphics3d.drawDebugLine(
+        bestow.graphics3d.debugDrawLine(
             Vec3.zero(), Vec3.new(0, 0, 5), Color.blue()
         )
 

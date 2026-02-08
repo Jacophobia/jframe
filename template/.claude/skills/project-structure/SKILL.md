@@ -371,7 +371,7 @@ bestow new my-game
 
 # Run the game
 cd my-game
-bestow run main.lua --hot-reload
+bestow run main.lua
 ```
 
 ## File Naming Conventions

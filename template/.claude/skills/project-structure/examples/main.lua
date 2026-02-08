@@ -52,7 +52,7 @@ return {
         bestow.ui.initialize()
 
         -- Load first level
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
         app.levels.level1.load()
     end,
 

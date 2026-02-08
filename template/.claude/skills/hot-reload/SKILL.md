@@ -10,8 +10,11 @@ Bestow's hot reload system lets you modify Lua code and see changes instantly wi
 ## How Hot Reload Works
 
 ```bash
-# Run with hot reload enabled
-bestow run main.lua --hot-reload
+# Hot reload is enabled by default
+bestow run main.lua
+
+# Debug mode DISABLES hot reload (for debugging without file watching)
+bestow run main.lua -d
 ```
 
 When you save a `.lua` file:
@@ -162,8 +165,7 @@ return {
             app.systems.damage, "onCollision")
     end,
 
-    onCollision = function(event)
-        local self = app.systems.damage
+    onCollision = function(self, event, scope)
         -- Handle collision
     end,
 
@@ -267,8 +269,7 @@ return {
             app.systems.game, "onReload")
     end,
 
-    onReload = function(event)
-        local self = app.systems.game
+    onReload = function(self, event, scope)
         print("Reloaded: " .. event.path)
 
         -- Reinitialize anything that depends on the reloaded file

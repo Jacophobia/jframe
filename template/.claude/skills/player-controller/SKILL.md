@@ -61,7 +61,7 @@ return {
         bestow.action.builder():duringPhase("gameplay"):whenPressed(gb.A):emitAction("Jump"):discretely()
         bestow.action.builder():duringPhase("gameplay"):whenHeld(k.LeftShift, 0.0):emitAction("Sprint"):continuously()
 
-        bestow.input.pushPhase("gameplay")
+        bestow.phase.push("gameplay")
     end,
 
     update = function(dt)
@@ -96,7 +96,7 @@ return {
 
         -- Ground check
         local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
-        local grounded = groundInfo and groundInfo.grounded
+        local grounded = groundInfo and groundInfo.state == CharacterGroundState.OnGround
 
         -- Gravity and jumping
         if grounded then
@@ -173,7 +173,7 @@ return {
         local state = app.main.state
 
         local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
-        local grounded = groundInfo and groundInfo.grounded
+        local grounded = groundInfo and groundInfo.state == CharacterGroundState.OnGround
 
         if grounded then
             self.jumpsRemaining = MAX_JUMPS
@@ -207,10 +207,10 @@ return {
     update = function(dt)
         local self = app.systems.player
         local state = app.main.state
-        local time = bestow.core.time()
+        local time = bestow.util.time()
 
         local groundInfo = bestow.physics3d.getCharacterGroundInfo(state.player)
-        local grounded = groundInfo and groundInfo.grounded
+        local grounded = groundInfo and groundInfo.state == CharacterGroundState.OnGround
 
         if grounded then
             self.lastGroundedTime = time

@@ -84,7 +84,6 @@ bestow.ui.unloadDocument(doc)
 local elem = bestow.ui.getElementById(doc, "health-fill")
 local elems = bestow.ui.getElementsByClass(doc, "menu-item")
 local buttons = bestow.ui.getElementsByTag(doc, "button")
-local results = bestow.ui.queryElements(doc, ".panel .title")
 
 -- Navigate DOM
 local children = bestow.ui.getChildren(elem)
@@ -162,8 +161,17 @@ bestow.ui.offEvent("click")
 ## Input Integration
 
 ```lua
--- Forward input events to UI
-bestow.ui.processInput(inputEvent) -> bool  -- Returns true if UI consumed the input
+-- Forward input events to UI (requires a table describing the event)
+bestow.ui.processInput({
+    type = UIInputType.MouseMove,  -- UIInputType enum (MouseMove, MouseDown, MouseUp, MouseScroll, KeyDown, KeyUp, TextInput)
+    x = mx,                        -- Mouse/pointer X position
+    y = my,                        -- Mouse/pointer Y position
+    button = 0,                    -- Mouse button index (for MouseDown/MouseUp)
+    wheelDelta = 0,                -- Scroll wheel delta (for MouseScroll)
+    keyCode = 0,                   -- Key code (for KeyDown/KeyUp)
+    modifiers = 0,                 -- Modifier key flags
+    character = ""                 -- Character string (for TextInput)
+}) -> bool  -- Returns true if UI consumed the input
 
 -- Check if UI wants input (gate game input on this)
 if bestow.ui.wantsKeyboardInput() then
@@ -353,7 +361,7 @@ return {
         local self = app.systems.pause
         if self.doc and bestow.ui.isDocumentVisible(self.doc) then
             bestow.ui.hideDocument(self.doc)
-            bestow.input.popPhase()  -- Resume gameplay input phase
+            bestow.phase.pop()  -- Resume gameplay input phase
         else
             if not self.doc then
                 self.doc = bestow.ui.loadDocumentFromString([[
@@ -380,7 +388,7 @@ return {
                 end)
             end
             bestow.ui.showDocument(self.doc)
-            bestow.input.pushPhase("pause")  -- Switch input to pause phase
+            bestow.phase.push("pause")  -- Switch input to pause phase
         end
     end
 }
