@@ -4,7 +4,6 @@
 #include <memory>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 #include <entt/entity/entity.hpp>
 
 import std;

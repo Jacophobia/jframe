@@ -3,9 +3,6 @@
 
 module;
 
-// Kangaru DI framework
-#include <kangaru/kangaru.hpp>
-
 // GLM math library - MUST be before ozz to ensure operator* resolution
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -227,9 +224,6 @@ public:
 /// IAssetSystem before invoking animation functions.
 class AnimationSystem : public IAnimationSystem {
 public:
-    // Forward declare Service - defined after class is complete
-    struct Service;
-
     AnimationSystem() = default;
     ~AnimationSystem() override;
 
@@ -593,12 +587,5 @@ private:
     void applyIK(AnimatorData& animator, SkeletonData& skeleton);
     void extractRootMotion(AnimatorData& animator, SkeletonData& skeleton);
 };
-
-// Kangaru service definition - must be after class is complete
-struct AnimationSystem::Service : kgr::single_service<AnimationSystem>,
-                                  kgr::overrides<IAnimationSystemService> {};
-
-// Alias for consistent naming with other systems
-using AnimationSystemService = AnimationSystem::Service;
 
 }  // namespace bestow

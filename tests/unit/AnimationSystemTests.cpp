@@ -8,12 +8,9 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.animation;
 import bestow.animation.impl;
-import bestow.assets.impl;   // For AssetSystemService (dependency of AnimationSystem)
-import bestow.events.impl;   // For EventSystemService (dependency of AssetSystem)
 import bestow.types;
 
 namespace bestow::tests {
@@ -25,13 +22,9 @@ namespace bestow::tests {
 class AnimationSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Register dependencies in order:
-        // 1. EventSystem (no dependencies)
-        // 2. AssetSystem (depends on EventSystem)
-        // 3. AnimationSystem (depends on AssetSystem)
-        container_.service<EventSystemService>();
-        container_.service<AssetSystemService>();
-        animation_ = &container_.service<AnimationSystemService>();
+        // AnimationSystem has no constructor dependencies
+        animationSystem_ = std::make_unique<AnimationSystem>();
+        animation_ = animationSystem_.get();
 
         // Initialize the animation system
         bool initialized = animation_->initialize();
@@ -73,7 +66,7 @@ protected:
         return result.value();
     }
 
-    kgr::container container_;
+    std::unique_ptr<IAnimationSystem> animationSystem_;
     IAnimationSystem* animation_ = nullptr;
 };
 
@@ -1390,62 +1383,6 @@ TEST_F(AnimationSystemTest, CreateManySockets) {
 
     auto sockets = animation_->getSockets(skeleton);
     EXPECT_EQ(sockets.size(), 20);
-}
-
-//==========================================================================
-// Kangaru DI Integration Tests
-//==========================================================================
-
-TEST_F(AnimationSystemTest, KangaruServiceCanBeInstantiated) {
-    kgr::container container;
-
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Instantiate AnimationSystemService through Kangaru
-    auto& animationSystem = container.service<AnimationSystemService>();
-
-    EXPECT_NE(&animationSystem, nullptr);
-}
-
-TEST_F(AnimationSystemTest, KangaruServiceIsSingleton) {
-    kgr::container container;
-
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& animationSystem1 = container.service<AnimationSystemService>();
-    auto& animationSystem2 = container.service<AnimationSystemService>();
-
-    EXPECT_EQ(&animationSystem1, &animationSystem2);
-}
-
-TEST_F(AnimationSystemTest, KangaruServiceCanInitialize) {
-    kgr::container container;
-
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& animationSystem = container.service<AnimationSystemService>();
-    bool initialized = animationSystem.initialize();
-
-    EXPECT_TRUE(initialized);
-}
-
-TEST_F(AnimationSystemTest, KangaruServiceCanCreateSkeleton) {
-    kgr::container container;
-
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& animationSystem = container.service<AnimationSystemService>();
-    animationSystem.initialize();
-
-    auto bones = createTestBones(3);
-    auto result = animationSystem.createSkeleton(std::span<const BoneInfo>(bones));
-
-    EXPECT_TRUE(result.has_value());
 }
 
 //==========================================================================

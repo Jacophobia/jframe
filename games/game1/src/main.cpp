@@ -35,14 +35,25 @@ int main(int argc, char* argv[]) {
 
     // Register system implementations with engine.use<Contract, Implementation>()
     engine.use<bestow::IEventSystem, bestow::EventSystem>();
-    engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
-    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
-    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
-    engine.use<bestow::IInputSystem, bestow::InputSystem>();
+    engine.use<bestow::IAssetSystem, bestow::AssetSystem>(
+        [](bestow::di::ServiceProvider& sp) { return new bestow::AssetSystem(sp.get<bestow::IEventSystem>()); });
+    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::ConfigSystem(sp.get<bestow::IAssetSystem>(), sp.get<bestow::IEventSystem>());
+        });
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::VulkanGraphics3DSystem(sp.get<bestow::IAssetSystem>(), sp.get<bestow::IConfigSystem>());
+        });
+    engine.use<bestow::IInputSystem, bestow::InputSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::InputSystem(sp.get<bestow::IEventSystem>(), sp.get<bestow::IAssetSystem>());
+        });
 
     // Audio (optional)
     try {
-        engine.use<bestow::IAudioSystem, bestow::AudioSystem>();
+        engine.use<bestow::IAudioSystem, bestow::AudioSystem>(
+            [](bestow::di::ServiceProvider& sp) { return new bestow::AudioSystem(sp.get<bestow::IAssetSystem>()); });
     } catch (...) {
         std::cerr << "Warning: Audio system not available\n";
     }

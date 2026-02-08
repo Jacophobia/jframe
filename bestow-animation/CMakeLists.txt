@@ -12,7 +12,6 @@ target_sources(bestow-animation
 target_link_libraries(bestow-animation
     PUBLIC
         bestow-contract
-        kangaru::kangaru
         glm::glm
 )
 

@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.gas.impl;
@@ -131,9 +130,5 @@ private:
     sol::state lua_;
     bool initialized_ = false;
 };
-
-// Kangaru service definitions
-// Concrete service - GASSystem has no dependencies on other game systems
-struct GASSystemService : kgr::single_service<GASSystem>, kgr::overrides<IGASSystemService> {};
 
 }  // namespace bestow

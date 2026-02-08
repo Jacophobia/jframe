@@ -3,8 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-
 #ifdef BESTOW_HAS_FMOD
 #include <fmod.h>
 #endif
@@ -23,7 +21,7 @@ export namespace bestow {
 
 class FMODAudioSystem : public IAudioSystem {
 public:
-    explicit FMODAudioSystem(IAssetSystem* assetSystem = nullptr);
+    explicit FMODAudioSystem(IAssetSystem& assetSystem);
     ~FMODAudioSystem() override;
 
     bool initialize() override;
@@ -113,17 +111,6 @@ private:
     std::unordered_map<AssetHandle, FMOD_SOUND*, AssetHandleHash> soundCache_;  // Cached FMOD sounds
 #endif
 
-public:
-    // Forward declaration - defined after class is complete
-    struct Service;
-};
-
-// Service type for Engine::use<IAudioSystem, FMODAudioSystem>()
-struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::overrides<IAudioSystemService> {
-    static auto construct(kgr::inject_t<IAssetSystemService> d1)
-        -> kgr::inject_result<IAssetSystem*> {
-        return kgr::inject(&d1.forward());
-    }
 };
 
 // ============================================================================
@@ -134,7 +121,7 @@ struct FMODAudioSystem::Service : kgr::single_service<FMODAudioSystem>, kgr::ove
 
 class MiniaudioSystem : public IAudioSystem {
 public:
-    explicit MiniaudioSystem(IAssetSystem* assetSystem = nullptr);
+    explicit MiniaudioSystem(IAssetSystem& assetSystem);
     ~MiniaudioSystem() override;
 
     // Non-copyable, non-movable (due to pimpl)
@@ -190,16 +177,6 @@ private:
 
     IAssetSystem* assetSystem_ = nullptr;
 
-public:
-    struct Service;
-};
-
-// Service type for Engine::use<IAudioSystem, MiniaudioSystem>()
-struct MiniaudioSystem::Service : kgr::single_service<MiniaudioSystem>, kgr::overrides<IAudioSystemService> {
-    static auto construct(kgr::inject_t<IAssetSystemService> d1)
-        -> kgr::inject_result<IAssetSystem*> {
-        return kgr::inject(&d1.forward());
-    }
 };
 
 #endif  // BESTOW_HAS_MINIAUDIO
@@ -211,14 +188,11 @@ struct MiniaudioSystem::Service : kgr::single_service<MiniaudioSystem>, kgr::ove
 // AudioSystem alias: Use FMOD if available, otherwise use Miniaudio if available
 #if defined(BESTOW_HAS_FMOD)
     using AudioSystem = FMODAudioSystem;
-    using AudioSystemService = FMODAudioSystem::Service;
 #elif defined(BESTOW_HAS_MINIAUDIO)
     using AudioSystem = MiniaudioSystem;
-    using AudioSystemService = MiniaudioSystem::Service;
 #else
     // Stub mode: Use FMOD class but it will run in stub mode
     using AudioSystem = FMODAudioSystem;
-    using AudioSystemService = FMODAudioSystem::Service;
 #endif
 
 }  // namespace bestow

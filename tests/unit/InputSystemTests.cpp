@@ -6,11 +6,11 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.input;
 import bestow.input.impl;
 import bestow.types;
+import bestow.assets;
 import bestow.events;
 import bestow.assets.impl;   // InputSystem depends on AssetSystem
 import bestow.events.impl;   // AssetSystem depends on EventSystem
@@ -24,12 +24,14 @@ namespace bestow::tests {
 class InputSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Create with event system for action event emission
+        // Create with event system and asset system for action event emission
         eventSystem_ = std::make_unique<EventSystem>();
-        inputSystem_ = std::make_unique<InputSystem>(eventSystem_.get());
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
+        inputSystem_ = std::make_unique<InputSystem>(*eventSystem_, *assetSystem_);
     }
 
     std::unique_ptr<IEventSystem> eventSystem_;
+    std::unique_ptr<IAssetSystem> assetSystem_;
     std::unique_ptr<IInputSystem> inputSystem_;
 };
 
@@ -753,48 +755,6 @@ TEST_F(InputSystemTest, MultipleUpdates) {
     inputSystem_->update();
     inputSystem_->update();
     SUCCEED();
-}
-
-//=============================================================================
-// Kangaru DI Integration Tests
-//=============================================================================
-
-TEST(InputSystemKangaruTest, ServiceInjection) {
-    kgr::container container;
-
-    // Register dependencies
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Register InputSystem
-    auto& service = container.service<InputSystemService>();
-
-    EXPECT_FALSE(service.hasPhaseBeenSet());
-}
-
-TEST(InputSystemKangaruTest, SingletonBehavior) {
-    kgr::container container;
-
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& inputSystem1 = container.service<InputSystemService>();
-    auto& inputSystem2 = container.service<InputSystemService>();
-
-    EXPECT_EQ(&inputSystem1, &inputSystem2);
-}
-
-TEST(InputSystemKangaruTest, ServicePersistsState) {
-    kgr::container container;
-
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& inputSystem1 = container.service<InputSystemService>();
-    inputSystem1.changePhase("test_phase");
-
-    auto& inputSystem2 = container.service<InputSystemService>();
-    EXPECT_EQ(inputSystem2.getCurrentPhase(), "test_phase");
 }
 
 //=============================================================================

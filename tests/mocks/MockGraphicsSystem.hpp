@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <kangaru/kangaru.hpp>
-
 import std;
 import bestow.graphics;
 import bestow.types;
@@ -302,8 +300,5 @@ private:
     // Draw call recording
     std::vector<DrawCall> drawCalls_;
 };
-
-// Kangaru service definition for DI integration
-struct MockGraphicsSystemService : kgr::single_service<MockGraphicsSystem> {};
 
 }  // namespace bestow::tests

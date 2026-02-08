@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.blueprints.impl;
@@ -87,14 +86,5 @@ private:
     // Built-in component registration
     void registerBuiltinComponents();
 };
-
-// Kangaru service definitions
-// BlueprintFactory has constructor dependencies (IEntitySystem&, IPhysicsSystem*)
-// that require interface types, so it must be emplaced manually with dependencies:
-//   auto& entity = container.service<EntitySystemService>();
-//   auto& physics = container.service<PhysicsSystemService>();
-//   container.emplace<BlueprintFactoryService>(entity, &physics);
-//   auto& blueprints = container.service<IBlueprintFactoryService>();
-struct BlueprintFactoryService : kgr::single_service<BlueprintFactory>, kgr::overrides<IBlueprintFactoryService> {};
 
 }  // namespace bestow

@@ -9,12 +9,12 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.ai;
 import bestow.ai.impl;
 import bestow.assets;
 import bestow.assets.impl;
+import bestow.events;
 import bestow.events.impl;
 import bestow.physics;
 import bestow.physics.impl;
@@ -25,30 +25,18 @@ namespace bestow::tests {
 class AISystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // First instantiate EventSystemService to register the override
-        // (Kangaru needs this to resolve abstract IEventSystemService dependencies)
-        container_.service<EventSystemService>();
-
-        // Get asset system from container
-        assetSystem_ = &container_.service<AssetSystemService>();
-
-        // Get physics system from container and initialize
-        physicsSystem_ = &container_.service<PhysicsSystemService>();
-        auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(physicsSystem_);
-        if (physicsImpl) {
-            physicsImpl->initialize();
-        }
-
-        // AISystem has constructor dependencies that require pointers,
-        // so construct it directly with DI-resolved dependencies
-        aiSystemImpl_ = std::make_unique<AISystem>(physicsSystem_, assetSystem_);
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
+        physicsSystem_ = std::make_unique<Box2DPhysicsSystem>();
+        physicsSystem_->initialize();
+        aiSystemImpl_ = std::make_unique<AISystem>(*physicsSystem_, *assetSystem_);
         aiSystemImpl_->initialize();
         aiSystem_ = aiSystemImpl_.get();
     }
 
-    kgr::container container_;
-    IAssetSystem* assetSystem_ = nullptr;
-    IPhysicsSystem* physicsSystem_ = nullptr;
+    std::unique_ptr<IEventSystem> eventSystem_;
+    std::unique_ptr<IAssetSystem> assetSystem_;
+    std::unique_ptr<Box2DPhysicsSystem> physicsSystem_;
     std::unique_ptr<AISystem> aiSystemImpl_;
     IAISystem* aiSystem_ = nullptr;
 };
@@ -1096,52 +1084,6 @@ TEST_F(AISystemTest, FindEntitiesInRadiusWithPhysicsBodies) {
     // entity1 and entity2 should be found (within 50 units), entity3 should not (100 units away)
     EXPECT_FALSE(entities.empty());
     EXPECT_EQ(entities.size(), 2u);
-}
-
-//=============================================================================
-// Kangaru DI Integration Tests
-//=============================================================================
-
-TEST(AISystemKangaruTest, CannotInstantiateWithoutDependencies) {
-    kgr::container container;
-
-    // AISystem requires IPhysicsSystem and IAssetSystem dependencies
-    // Attempting to service without them should fail at compile time or runtime
-    // This test verifies the service definition requires dependencies
-
-    // Note: We cannot directly test failure to instantiate in Kangaru,
-    // but we can verify successful instantiation with dependencies
-    EXPECT_TRUE(true);  // Placeholder for dependency validation
-}
-
-TEST(AISystemKangaruTest, CanInstantiateViaKangaruWithDependencies) {
-    kgr::container container;
-
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    // Get dependencies from container
-    auto& physicsSystem = container.service<PhysicsSystemService>();
-    auto* physicsImpl = dynamic_cast<Box2DPhysicsSystem*>(&physicsSystem);
-    if (physicsImpl) {
-        physicsImpl->initialize();
-    }
-
-    auto& assetSystem = container.service<AssetSystemService>();
-
-    // Create AI system with dependencies
-    auto aiSystemImpl = std::make_unique<AISystem>(&physicsSystem, &assetSystem);
-    aiSystemImpl->initialize();
-
-    // Verify the system was created
-    EXPECT_NE(aiSystemImpl, nullptr);
-
-    // Verify basic functionality
-    Entity entity = static_cast<Entity>(1);
-    AssetHandle treeAsset{100, AssetType::BehaviorTree};
-
-    aiSystemImpl->attachBehaviorTree(entity, treeAsset);
-    EXPECT_TRUE(aiSystemImpl->hasBehaviorTree(entity));
 }
 
 //=============================================================================

@@ -4,7 +4,6 @@
 #include <memory>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import std;
 import bestow;

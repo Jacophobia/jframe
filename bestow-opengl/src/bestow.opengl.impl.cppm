@@ -3,9 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
-#include <bestow/kangaru_macros.hpp>
-
 // OpenGL and windowing headers - MUST be in global module fragment
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -187,8 +184,8 @@ private:
 
 class OpenGLGraphicsSystem : public IGraphicsSystem {
 public:
-    explicit OpenGLGraphicsSystem(IAssetSystem* pIAssetSystem = nullptr)
-        : pIAssetSystem_(pIAssetSystem) {}
+    explicit OpenGLGraphicsSystem(IAssetSystem& assetSystem)
+        : pIAssetSystem_(&assetSystem) {}
     ~OpenGLGraphicsSystem() override;
 
     bool initialize(int width, int height, const std::string& title);
@@ -337,8 +334,6 @@ private:
     IAssetSystem* pIAssetSystem_ = nullptr;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(OpenGLGraphicsSystem, GraphicsSystem, AssetSystem);
 
 
 //==========================================================================
@@ -714,10 +709,10 @@ void main() {
 
 class OpenGLGraphics3DSystem : public IGraphics3DSystem {
 public:
-    explicit OpenGLGraphics3DSystem(IAssetSystem* pIAssetSystem = nullptr,
-                                     IConfigSystem* pIConfigSystem = nullptr)
-        : pIAssetSystem_(pIAssetSystem)
-        , pIConfigSystem_(pIConfigSystem) {}
+    explicit OpenGLGraphics3DSystem(IAssetSystem& assetSystem,
+                                     IConfigSystem& configSystem)
+        : pIAssetSystem_(&assetSystem)
+        , pIConfigSystem_(&configSystem) {}
     ~OpenGLGraphics3DSystem() override;
 
     //======================================================================
@@ -1272,8 +1267,6 @@ private:
     IConfigSystem* pIConfigSystem_ = nullptr;
 };
 
-// Service definition - must be after class is complete
-BESTOW_SERVICE(OpenGLGraphics3DSystem, Graphics3DSystem, AssetSystem, ConfigSystem);
 
 //==========================================================================
 // Implementation

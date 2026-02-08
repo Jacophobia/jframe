@@ -31,7 +31,6 @@ target_sources(bestow-audio
 target_link_libraries(bestow-audio
     PUBLIC
         bestow-contract
-        kangaru::kangaru
 )
 
 # FMOD is manually linked if available (primary audio backend)

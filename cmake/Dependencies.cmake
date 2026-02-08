@@ -52,7 +52,6 @@ function(find_dependencies)
     find_package(Taskflow CONFIG REQUIRED)
     find_package(RecastNavigation CONFIG REQUIRED)
     find_package(BehaviorTree CONFIG)
-    find_package(kangaru CONFIG REQUIRED)
     find_package(unofficial-shaderc CONFIG REQUIRED)
 
     # File watcher (needed for hot reload support in assets/scripts)

@@ -1,10 +1,6 @@
 // bestow-gamestate/src/bestow.gamestate.impl.cppm
 // Game State System implementation
 
-module;
-
-#include <kangaru/kangaru.hpp>
-
 export module bestow.gamestate.impl;
 
 import std;
@@ -324,10 +320,4 @@ private:
 };
 
 //==========================================================================
-// Kangaru Service Definitions
-//==========================================================================
-
-// Concrete service that provides GameStateSystemImpl as IGameStateSystem
-struct GameStateSystemService : kgr::single_service<GameStateSystemImpl>, kgr::overrides<IGameStateSystemService> {};
-
 }  // namespace bestow

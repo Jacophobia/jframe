@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
 #include <DetourStatus.h>
@@ -32,7 +31,7 @@ enum class SteeringBehaviorType {
 
 class AISystem : public IAISystem {
 public:
-    explicit AISystem(IPhysicsSystem* physicsSystem, IAssetSystem* assetSystem);
+    explicit AISystem(IPhysicsSystem& physicsSystem, IAssetSystem& assetSystem);
     ~AISystem() override;
 
     bool initialize();
@@ -118,13 +117,5 @@ private:
     Vec2 calculateArrive(Vec2 position, Vec2 target, float maxSpeed, float arrivalRadius) const;
     void applySteeringBehavior(Entity entity, AIComponent& ai, DeltaTime dt);
 };
-
-// Kangaru service definitions
-// AISystem has constructor dependencies (IPhysicsSystem*, IAssetSystem*)
-// that require interface pointers, so it must be emplaced manually with dependencies:
-//   auto& physics = container.service<PhysicsSystemService>();
-//   auto& assets = container.service<AssetSystemService>();
-//   container.emplace<AISystemService>(&physics, &assets);
-struct AISystemService : kgr::single_service<AISystem>, kgr::overrides<IAISystemService> {};
 
 }  // namespace bestow

@@ -49,10 +49,20 @@ int main() {
 
     // Register system implementations
     engine.use<bestow::IEventSystem, bestow::EventSystem>();
-    engine.use<bestow::IAssetSystem, bestow::AssetSystem>();
-    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>();
-    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>();
-    engine.use<bestow::IInputSystem, bestow::InputSystem>();
+    engine.use<bestow::IAssetSystem, bestow::AssetSystem>(
+        [](bestow::di::ServiceProvider& sp) { return new bestow::AssetSystem(sp.get<bestow::IEventSystem>()); });
+    engine.use<bestow::IConfigSystem, bestow::ConfigSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::ConfigSystem(sp.get<bestow::IAssetSystem>(), sp.get<bestow::IEventSystem>());
+        });
+    engine.use<bestow::IGraphics3DSystem, bestow::VulkanGraphics3DSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::VulkanGraphics3DSystem(sp.get<bestow::IAssetSystem>(), sp.get<bestow::IConfigSystem>());
+        });
+    engine.use<bestow::IInputSystem, bestow::InputSystem>(
+        [](bestow::di::ServiceProvider& sp) {
+            return new bestow::InputSystem(sp.get<bestow::IEventSystem>(), sp.get<bestow::IAssetSystem>());
+        });
     engine.use<bestow::IAnimationSystem, bestow::AnimationSystem>();
 
     // Run the showcase

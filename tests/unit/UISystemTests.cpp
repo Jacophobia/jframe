@@ -12,42 +12,35 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.ui;
 import bestow.ui.impl;
 import bestow.assets;
 import bestow.assets.impl;
+import bestow.events;
 import bestow.events.impl;
 import bestow.types;
 import bestow.graphics.context;
-import bestow.services;
 
 #include "../mocks/MockGraphics3DSystem.hpp"
 
 namespace bestow::tests {
 
-// Service wrapper for MockGraphics3DSystem to work with Kangaru
-struct MockGraphicsContextService
-    : kgr::single_service<MockGraphics3DSystem>
-    , kgr::overrides<IGraphicsContextService>
-{};
-
 class UISystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Register mock graphics context first (required by RmlUISystem)
-        container_.service<MockGraphicsContextService>();
+        // Construct dependencies in order:
+        // 1. MockGraphics3DSystem (mock graphics context for RmlUISystem)
+        // 2. EventSystem (no dependencies)
+        // 3. AssetSystem (depends on EventSystem)
+        // 4. UISystem (depends on IGraphicsContext and IAssetSystem)
+        mockGraphics_ = std::make_unique<MockGraphics3DSystem>();
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
 
-        // Register event system
-        container_.service<EventSystemService>();
-
-        // Get asset system from container
-        assetSystem_ = &container_.service<AssetSystemService>();
-
-        // Try to get UI system - this may use StubUISystem if RmlUI isn't available
+        // Try to create UI system - this may use RmlUISystem or fail
         try {
-            uiSystem_ = &container_.service<UISystemService>();
+            uiSystem_ = std::make_unique<RmlUISystem>(*mockGraphics_, *assetSystem_);
         } catch (const std::exception& e) {
             // If we can't create the UI system, skip the test gracefully
             GTEST_SKIP() << "UI system not available: " << e.what();
@@ -70,9 +63,10 @@ protected:
         }
     }
 
-    kgr::container container_;
-    IAssetSystem* assetSystem_ = nullptr;
-    IUISystem* uiSystem_ = nullptr;
+    std::unique_ptr<MockGraphics3DSystem> mockGraphics_;
+    std::unique_ptr<IEventSystem> eventSystem_;
+    std::unique_ptr<IAssetSystem> assetSystem_;
+    std::unique_ptr<IUISystem> uiSystem_;
 };
 
 //=============================================================================

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <kangaru/kangaru.hpp>
-
 import std;
 import bestow;
 import bestow.types;

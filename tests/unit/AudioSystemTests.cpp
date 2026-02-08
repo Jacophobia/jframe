@@ -7,12 +7,13 @@
 #include <string>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 import bestow.audio;
 import bestow.audio.impl;
-import bestow.assets.impl;   // For AssetSystemService (dependency of AudioSystem)
-import bestow.events.impl;   // For EventSystemService (dependency of AssetSystem)
+import bestow.assets;
+import bestow.assets.impl;   // For AssetSystem (dependency of AudioSystem)
+import bestow.events;
+import bestow.events.impl;   // For EventSystem (dependency of AssetSystem)
 import bestow.types;
 
 namespace bestow::tests {
@@ -20,20 +21,23 @@ namespace bestow::tests {
 class AudioSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
-        // Register dependencies in order:
+        // Construct dependencies in order:
         // 1. EventSystem (no dependencies)
         // 2. AssetSystem (depends on EventSystem)
         // 3. AudioSystem (depends on AssetSystem)
-        container_.service<EventSystemService>();
-        container_.service<AssetSystemService>();
-        audio_ = &container_.service<AudioSystemService>();
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
+        audioSystem_ = std::make_unique<FMODAudioSystem>(*assetSystem_);
+        audio_ = audioSystem_.get();
 
         // Initialize the audio system through interface (works in stub mode)
         bool initialized = audio_->initialize();
         EXPECT_TRUE(initialized);
     }
 
-    kgr::container container_;
+    std::unique_ptr<IEventSystem> eventSystem_;
+    std::unique_ptr<IAssetSystem> assetSystem_;
+    std::unique_ptr<IAudioSystem> audioSystem_;
     IAudioSystem* audio_ = nullptr;
 };
 
@@ -1574,71 +1578,6 @@ TEST_F(AudioSystemTest, FadeOutExceedsDuration) {
     // Should be stopped
     EXPECT_FALSE(audio_->isChannelPlaying(Channels::Music));
     EXPECT_FLOAT_EQ(audio_->getChannelState(Channels::Music).volume, 0.0f);
-}
-
-//==========================================================================
-// Kangaru DI Integration Tests
-//==========================================================================
-
-TEST_F(AudioSystemTest, KangaruServiceCanBeInstantiated) {
-    kgr::container container;
-
-    // Register dependencies first (EventSystem -> AssetSystem -> AudioSystem)
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Instantiate AudioSystemService through Kangaru
-    auto& audioSystem = container.service<AudioSystemService>();
-
-    // Verify it's a valid instance
-    EXPECT_NE(&audioSystem, nullptr);
-}
-
-TEST_F(AudioSystemTest, KangaruServiceIsSingleton) {
-    kgr::container container;
-
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Get service twice
-    auto& audioSystem1 = container.service<AudioSystemService>();
-    auto& audioSystem2 = container.service<AudioSystemService>();
-
-    // Should be the same instance (singleton)
-    EXPECT_EQ(&audioSystem1, &audioSystem2);
-}
-
-TEST_F(AudioSystemTest, KangaruServiceCanInitialize) {
-    kgr::container container;
-
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    // Get service and initialize
-    auto& audioSystem = container.service<AudioSystemService>();
-    bool initialized = audioSystem.initialize();
-
-    EXPECT_TRUE(initialized);
-}
-
-TEST_F(AudioSystemTest, KangaruServiceCanPlaySound) {
-    kgr::container container;
-
-    // Register dependencies first
-    container.service<EventSystemService>();
-    container.service<AssetSystemService>();
-
-    auto& audioSystem = container.service<AudioSystemService>();
-    audioSystem.initialize();
-
-    // Play a sound through the Kangaru-managed instance
-    AssetHandle testSound{.uuid = 1, .type = AssetType::Sound};
-    ChannelSound sound{.asset = testSound, .volume = 1.0f};
-
-    audioSystem.playOnChannel(Channels::Music, sound);
-    EXPECT_TRUE(audioSystem.isChannelPlaying(Channels::Music));
 }
 
 }  // namespace bestow::tests

@@ -13,7 +13,7 @@ target_sources(bestow-contract
         src/bestow.input.cppm
         src/bestow.assets.cppm
         src/bestow.save.cppm
-        src/bestow.level.cppm
+        src/bestow.scene.cppm
         src/bestow.events.cppm
         src/bestow.physics.cppm
         src/bestow.physics3d.cppm
@@ -34,7 +34,6 @@ target_link_libraries(bestow-contract
     PUBLIC
         glm::glm
         EnTT::EnTT
-        kangaru::kangaru
         spdlog::spdlog
 )
 

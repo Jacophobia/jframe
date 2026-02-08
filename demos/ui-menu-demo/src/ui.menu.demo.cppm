@@ -128,7 +128,7 @@ private:
 
         // Create UI system manually (IGraphics3DSystem extends IGraphicsContext)
         ui_ = std::make_unique<bestow::RmlUISystem>(
-            static_cast<bestow::IGraphicsContext*>(graphics_), assets_);
+            static_cast<bestow::IGraphicsContext&>(*graphics_), *assets_);
 
         bestow::UIConfig uiConfig{};
         auto result = ui_->initialize(uiConfig);

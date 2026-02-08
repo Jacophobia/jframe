@@ -16,7 +16,6 @@ target_use_std_module(bestow-blueprints)
 target_link_libraries(bestow-blueprints
     PUBLIC
         bestow-contract
-        kangaru::kangaru
     PRIVATE
         sol2::sol2
         unofficial::luajit::luajit

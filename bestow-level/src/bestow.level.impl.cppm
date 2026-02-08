@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <bestow/sol2_compat.hpp>
 
 export module bestow.level.impl;
@@ -65,9 +64,5 @@ private:
     std::optional<LevelTransition> pendingTransition_;
     UUID nextLevelId_ = 1;
 };
-
-// Kangaru service definitions
-// Concrete service that provides LevelSystem as ILevelSystem
-struct LevelSystemService : kgr::single_service<LevelSystem>, kgr::overrides<ILevelSystemService> {};
 
 }  // namespace bestow

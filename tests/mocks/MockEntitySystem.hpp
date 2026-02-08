@@ -4,7 +4,6 @@
 #pragma once
 
 #include <bestow/entt_compat.hpp>
-#include <kangaru/kangaru.hpp>
 
 import std;
 import bestow;

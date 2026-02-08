@@ -8,7 +8,6 @@
 // Use compatibility header for MSVC C++23 module support
 #include <bestow/entt_compat.hpp>
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 
 #include "../mocks/MockEntitySystem.hpp"
 

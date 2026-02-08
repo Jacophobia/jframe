@@ -12,12 +12,11 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kangaru/kangaru.hpp>
 #include <nlohmann/json.hpp>  // For accessing JSON data stored in std::any
 
 import bestow;
 import bestow.types;
-import bestow.assets.impl;  // For AssetSystemService
+import bestow.assets.impl;
 import bestow.events.impl;  // AssetSystem depends on EventSystem
 
 namespace bestow::tests {
@@ -26,9 +25,11 @@ class AssetSystemTest : public ::testing::Test {
 protected:
     void SetUp() override {
         // Use the real AssetSystem for integration testing with actual file I/O
-        assetSystem_ = std::make_unique<AssetSystem>();
+        eventSystem_ = std::make_unique<EventSystem>();
+        assetSystem_ = std::make_unique<AssetSystem>(*eventSystem_);
     }
 
+    std::unique_ptr<IEventSystem> eventSystem_;
     std::unique_ptr<IAssetSystem> assetSystem_;
 };
 
@@ -2108,46 +2109,6 @@ TEST_F(AssetSystemTest, ConcurrentGetRawAssetCalls) {
     }
 
     EXPECT_EQ(successCount, 1000);  // 10 threads * 100 accesses
-}
-
-//==========================================================================
-// Kangaru DI Integration Tests
-//==========================================================================
-
-TEST(AssetSystemKangaruTest, CanInstantiateViaService) {
-    kgr::container container;
-
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    // Get the asset service instance
-    auto& assetSystem = container.service<AssetSystemService>();
-
-    EXPECT_NE(&assetSystem, nullptr);
-}
-
-TEST(AssetSystemKangaruTest, ServiceIsSingleton) {
-    kgr::container container;
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    auto& assetSystem1 = container.service<AssetSystemService>();
-    auto& assetSystem2 = container.service<AssetSystemService>();
-
-    // Should be the same instance (singleton)
-    EXPECT_EQ(&assetSystem1, &assetSystem2);
-}
-
-TEST(AssetSystemKangaruTest, CanRegisterAssetViaService) {
-    kgr::container container;
-    // Register EventSystemService first (AssetSystem depends on it)
-    container.service<EventSystemService>();
-
-    auto& assetSystem = container.service<AssetSystemService>();
-
-    AssetHandle handle = assetSystem.registerAsset(AssetType::Texture, "test.png");
-    EXPECT_TRUE(handle.isValid());
-    EXPECT_EQ(handle.type, AssetType::Texture);
 }
 
 }  // namespace bestow::tests

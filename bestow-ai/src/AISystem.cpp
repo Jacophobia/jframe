@@ -25,9 +25,9 @@ module bestow.ai.impl;
 
 namespace bestow {
 
-AISystem::AISystem(IPhysicsSystem* physicsSystem, IAssetSystem* assetSystem)
-    : physicsSystem_(physicsSystem)
-    , assetSystem_(assetSystem) {
+AISystem::AISystem(IPhysicsSystem& physicsSystem, IAssetSystem& assetSystem)
+    : physicsSystem_(&physicsSystem)
+    , assetSystem_(&assetSystem) {
     assert(physicsSystem_ && "AISystem requires valid IPhysicsSystem");
     assert(assetSystem_ && "AISystem requires valid IAssetSystem");
 }

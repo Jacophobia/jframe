@@ -3,7 +3,6 @@
 
 module;
 
-#include <kangaru/kangaru.hpp>
 #include <box2d/box2d.h>
 
 export module bestow.physics.impl;
@@ -106,9 +105,5 @@ private:
     // Sub-steps for simulation accuracy
     static constexpr int SUB_STEP_COUNT = 4;
 };
-
-// Kangaru service definitions
-// Concrete service that provides Box2DPhysicsSystem as IPhysicsSystem
-struct PhysicsSystemService : kgr::single_service<Box2DPhysicsSystem>, kgr::overrides<IPhysicsSystemService> {};
 
 }  // namespace bestow
