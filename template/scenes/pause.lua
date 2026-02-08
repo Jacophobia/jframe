@@ -1,12 +1,14 @@
 -- Pause overlay scene
 -- Pushed on top of gameplay. Dark backdrop, three buttons: Resume, Main Menu, Quit.
 
+local doc = nil
+
 return {
     phase = "pause",
 
     enter = function(params)
         local nav = app.systems.menu_nav
-        local doc = bestow.ui.loadDocument("assets/ui/pause.rml")
+        doc = bestow.ui.loadDocument("assets/ui/pause.rml")
         if not doc then return end
         bestow.ui.showDocument(doc)
 
@@ -56,6 +58,8 @@ return {
 
     exit = function()
         app.systems.menu_nav.clear()
+        if doc then bestow.ui.hideDocument(doc) end
+        doc = nil
         bestow.audio.resumeAll()
     end,
 }

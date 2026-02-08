@@ -158,6 +158,71 @@ public:
     }
 };
 
+/// Adapter that provides RmlUi's FileInterface using PathResolver for correct
+/// path resolution. Loads files into memory on Open() and provides seekable
+/// read access via an in-memory buffer.
+class BestowRmlFileInterface : public Rml::FileInterface {
+    struct FileData {
+        std::string content;
+        std::size_t position = 0;
+    };
+
+public:
+    Rml::FileHandle Open(const Rml::String& path) override {
+        // Use PathResolver to resolve relative paths against game root
+        auto resolved = PathResolver::resolve(path);
+        std::ifstream file(resolved, std::ios::binary | std::ios::ate);
+        if (!file.is_open()) {
+            spdlog::warn("[RmlUI] FileInterface: Failed to open: {} (resolved: {})",
+                path, resolved.string());
+            return 0;
+        }
+
+        auto size = file.tellg();
+        file.seekg(0, std::ios::beg);
+
+        auto* data = new FileData();
+        data->content.resize(static_cast<std::size_t>(size));
+        file.read(data->content.data(), size);
+
+        return reinterpret_cast<Rml::FileHandle>(data);
+    }
+
+    void Close(Rml::FileHandle file) override {
+        delete reinterpret_cast<FileData*>(file);
+    }
+
+    std::size_t Read(void* buffer, std::size_t size, Rml::FileHandle file) override {
+        auto* data = reinterpret_cast<FileData*>(file);
+        std::size_t available = data->content.size() - data->position;
+        std::size_t toRead = std::min(size, available);
+        std::memcpy(buffer, data->content.data() + data->position, toRead);
+        data->position += toRead;
+        return toRead;
+    }
+
+    bool Seek(Rml::FileHandle file, long offset, int origin) override {
+        auto* data = reinterpret_cast<FileData*>(file);
+        std::size_t newPos;
+        if (origin == SEEK_SET) {
+            newPos = static_cast<std::size_t>(offset);
+        } else if (origin == SEEK_CUR) {
+            newPos = data->position + static_cast<std::size_t>(offset);
+        } else if (origin == SEEK_END) {
+            newPos = data->content.size() + static_cast<std::size_t>(offset);
+        } else {
+            return false;
+        }
+        if (newPos > data->content.size()) return false;
+        data->position = newPos;
+        return true;
+    }
+
+    std::size_t Tell(Rml::FileHandle file) override {
+        return reinterpret_cast<FileData*>(file)->position;
+    }
+};
+
 //==========================================================================
 // RmlUISystem Implementation
 //==========================================================================
@@ -341,6 +406,7 @@ private:
     // RmlUi interfaces (our adapters)
     std::unique_ptr<BestowRmlRenderInterface> rmlRenderInterface_;
     std::unique_ptr<BestowRmlSystemInterface> rmlSystemInterface_;
+    std::unique_ptr<BestowRmlFileInterface> rmlFileInterface_;
 
     // RmlUi context
     Rml::Context* context_ = nullptr;
@@ -576,10 +642,12 @@ Result<void, UIError> RmlUISystem::initialize(const UIConfig& config) {
     // Create RmlUi interface adapters
     rmlRenderInterface_ = std::make_unique<BestowRmlRenderInterface>(*renderBackend_);
     rmlSystemInterface_ = std::make_unique<BestowRmlSystemInterface>();
+    rmlFileInterface_ = std::make_unique<BestowRmlFileInterface>();
 
     // CRITICAL: Set interfaces BEFORE Rml::Initialise()
     Rml::SetRenderInterface(rmlRenderInterface_.get());
     Rml::SetSystemInterface(rmlSystemInterface_.get());
+    Rml::SetFileInterface(rmlFileInterface_.get());
 
     // Initialize RmlUi
     if (!Rml::Initialise()) {
@@ -671,6 +739,7 @@ void RmlUISystem::shutdown() {
     // Release our interfaces
     rmlRenderInterface_.reset();
     rmlSystemInterface_.reset();
+    rmlFileInterface_.reset();
 
     initialized_ = false;
     spdlog::info("[RmlUISystem] Shutdown complete");
@@ -683,32 +752,16 @@ Result<UIDocumentHandle, UIError> RmlUISystem::loadDocument(
         return std::unexpected(UIError::InternalError);
     }
 
-    if (!assetSystem_) {
-        return std::unexpected(UIError::InternalError);
-    }
+    // Resolve the path to absolute using PathResolver
+    std::filesystem::path resolvedPath = PathResolver::resolve(path.string());
 
-    // Register and load the UI document through AssetSystem
-    AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
-    assetSystem_->loadAsset(assetHandle);
-
-    if (!assetSystem_->isLoaded(assetHandle)) {
-        return std::unexpected(UIError::ParseError);
-    }
-
-    // Get the raw file data from AssetSystem
-    const auto* fileData = assetSystem_->getRawAsset(assetHandle);
-    if (!fileData) {
-        return std::unexpected(UIError::ParseError);
-    }
-
-    // Cast to string data (AssetType::Data loads as std::string)
-    const auto* content = static_cast<const std::string*>(fileData);
-
-    // Load document from memory using RmlUi's memory API
-    Rml::ElementDocument* doc = context_->LoadDocumentFromMemory(
-        Rml::String(content->data(), content->size()), path.string());
+    // Let RmlUi load the document directly through our FileInterface.
+    // This correctly resolves <link> tags (e.g. theme.rcss) within the document.
+    Rml::ElementDocument* doc = context_->LoadDocument(resolvedPath.string());
 
     if (!doc) {
+        spdlog::warn("[RmlUISystem] Failed to load document: {} (resolved: {})",
+            path.string(), resolvedPath.string());
         return std::unexpected(UIError::ParseError);
     }
 
@@ -716,8 +769,10 @@ Result<UIDocumentHandle, UIError> RmlUISystem::loadDocument(
     documents_[handle] = doc;
     documentHandles_[doc] = handle;
 
-    // Set up hot reload: subscribe to asset changes
-    if (hotReloadEnabled_) {
+    // Set up hot reload via AssetSystem file watching
+    if (hotReloadEnabled_ && assetSystem_) {
+        AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
+
         DocumentAssetInfo assetInfo;
         assetInfo.assetHandle = assetHandle;
         assetInfo.path = path;
@@ -811,30 +866,23 @@ std::vector<UIDocumentHandle> RmlUISystem::getLoadedDocuments() const {
 Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
     const std::filesystem::path& path) {
 
-    if (!assetSystem_) {
-        return std::unexpected(UIError::InternalError);
-    }
-
-    // Register and load the stylesheet through AssetSystem
-    AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
-    assetSystem_->loadAsset(assetHandle);
-
-    if (!assetSystem_->isLoaded(assetHandle)) {
+    // Resolve path and load file content directly (avoids getRawAsset UB cast)
+    std::filesystem::path resolvedPath = PathResolver::resolve(path.string());
+    std::ifstream file(resolvedPath, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        spdlog::warn("[RmlUISystem] Failed to open stylesheet: {} (resolved: {})",
+            path.string(), resolvedPath.string());
         return std::unexpected(UIError::StyleSheetError);
     }
 
-    // Get the raw file data from AssetSystem
-    const auto* fileData = assetSystem_->getRawAsset(assetHandle);
-    if (!fileData) {
-        return std::unexpected(UIError::StyleSheetError);
-    }
-
-    // Cast to string data (AssetType::Data loads as std::string)
-    const auto* content = static_cast<const std::string*>(fileData);
+    auto size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::string cssContent(static_cast<std::size_t>(size), '\0');
+    file.read(cssContent.data(), size);
 
     // Create stylesheet using RmlUi's factory
     Rml::SharedPtr<Rml::StyleSheetContainer> container =
-        Rml::Factory::InstanceStyleSheetString(Rml::String(content->data(), content->size()));
+        Rml::Factory::InstanceStyleSheetString(Rml::String(cssContent.data(), cssContent.size()));
 
     if (!container) {
         return std::unexpected(UIError::StyleSheetError);
@@ -842,10 +890,12 @@ Result<UIStyleSheetHandle, UIError> RmlUISystem::loadStyleSheet(
 
     // Store the CSS content for re-application
     UIStyleSheetHandle handle = nextStyleHandle_++;
-    styleSheetContents_[handle] = *content;
+    styleSheetContents_[handle] = std::move(cssContent);
 
-    // Set up hot reload: subscribe to asset changes
-    if (hotReloadEnabled_) {
+    // Set up hot reload via AssetSystem file watching
+    if (hotReloadEnabled_ && assetSystem_) {
+        AssetHandle assetHandle = assetSystem_->registerAsset(AssetType::Data, path);
+
         StyleSheetAssetInfo assetInfo;
         assetInfo.assetHandle = assetHandle;
         assetInfo.path = path;

@@ -24,7 +24,8 @@ Engine defaults live in **`config/*.cfg.lua`** files. Each file returns a plain 
 ```lua
 -- config/graphics.cfg.lua  (returns data, never calls bestow.*)
 return {
-    window = { title = "My Game", width = 1920, height = 1080, ... },
+    window = { title = "My Game", width = 1920, height = 1080,
+               windowMode = "borderless", vsync = true },  -- "windowed", "fullscreen", "borderless"
     rendering = { clearColor = { r = 0.05, g = 0.05, b = 0.08, a = 1.0 }, ... },
 }
 ```
@@ -254,7 +255,8 @@ bestow.scene         register(), push(), pop(), replace(), clear(), active(), st
                      subscribe()
 bestow.graphics3d    beginFrame(), endFrame(), setCamera(), drawMesh(), createMaterial(),
                      createCubeMesh/SphereMesh/PlaneMesh(), setDirectionalLight(),
-                     setAmbientLight(), setFog(), setFullscreen(), setClearColor(),
+                     setAmbientLight(), setFog(), setWindowMode(), getWindowMode(),
+                     setFullscreen(), isFullscreen(), setClearColor(),
                      debugDrawLine/Box/Sphere()
 bestow.physics3d     createBody(), createCharacter(), moveCharacter(), getCharacterGroundInfo(),
                      raycast(), applyForce/Impulse(), setGravity(), overlapSphere/Box()
@@ -286,6 +288,7 @@ AABB3D.new(min, max)         Ray3D.new(origin, dir)
 ### Key Enums
 ```
 AssetType      .Texture .Sound .Music .Font .Scene .Mesh .Model .Material .Shader .Cubemap
+WindowMode     .Windowed .Fullscreen .BorderlessFullscreen
 BodyType3D     .Static .Kinematic .Dynamic
 BlendMode      .Opaque .AlphaBlend .Additive
 KeyCode        .Space .Escape .Enter .W .A .S .D .Comma .O .E .Up .Down .Left .Right

@@ -3,12 +3,14 @@
 -- Reads initial values from config, applies changes immediately.
 -- Persistence is stubbed (save system not yet implemented).
 
+local doc = nil
+
 return {
     phase = "settings",
 
     enter = function(params)
         local nav = app.systems.menu_nav
-        local doc = bestow.ui.loadDocument("assets/ui/settings.rml")
+        doc = bestow.ui.loadDocument("assets/ui/settings.rml")
         if not doc then return end
         bestow.ui.showDocument(doc)
 
@@ -47,7 +49,7 @@ return {
         end
 
         -- Apply initial UI state
-        setToggle("toggle-fullscreen", "toggle-fullscreen-label", s.fullscreen)
+        setToggle("toggle-fullscreen", "toggle-fullscreen-label", s.windowMode ~= "windowed")
         setToggle("toggle-vsync",      "toggle-vsync-label",      s.vsync)
         setSlider("slider-render-scale-fill", "label-render-scale", s.renderScale, 1.0, "float")
         setSlider("slider-master-fill", "label-master", s.masterVolume, 1.0, "pct")
@@ -72,10 +74,10 @@ return {
         end
 
         wireToggle("toggle-fullscreen", "toggle-fullscreen-label",
-            function() return s.fullscreen end,
+            function() return s.windowMode ~= "windowed" end,
             function(v)
-                s.fullscreen = v
-                bestow.graphics3d.setFullscreen(v)
+                s.windowMode = v and "borderless" or "windowed"
+                bestow.graphics3d.setWindowMode(s.windowMode)
             end)
 
         wireToggle("toggle-vsync", "toggle-vsync-label",
@@ -161,6 +163,8 @@ return {
 
     exit = function()
         app.systems.menu_nav.clear()
+        if doc then bestow.ui.hideDocument(doc) end
+        doc = nil
         -- Persistence stub: when save system is implemented,
         -- write app.main.state.settings to the user settings file here.
     end,

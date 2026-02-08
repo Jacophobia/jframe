@@ -60,8 +60,8 @@ public:
 
     void setWindowSize(Size size) override { windowSize_ = size; }
     Size getWindowSize() const override { return windowSize_; }
-    void setFullscreen(bool fullscreen) override { fullscreen_ = fullscreen; }
-    bool isFullscreen() const override { return fullscreen_; }
+    void setWindowMode(WindowMode mode) override { windowMode_ = mode; }
+    WindowMode getWindowMode() const override { return windowMode_; }
     void setClearColor(const Color& color) override { clearColor_ = color; }
     void setVSync(bool enabled) override { vsync_ = enabled; }
     void setViewportCulling(bool enabled) override { viewportCulling_ = enabled; }
@@ -88,7 +88,7 @@ private:
     Camera camera_;
     Size windowSize_{800, 600};
     Color clearColor_{0, 0, 0, 255};
-    bool fullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
     bool vsync_ = true;
     bool viewportCulling_ = false;
     bool beginFrameCalled_ = false;

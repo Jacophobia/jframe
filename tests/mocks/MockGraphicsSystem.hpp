@@ -204,12 +204,12 @@ public:
         windowSize_ = size;
     }
 
-    bool isFullscreen() const override {
-        return isFullscreen_;
+    WindowMode getWindowMode() const override {
+        return windowMode_;
     }
 
-    void setFullscreen(bool fullscreen) override {
-        isFullscreen_ = fullscreen;
+    void setWindowMode(WindowMode mode) override {
+        windowMode_ = mode;
     }
 
     bool shouldClose() const override {
@@ -280,7 +280,7 @@ private:
     // State tracking
     Camera camera_;
     Size windowSize_{800, 600};
-    bool isFullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
     bool shouldClose_ = false;
     Color clearColor_ = Color::black();
     bool vsyncEnabled_ = true;

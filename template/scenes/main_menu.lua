@@ -1,12 +1,14 @@
 -- Main Menu scene
 -- Buttons: Play, Controls, Settings, Quit
 
+local doc = nil
+
 return {
     phase = "menu",
 
     enter = function(params)
         local nav = app.systems.menu_nav
-        local doc = bestow.ui.loadDocument("assets/ui/main_menu.rml")
+        doc = bestow.ui.loadDocument("assets/ui/main_menu.rml")
         if not doc then return end
         bestow.ui.showDocument(doc)
 
@@ -50,5 +52,7 @@ return {
 
     exit = function()
         app.systems.menu_nav.clear()
+        if doc then bestow.ui.hideDocument(doc) end
+        doc = nil
     end,
 }

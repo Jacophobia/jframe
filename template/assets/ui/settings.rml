@@ -14,7 +14,7 @@
             font-size: 20dp;
             color: #6aaaf0;
             margin-bottom: 12dp;
-            border-bottom: 1dp solid #2a3050;
+            border-bottom: 1dp #2a3050;
             padding-bottom: 6dp;
         }
 

@@ -285,7 +285,7 @@ struct Graphics3DConfig {
     int windowHeight = 720;
     std::string windowTitle = "Bestow Application";
     bool vsync = true;
-    bool fullscreen = false;
+    WindowMode windowMode = WindowMode::BorderlessFullscreen;
     bool enableValidation = false;  // For Vulkan validation layers, OpenGL debug context
     void* nativeWindowHandle = nullptr;  // Optional: use existing window (GLFW, SDL, etc.)
 };
@@ -614,9 +614,15 @@ public:
     // - void* getNativeWindowHandle() const
 
     virtual void setWindowSize(Size size) = 0;
-    virtual bool isFullscreen() const = 0;
-    virtual void setFullscreen(bool fullscreen) = 0;
+    virtual WindowMode getWindowMode() const = 0;
+    virtual void setWindowMode(WindowMode mode) = 0;
     virtual bool shouldClose() const = 0;
+
+    // Compat wrappers for legacy code
+    bool isFullscreen() const { return getWindowMode() != WindowMode::Windowed; }
+    void setFullscreen(bool fullscreen) {
+        setWindowMode(fullscreen ? WindowMode::BorderlessFullscreen : WindowMode::Windowed);
+    }
 
     // These are additional IGraphicsContext methods that must be implemented:
     // - IUIRenderBackend* getUIRenderBackend()

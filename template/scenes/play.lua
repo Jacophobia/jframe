@@ -25,10 +25,8 @@ return {
     end,
 
     render = function()
-        bestow.graphics3d.beginFrame()
-        -- Entities with MeshRenderer are drawn automatically.
-        -- Add any manual draw calls here.
-        bestow.graphics3d.endFrame()
+        -- The engine calls beginFrame/endFrame automatically.
+        -- Add any manual draw calls here (e.g., bestow.graphics3d.drawMesh).
     end,
 
     exit = function()

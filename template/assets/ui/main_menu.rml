@@ -15,7 +15,7 @@
         <div class="column gap-md">
             <div id="btn-play"     class="btn">Play</div>
             <div id="btn-controls" class="btn">Controls</div>
-            <div id="btn-settings" class="btn">Settings</div>
+            <div id="btn-settings" class="btn">Options</div>
             <div id="btn-quit"     class="btn">Quit</div>
         </div>
     </div>

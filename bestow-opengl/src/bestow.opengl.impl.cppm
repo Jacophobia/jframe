@@ -249,8 +249,8 @@ public:
 
     Size getWindowSize() const override;
     void setWindowSize(Size size) override;
-    bool isFullscreen() const override;
-    void setFullscreen(bool fullscreen) override;
+    WindowMode getWindowMode() const override;
+    void setWindowMode(WindowMode mode) override;
     bool shouldClose() const override;
     void* getNativeWindowHandle() const override;
 
@@ -286,7 +286,7 @@ private:
     std::unique_ptr<OpenGLUIRenderBackend> uiRenderBackend_;
     Camera camera_;
     Color clearColor_ = Color::black();
-    bool isFullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
     bool viewportCullingEnabled_ = false;
     int windowedWidth_ = 0;
     int windowedHeight_ = 0;
@@ -946,8 +946,8 @@ public:
 
     Size getWindowSize() const override;
     void setWindowSize(Size size) override;
-    bool isFullscreen() const override;
-    void setFullscreen(bool fullscreen) override;
+    WindowMode getWindowMode() const override;
+    void setWindowMode(WindowMode mode) override;
     bool shouldClose() const override;
     void* getNativeWindowHandle() const override;
 
@@ -1133,7 +1133,7 @@ private:
     GLFWwindow* window_ = nullptr;
     bool ownsWindow_ = false;
     Size windowSize_{800, 600};
-    bool isFullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
 
     // Camera
     Camera3D camera_;
@@ -2654,13 +2654,36 @@ void OpenGLGraphics3DSystem::setWindowSize(Size size) {
     }
 }
 
-bool OpenGLGraphics3DSystem::isFullscreen() const {
-    return isFullscreen_;
+WindowMode OpenGLGraphics3DSystem::getWindowMode() const {
+    return windowMode_;
 }
 
-void OpenGLGraphics3DSystem::setFullscreen(bool fullscreen) {
-    // TODO: Implement fullscreen toggle
-    isFullscreen_ = fullscreen;
+void OpenGLGraphics3DSystem::setWindowMode(WindowMode mode) {
+    if (mode == windowMode_) return;
+
+    if (window_) {
+        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+        const GLFWvidmode* vidmode = glfwGetVideoMode(monitor);
+
+        switch (mode) {
+            case WindowMode::Fullscreen:
+                glfwSetWindowMonitor(window_, monitor, 0, 0,
+                                     vidmode->width, vidmode->height, vidmode->refreshRate);
+                break;
+            case WindowMode::BorderlessFullscreen:
+                glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_FALSE);
+                glfwSetWindowMonitor(window_, nullptr, 0, 0,
+                                     vidmode->width, vidmode->height, 0);
+                break;
+            case WindowMode::Windowed:
+                glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_TRUE);
+                glfwSetWindowMonitor(window_, nullptr, 100, 100,
+                                     windowSize_.width, windowSize_.height, 0);
+                break;
+        }
+    }
+
+    windowMode_ = mode;
 }
 
 bool OpenGLGraphics3DSystem::shouldClose() const {

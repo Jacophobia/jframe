@@ -7,7 +7,7 @@ return {
         title       = "My Game",
         width       = 1920,
         height      = 1080,
-        fullscreen  = false,        -- true = exclusive fullscreen
+        windowMode  = "borderless", -- "windowed", "fullscreen", or "borderless"
         vsync       = true,
     },
 

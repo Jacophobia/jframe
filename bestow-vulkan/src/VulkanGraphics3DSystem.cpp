@@ -354,6 +354,12 @@ bool VulkanGraphics3DSystem::initialize(const Graphics3DConfig& config) {
     }
 
     initialized_ = true;
+
+    // Apply initial window mode from config
+    if (config.windowMode != WindowMode::Windowed) {
+        setWindowMode(config.windowMode);
+    }
+
     return true;
 }
 
@@ -1934,32 +1940,43 @@ void VulkanGraphics3DSystem::setWindowSize(Size size) {
     context_.setWindowSize(size);
 }
 
-bool VulkanGraphics3DSystem::isFullscreen() const {
-    return isFullscreen_;
+WindowMode VulkanGraphics3DSystem::getWindowMode() const {
+    return windowMode_;
 }
 
-void VulkanGraphics3DSystem::setFullscreen(bool fullscreen) {
-    if (isFullscreen_ == fullscreen) return;
+void VulkanGraphics3DSystem::setWindowMode(WindowMode mode) {
+    if (windowMode_ == mode) return;
 
     GLFWwindow* window = context_.getWindow();
     if (!window) return;
 
-    if (fullscreen) {
-        // Save current windowed position and size for later restoration
+    // Save windowed state before leaving windowed mode
+    if (windowMode_ == WindowMode::Windowed) {
         glfwGetWindowPos(window, &windowedPosX_, &windowedPosY_);
         glfwGetWindowSize(window, &windowedWidth_, &windowedHeight_);
-
-        // Switch to fullscreen on primary monitor
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-        glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-    } else {
-        // Restore windowed mode with saved position and size
-        glfwSetWindowMonitor(window, nullptr, windowedPosX_, windowedPosY_,
-                             windowedWidth_, windowedHeight_, 0);
     }
 
-    isFullscreen_ = fullscreen;
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* vidmode = glfwGetVideoMode(monitor);
+
+    switch (mode) {
+        case WindowMode::Fullscreen:
+            glfwSetWindowMonitor(window, monitor, 0, 0,
+                                 vidmode->width, vidmode->height, vidmode->refreshRate);
+            break;
+        case WindowMode::BorderlessFullscreen:
+            glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_FALSE);
+            glfwSetWindowMonitor(window, nullptr, 0, 0,
+                                 vidmode->width, vidmode->height, 0);
+            break;
+        case WindowMode::Windowed:
+            glfwSetWindowAttrib(window, GLFW_DECORATED, GLFW_TRUE);
+            glfwSetWindowMonitor(window, nullptr, windowedPosX_, windowedPosY_,
+                                 windowedWidth_, windowedHeight_, 0);
+            break;
+    }
+
+    windowMode_ = mode;
 }
 
 bool VulkanGraphics3DSystem::shouldClose() const {

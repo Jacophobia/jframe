@@ -164,6 +164,23 @@ The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 mod
 
 ---
 
+## Post-Processing: Gaussian Blur for Pause Overlay
+
+> RmlUI does not support `backdrop-filter: blur()`. To achieve a blurred background behind the pause menu overlay, implement a post-processing Gaussian blur pass in the Vulkan 3D renderer.
+
+### Requirements
+- [ ] Add `setPostProcessBlur(float radius)` to `IGraphics3DSystem`
+- [ ] Implement two-pass (horizontal + vertical) Gaussian blur as a full-screen post-process
+- [ ] Expose via Lua: `bestow.graphics3d.setPostProcessBlur(radius)` (0 = disabled)
+- [ ] Pause scene enables blur on enter, disables on exit
+
+### Notes
+- Can reuse existing render-to-texture pipeline from the Vulkan backend
+- Separate blur intensity from scene opacity for fine control
+- Consider performance: downsample before blur for cheaper effect
+
+---
+
 ## High Priority
 
 ### Dynamic Shader System (COMPLETE)

@@ -14,8 +14,8 @@
         <div id="pause-title">Paused</div>
         <div class="column gap-md">
             <div id="btn-resume"    class="btn">Resume</div>
-            <div id="btn-main-menu" class="btn">Main Menu</div>
-            <div id="btn-quit"      class="btn">Quit Game</div>
+            <div id="btn-main-menu" class="btn">Exit to Main Menu</div>
+            <div id="btn-quit"      class="btn">Exit Game</div>
         </div>
     </div>
 </body>

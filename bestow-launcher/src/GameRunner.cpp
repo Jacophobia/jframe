@@ -630,7 +630,16 @@ private:
             gfxConfig.windowHeight = window->get_or("height", 720);
             gfxConfig.windowTitle  = window->get_or<std::string>("title", "Bestow Application");
             gfxConfig.vsync        = window->get_or("vsync", true);
-            gfxConfig.fullscreen   = window->get_or("fullscreen", false);
+            // Parse windowMode string, fall back to legacy fullscreen bool
+            auto wmStr = window->get<sol::optional<std::string>>("windowMode");
+            if (wmStr) {
+                if (*wmStr == "borderless") gfxConfig.windowMode = WindowMode::BorderlessFullscreen;
+                else if (*wmStr == "fullscreen") gfxConfig.windowMode = WindowMode::Fullscreen;
+                else gfxConfig.windowMode = WindowMode::Windowed;
+            } else {
+                bool fs = window->get_or("fullscreen", false);
+                gfxConfig.windowMode = fs ? WindowMode::BorderlessFullscreen : WindowMode::Windowed;
+            }
             graphics.initialize(gfxConfig);
             spdlog::info("[GameRunner] Graphics initialized: {}x{} '{}'",
                          gfxConfig.windowWidth, gfxConfig.windowHeight, gfxConfig.windowTitle);
@@ -731,6 +740,22 @@ private:
         if (!result.has_value()) {
             spdlog::warn("[GameRunner] UI initialization failed");
             return;
+        }
+
+        // Load fonts from config array
+        sol::optional<sol::table> fontsList = config["fonts"];
+        if (fontsList) {
+            for (auto& [key, val] : fontsList.value()) {
+                if (val.get_type() == sol::type::string) {
+                    std::string fontPath = val.as<std::string>();
+                    auto fontResult = ui.loadFont(fontPath, "default");
+                    if (fontResult.has_value()) {
+                        spdlog::info("[GameRunner] Loaded UI font: {}", fontPath);
+                    } else {
+                        spdlog::warn("[GameRunner] Failed to load UI font: {}", fontPath);
+                    }
+                }
+            }
         }
 
         // Load theme stylesheet
@@ -834,7 +859,12 @@ return { main = main }
                 continue;
             }
 
-            // Render scene system (runs active scene's Lua render — 3D beginFrame/endFrame)
+            // Begin frame (acquires swapchain image, starts render pass)
+            if (engine_.has<IGraphics3DSystem>()) {
+                engine_.get<IGraphics3DSystem>().beginFrame();
+            }
+
+            // Render scene system (runs active scene's Lua render)
             if (engine_.has<ISceneSystem>()) {
                 engine_.get<ISceneSystem>().render();
             }
@@ -858,6 +888,18 @@ return { main = main }
                     running = false;
                     continue;
                 }
+            }
+
+            // End frame (submits commands, presents, polls GLFW events)
+            if (engine_.has<IGraphics3DSystem>()) {
+                engine_.get<IGraphics3DSystem>().endFrame();
+            }
+
+            // Check if window was closed
+            if (engine_.has<IGraphics3DSystem>() &&
+                engine_.get<IGraphics3DSystem>().shouldClose()) {
+                spdlog::info("[GameRunner] Window close requested");
+                running = false;
             }
 
             frameCount++;

@@ -15,9 +15,9 @@ return {
         app.main.state = {
             running = true,
             settings = {
-                fullscreen  = false,
-                vsync       = true,
-                renderScale = 1.0,
+                windowMode   = "borderless",  -- "windowed", "fullscreen", "borderless"
+                vsync        = true,
+                renderScale  = 1.0,
                 masterVolume = 0.8,
                 musicVolume  = 0.7,
                 sfxVolume    = 1.0,

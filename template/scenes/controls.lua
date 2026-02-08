@@ -2,12 +2,14 @@
 -- Two tabs: Controller / Mouse & Keyboard.
 -- Shows current bindings; supports rebinding (listens for next input).
 
+local doc = nil
+
 return {
     phase = "controls",
 
     enter = function(params)
         local nav = app.systems.menu_nav
-        local doc = bestow.ui.loadDocument("assets/ui/controls.rml")
+        doc = bestow.ui.loadDocument("assets/ui/controls.rml")
         if not doc then return end
         bestow.ui.showDocument(doc)
 
@@ -72,9 +74,15 @@ return {
         end
 
         -- Wire click on each binding-key to start listening
-        local bindElems = bestow.ui.getElementsByClass(doc, "binding-key")
-        if bindElems then
-            for _, elem in ipairs(bindElems) do
+        local bindIds = {
+            "bind-ctrl-fwd", "bind-ctrl-back", "bind-ctrl-left", "bind-ctrl-right",
+            "bind-ctrl-jump", "bind-ctrl-attack", "bind-ctrl-pause",
+            "bind-kb-fwd", "bind-kb-back", "bind-kb-left", "bind-kb-right",
+            "bind-kb-jump", "bind-kb-pause",
+        }
+        for _, id in ipairs(bindIds) do
+            local elem = bestow.ui.getElementById(doc, id)
+            if elem then
                 bestow.ui.onElementEvent(elem, "click", function()
                     if not listening then
                         startListening(elem)
@@ -119,6 +127,8 @@ return {
 
     exit = function()
         app.systems.menu_nav.clear()
+        if doc then bestow.ui.hideDocument(doc) end
+        doc = nil
         if bestow.input.isListeningForInput() then
             bestow.input.stopListeningForInput()
         end
