@@ -148,6 +148,11 @@ Result<void, VulkanError> VulkanContext::initialize(const VulkanConfig& config) 
         // until the first frame is rendered (which can be delayed by asset loading).
         glfwPollEvents();
         spdlog::debug("[VulkanContext] Initial glfwPollEvents() called");
+
+        // Request window focus so GLFW receives keyboard events.
+        // Without this, windows launched via `open` or subprocess may not gain focus.
+        glfwFocusWindow(window_);
+        glfwPollEvents();  // Process the focus request
     }
 
     // Initialize Vulkan

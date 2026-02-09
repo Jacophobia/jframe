@@ -705,26 +705,40 @@ void OpenGLGraphicsSystem::setWindowSize(Size size) {
     glfwSetWindowSize(window_, size.width, size.height);
 }
 
-bool OpenGLGraphicsSystem::isFullscreen() const {
-    return isFullscreen_;
+WindowMode OpenGLGraphicsSystem::getWindowMode() const {
+    return windowMode_;
 }
 
-void OpenGLGraphicsSystem::setFullscreen(bool fullscreen) {
-    if (fullscreen == isFullscreen_) return;
+void OpenGLGraphicsSystem::setWindowMode(WindowMode mode) {
+    if (mode == windowMode_) return;
 
-    if (fullscreen) {
+    // Save windowed state before leaving windowed mode
+    if (windowMode_ == WindowMode::Windowed) {
         glfwGetWindowPos(window_, &windowedX_, &windowedY_);
         glfwGetWindowSize(window_, &windowedWidth_, &windowedHeight_);
-
-        GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-        glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-    } else {
-        glfwSetWindowMonitor(window_, nullptr, windowedX_, windowedY_,
-                             windowedWidth_, windowedHeight_, 0);
     }
 
-    isFullscreen_ = fullscreen;
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* vidmode = glfwGetVideoMode(monitor);
+
+    switch (mode) {
+        case WindowMode::Fullscreen:
+            glfwSetWindowMonitor(window_, monitor, 0, 0,
+                                 vidmode->width, vidmode->height, vidmode->refreshRate);
+            break;
+        case WindowMode::BorderlessFullscreen:
+            glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_FALSE);
+            glfwSetWindowMonitor(window_, nullptr, 0, 0,
+                                 vidmode->width, vidmode->height, 0);
+            break;
+        case WindowMode::Windowed:
+            glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_TRUE);
+            glfwSetWindowMonitor(window_, nullptr, windowedX_, windowedY_,
+                                 windowedWidth_, windowedHeight_, 0);
+            break;
+    }
+
+    windowMode_ = mode;
 }
 
 bool OpenGLGraphicsSystem::shouldClose() const {

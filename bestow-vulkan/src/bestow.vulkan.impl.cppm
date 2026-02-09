@@ -453,8 +453,8 @@ public:
 
     Size getWindowSize() const override;
     void setWindowSize(Size size) override;
-    bool isFullscreen() const override;
-    void setFullscreen(bool fullscreen) override;
+    WindowMode getWindowMode() const override;
+    void setWindowMode(WindowMode mode) override;
     bool shouldClose() const override;
     void* getNativeWindowHandle() const override;
 
@@ -496,7 +496,7 @@ private:
     Camera camera_;
     Color clearColor_ = Color::black();
     bool viewportCullingEnabled_ = false;
-    bool isFullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
     bool inFrame_ = false;
     std::unique_ptr<VulkanUIRenderBackend> uiRenderBackend_;
 
@@ -733,8 +733,8 @@ public:
 
     Size getWindowSize() const override;
     void setWindowSize(Size size) override;
-    bool isFullscreen() const override;
-    void setFullscreen(bool fullscreen) override;
+    WindowMode getWindowMode() const override;
+    void setWindowMode(WindowMode mode) override;
     bool shouldClose() const override;
     void* getNativeWindowHandle() const override;
 
@@ -912,7 +912,7 @@ private:
     Vec3 cameraTarget_{0.0f, 0.0f, 0.0f};
     bool useCameraTarget_ = false;
     Color clearColor_ = Color::black();
-    bool isFullscreen_ = false;
+    WindowMode windowMode_ = WindowMode::Windowed;
     float renderScale_ = 1.0f;
 
     // IGraphicsContext state

@@ -325,6 +325,11 @@ bool ScriptManager::reloadScript(const std::filesystem::path& path) {
     return loadScript(path);
 }
 
+void ScriptManager::setMainScript(const std::filesystem::path& path) {
+    mainScriptPath_ = std::filesystem::absolute(path);
+    spdlog::debug("[ScriptManager] Main script set to: {}", mainScriptPath_.string());
+}
+
 void ScriptManager::loadAllScripts() {
     if (!initialized_) {
         spdlog::error("[ScriptManager] Cannot load scripts: not initialized");
@@ -334,12 +339,15 @@ void ScriptManager::loadAllScripts() {
     auto scripts = discoverScripts();
     spdlog::info("[ScriptManager] Discovered {} Lua scripts", scripts.size());
 
-    // Sort scripts so that main.lua is loaded last (it may depend on others)
+    // Sort scripts so that the entry point is loaded last (it may depend on others)
     std::vector<std::filesystem::path> regularScripts;
     std::filesystem::path mainScript;
 
     for (const auto& script : scripts) {
-        if (script.filename() == "main.lua") {
+        bool isMain = !mainScriptPath_.empty()
+            ? (std::filesystem::absolute(script) == mainScriptPath_)
+            : (script.filename() == "main.lua");
+        if (isMain) {
             mainScript = script;
         } else {
             regularScripts.push_back(script);
@@ -434,6 +442,12 @@ sol::object ScriptManager::getAppValue(const std::string& path) const {
 //=============================================================================
 
 std::string ScriptManager::pathToTableKey(const std::filesystem::path& scriptPath) const {
+    // If this is the designated entry point, always map to "main"
+    if (!mainScriptPath_.empty() &&
+        std::filesystem::absolute(scriptPath) == mainScriptPath_) {
+        return "main";
+    }
+
     // Get relative path from game root
     auto relPath = std::filesystem::relative(scriptPath, gameRoot_);
 

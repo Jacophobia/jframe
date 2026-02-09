@@ -1,0 +1,23 @@
+<rml>
+<head>
+    <link type="text/rcss" href="theme.rcss"/>
+    <style>
+        #title {
+            font-size: 64dp;
+            color: #f0f0ff;
+            margin-bottom: 56dp;
+        }
+    </style>
+</head>
+<body>
+    <div class="screen">
+        <div id="title">My Game</div>
+        <div class="column gap-md">
+            <div id="btn-play"     class="btn">Play</div>
+            <div id="btn-controls" class="btn">Controls</div>
+            <div id="btn-settings" class="btn">Options</div>
+            <div id="btn-quit"     class="btn">Quit</div>
+        </div>
+    </div>
+</body>
+</rml>

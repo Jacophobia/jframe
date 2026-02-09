@@ -108,6 +108,15 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
         }
     );
 
+    // WindowMode enum
+    lua.new_enum<WindowMode>("WindowMode",
+        {
+            {"Windowed", WindowMode::Windowed},
+            {"Fullscreen", WindowMode::Fullscreen},
+            {"BorderlessFullscreen", WindowMode::BorderlessFullscreen}
+        }
+    );
+
     // LockPointSource enum
     lua.new_enum<LockPointSource>("LockPointSource",
         {
@@ -388,7 +397,7 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
         "windowHeight", &Graphics3DConfig::windowHeight,
         "windowTitle", &Graphics3DConfig::windowTitle,
         "vsync", &Graphics3DConfig::vsync,
-        "fullscreen", &Graphics3DConfig::fullscreen,
+        "windowMode", &Graphics3DConfig::windowMode,
         "enableValidation", &Graphics3DConfig::enableValidation,
         "nativeWindowHandle", &Graphics3DConfig::nativeWindowHandle
     );
@@ -428,7 +437,16 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
         config.windowHeight = configTable.get_or("windowHeight", 720);
         config.windowTitle = configTable.get_or("windowTitle", std::string("Bestow"));
         config.vsync = configTable.get_or("vsync", true);
-        config.fullscreen = configTable.get_or("fullscreen", false);
+        // Parse windowMode string or fall back to legacy fullscreen bool
+        auto wmStr = configTable.get<sol::optional<std::string>>("windowMode");
+        if (wmStr) {
+            if (*wmStr == "borderless") config.windowMode = WindowMode::BorderlessFullscreen;
+            else if (*wmStr == "fullscreen") config.windowMode = WindowMode::Fullscreen;
+            else config.windowMode = WindowMode::Windowed;
+        } else {
+            bool fs = configTable.get_or("fullscreen", false);
+            config.windowMode = fs ? WindowMode::BorderlessFullscreen : WindowMode::Windowed;
+        }
         config.enableValidation = configTable.get_or("enableValidation", false);
         return graphics.initialize(config);
     };
@@ -877,6 +895,22 @@ void bindGraphics3DSystem(sol::state& lua, IGraphics3DSystem& graphics,
         graphics.setWindowSize(size);
     };
 
+    gfxTable["getWindowMode"] = [&graphics]() {
+        return graphics.getWindowMode();
+    };
+
+    gfxTable["setWindowMode"] = [&graphics](sol::object arg) {
+        if (arg.is<WindowMode>()) {
+            graphics.setWindowMode(arg.as<WindowMode>());
+        } else if (arg.is<std::string>()) {
+            auto s = arg.as<std::string>();
+            if (s == "borderless") graphics.setWindowMode(WindowMode::BorderlessFullscreen);
+            else if (s == "fullscreen") graphics.setWindowMode(WindowMode::Fullscreen);
+            else graphics.setWindowMode(WindowMode::Windowed);
+        }
+    };
+
+    // Compat wrappers
     gfxTable["isFullscreen"] = [&graphics]() {
         return graphics.isFullscreen();
     };

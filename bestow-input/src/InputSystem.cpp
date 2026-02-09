@@ -428,6 +428,16 @@ InputSystem::~InputSystem() {
 bool InputSystem::initialize(void* nativeWindow) {
     window_ = static_cast<GLFWwindow*>(nativeWindow);
 
+    spdlog::info("[InputSystem] initialize() window_={}", (void*)window_);
+
+    if (window_) {
+        // Enable sticky keys so key presses between poll frames aren't lost.
+        // With sticky keys, glfwGetKey() returns GLFW_PRESS until polled,
+        // even if the key was released before the next poll.
+        glfwSetInputMode(window_, GLFW_STICKY_KEYS, GLFW_TRUE);
+        spdlog::info("[InputSystem] GLFW_STICKY_KEYS enabled");
+    }
+
     // Initialize SDL2 for game controllers only
     if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) < 0) {
         return false;
@@ -996,18 +1006,27 @@ void InputSystem::emitActionEvent(const std::string& actionName, InputSource sou
         .axis = axis
     };
 
+    // Publish to "action:<Name>" for Lua subscribers (e.g., "action:MenuUp")
+    pIEventSystem_->publish("action:" + actionName, eventData);
+
+    // Also publish to generic "action_triggered" for C++ subscribers
     pIEventSystem_->publish(Events::ActionTriggered, eventData);
 }
 
 void InputSystem::processActionRegistrations() {
-    std::string currentPhase = getCurrentPhase();
-    if (currentPhase.empty()) {
+    // Snapshot the phase at frame start. Actions that fire during this loop may
+    // push/pop phases (e.g., Pause pushes the pause scene), but we must evaluate
+    // ALL actions against the phase that was active when the frame began.
+    // Otherwise, an action in the new phase (e.g., Resume) can fire on the same
+    // key press that triggered the phase change, immediately undoing it.
+    std::string snapshotPhase = getCurrentPhase();
+    if (snapshotPhase.empty()) {
         return;  // No phase set, don't process any actions
     }
 
     for (const auto& reg : actionRegistrations_) {
-        // Check if this registration applies to current phase
-        if (!isPhaseActive(reg.phase)) {
+        // Check if this registration applies to the snapshot phase
+        if (!PhaseTree::isDescendantOrSame(snapshotPhase, reg.phase)) {
             continue;
         }
 

@@ -99,6 +99,17 @@ void registerGraphics3DDoc(DocRegistry& registry) {
     });
 
     sys.enums.push_back(EnumDoc{
+        .name = "WindowMode",
+        .qualifiedName = "WindowMode",
+        .description = "Window display mode.",
+        .values = {
+            {"Windowed", "Standard windowed mode with title bar and borders"},
+            {"Fullscreen", "Exclusive fullscreen mode"},
+            {"BorderlessFullscreen", "Borderless fullscreen window (default)"},
+        }
+    });
+
+    sys.enums.push_back(EnumDoc{
         .name = "LockPointSource",
         .qualifiedName = "LockPointSource",
         .description = "Source type for lock-on target points.",
@@ -930,18 +941,34 @@ void registerGraphics3DDoc(DocRegistry& registry) {
     });
 
     sys.methods.push_back(MethodDoc{
+        .name = "getWindowMode",
+        .qualifiedName = "bestow.graphics3d.getWindowMode",
+        .description = "Get the current window display mode.",
+        .returns = {{.type = "WindowMode", .description = "Current window mode (Windowed, Fullscreen, or BorderlessFullscreen)"}},
+    });
+
+    sys.methods.push_back(MethodDoc{
+        .name = "setWindowMode",
+        .qualifiedName = "bestow.graphics3d.setWindowMode",
+        .description = "Set the window display mode. Accepts a WindowMode enum value or a string: \"windowed\", \"fullscreen\", or \"borderless\".",
+        .params = {
+            {.name = "mode", .type = "WindowMode|string", .description = "Window mode to apply"},
+        },
+    });
+
+    sys.methods.push_back(MethodDoc{
         .name = "isFullscreen",
         .qualifiedName = "bestow.graphics3d.isFullscreen",
-        .description = "Check if the window is in fullscreen mode.",
-        .returns = {{.type = "boolean", .description = "true if fullscreen"}},
+        .description = "Check if the window is in any fullscreen mode (compat wrapper). Prefer getWindowMode().",
+        .returns = {{.type = "boolean", .description = "true if not Windowed"}},
     });
 
     sys.methods.push_back(MethodDoc{
         .name = "setFullscreen",
         .qualifiedName = "bestow.graphics3d.setFullscreen",
-        .description = "Set fullscreen mode.",
+        .description = "Set fullscreen mode (compat wrapper). true maps to BorderlessFullscreen, false to Windowed. Prefer setWindowMode().",
         .params = {
-            {.name = "fullscreen", .type = "boolean", .description = "true for fullscreen, false for windowed"},
+            {.name = "fullscreen", .type = "boolean", .description = "true for borderless fullscreen, false for windowed"},
         },
     });
 

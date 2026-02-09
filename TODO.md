@@ -40,16 +40,11 @@ The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 mod
 - This creates confusion and potential inconsistency
 
 ### Migration Plan
-1. [ ] Remove `bestow.config.parseLuaFile()` usage from snake-lua game
-   - Replace level loading with direct `app.levels.*` access
-   - Replace world loading with direct `app.worlds.*` access
-2. [ ] Move Lua parsing entirely to ScriptManager
-   - Levels should be loaded as `games/snake-lua/levels/level01.lua` → `app.levels.level01`
-   - Worlds should be loaded as `games/snake-lua/worlds/forest.lua` → `app.worlds.forest`
-3. [ ] Deprecate or remove ConfigSystem's Lua functionality
-   - Keep JSON/user settings functionality if needed
-   - Remove `parseLuaFile()` and `parseLuaString()` methods
-4. [ ] Update documentation to reflect Lua-first approach
+1. [x] Remove `bestow.config.parseLuaFile()` usage from snake-lua game (snake-lua deleted)
+2. [x] Move Lua parsing entirely to ScriptManager
+3. [x] Remove `parseLuaFile()` from config binding and docs
+   - Engine now reads config/*.cfg.lua directly in C++ (GameRunner::loadConfigs)
+4. [x] Update documentation to reflect config-as-code approach
 
 ### Benefits
 - Single source of truth for Lua parsing (ScriptManager)
@@ -166,6 +161,23 @@ The full C++ snake game has been ported to Lua at `games/snake-lua/`. All 14 mod
 | ~~Save~~ | ~~Playtime tracking~~ | ✅ IMPLEMENTED (2025-12-15) - Automatic tracking in update(), getTotalPlaytime() API |
 | Config | Asset system integration | MEDIUM |
 | GameState | Transition overlay | MEDIUM |
+
+---
+
+## Post-Processing: Gaussian Blur for Pause Overlay
+
+> RmlUI does not support `backdrop-filter: blur()`. To achieve a blurred background behind the pause menu overlay, implement a post-processing Gaussian blur pass in the Vulkan 3D renderer.
+
+### Requirements
+- [ ] Add `setPostProcessBlur(float radius)` to `IGraphics3DSystem`
+- [ ] Implement two-pass (horizontal + vertical) Gaussian blur as a full-screen post-process
+- [ ] Expose via Lua: `bestow.graphics3d.setPostProcessBlur(radius)` (0 = disabled)
+- [ ] Pause scene enables blur on enter, disables on exit
+
+### Notes
+- Can reuse existing render-to-texture pipeline from the Vulkan backend
+- Separate blur intensity from scene opacity for fine control
+- Consider performance: downsample before blur for cheaper effect
 
 ---
 

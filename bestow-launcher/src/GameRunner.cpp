@@ -8,6 +8,9 @@
 // This defines comparison operators for EnTT iterators that MSVC's ADL can find
 #include <bestow/entt_compat.hpp>
 
+// Signal constants (SIGSEGV, SIGABRT, etc.) not exported by import std; on MSVC
+#include <csignal>
+
 import std;
 import bestow.core;
 import bestow.services;
@@ -25,8 +28,30 @@ import bestow.config.impl;    // ConfigSystem
 import bestow.vulkan.impl;    // VulkanGraphics3DSystem
 import bestow.audio.impl;     // FMODAudioSystem
 import bestow.animation.impl; // AnimationSystem
+import bestow.scene.impl;     // SceneSystem
+import bestow.ui.impl;        // RmlUISystem
+import bestow.state.impl;     // StateSystem
 
 namespace bestow::launcher {
+
+// Signal handling for graceful shutdown (SIGTERM, SIGINT)
+static std::atomic<bool> g_shutdownRequested{false};
+
+static void shutdownSignalHandler(int sig) {
+    g_shutdownRequested.store(true, std::memory_order_relaxed);
+    // Minimal work in signal handler — just set the flag.
+    // The game loop checks it each frame and exits cleanly.
+}
+
+// SEGV crash handler for debugging — prints backtrace to stderr
+static void crashSignalHandler(int sig) {
+    spdlog::critical("[CRASH] Received signal {} ({})", sig,
+        sig == SIGSEGV ? "SIGSEGV" : sig == SIGABRT ? "SIGABRT" : "UNKNOWN");
+    spdlog::default_logger()->flush();
+    // Re-raise to get core dump
+    std::signal(sig, SIG_DFL);
+    std::raise(sig);
+}
 
 class GameRunner {
 public:
@@ -40,14 +65,6 @@ public:
         // while Lua is still fully valid.
         callLuaDestroy();
 
-        // Clear global binding managers that hold sol:: refs
-        spdlog::info("[GameRunner] Cleaning up Lua bindings...");
-        cleanupLuaBindings();
-
-        // Run GC to collect any orphaned objects
-        spdlog::info("[GameRunner] Running garbage collection...");
-        lua_.collect_garbage();
-
         // Clear script manager (holds references to Lua tables)
         spdlog::info("[GameRunner] Clearing script manager...");
         scriptManager_.reset();
@@ -56,10 +73,23 @@ public:
         spdlog::info("[GameRunner] Clearing Lua binder...");
         binder_.reset();
 
-        // Run GC again after clearing managers
+        // Run GC to collect any orphaned objects
+        spdlog::info("[GameRunner] Running garbage collection...");
         lua_.collect_garbage();
 
-        // Clear all Lua globals to release references
+        // IMPORTANT: Destroy engine BEFORE clearing Lua bindings/globals.
+        // Engine destruction triggers SceneSystem::~SceneSystem() → clearStack(),
+        // which calls scene exit callbacks that need both:
+        //   1. Lua globals (`app.*`) to be valid
+        //   2. g_luaEventManager to be alive (for bestow.events.unsubscribe())
+        spdlog::info("[GameRunner] Destroying engine...");
+        engine_ = core::Engine();
+
+        // Now safe to destroy binding managers — engine no longer needs them
+        spdlog::info("[GameRunner] Cleaning up Lua bindings...");
+        cleanupLuaBindings();
+
+        // Clear all Lua globals to release references (safe now that engine is gone)
         spdlog::info("[GameRunner] Clearing Lua globals...");
         lua_["bestow"] = sol::nil;
         lua_["app"] = sol::nil;
@@ -67,11 +97,6 @@ public:
         // Final GC pass
         lua_.collect_garbage();
         lua_.collect_garbage();  // Run twice to catch weak refs
-
-        // IMPORTANT: Destroy engine BEFORE lua_ because engine systems may store
-        // callbacks that captured sol::function objects.
-        spdlog::info("[GameRunner] Destroying engine...");
-        engine_ = core::Engine();
 
         spdlog::info("[GameRunner] Engine destroyed, destructor body complete");
         spdlog::default_logger()->flush();
@@ -130,6 +155,16 @@ public:
             spdlog::set_level(spdlog::level::debug);
         }
 
+        // Flush spdlog every second so logs are visible when piped
+        spdlog::flush_every(std::chrono::seconds(1));
+
+        // Register signal handlers for graceful shutdown
+        std::signal(SIGTERM, shutdownSignalHandler);
+        std::signal(SIGINT, shutdownSignalHandler);
+        // Register crash handler for debugging
+        std::signal(SIGSEGV, crashSignalHandler);
+        std::signal(SIGABRT, crashSignalHandler);
+
         spdlog::info("[GameRunner] Initializing Bestow Engine...");
         spdlog::info("[GameRunner] Game root: {}", gameRoot_.string());
         spdlog::info("[GameRunner] Main script: {}", mainScript_.string());
@@ -152,9 +187,9 @@ public:
             return false;
         }
 
-        // Load inputs.lua for input action configuration (REQUIRED)
-        if (!loadInputsConfig()) {
-            spdlog::error("[GameRunner] Failed to load inputs.lua");
+        // Load config/*.cfg.lua files and initialize systems
+        if (!loadConfigs()) {
+            spdlog::error("[GameRunner] Failed to load configuration");
             return false;
         }
 
@@ -244,9 +279,16 @@ private:
         // Initialize PathResolver with basic defaults
         PathResolver::initialize();
 
-        // Use AssetLibrary for robust auto-detection of library path
-        // (checks env var, exe-relative, cwd-relative locations)
-        auto assetLib = AssetLibrary::create();
+        // Use AssetLibrary for robust auto-detection of library path.
+        // Check near the game root (e.g., template/../asset-library) in addition
+        // to the default exe-relative and CWD-relative locations. This ensures
+        // the library is found even when CWD differs (e.g., macOS `open` command).
+        AssetLibraryConfig libConfig;
+        for (const auto& folderName : libConfig.folderNames) {
+            libConfig.additionalSearchPaths.push_back(gameRoot_ / folderName);
+            libConfig.additionalSearchPaths.push_back(gameRoot_ / ".." / folderName);
+        }
+        auto assetLib = AssetLibrary::create(std::move(libConfig));
         if (assetLib) {
             PathResolver::setLibraryPath(assetLib->root().string());
             spdlog::info("[GameRunner] Using library path: {}", assetLib->root().string());
@@ -296,8 +338,34 @@ private:
                 return new VulkanGraphics3DSystem(sp.get<IAssetSystem>(), sp.get<IConfigSystem>());
             });
 
+        // Register UI system (depends on IGraphicsContext [base of IGraphics3DSystem], IAssetSystem)
+        engine_.use<IUISystem, RmlUISystem>(
+            [](di::ServiceProvider& sp) {
+                return new RmlUISystem(sp.get<IGraphics3DSystem>(), sp.get<IAssetSystem>());
+            });
+
+        // Register scene system (depends on IAssetSystem, IInputSystem, IUISystem, IEventSystem)
+        engine_.use<ISceneSystem, SceneSystem>(
+            [](di::ServiceProvider& sp) {
+                return new SceneSystem(
+                    sp.get<IAssetSystem>(), sp.get<IInputSystem>(),
+                    sp.get<IUISystem>(), sp.get<IEventSystem>());
+            });
+
         // Register animation system
         engine_.use<IAnimationSystem, AnimationSystem>();
+
+        // Register state system (no dependencies)
+        engine_.use<IStateSystem, StateSystem>();
+
+        // Build the service provider so has<>() and get<>() work
+        engine_.build();
+
+        // Initialize scene system with Lua state
+        if (engine_.has<ISceneSystem>()) {
+            auto& scene = dynamic_cast<SceneSystem&>(engine_.get<ISceneSystem>());
+            scene.initialize(&lua_);
+        }
 
         // Initialize animation system (required before use)
         if (engine_.has<IAnimationSystem>()) {
@@ -353,6 +421,7 @@ private:
 
         scriptManager_ = std::make_unique<ScriptManager>(lua_);
         scriptManager_->initialize(gameRoot_);
+        scriptManager_->setMainScript(mainScript_);
 
         if (!debugMode_) {
             scriptManager_->enableHotReload(true);
@@ -378,47 +447,412 @@ private:
         return true;
     }
 
-    bool loadInputsConfig() {
-        auto inputsPath = gameRoot_ / "inputs.lua";
+    //=========================================================================
+    // Config file loading — reads config/*.cfg.lua and initializes systems
+    //=========================================================================
 
-        // Check if inputs.lua exists (REQUIRED)
-        if (!std::filesystem::exists(inputsPath)) {
-            spdlog::error("[GameRunner] Required file 'inputs.lua' not found in game directory: {}",
-                         gameRoot_.string());
-            spdlog::error("[GameRunner] Create an inputs.lua file to define input actions. Example:");
-            spdlog::error(R"(
--- inputs.lua - Input action definitions
--- Use bestow.action.builder() to register input actions
-
--- Example: Jump action
-bestow.action.builder()
-    :duringPhase("game")
-    :whenPressed(bestow.input.keys.Space)
-    :emitAction("Jump")
-    :discretely()
-
--- Example: Movement action (continuous)
-bestow.action.builder()
-    :duringPhase("game")
-    :whenActive(bestow.input.keys.D)
-    :emitAction("MoveRight")
-    :continuously()
-)");
-            return false;
+    /// Load a .cfg.lua file and return the table it produces.
+    /// Config files are executed in a bare sandbox — no access to bestow.*,
+    /// math.*, string.*, or any other globals.  Only Lua syntax (table
+    /// constructors, literals, local variables) is available.
+    /// Returns sol::nil if the file doesn't exist or fails to parse.
+    sol::object loadConfigFile(const std::string& relativePath) {
+        auto fullPath = gameRoot_ / relativePath;
+        if (!std::filesystem::exists(fullPath)) {
+            return sol::nil;
         }
 
-        spdlog::debug("[GameRunner] Loading inputs.lua: {}", inputsPath.string());
+        spdlog::debug("[GameRunner] Loading config: {}", fullPath.string());
 
-        // Execute inputs.lua to register actions
-        auto result = lua_.safe_script_file(inputsPath.string(), sol::script_pass_on_error);
+        // Bare environment — config files are pure data, no API access
+        sol::environment sandbox(lua_, sol::create);
+
+        auto result = lua_.safe_script_file(fullPath.string(), sandbox,
+                                            sol::script_pass_on_error);
         if (!result.valid()) {
             sol::error err = result;
-            spdlog::error("[GameRunner] Failed to load inputs.lua: {}", err.what());
+            spdlog::error("[GameRunner] Failed to parse {}: {}", relativePath, err.what());
+            return sol::nil;
+        }
+
+        return result.get<sol::object>();
+    }
+
+    /// Master config loader — loads all config/*.cfg.lua files
+    bool loadConfigs() {
+        spdlog::info("[GameRunner] Loading configuration files...");
+
+        // Input config is REQUIRED (replaces inputs.lua)
+        if (!loadInputConfig()) {
             return false;
         }
 
-        spdlog::info("[GameRunner] Loaded input configuration from inputs.lua");
+        // Graphics config (optional — falls back to defaults)
+        loadGraphicsConfig();
+
+        // Audio config (optional)
+        loadAudioConfig();
+
+        // UI config (optional)
+        loadUIConfig();
+
+        // State config (optional)
+        loadStateConfig();
+
+        spdlog::info("[GameRunner] Configuration loaded");
         return true;
+    }
+
+    /// Load config/input.cfg.lua and register actions with the input system
+    bool loadInputConfig() {
+        auto cfg = loadConfigFile("config/input.cfg.lua");
+
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) {
+            spdlog::error("[GameRunner] Required file 'config/input.cfg.lua' not found or invalid");
+            spdlog::error("[GameRunner] Create config/input.cfg.lua that returns a table with an 'actions' array.");
+            return false;
+        }
+
+        if (!engine_.has<IInputSystem>()) {
+            spdlog::error("[GameRunner] No input system registered");
+            return false;
+        }
+
+        auto& input = engine_.get<IInputSystem>();
+        sol::table config = cfg;
+
+        // Apply hold threshold if present
+        sol::optional<float> holdThreshold = config["holdThreshold"];
+        if (holdThreshold) {
+            input.setDefaultHoldThreshold(*holdThreshold);
+        }
+
+        // Enum lookup tables (already bound by bindContracts)
+        sol::table keyCodeEnum   = lua_["KeyCode"];
+        sol::table gamepadBtnEnum = lua_["GamepadButton"];
+        sol::table gamepadAxisEnum = lua_["GamepadAxis"];
+
+        // Process actions array
+        sol::optional<sol::table> actions = config["actions"];
+        if (!actions) {
+            spdlog::warn("[GameRunner] config/input.cfg.lua has no 'actions' array");
+            return true;
+        }
+
+        int registered = 0;
+        for (auto& pair : *actions) {
+            sol::table def = pair.second.as<sol::table>();
+            std::string actionName = def.get<std::string>("action");
+            std::string mode = def.get_or<std::string>("mode", "discrete");
+
+            sol::optional<sol::table> phases = def["phases"];
+            if (!phases) continue;
+
+            for (auto& phasePair : *phases) {
+                std::string phase = phasePair.second.as<std::string>();
+
+                // Register keyboard bindings
+                sol::optional<sol::table> keys = def["keys"];
+                if (keys) {
+                    for (auto& keyPair : *keys) {
+                        std::string keyName = keyPair.second.as<std::string>();
+                        sol::object keyObj = keyCodeEnum[keyName];
+                        if (!keyObj.valid() || !keyObj.is<KeyCode>()) {
+                            spdlog::warn("[GameRunner] Unknown key '{}' in action '{}'", keyName, actionName);
+                            continue;
+                        }
+                        KeyCode key = keyObj.as<KeyCode>();
+
+                        ActionRegistration reg;
+                        reg.phase = phase;
+                        ActionCondition cond;
+                        cond.input = InputBinding::key(key);
+                        cond.type = (mode == "discrete")
+                            ? ActionConditionType::WhenPressed
+                            : ActionConditionType::WhenActive;
+                        reg.conditions.push_back(cond);
+                        ActionEffect effect;
+                        effect.type = ActionEffectType::EmitAction;
+                        effect.value = actionName;
+                        reg.effects.push_back(effect);
+                        reg.terminal = (mode == "discrete")
+                            ? ActionTerminal::Discrete
+                            : ActionTerminal::Continuous;
+                        reg.valid = true;
+                        input.registerAction(reg);
+                        registered++;
+                    }
+                }
+
+                // Register gamepad button bindings
+                sol::optional<sol::table> buttons = def["buttons"];
+                if (buttons) {
+                    for (auto& btnPair : *buttons) {
+                        std::string btnName = btnPair.second.as<std::string>();
+                        sol::object btnObj = gamepadBtnEnum[btnName];
+                        if (!btnObj.valid() || !btnObj.is<GamepadButton>()) {
+                            spdlog::warn("[GameRunner] Unknown button '{}' in action '{}'", btnName, actionName);
+                            continue;
+                        }
+                        GamepadButton btn = btnObj.as<GamepadButton>();
+
+                        ActionRegistration reg;
+                        reg.phase = phase;
+                        ActionCondition cond;
+                        cond.input = InputBinding::gamepadButton(btn);
+                        cond.type = (mode == "discrete")
+                            ? ActionConditionType::WhenPressed
+                            : ActionConditionType::WhenActive;
+                        reg.conditions.push_back(cond);
+                        ActionEffect effect;
+                        effect.type = ActionEffectType::EmitAction;
+                        effect.value = actionName;
+                        reg.effects.push_back(effect);
+                        reg.terminal = (mode == "discrete")
+                            ? ActionTerminal::Discrete
+                            : ActionTerminal::Continuous;
+                        reg.valid = true;
+                        input.registerAction(reg);
+                        registered++;
+                    }
+                }
+
+                // Register gamepad axis bindings
+                sol::optional<sol::table> axes = def["axes"];
+                if (axes) {
+                    float deadzone = def.get_or(std::string("deadzone"), 0.15f);
+                    for (auto& axisPair : *axes) {
+                        std::string axisName = axisPair.second.as<std::string>();
+                        sol::object axisObj = gamepadAxisEnum[axisName];
+                        if (!axisObj.valid() || !axisObj.is<GamepadAxis>()) {
+                            spdlog::warn("[GameRunner] Unknown axis '{}' in action '{}'", axisName, actionName);
+                            continue;
+                        }
+                        GamepadAxis axis = axisObj.as<GamepadAxis>();
+
+                        ActionRegistration reg;
+                        reg.phase = phase;
+                        reg.deadzone = deadzone;
+                        ActionCondition cond;
+                        cond.input = InputBinding::gamepadAxis(axis);
+                        cond.type = ActionConditionType::WhenActive;
+                        reg.conditions.push_back(cond);
+                        ActionEffect effect;
+                        effect.type = ActionEffectType::EmitAction;
+                        effect.value = actionName;
+                        reg.effects.push_back(effect);
+                        reg.terminal = ActionTerminal::Continuous;
+                        reg.valid = true;
+                        input.registerAction(reg);
+                        registered++;
+                    }
+                }
+            }
+        }
+
+        spdlog::info("[GameRunner] Registered {} input bindings from config/input.cfg.lua", registered);
+        return true;
+    }
+
+    /// Load config/graphics.cfg.lua and initialize the graphics system
+    void loadGraphicsConfig() {
+        auto cfg = loadConfigFile("config/graphics.cfg.lua");
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) return;
+        if (!engine_.has<IGraphics3DSystem>()) return;
+
+        auto& graphics = engine_.get<IGraphics3DSystem>();
+        sol::table config = cfg;
+
+        // Window initialization
+        sol::optional<sol::table> window = config["window"];
+        if (window) {
+            Graphics3DConfig gfxConfig{};
+            gfxConfig.windowWidth  = window->get_or("width", 1280);
+            gfxConfig.windowHeight = window->get_or("height", 720);
+            gfxConfig.windowTitle  = window->get_or<std::string>("title", "Bestow Application");
+            gfxConfig.vsync        = window->get_or("vsync", true);
+            // Parse windowMode string, fall back to legacy fullscreen bool
+            auto wmStr = window->get<sol::optional<std::string>>("windowMode");
+            if (wmStr) {
+                if (*wmStr == "borderless") gfxConfig.windowMode = WindowMode::BorderlessFullscreen;
+                else if (*wmStr == "fullscreen") gfxConfig.windowMode = WindowMode::Fullscreen;
+                else gfxConfig.windowMode = WindowMode::Windowed;
+            } else {
+                bool fs = window->get_or("fullscreen", false);
+                gfxConfig.windowMode = fs ? WindowMode::BorderlessFullscreen : WindowMode::Windowed;
+            }
+            graphics.initialize(gfxConfig);
+            spdlog::info("[GameRunner] Graphics initialized: {}x{} '{}'",
+                         gfxConfig.windowWidth, gfxConfig.windowHeight, gfxConfig.windowTitle);
+
+            // Initialize input system with the GLFW window handle
+            if (engine_.has<IInputSystem>()) {
+                auto* windowHandle = graphics.getNativeWindowHandle();
+                if (windowHandle) {
+                    engine_.get<IInputSystem>().initialize(windowHandle);
+                    spdlog::info("[GameRunner] Input system initialized with window handle");
+                } else {
+                    spdlog::warn("[GameRunner] Graphics system returned null window handle");
+                }
+            }
+        }
+
+        // Clear color
+        sol::optional<sol::table> rendering = config["rendering"];
+        if (rendering) {
+            sol::optional<sol::table> cc = (*rendering)["clearColor"];
+            if (cc) {
+                float r = cc->get_or("r", 0.05f);
+                float g = cc->get_or("g", 0.05f);
+                float b = cc->get_or("b", 0.08f);
+                float a = cc->get_or("a", 1.0f);
+                graphics.setClearColor(Color::fromFloat(r, g, b, a));
+            }
+        }
+
+        // Camera defaults
+        sol::optional<sol::table> camera = config["camera"];
+        if (camera) {
+            Camera3D cam;
+            cam.fovY      = camera->get_or("fov", 60.0f);
+            cam.nearPlane  = camera->get_or("near", 0.1f);
+            cam.farPlane   = camera->get_or("far", 1000.0f);
+            graphics.setCamera(cam);
+        }
+
+        // Ambient lighting
+        sol::optional<sol::table> lighting = config["lighting"];
+        if (lighting) {
+            sol::optional<sol::table> ambient = (*lighting)["ambient"];
+            if (ambient) {
+                Vec3 color{
+                    ambient->get_or("r", 0.1f),
+                    ambient->get_or("g", 0.1f),
+                    ambient->get_or("b", 0.15f)
+                };
+                graphics.setAmbientLight(color);
+            }
+        }
+
+        spdlog::info("[GameRunner] Applied graphics configuration");
+    }
+
+    /// Load config/audio.cfg.lua and set audio volumes
+    void loadAudioConfig() {
+        auto cfg = loadConfigFile("config/audio.cfg.lua");
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) return;
+        if (!engine_.has<IAudioSystem>()) return;
+
+        auto& audio = engine_.get<IAudioSystem>();
+        sol::table config = cfg;
+
+        // Master volume
+        sol::optional<float> master = config["masterVolume"];
+        if (master) {
+            audio.setMasterVolume(*master);
+        }
+
+        // Group volumes
+        sol::optional<sol::table> groups = config["groups"];
+        if (groups) {
+            for (auto& pair : *groups) {
+                std::string group = pair.first.as<std::string>();
+                float volume = pair.second.as<float>();
+                audio.setGroupVolume(group, volume);
+            }
+        }
+
+        spdlog::info("[GameRunner] Applied audio configuration");
+    }
+
+    /// Load config/ui.cfg.lua and initialize the UI system
+    void loadUIConfig() {
+        auto cfg = loadConfigFile("config/ui.cfg.lua");
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) return;
+        if (!engine_.has<IUISystem>()) {
+            spdlog::debug("[GameRunner] No UI system registered, skipping UI config");
+            return;
+        }
+
+        auto& ui = engine_.get<IUISystem>();
+        sol::table config = cfg;
+
+        UIConfig uiConfig{};
+        uiConfig.baseScale       = config.get_or("baseScale", 1.0f);
+        uiConfig.enableDebugMode = config.get_or("enableDebugMode", false);
+
+        sol::optional<std::string> themePath = config["themePath"];
+        sol::optional<std::string> assetsPath = config["assetsPath"];
+        sol::optional<std::string> fontsPath = config["fontsPath"];
+
+        if (assetsPath) uiConfig.assetsPath = *assetsPath;
+        if (fontsPath)  uiConfig.fontsPath  = *fontsPath;
+
+        auto result = ui.initialize(uiConfig);
+        if (!result.has_value()) {
+            spdlog::warn("[GameRunner] UI initialization failed");
+            return;
+        }
+
+        // Load fonts from config array
+        sol::optional<sol::table> fontsList = config["fonts"];
+        if (fontsList) {
+            for (auto& [key, val] : fontsList.value()) {
+                if (val.get_type() == sol::type::string) {
+                    std::string fontPath = val.as<std::string>();
+                    auto fontResult = ui.loadFont(fontPath, "default");
+                    if (fontResult.has_value()) {
+                        spdlog::info("[GameRunner] Loaded UI font: {}", fontPath);
+                    } else {
+                        spdlog::warn("[GameRunner] Failed to load UI font: {}", fontPath);
+                    }
+                }
+            }
+        }
+
+        // Load theme stylesheet
+        if (themePath) {
+            auto sheetResult = ui.loadStyleSheet(*themePath);
+            if (sheetResult.has_value()) {
+                spdlog::info("[GameRunner] Loaded UI theme: {}", *themePath);
+            } else {
+                spdlog::warn("[GameRunner] Failed to load UI theme: {}", *themePath);
+            }
+        }
+
+        spdlog::info("[GameRunner] Applied UI configuration");
+    }
+
+    /// Load config/state.cfg.lua and configure the state system
+    void loadStateConfig() {
+        auto cfg = loadConfigFile("config/state.cfg.lua");
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) return;
+        if (!engine_.has<IStateSystem>()) return;
+
+        auto& state = engine_.get<IStateSystem>();
+        sol::table config = cfg;
+
+        sol::optional<std::string> profile = config["profile"];
+        if (profile) {
+            state.setActiveProfile(*profile);
+        }
+
+        sol::optional<std::string> version = config["gameVersion"];
+        if (version) {
+            state.setGameVersion(*version);
+        }
+
+        sol::optional<int> formatVersion = config["formatVersion"];
+        if (formatVersion) {
+            state.setFormatVersion(*formatVersion);
+        }
+
+        sol::optional<int> autoCommitSeconds = config["autoCommitSeconds"];
+        if (autoCommitSeconds && *autoCommitSeconds > 0) {
+            state.enableAutoCommit(std::chrono::seconds(*autoCommitSeconds));
+        }
+
+        spdlog::info("[GameRunner] Applied state configuration");
     }
 
     bool validatePhaseSet() {
@@ -472,6 +906,13 @@ return { main = main }
                 spdlog::debug("[GameRunner] Frame {} - dt={:.4f}s", frameCount, dt);
             }
 
+            // Update input system (polls GLFW key state, fires action events)
+            // Must happen after endFrame's glfwPollEvents() from the previous frame,
+            // and before scene/Lua updates that consume input.
+            if (engine_.has<IInputSystem>()) {
+                engine_.get<IInputSystem>().update();
+            }
+
             // Process hot reload
             if (scriptManager_) {
                 scriptManager_->update();
@@ -480,9 +921,19 @@ return { main = main }
             // Update timers (hot-reload-safe timer callbacks)
             updateTimers(dt);
 
+            // Update state system (polls async completions, auto-commit timer)
+            if (engine_.has<IStateSystem>()) {
+                engine_.get<IStateSystem>().update(dt);
+            }
+
             // Update animation system (calculates bone transforms)
             if (engine_.has<IAnimationSystem>()) {
                 engine_.get<IAnimationSystem>().update(dt);
+            }
+
+            // Update scene system (runs active scene's Lua update)
+            if (engine_.has<ISceneSystem>()) {
+                engine_.get<ISceneSystem>().update(dt);
             }
 
             // Call update
@@ -504,7 +955,24 @@ return { main = main }
                 continue;
             }
 
-            // Call render if present
+            // Begin frame (acquires swapchain image, starts render pass)
+            if (engine_.has<IGraphics3DSystem>()) {
+                engine_.get<IGraphics3DSystem>().beginFrame();
+            }
+
+            // Render scene system (runs active scene's Lua render)
+            if (engine_.has<ISceneSystem>()) {
+                engine_.get<ISceneSystem>().render();
+            }
+
+            // Update and render UI system (overlay, after 3D rendering)
+            if (engine_.has<IUISystem>()) {
+                auto& ui = engine_.get<IUISystem>();
+                ui.update(dt);
+                ui.render();
+            }
+
+            // Call render if present (game-level overlay, after scene + UI)
             if (renderFunc.valid()) {
                 if (frameCount == 0) {
                     spdlog::debug("[GameRunner] Calling Lua render() for the first time...");
@@ -516,6 +984,24 @@ return { main = main }
                     running = false;
                     continue;
                 }
+            }
+
+            // End frame (submits commands, presents, polls GLFW events)
+            if (engine_.has<IGraphics3DSystem>()) {
+                engine_.get<IGraphics3DSystem>().endFrame();
+            }
+
+            // Check if window was closed
+            if (engine_.has<IGraphics3DSystem>() &&
+                engine_.get<IGraphics3DSystem>().shouldClose()) {
+                spdlog::info("[GameRunner] Window close requested");
+                running = false;
+            }
+
+            // Check for signal-based shutdown (SIGTERM, SIGINT)
+            if (g_shutdownRequested.load(std::memory_order_relaxed)) {
+                spdlog::info("[GameRunner] Shutdown signal received, exiting gracefully...");
+                running = false;
             }
 
             frameCount++;

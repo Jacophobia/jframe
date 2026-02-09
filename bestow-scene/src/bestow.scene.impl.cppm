@@ -15,13 +15,13 @@ export namespace bestow {
 
 class SceneSystem : public ISceneSystem {
 public:
-    SceneSystem() = default;
+    explicit SceneSystem(IAssetSystem& assets, IInputSystem& input,
+                         IUISystem& ui, IEventSystem& events)
+        : assets_(&assets), input_(&input), ui_(&ui), events_(&events) {}
     ~SceneSystem() override;
 
-    /// Initialize with dependencies (called after DI construction)
-    void initialize(IAssetSystem* assets, IInputSystem* input,
-                    IUISystem* ui, IEventSystem* events,
-                    sol::state* lua);
+    /// Initialize Lua state (called after DI construction and engine build)
+    void initialize(sol::state* lua);
 
     //==================================================================
     // Lifecycle
@@ -118,6 +118,9 @@ private:
     /// Publish a scene event
     void publishEvent(const char* eventType, const std::string& sceneName,
                       SceneId id, SceneState state);
+
+    /// Clean up scene-scoped Lua event subscriptions (calls bestow.scene._cleanupSubs)
+    void cleanupSceneLuaSubs(const std::string& sceneName);
 
     /// Handle hot reload for a scene asset
     void onAssetChanged(AssetHandle handle, AssetType type);

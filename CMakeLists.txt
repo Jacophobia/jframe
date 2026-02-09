@@ -61,7 +61,7 @@ add_subdirectory(bestow-opengl)
 add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
-add_subdirectory(bestow-save)
+add_subdirectory(bestow-state)
 add_subdirectory(bestow-scene)
 add_subdirectory(bestow-events)
 add_subdirectory(bestow-physics-common)
@@ -103,17 +103,6 @@ if(BESTOW_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Example games (require Vulkan, only for dev builds)
-if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan AND BESTOW_DEV_TOOLS)
-    add_subdirectory(games/game1)
-endif()
-
-# Demos (require Vulkan, only for dev builds)
-if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan AND BESTOW_DEV_TOOLS)
-    add_subdirectory(demos/animation-showcase)
-    add_subdirectory(demos/ui-menu-demo)
-endif()
-
 # Single executable launcher (requires Vulkan for full functionality)
 if(BESTOW_BUILD_VULKAN AND TARGET bestow-vulkan)
     add_subdirectory(bestow-launcher)
@@ -142,7 +131,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-audio
     bestow-input
     bestow-assets
-    bestow-save
+    bestow-state
     bestow-scene
     bestow-events
     bestow-physics-common

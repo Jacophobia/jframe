@@ -883,6 +883,16 @@ struct VehicleInput {
 };
 
 //==========================================================================
+// Window Mode
+//==========================================================================
+
+enum class WindowMode : std::uint8_t {
+    Windowed,
+    Fullscreen,
+    BorderlessFullscreen
+};
+
+//==========================================================================
 // 3D Graphics Types
 //==========================================================================
 
@@ -1098,25 +1108,24 @@ using EventCallback = std::function<void(const EventData&)>;
 using SubscriptionId = UUID;
 
 //==========================================================================
-// Save Types
+// State Types (persistence layer)
 //==========================================================================
 
-using SaveSlot = std::uint32_t;
+using StateSlot = std::uint32_t;
 
-namespace SaveSlots {
-    inline constexpr SaveSlot QuickSave = UINT32_MAX - 1;
-    inline constexpr SaveSlot AutoSave = UINT32_MAX;
+namespace StateSlots {
+    inline constexpr StateSlot QuickCommit = UINT32_MAX - 1;
+    inline constexpr StateSlot AutoCommit = UINT32_MAX;
 }
 
-enum class SaveError {
+enum class StateError {
     Success,
-    FileNotFound,
-    CorruptedFile,
-    InvalidChecksum,
-    VersionMismatch,
-    MigrationFailed,
+    SlotNotFound,
+    DatabaseError,
     IOError,
-    SerializationError
+    MigrationFailed,
+    JsonParseError,
+    BusyError
 };
 
 //==========================================================================

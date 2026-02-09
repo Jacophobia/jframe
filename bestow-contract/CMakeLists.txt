@@ -12,7 +12,7 @@ target_sources(bestow-contract
         src/bestow.audio.cppm
         src/bestow.input.cppm
         src/bestow.assets.cppm
-        src/bestow.save.cppm
+        src/bestow.state.cppm
         src/bestow.scene.cppm
         src/bestow.events.cppm
         src/bestow.physics.cppm

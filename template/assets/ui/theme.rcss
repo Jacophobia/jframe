@@ -1,0 +1,268 @@
+/* ==========================================================================
+   Bestow Dark Theme
+   A polished dark theme for game menus and UI.
+   ========================================================================== */
+
+/* ---------- Base ---------- */
+body {
+    font-family: "default";
+    font-size: 18dp;
+    color: #e0e0e8;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---------- Layout helpers ---------- */
+.screen {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+.gap-sm > * { margin-bottom: 6dp; }
+.gap-md > * { margin-bottom: 12dp; }
+.gap-lg > * { margin-bottom: 20dp; }
+
+/* ---------- Typography ---------- */
+h1 {
+    font-size: 52dp;
+    color: #f0f0ff;
+    margin-bottom: 48dp;
+    text-align: center;
+}
+
+h2 {
+    font-size: 32dp;
+    color: #c0c0d0;
+    margin-bottom: 24dp;
+    text-align: center;
+}
+
+h3 {
+    font-size: 22dp;
+    color: #a0a0b8;
+    margin-bottom: 12dp;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+    width: 320dp;
+    padding: 14dp 20dp;
+    background-color: #1e2a45;
+    color: #d0d0e0;
+    font-size: 20dp;
+    text-align: center;
+    cursor: pointer;
+    border: 1dp #3a4a6a;
+    border-radius: 4dp;
+    transition: background-color 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.btn:hover {
+    background-color: #2a3d60;
+    border-color: #5a7ab0;
+    color: #ffffff;
+}
+
+.btn.focused {
+    background-color: #2a3d60;
+    border-color: #6aaaf0;
+    color: #ffffff;
+}
+
+.btn:active {
+    background-color: #162040;
+    border-color: #4060a0;
+}
+
+.btn:disabled {
+    background-color: #151a28;
+    color: #505068;
+    border-color: #252a38;
+    cursor: default;
+}
+
+.btn-sm {
+    width: 200dp;
+    padding: 10dp 16dp;
+    font-size: 16dp;
+}
+
+/* ---------- Overlay (for pause, modals) ---------- */
+.overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 179);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+/* ---------- Tabs ---------- */
+.tab-bar {
+    display: flex;
+    flex-direction: row;
+    margin-bottom: 24dp;
+}
+
+.tab {
+    padding: 10dp 28dp;
+    font-size: 18dp;
+    color: #808098;
+    background-color: #12182a;
+    border: 1dp #2a3050;
+    cursor: pointer;
+    transition: background-color 0.12s, color 0.12s;
+}
+
+.tab:hover {
+    background-color: #1e2a45;
+    color: #c0c0d0;
+}
+
+.tab.active {
+    background-color: #1e2a45;
+    color: #ffffff;
+    border-bottom-color: #6aaaf0;
+}
+
+.tab.focused {
+    color: #ffffff;
+    border-color: #6aaaf0;
+}
+
+/* ---------- Panels / Cards ---------- */
+.panel {
+    background-color: #141a2e;
+    border: 1dp #2a3050;
+    border-radius: 6dp;
+    padding: 20dp 28dp;
+}
+
+/* ---------- Forms ---------- */
+.form-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 480dp;
+    padding: 8dp 0;
+}
+
+.form-label {
+    color: #a0a0b8;
+    font-size: 18dp;
+}
+
+/* Toggle (on/off button) */
+.toggle {
+    width: 52dp;
+    height: 28dp;
+    background-color: #2a3050;
+    border: 1dp #3a4a6a;
+    border-radius: 14dp;
+    cursor: pointer;
+    transition: background-color 0.15s;
+}
+
+.toggle.on {
+    background-color: #2860b0;
+    border-color: #5a8ae0;
+}
+
+.toggle.focused {
+    border-color: #6aaaf0;
+}
+
+/* Slider track */
+.slider {
+    width: 200dp;
+    height: 6dp;
+    background-color: #2a3050;
+    border-radius: 3dp;
+    position: relative;
+}
+
+.slider-fill {
+    height: 100%;
+    background-color: #4080d0;
+    border-radius: 3dp;
+}
+
+.slider.focused {
+    border: 1dp #6aaaf0;
+}
+
+/* Select / dropdown appearance */
+.select {
+    padding: 8dp 16dp;
+    background-color: #1e2a45;
+    border: 1dp #3a4a6a;
+    border-radius: 4dp;
+    color: #d0d0e0;
+    cursor: pointer;
+}
+
+.select.focused {
+    border-color: #6aaaf0;
+}
+
+/* ---------- Binding list (controls screen) ---------- */
+.binding-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 480dp;
+    padding: 8dp 12dp;
+    border-bottom: 1dp #1e2840;
+}
+
+.binding-action {
+    color: #c0c0d0;
+    font-size: 18dp;
+}
+
+.binding-key {
+    padding: 4dp 12dp;
+    background-color: #1e2a45;
+    border: 1dp #3a4a6a;
+    border-radius: 3dp;
+    color: #d0d0e0;
+    font-size: 16dp;
+}
+
+.binding-key.listening {
+    border-color: #f0a030;
+    color: #f0a030;
+}
+
+.binding-row.focused {
+    background-color: #1a2540;
+    border-color: #6aaaf0;
+}
+
+/* ---------- Utility ---------- */
+.hidden   { display: none; }
+.dim      { color: #606078; }
+.accent   { color: #6aaaf0; }
+.warning  { color: #f0a030; }

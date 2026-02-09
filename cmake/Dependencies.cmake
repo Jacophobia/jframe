@@ -53,6 +53,7 @@ function(find_dependencies)
     find_package(RecastNavigation CONFIG REQUIRED)
     find_package(BehaviorTree CONFIG)
     find_package(unofficial-shaderc CONFIG REQUIRED)
+    find_package(unofficial-sqlite3 CONFIG REQUIRED)
 
     # File watcher (needed for hot reload support in assets/scripts)
     find_package(efsw CONFIG REQUIRED)

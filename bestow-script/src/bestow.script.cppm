@@ -101,6 +101,16 @@ public:
     bool isHotReloadEnabled() const { return hotReloadEnabled_; }
 
     //=========================================================================
+    // Entry Point Configuration
+    //=========================================================================
+
+    /// Set which script file is the entry point.
+    /// This file will be registered as `app.main` regardless of its filename.
+    /// Must be called before loadAllScripts().
+    /// @param path Path to the main script file
+    void setMainScript(const std::filesystem::path& path);
+
+    //=========================================================================
     // Script Loading
     //=========================================================================
 
@@ -125,7 +135,7 @@ public:
     //=========================================================================
 
     /// Set folders to ignore during script discovery.
-    /// Default: ["assets", "build", ".git", "node_modules"]
+    /// Default: ["assets", "build", "config", ".git", "node_modules", "vendor", "external"]
     /// @param folders List of folder names to ignore
     void setIgnoredFolders(std::vector<std::string> folders);
 
@@ -188,6 +198,7 @@ private:
     sol::state* lua_ = nullptr;
     IAssetSystem* assets_ = nullptr;
     std::filesystem::path gameRoot_;
+    std::filesystem::path mainScriptPath_;  // Entry point file (becomes app.main)
     bool initialized_ = false;
     bool hotReloadEnabled_ = false;
 
@@ -199,7 +210,7 @@ private:
 
     // Ignored folders
     std::vector<std::string> ignoredFolders_ = {
-        "assets", "build", ".git", "node_modules", "vendor", "external"
+        "assets", "build", "config", ".git", "node_modules", "vendor", "external"
     };
 
     // Hot reload queue

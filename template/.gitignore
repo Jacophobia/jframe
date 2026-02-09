@@ -1,0 +1,4 @@
+# Bestow game project ignores
+saves/
+*.log
+.DS_Store
