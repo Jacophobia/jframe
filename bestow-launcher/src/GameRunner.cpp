@@ -8,6 +8,9 @@
 // This defines comparison operators for EnTT iterators that MSVC's ADL can find
 #include <bestow/entt_compat.hpp>
 
+// Signal constants (SIGSEGV, SIGABRT, etc.) not exported by import std; on MSVC
+#include <csignal>
+
 import std;
 import bestow.core;
 import bestow.services;
@@ -27,6 +30,7 @@ import bestow.audio.impl;     // FMODAudioSystem
 import bestow.animation.impl; // AnimationSystem
 import bestow.scene.impl;     // SceneSystem
 import bestow.ui.impl;        // RmlUISystem
+import bestow.state.impl;     // StateSystem
 
 namespace bestow::launcher {
 
@@ -351,6 +355,9 @@ private:
         // Register animation system
         engine_.use<IAnimationSystem, AnimationSystem>();
 
+        // Register state system (no dependencies)
+        engine_.use<IStateSystem, StateSystem>();
+
         // Build the service provider so has<>() and get<>() work
         engine_.build();
 
@@ -489,11 +496,8 @@ private:
         // UI config (optional)
         loadUIConfig();
 
-        // Save config (stub — just log that we loaded it)
-        auto saveCfg = loadConfigFile("config/save.cfg.lua");
-        if (saveCfg.valid() && saveCfg.get_type() == sol::type::table) {
-            spdlog::info("[GameRunner] Loaded save config (save system not yet implemented)");
-        }
+        // State config (optional)
+        loadStateConfig();
 
         spdlog::info("[GameRunner] Configuration loaded");
         return true;
@@ -819,6 +823,38 @@ private:
         spdlog::info("[GameRunner] Applied UI configuration");
     }
 
+    /// Load config/state.cfg.lua and configure the state system
+    void loadStateConfig() {
+        auto cfg = loadConfigFile("config/state.cfg.lua");
+        if (!cfg.valid() || cfg.get_type() != sol::type::table) return;
+        if (!engine_.has<IStateSystem>()) return;
+
+        auto& state = engine_.get<IStateSystem>();
+        sol::table config = cfg;
+
+        sol::optional<std::string> profile = config["profile"];
+        if (profile) {
+            state.setActiveProfile(*profile);
+        }
+
+        sol::optional<std::string> version = config["gameVersion"];
+        if (version) {
+            state.setGameVersion(*version);
+        }
+
+        sol::optional<int> formatVersion = config["formatVersion"];
+        if (formatVersion) {
+            state.setFormatVersion(*formatVersion);
+        }
+
+        sol::optional<int> autoCommitSeconds = config["autoCommitSeconds"];
+        if (autoCommitSeconds && *autoCommitSeconds > 0) {
+            state.enableAutoCommit(std::chrono::seconds(*autoCommitSeconds));
+        }
+
+        spdlog::info("[GameRunner] Applied state configuration");
+    }
+
     bool validatePhaseSet() {
         // Get the input system and check if a phase has been set
         if (!engine_.has<IInputSystem>()) {
@@ -884,6 +920,11 @@ return { main = main }
 
             // Update timers (hot-reload-safe timer callbacks)
             updateTimers(dt);
+
+            // Update state system (polls async completions, auto-commit timer)
+            if (engine_.has<IStateSystem>()) {
+                engine_.get<IStateSystem>().update(dt);
+            }
 
             // Update animation system (calculates bone transforms)
             if (engine_.has<IAnimationSystem>()) {

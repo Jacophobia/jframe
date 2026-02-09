@@ -26,7 +26,7 @@ target_sources(bestow-luabind
         src/bindings/scene_binding.cpp
         src/bindings/blueprints_binding.cpp
         src/bindings/gamestate_binding.cpp
-        src/bindings/save_binding.cpp
+        src/bindings/state_binding.cpp
         src/bindings/events_binding.cpp
         src/bindings/ui_binding.cpp
         src/bindings/metrics_binding.cpp
@@ -52,7 +52,7 @@ target_sources(bestow-luabind
         src/docs/scene_binding_doc.cpp
         src/docs/blueprints_binding_doc.cpp
         src/docs/gamestate_binding_doc.cpp
-        src/docs/save_binding_doc.cpp
+        src/docs/state_binding_doc.cpp
         src/docs/events_binding_doc.cpp
         src/docs/ui_binding_doc.cpp
         src/docs/metrics_binding_doc.cpp
@@ -69,7 +69,7 @@ target_link_libraries(bestow-luabind
         bestow-scene     # For Scene bindings
         bestow-blueprints # For Blueprint bindings
         bestow-gamestate # For GameState bindings
-        bestow-save      # For Save bindings
+        bestow-state     # For State bindings
         bestow-events    # For Events bindings
         bestow-ui        # For UI bindings
         unofficial::luajit::luajit

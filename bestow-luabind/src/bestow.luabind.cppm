@@ -64,8 +64,11 @@ void bindBlueprintFactory(sol::state& lua, IBlueprintFactory& blueprints);
 // Game State System binding
 void bindGameStateSystem(sol::state& lua, IGameStateSystem& gamestate);
 
-// Save System binding
-void bindSaveSystem(sol::state& lua, ISaveSystem& save);
+// State System binding
+void bindStateSystem(sol::state& lua, IStateSystem& state);
+
+// Cleanup function for state bindings - MUST be called before lua_close()
+void cleanupStateBindings();
 
 // Event System binding
 void bindEventSystem(sol::state& lua, IEventSystem& events);
@@ -249,7 +252,7 @@ void registerGASDoc(DocRegistry& registry);
 void registerSceneDoc(DocRegistry& registry);
 void registerBlueprintsDoc(DocRegistry& registry);
 void registerGamestateDoc(DocRegistry& registry);
-void registerSaveDoc(DocRegistry& registry);
+void registerStateDoc(DocRegistry& registry);
 void registerEventsDoc(DocRegistry& registry);
 void registerUIDoc(DocRegistry& registry);
 void registerMetricsDoc(DocRegistry& registry);

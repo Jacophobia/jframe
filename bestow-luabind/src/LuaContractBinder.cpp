@@ -150,11 +150,11 @@ void LuaContractBinder::bindAll() {
         spdlog::debug("[LuaContractBinder] Bound IGameStateSystem -> bestow.gamestate");
     }
 
-    // Save System
-    if (engine_->has<ISaveSystem>()) {
-        bindSaveSystem(*lua_, engine_->get<ISaveSystem>());
-        boundSystems_.push_back("save");
-        spdlog::debug("[LuaContractBinder] Bound ISaveSystem -> bestow.save");
+    // State System
+    if (engine_->has<IStateSystem>()) {
+        bindStateSystem(*lua_, engine_->get<IStateSystem>());
+        boundSystems_.push_back("state");
+        spdlog::debug("[LuaContractBinder] Bound IStateSystem -> bestow.state");
     }
 
     // Event System
@@ -469,6 +469,7 @@ std::vector<std::string> LuaContractBinder::getBoundSystems() const {
 // Forward declarations for cleanup functions in binding files
 void cleanupTimerBindings();
 void cleanupEventBindings();
+void cleanupStateBindings();
 
 void cleanupLuaBindings() {
     spdlog::debug("[LuaContractBinder] Cleaning up Lua bindings...");
@@ -478,6 +479,9 @@ void cleanupLuaBindings() {
 
     // Clear event bindings (releases sol::table refs in subscriptions)
     cleanupEventBindings();
+
+    // Clear state bindings (releases pending async callback refs)
+    cleanupStateBindings();
 
     spdlog::debug("[LuaContractBinder] Lua bindings cleaned up");
 }

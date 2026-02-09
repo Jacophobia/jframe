@@ -17,7 +17,7 @@ export import bestow.graphics3d;
 export import bestow.audio;
 export import bestow.input;
 export import bestow.assets;
-export import bestow.save;
+export import bestow.state;
 export import bestow.scene;
 export import bestow.events;
 export import bestow.physics;

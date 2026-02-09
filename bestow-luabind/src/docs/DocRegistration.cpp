@@ -27,7 +27,7 @@ DocRegistry createFullDocRegistry() {
     registerSceneDoc(registry);
     registerBlueprintsDoc(registry);
     registerGamestateDoc(registry);
-    registerSaveDoc(registry);
+    registerStateDoc(registry);
     registerEventsDoc(registry);
     registerUIDoc(registry);
     registerMetricsDoc(registry);

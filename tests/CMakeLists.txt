@@ -14,7 +14,7 @@ add_executable(bestow-tests
     unit/ComponentsTests.cpp
     unit/CoreSystemTests.cpp
     unit/EntitySystemTests.cpp
-    unit/SaveSystemTests.cpp
+    unit/StateSystemTests.cpp
     unit/EventSystemTests.cpp
     unit/InputSystemTests.cpp
     unit/AssetSystemTests.cpp
@@ -40,7 +40,7 @@ target_link_libraries(bestow-tests
         bestow-entity
         bestow-events
         bestow-assets
-        bestow-save
+        bestow-state
         bestow-config
         bestow-input
         bestow-audio

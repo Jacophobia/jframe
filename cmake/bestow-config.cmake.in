@@ -17,7 +17,7 @@
 #   bestow::bestow-physics   - Physics simulation
 #   bestow::bestow-assets    - Asset management
 #   bestow::bestow-events    - Event system
-#   bestow::bestow-save      - Save/Load system
+#   bestow::bestow-state     - State persistence system (SQLite-backed)
 #   bestow::bestow-ai        - AI/Pathfinding
 #   bestow::bestow-camera    - Camera system
 #   bestow::bestow-config    - Configuration
@@ -36,7 +36,7 @@ find_dependency(glm)
 find_dependency(EnTT)
 find_dependency(nlohmann_json)
 find_dependency(sol2)
-find_dependency(cereal)
+find_dependency(unofficial-sqlite3)
 find_dependency(box2d)
 find_dependency(freetype)
 find_dependency(Taskflow)

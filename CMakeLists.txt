@@ -61,7 +61,7 @@ add_subdirectory(bestow-opengl)
 add_subdirectory(bestow-audio)
 add_subdirectory(bestow-input)
 add_subdirectory(bestow-assets)
-add_subdirectory(bestow-save)
+add_subdirectory(bestow-state)
 add_subdirectory(bestow-scene)
 add_subdirectory(bestow-events)
 add_subdirectory(bestow-physics-common)
@@ -131,7 +131,7 @@ set(BESTOW_LIBRARY_TARGETS
     bestow-audio
     bestow-input
     bestow-assets
-    bestow-save
+    bestow-state
     bestow-scene
     bestow-events
     bestow-physics-common
