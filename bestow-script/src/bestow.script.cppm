@@ -101,6 +101,16 @@ public:
     bool isHotReloadEnabled() const { return hotReloadEnabled_; }
 
     //=========================================================================
+    // Entry Point Configuration
+    //=========================================================================
+
+    /// Set which script file is the entry point.
+    /// This file will be registered as `app.main` regardless of its filename.
+    /// Must be called before loadAllScripts().
+    /// @param path Path to the main script file
+    void setMainScript(const std::filesystem::path& path);
+
+    //=========================================================================
     // Script Loading
     //=========================================================================
 
@@ -188,6 +198,7 @@ private:
     sol::state* lua_ = nullptr;
     IAssetSystem* assets_ = nullptr;
     std::filesystem::path gameRoot_;
+    std::filesystem::path mainScriptPath_;  // Entry point file (becomes app.main)
     bool initialized_ = false;
     bool hotReloadEnabled_ = false;
 

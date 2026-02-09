@@ -241,8 +241,8 @@ Result<void, std::error_code> SceneSystem::pushScene(
     publishEvent(Events::ScenePushed, name,
                  regIt->second.metadata.id, SceneState::Active);
 
-    spdlog::debug("[SceneSystem] Pushed scene '{}' (stack depth: {})",
-                  name, stack_.size());
+    spdlog::info("[SceneSystem] Pushed scene '{}' (stack depth: {})",
+                 name, stack_.size());
 
     return {};
 }
@@ -296,8 +296,8 @@ Result<void, std::error_code> SceneSystem::popScene() {
     publishEvent(Events::ScenePopped, poppedName,
                  poppedId, SceneState::Ready);
 
-    spdlog::debug("[SceneSystem] Popped scene '{}' (stack depth: {})",
-                  poppedName, stack_.size());
+    spdlog::info("[SceneSystem] Popped scene '{}' (stack depth: {})",
+                 poppedName, stack_.size());
 
     return {};
 }

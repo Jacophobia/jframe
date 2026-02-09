@@ -67,6 +67,20 @@ cmake --build --preset macos-debug
 ctest --preset macos-debug
 ```
 
+### Running the Engine
+
+A `bestow-dev` symlink (`~/.local/bin/bestow-dev`) points to this repo's debug build output. **Always use `bestow-dev` instead of the full build path** when launching the engine:
+
+```bash
+# Run the template app
+cd template && bestow-dev run main.lua
+
+# Run any game project
+cd my-game && bestow-dev run main.lua
+```
+
+The symlink auto-updates on rebuild (it points to `build/macos-debug/bestow-launcher/bestow.app/Contents/MacOS/bestow`). The global `bestow` command (`/usr/local/bin/bestow`) points to a separate release build and should not be used for development.
+
 ## C++ Modules
 
 Bestow uses C++23 modules. Follow these conventions:

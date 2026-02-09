@@ -294,13 +294,24 @@ private:
 
             sol::table scope = createScope();
 
+            // Copy IDs first to avoid iterator invalidation — callbacks may
+            // unsubscribe (e.g. scene push triggers cleanupSceneLuaSubs)
+            std::vector<SubscriptionId> ids;
             for (auto& [id, sub] : subscriptions_) {
                 if (sub.active && sub.eventType == eventType) {
-                    try {
-                        sub.callback(eventTable, scope);
-                    } catch (const std::exception& e) {
-                        spdlog::error("[Events] Exception in C++ event bridge: {}", e.what());
-                    }
+                    ids.push_back(id);
+                }
+            }
+
+            for (SubscriptionId id : ids) {
+                auto it = subscriptions_.find(id);
+                if (it == subscriptions_.end() || !it->second.active) {
+                    continue;  // Removed during dispatch
+                }
+                try {
+                    it->second.callback(eventTable, scope);
+                } catch (const std::exception& e) {
+                    spdlog::error("[Events] Exception in C++ event bridge: {}", e.what());
                 }
             }
         });

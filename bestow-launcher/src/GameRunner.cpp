@@ -30,6 +30,25 @@ import bestow.ui.impl;        // RmlUISystem
 
 namespace bestow::launcher {
 
+// Signal handling for graceful shutdown (SIGTERM, SIGINT)
+static std::atomic<bool> g_shutdownRequested{false};
+
+static void shutdownSignalHandler(int sig) {
+    g_shutdownRequested.store(true, std::memory_order_relaxed);
+    // Minimal work in signal handler — just set the flag.
+    // The game loop checks it each frame and exits cleanly.
+}
+
+// SEGV crash handler for debugging — prints backtrace to stderr
+static void crashSignalHandler(int sig) {
+    spdlog::critical("[CRASH] Received signal {} ({})", sig,
+        sig == SIGSEGV ? "SIGSEGV" : sig == SIGABRT ? "SIGABRT" : "UNKNOWN");
+    spdlog::default_logger()->flush();
+    // Re-raise to get core dump
+    std::signal(sig, SIG_DFL);
+    std::raise(sig);
+}
+
 class GameRunner {
 public:
     GameRunner() = default;
@@ -42,14 +61,6 @@ public:
         // while Lua is still fully valid.
         callLuaDestroy();
 
-        // Clear global binding managers that hold sol:: refs
-        spdlog::info("[GameRunner] Cleaning up Lua bindings...");
-        cleanupLuaBindings();
-
-        // Run GC to collect any orphaned objects
-        spdlog::info("[GameRunner] Running garbage collection...");
-        lua_.collect_garbage();
-
         // Clear script manager (holds references to Lua tables)
         spdlog::info("[GameRunner] Clearing script manager...");
         scriptManager_.reset();
@@ -58,10 +69,23 @@ public:
         spdlog::info("[GameRunner] Clearing Lua binder...");
         binder_.reset();
 
-        // Run GC again after clearing managers
+        // Run GC to collect any orphaned objects
+        spdlog::info("[GameRunner] Running garbage collection...");
         lua_.collect_garbage();
 
-        // Clear all Lua globals to release references
+        // IMPORTANT: Destroy engine BEFORE clearing Lua bindings/globals.
+        // Engine destruction triggers SceneSystem::~SceneSystem() → clearStack(),
+        // which calls scene exit callbacks that need both:
+        //   1. Lua globals (`app.*`) to be valid
+        //   2. g_luaEventManager to be alive (for bestow.events.unsubscribe())
+        spdlog::info("[GameRunner] Destroying engine...");
+        engine_ = core::Engine();
+
+        // Now safe to destroy binding managers — engine no longer needs them
+        spdlog::info("[GameRunner] Cleaning up Lua bindings...");
+        cleanupLuaBindings();
+
+        // Clear all Lua globals to release references (safe now that engine is gone)
         spdlog::info("[GameRunner] Clearing Lua globals...");
         lua_["bestow"] = sol::nil;
         lua_["app"] = sol::nil;
@@ -69,11 +93,6 @@ public:
         // Final GC pass
         lua_.collect_garbage();
         lua_.collect_garbage();  // Run twice to catch weak refs
-
-        // IMPORTANT: Destroy engine BEFORE lua_ because engine systems may store
-        // callbacks that captured sol::function objects.
-        spdlog::info("[GameRunner] Destroying engine...");
-        engine_ = core::Engine();
 
         spdlog::info("[GameRunner] Engine destroyed, destructor body complete");
         spdlog::default_logger()->flush();
@@ -131,6 +150,16 @@ public:
         if (verbose_) {
             spdlog::set_level(spdlog::level::debug);
         }
+
+        // Flush spdlog every second so logs are visible when piped
+        spdlog::flush_every(std::chrono::seconds(1));
+
+        // Register signal handlers for graceful shutdown
+        std::signal(SIGTERM, shutdownSignalHandler);
+        std::signal(SIGINT, shutdownSignalHandler);
+        // Register crash handler for debugging
+        std::signal(SIGSEGV, crashSignalHandler);
+        std::signal(SIGABRT, crashSignalHandler);
 
         spdlog::info("[GameRunner] Initializing Bestow Engine...");
         spdlog::info("[GameRunner] Game root: {}", gameRoot_.string());
@@ -246,9 +275,16 @@ private:
         // Initialize PathResolver with basic defaults
         PathResolver::initialize();
 
-        // Use AssetLibrary for robust auto-detection of library path
-        // (checks env var, exe-relative, cwd-relative locations)
-        auto assetLib = AssetLibrary::create();
+        // Use AssetLibrary for robust auto-detection of library path.
+        // Check near the game root (e.g., template/../asset-library) in addition
+        // to the default exe-relative and CWD-relative locations. This ensures
+        // the library is found even when CWD differs (e.g., macOS `open` command).
+        AssetLibraryConfig libConfig;
+        for (const auto& folderName : libConfig.folderNames) {
+            libConfig.additionalSearchPaths.push_back(gameRoot_ / folderName);
+            libConfig.additionalSearchPaths.push_back(gameRoot_ / ".." / folderName);
+        }
+        auto assetLib = AssetLibrary::create(std::move(libConfig));
         if (assetLib) {
             PathResolver::setLibraryPath(assetLib->root().string());
             spdlog::info("[GameRunner] Using library path: {}", assetLib->root().string());
@@ -378,6 +414,7 @@ private:
 
         scriptManager_ = std::make_unique<ScriptManager>(lua_);
         scriptManager_->initialize(gameRoot_);
+        scriptManager_->setMainScript(mainScript_);
 
         if (!debugMode_) {
             scriptManager_->enableHotReload(true);
@@ -643,6 +680,17 @@ private:
             graphics.initialize(gfxConfig);
             spdlog::info("[GameRunner] Graphics initialized: {}x{} '{}'",
                          gfxConfig.windowWidth, gfxConfig.windowHeight, gfxConfig.windowTitle);
+
+            // Initialize input system with the GLFW window handle
+            if (engine_.has<IInputSystem>()) {
+                auto* windowHandle = graphics.getNativeWindowHandle();
+                if (windowHandle) {
+                    engine_.get<IInputSystem>().initialize(windowHandle);
+                    spdlog::info("[GameRunner] Input system initialized with window handle");
+                } else {
+                    spdlog::warn("[GameRunner] Graphics system returned null window handle");
+                }
+            }
         }
 
         // Clear color
@@ -822,6 +870,13 @@ return { main = main }
                 spdlog::debug("[GameRunner] Frame {} - dt={:.4f}s", frameCount, dt);
             }
 
+            // Update input system (polls GLFW key state, fires action events)
+            // Must happen after endFrame's glfwPollEvents() from the previous frame,
+            // and before scene/Lua updates that consume input.
+            if (engine_.has<IInputSystem>()) {
+                engine_.get<IInputSystem>().update();
+            }
+
             // Process hot reload
             if (scriptManager_) {
                 scriptManager_->update();
@@ -899,6 +954,12 @@ return { main = main }
             if (engine_.has<IGraphics3DSystem>() &&
                 engine_.get<IGraphics3DSystem>().shouldClose()) {
                 spdlog::info("[GameRunner] Window close requested");
+                running = false;
+            }
+
+            // Check for signal-based shutdown (SIGTERM, SIGINT)
+            if (g_shutdownRequested.load(std::memory_order_relaxed)) {
+                spdlog::info("[GameRunner] Shutdown signal received, exiting gracefully...");
                 running = false;
             }
 
