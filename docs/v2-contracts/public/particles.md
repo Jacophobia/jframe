@@ -1,13 +1,13 @@
 # Particle System
 
 > **Visibility:** Public (Lua + C++ API)
-> **Tier:** 5
-> **Dependencies:** Types, Entity, Graphics3D
+> **Tier:** 4
+> **Dependencies:** Types, Graphics3D, Assets
 > **Lua Paths:** `bestow.particles` (high-level), `bestow.particles.core` (low-level)
 
 ## Purpose
 
-The Particle System provides CPU and GPU-accelerated particle emission, simulation, and rendering for visual effects such as fire, smoke, sparks, explosions, weather, and ambient particles. Emitters are configured through definition structs or Lua preset files, and can be attached to entities for automatic position tracking. The high-level API covers creating, playing, stopping, and positioning emitters with presets, while the low-level API exposes emission shapes, particle property overrides, sub-emitters, GPU simulation control, material configuration, and preset serialization. This is a new system in Bestow V2.
+The Particle System manages GPU-accelerated particle emitters for visual effects like fire, smoke, explosions, sparks, rain, and magic. Emitters are configured through definition structs or Lua preset files and can be attached to entities for automatic position tracking. The high-level API provides fire-and-forget particle spawning at world positions or attached to entities, with preset loading for artist-friendly workflows. The low-level API exposes the full emitter lifecycle including emission shapes, particle property curves, sub-emitters, GPU compute simulation toggle, material and blend mode control, preset serialization, and per-emitter diagnostic queries. This is a new system in Bestow V2.
 
 ## High-Level API: `IParticleSystem`
 
@@ -18,14 +18,14 @@ The simplified particle interface for common visual effects. Position-based emit
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `createEmitter(Vec3 position, const EmitterDef& def)` | `Result<EmitterHandle>` | Create a new particle emitter at the given world position using the provided definition |
-| `loadPreset(std::string_view presetPath, Vec3 position)` | `Result<EmitterHandle>` | Load a particle preset from a Lua file and create an emitter at the given position |
+| `loadPreset(std::string_view presetPath, Vec3 position)` | `Result<EmitterHandle>` | Load a particle preset from a Lua asset file and create an emitter at the given position |
 
 ### Emitter Control
 
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `play(EmitterHandle h)` | `Result<void>` | Start or resume particle emission on the emitter |
-| `stop(EmitterHandle h)` | `Result<void>` | Stop particle emission; existing particles continue to live out their lifetimes |
+| `stop(EmitterHandle h)` | `Result<void>` | Stop particle emission; existing particles continue to live out their remaining lifetimes |
 | `destroy(EmitterHandle h)` | `Result<void>` | Destroy the emitter and all its particles immediately |
 
 ### Emitter Transform
@@ -33,7 +33,7 @@ The simplified particle interface for common visual effects. Position-based emit
 | Method | Returns | Description |
 |--------|---------|-------------|
 | `setPosition(EmitterHandle h, Vec3 position)` | `Result<void>` | Move the emitter to a new world-space position |
-| `attachToEntity(EmitterHandle h, Entity entity)` | `Result<void>` | Attach the emitter to an entity so it automatically follows the entity's position |
+| `attachToEntity(EmitterHandle h, Entity entity)` | `Result<void>` | Attach the emitter to an entity so it automatically follows the entity's transform |
 
 ### Queries
 
@@ -43,21 +43,21 @@ The simplified particle interface for common visual effects. Position-based emit
 
 ## Low-Level API: `IParticleCore`
 
-Full control API. Exposes the complete particle simulation pipeline including emitter lifecycle, transform, emission properties, shapes, materials, sub-emitters, GPU simulation, presets, and per-emitter queries.
+Full control API. Exposes the complete particle simulation pipeline including emitter lifecycle, transform, emission properties, shapes, materials, sub-emitters, GPU compute simulation, preset serialization, and per-emitter diagnostic queries.
 
 ### Lifecycle
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `update(DeltaTime dt)` | `void` | Advance all particle simulations by the given delta time, spawning, moving, aging, and killing particles |
-| `render()` | `void` | Submit all active particle draw calls to the rendering pipeline |
+| `update(DeltaTime dt)` | `void` | Advance all particle simulations by the given delta time, spawning new particles, integrating velocities, aging, and culling dead particles |
+| `render()` | `void` | Submit all active particle draw calls to the rendering pipeline, sorted and batched by material |
 
 ### Emitter Management
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `createEmitter(const EmitterDef& def)` | `Result<EmitterHandle>` | Create a new emitter from a definition; position is set via the def or subsequent calls |
-| `destroyEmitter(EmitterHandle handle)` | `Result<void>` | Destroy the emitter and immediately remove all its particles |
+| `createEmitter(const EmitterDef& def)` | `Result<EmitterHandle>` | Create a new emitter from a definition; position is set via the def or subsequent transform calls |
+| `destroyEmitter(EmitterHandle handle)` | `Result<void>` | Destroy the emitter and immediately remove all of its particles |
 
 ### Emitter Control
 
@@ -76,7 +76,7 @@ Full control API. Exposes the complete particle simulation pipeline including em
 | `setPosition(EmitterHandle h, Vec3 position)` | `Result<void>` | Set the emitter's world-space position |
 | `setRotation(EmitterHandle h, Quat rotation)` | `Result<void>` | Set the emitter's world-space rotation, affecting emission direction |
 | `setScale(EmitterHandle h, float scale)` | `Result<void>` | Set a uniform scale factor for the emitter's emission shape and particle sizes |
-| `attachToEntity(EmitterHandle h, Entity entity)` | `Result<void>` | Attach the emitter to an entity for automatic position/rotation tracking |
+| `attachToEntity(EmitterHandle h, Entity entity)` | `Result<void>` | Attach the emitter to an entity for automatic position and rotation tracking |
 | `detachFromEntity(EmitterHandle h)` | `Result<void>` | Detach the emitter from its entity, keeping its current world position |
 
 ### Emitter Properties (Runtime Modification)
@@ -85,17 +85,17 @@ Full control API. Exposes the complete particle simulation pipeline including em
 |--------|---------|-------------|
 | `setEmissionRate(EmitterHandle h, float rate)` | `Result<void>` | Set the number of particles emitted per second |
 | `setMaxParticles(EmitterHandle h, int max)` | `Result<void>` | Set the maximum number of simultaneous alive particles for this emitter |
-| `setParticleLifetime(EmitterHandle h, float min, float max)` | `Result<void>` | Set the min and max lifetime range for newly spawned particles in seconds |
+| `setParticleLifetime(EmitterHandle h, float min, float max)` | `Result<void>` | Set the min and max lifetime range in seconds for newly spawned particles |
 | `setParticleSpeed(EmitterHandle h, float min, float max)` | `Result<void>` | Set the min and max initial speed range for newly spawned particles |
-| `setParticleSize(EmitterHandle h, float startMin, float startMax, float endMin, float endMax)` | `Result<void>` | Set the size range at birth and at death; particles interpolate between start and end |
-| `setParticleColor(EmitterHandle h, Color start, Color end)` | `Result<void>` | Set the color at birth and at death; particles interpolate between the two colors |
+| `setParticleSize(EmitterHandle h, float startMin, float startMax, float endMin, float endMax)` | `Result<void>` | Set the size range at birth and at death; particles interpolate between start and end over their lifetime |
+| `setParticleColor(EmitterHandle h, Color start, Color end)` | `Result<void>` | Set the color at birth and at death; particles interpolate between the two colors over their lifetime |
 | `setGravity(EmitterHandle h, Vec3 gravity)` | `Result<void>` | Set the gravity vector applied to all particles in this emitter |
 
 ### Emission Shapes
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `setEmissionShape(EmitterHandle h, EmissionShape shape)` | `Result<void>` | Set the shape from which new particles are spawned |
+| `setEmissionShape(EmitterHandle h, EmissionShape shape)` | `Result<void>` | Set the geometric shape from which new particles are spawned |
 
 ### Material
 
@@ -116,14 +116,14 @@ Full control API. Exposes the complete particle simulation pipeline including em
 |--------|---------|-------------|
 | `getParticleCount(EmitterHandle h)` | `int` | Return the number of active particles for a specific emitter |
 | `getTotalParticleCount()` | `int` | Return the total number of active particles across all emitters |
-| `getBounds(EmitterHandle h)` | `AABB3D` | Return the axis-aligned bounding box enclosing all particles of the emitter |
+| `getBounds(EmitterHandle h)` | `AABB3D` | Return the axis-aligned bounding box enclosing all active particles of the emitter |
 
 ### GPU Particles
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `isGPUSimulationSupported()` | `bool` | Check whether the current graphics backend supports GPU-accelerated particle simulation |
-| `setGPUSimulation(EmitterHandle h, bool enabled)` | `Result<void>` | Enable or disable GPU-accelerated simulation for the emitter; falls back to CPU if unsupported |
+| `isGPUSimulationSupported()` | `bool` | Check whether the current graphics backend supports GPU compute-accelerated particle simulation |
+| `setGPUSimulation(EmitterHandle h, bool enabled)` | `Result<void>` | Enable or disable GPU compute simulation for the emitter; falls back to CPU if unsupported |
 
 ### Presets
 
@@ -133,6 +133,18 @@ Full control API. Exposes the complete particle simulation pipeline including em
 | `savePreset(EmitterHandle h, std::string_view path)` | `Result<void>` | Serialize the current emitter configuration to a Lua file at the given path |
 
 ## Types
+
+### EmitterHandle
+
+A strong typed handle referencing an active particle emitter.
+
+```cpp
+using EmitterHandle = Handle<struct EmitterTag>;
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `std::uint64_t` | `0` | Internal identifier; 0 means invalid/no emitter |
 
 ### EmitterDef
 
@@ -149,7 +161,7 @@ Complete definition for creating a particle emitter. All fields have sensible de
 | `speedMin` | `float` | `1.0f` | Minimum initial speed of a spawned particle |
 | `speedMax` | `float` | `5.0f` | Maximum initial speed of a spawned particle |
 | `sizeStart` | `float` | `1.0f` | Particle size at birth |
-| `sizeEnd` | `float` | `0.0f` | Particle size at death; interpolated over lifetime |
+| `sizeEnd` | `float` | `0.0f` | Particle size at death; interpolated linearly over lifetime |
 | `colorStart` | `Color` | `Color::white()` | Particle color at birth |
 | `colorEnd` | `Color` | `{1, 1, 1, 0}` | Particle color at death; alpha fades to 0 by default |
 | `rotationSpeedMin` | `float` | `0.0f` | Minimum rotation speed of particles in radians per second |
@@ -160,18 +172,6 @@ Complete definition for creating a particle emitter. All fields have sensible de
 | `blendMode` | `BlendMode` | `Additive` | Blend mode for particle rendering |
 | `sortByDepth` | `bool` | `false` | Whether to sort particles by distance to camera for correct alpha blending |
 | `billboard` | `bool` | `true` | Whether particles always face the camera |
-
-### EmitterHandle
-
-A strong typed handle referencing an active particle emitter.
-
-```cpp
-using EmitterHandle = Handle<struct EmitterTag>;
-```
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `id` | `std::uint64_t` | `0` | Internal identifier; 0 means invalid/no emitter |
 
 ### EmissionShape
 
@@ -231,22 +231,38 @@ Blend mode used for particle rendering.
 
 ```cpp
 enum class BlendMode : std::uint8_t {
-    Opaque, Alpha, Additive, Multiply, PreMultipliedAlpha
+    Additive, Alpha, Multiply, Screen
 };
 ```
 
 | Value | Description |
 |-------|-------------|
-| `Opaque` | No transparency; particles are fully opaque |
+| `Additive` | Additive blending; particles add to the background color, ideal for fire, sparks, and glow effects |
 | `Alpha` | Standard alpha blending; requires depth sorting for correctness |
-| `Additive` | Additive blending; particles add to the background color (fire, sparks, glow) |
-| `Multiply` | Multiplicative blending; darkens the background (shadows, dust) |
-| `PreMultipliedAlpha` | Pre-multiplied alpha blending; avoids fringing artifacts at transparency edges |
+| `Multiply` | Multiplicative blending; darkens the background, suitable for shadows and dust |
+| `Screen` | Screen blending; lightens the background, useful for soft light and ethereal effects |
 
-## Lua Examples
+## Lua Mapping
+
+C++ methods map to Lua via the `bestow.particles` and `bestow.particles.core` namespaces. Method names are identical in Lua. Key type mappings:
+
+- `Vec3` maps to a Lua table `{ x = N, y = N, z = N }`
+- `Quat` maps to a Lua table `{ x = N, y = N, z = N, w = N }`
+- `Color` maps to a Lua table `{ r = N, g = N, b = N, a = N }`
+- `EmitterDef` maps to a Lua table with the same field names as the C++ struct; omitted fields use defaults
+- `EmissionShape` maps to a Lua table `{ type = "ShapeTypeName", radius = N, angle = N, extents = { x, y, z } }`
+- `EmitterHandle`, `TextureHandle` are opaque userdata handles in Lua
+- `Result<T>` returns `value, err` in Lua; `err` is `nil` on success
+- `SubEmitterTrigger` values are passed as strings: `"OnBirth"`, `"OnDeath"`, `"OnCollision"`
+- `BlendMode` values are passed as strings: `"Additive"`, `"Alpha"`, `"Multiply"`, `"Screen"`
+- `AABB3D` maps to a Lua table `{ min = { x, y, z }, max = { x, y, z } }`
+
+## Examples
+
+### Lua
 
 ```lua
--- High-level: Create a fire effect
+-- High-level: Create a fire effect at a world position
 local fire, err = bestow.particles.createEmitter(
     { x = 0, y = 0, z = 0 },
     {
@@ -264,17 +280,18 @@ local fire, err = bestow.particles.createEmitter(
     }
 )
 
--- Load a preset
+-- Load a preset file as an emitter
 local explosion = bestow.particles.loadPreset("particles/explosion.lua",
     { x = 10, y = 0, z = 5 })
 
--- Control
+-- Control emitters
 bestow.particles.play(fire)
 bestow.particles.stop(fire)
 bestow.particles.setPosition(fire, { x = 5, y = 0, z = 5 })
-bestow.particles.attachToEntity(fire, torch)
+bestow.particles.attachToEntity(fire, torchEntity)
 bestow.particles.destroy(fire)
 
+-- Query total active particles
 print("Total particles: " .. bestow.particles.getTotalParticleCount())
 
 -- Low-level: Full emitter configuration
@@ -301,7 +318,7 @@ bestow.particles.core.setParticleColor(
 )
 bestow.particles.core.setGravity(emitter, { x = 0, y = -4.9, z = 0 })
 
--- Sub-emitter for sparks on death
+-- Sub-emitter: sparks on particle death
 bestow.particles.core.addSubEmitter(emitter, {
     emissionRate = 5,
     maxParticles = 20,
@@ -311,21 +328,23 @@ bestow.particles.core.addSubEmitter(emitter, {
     speedMax = 3,
 }, "OnDeath")
 
--- GPU particles
+-- Enable GPU compute simulation if supported
 if bestow.particles.core.isGPUSimulationSupported() then
     bestow.particles.core.setGPUSimulation(emitter, true)
 end
 
 bestow.particles.core.play(emitter)
 
+-- Per-emitter queries
 local count = bestow.particles.core.getParticleCount(emitter)
 local bounds = bestow.particles.core.getBounds(emitter)
+print("Emitter bounds min: " .. bounds.min.x .. ", " .. bounds.min.y .. ", " .. bounds.min.z)
 
--- Save configuration as preset
+-- Save current emitter configuration as a reusable preset
 bestow.particles.core.savePreset(emitter, "particles/custom_fire.lua")
 ```
 
-## C++ Examples
+### C++
 
 ```cpp
 // High-level: Create and control emitters
@@ -340,18 +359,20 @@ EmitterDef fireDef{
     .gravity = {0, 2, 0}
 };
 
-auto fireResult = particle->createEmitter(Vec3{0, 0, 0}, fireDef);
+auto fireResult = particles->createEmitter(Vec3{0, 0, 0}, fireDef);
 if (fireResult) {
     EmitterHandle fire = fireResult.value();
-    particle->play(fire);
-    particle->attachToEntity(fire, torchEntity);
+    particles->play(fire);
+    particles->attachToEntity(fire, torchEntity);
 }
 
-auto explosion = particle->loadPreset("particles/explosion.lua", Vec3{10, 0, 5});
+// Load a preset at a position
+auto explosion = particles->loadPreset("particles/explosion.lua", Vec3{10, 0, 5});
 
-int totalParticles = particle->getTotalParticleCount();
+// Query total live particles
+int totalParticles = particles->getTotalParticleCount();
 
-// Low-level: Full configuration
+// Low-level: Full emitter configuration
 EmitterDef sparkDef{
     .emissionRate = 100.0f,
     .maxParticles = 2000,
@@ -363,19 +384,25 @@ auto emitterResult = particleCore->createEmitter(sparkDef);
 if (emitterResult) {
     EmitterHandle emitter = emitterResult.value();
 
-    particleCore->setEmissionShape(emitter, {
+    // Configure emission shape
+    particleCore->setEmissionShape(emitter, EmissionShape{
         .type = EmissionShape::Type::Cone,
         .radius = 0.5f,
         .angle = 30.0f
     });
 
+    // Configure particle properties
     particleCore->setParticleLifetime(emitter, 0.5f, 2.0f);
     particleCore->setParticleSpeed(emitter, 3.0f, 8.0f);
     particleCore->setParticleSize(emitter, 0.3f, 0.8f, 0.0f, 0.1f);
     particleCore->setParticleColor(emitter, Color::white(), Color{0.5f, 0.5f, 0.5f, 0});
     particleCore->setGravity(emitter, Vec3{0, -4.9f, 0});
 
-    // Sub-emitter
+    // Configure material
+    particleCore->setParticleTexture(emitter, sparkTexture);
+    particleCore->setBlendMode(emitter, BlendMode::Additive);
+
+    // Add sub-emitter that fires on parent particle death
     EmitterDef sparkSubDef{
         .emissionRate = 5.0f,
         .maxParticles = 20,
@@ -384,20 +411,24 @@ if (emitterResult) {
     };
     particleCore->addSubEmitter(emitter, sparkSubDef, SubEmitterTrigger::OnDeath);
 
-    // GPU simulation
+    // Enable GPU compute simulation if available
     if (particleCore->isGPUSimulationSupported()) {
         particleCore->setGPUSimulation(emitter, true);
     }
 
+    // Transform controls
     particleCore->setRotation(emitter, Quat{0, 0, 0, 1});
     particleCore->setScale(emitter, 2.0f);
     particleCore->attachToEntity(emitter, torchEntity);
 
+    // Start emitting
     particleCore->play(emitter);
 
+    // Per-emitter queries
     int count = particleCore->getParticleCount(emitter);
     AABB3D bounds = particleCore->getBounds(emitter);
 
+    // Serialize configuration to a reusable preset file
     particleCore->savePreset(emitter, "particles/custom_fire.lua");
 }
 ```
