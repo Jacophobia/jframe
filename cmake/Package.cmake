@@ -47,12 +47,8 @@ function(create_package_target)
         # Copy asset library
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/asset-library" "${DIST_LIB_DIR}"
 
-        # Copy template (excluding .claude folder)
-        COMMAND ${CMAKE_COMMAND}
-            -DSRC_DIR="${CMAKE_SOURCE_DIR}/template"
-            -DDST_DIR="${DIST_TPL_DIR}"
-            -DEXCLUDE_PATTERN=".claude"
-            -P "${CMAKE_SOURCE_DIR}/cmake/CopyFiltered.cmake"
+        # Copy template directory (all files including .claude/, .mcp.json, etc.)
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/template" "${DIST_TPL_DIR}"
 
         # Copy snake-lua example
         COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_SOURCE_DIR}/games/snake-lua" "${DIST_EX_DIR}/snake-lua"
